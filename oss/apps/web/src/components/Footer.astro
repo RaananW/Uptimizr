@@ -1,6 +1,7 @@
 ---
 const repo = "https://github.com/RaananW/Uptimizr";
 const docs = "/docs/";
+const liveDemo = "https://demo.uptimizr.com";
 const year = new Date().getFullYear();
 ---
 
@@ -9,7 +10,8 @@ const year = new Date().getFullYear();
     <h2>Start measuring your 3D scene today</h2>
     <p class="lead">Open-source, self-hostable, and free. Clone the repo and have heatmaps running locally in minutes.</p>
     <div class="cta__btns">
-      <a class="btn btn--primary" href={repo} target="_blank" rel="noopener">Get it on GitHub</a>
+      <a class="btn btn--primary" href={liveDemo}>Try the live demo</a>
+      <a class="btn btn--ghost" href={repo} target="_blank" rel="noopener">Get it on GitHub</a>
       <a class="btn btn--ghost" href={docs}>Read the docs</a>
     </div>
   </div>
@@ -33,6 +35,7 @@ const year = new Date().getFullYear();
         <h3>Develop</h3>
         <a href={docs}>Documentation</a>
         <a href="#quickstart">Quickstart</a>
+        <a href={liveDemo}>Live demo</a>
         <a href={`${repo}/tree/main/oss`}>OSS packages</a>
       </div>
       <div>

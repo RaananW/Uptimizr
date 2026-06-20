@@ -1,6 +1,7 @@
 ---
 const repo = "https://github.com/RaananW/Uptimizr";
 const docs = "/docs/";
+const liveDemo = "https://demo.uptimizr.com";
 const links = [
   { href: "#features", label: "Features" },
   { href: "#demo", label: "Graph examples" },
@@ -16,6 +17,7 @@ const links = [
     </a>
     <nav class="nav__links" aria-label="Primary">
       {links.map((l) => <a href={l.href}>{l.label}</a>)}
+      <a href={liveDemo}>Live demo</a>
       <a href={docs}>Docs</a>
     </nav>
     <div class="nav__cta">
