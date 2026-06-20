@@ -18,10 +18,13 @@ const jetBrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
 });
 
+// `src/app/icon.svg` is picked up by Next's file-based icon convention, which
+// emits a basePath-aware, content-hashed `<link rel="icon">` automatically — so
+// we deliberately don't set `metadata.icons` here (a manual `/icon.svg` would
+// hardcode the origin root and 404 under a sub-path like `/dashboard`).
 export const metadata: Metadata = {
   title: "Uptimizr — 3D Scene Analytics",
   description: "Open-source analytics dashboard for 3D scenes.",
-  icons: { icon: "/icon.svg" },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -674,7 +674,13 @@ export default function Page() {
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
       <header className="mb-6 flex items-center gap-3">
-        <img src="/logo.svg" alt="Uptimizr" width={36} height={36} className="h-9 w-9 shrink-0" />
+        <img
+          src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo.svg`}
+          alt="Uptimizr"
+          width={36}
+          height={36}
+          className="h-9 w-9 shrink-0"
+        />
         <div>
           <h1 className="font-display text-2xl font-bold text-fg-hi">Uptimizr</h1>
           <p className="text-sm text-fg-muted">Analytics for 3D scenes — open-source collector.</p>

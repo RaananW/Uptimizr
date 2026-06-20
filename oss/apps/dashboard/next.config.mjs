@@ -14,6 +14,10 @@ const nextConfig = {
   reactStrictMode: true,
   ...(isStatic ? { output: "export" } : {}),
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
+  // Expose the base path to the client so public-folder assets (logo, favicon)
+  // can be prefixed manually — `assetPrefix` only rewrites `/_next/*`, not raw
+  // `<img src="/logo.svg">` paths, which would otherwise 404 under a sub-path.
+  env: { NEXT_PUBLIC_BASE_PATH: basePath || "" },
   // Linting runs as its own Turborepo task (`pnpm lint`) with the repo's flat
   // ESLint config. Next 16 removed the build-time lint pass, so no `eslint`
   // key is needed here.
