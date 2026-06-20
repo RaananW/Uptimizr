@@ -1,8 +1,11 @@
 name: main
 
 on:
-  push:
-    branches: [main]
+  # Auto-triggers are disabled while the repo is private (conserve Actions minutes).
+  # Re-enable when going public by uncommenting the push trigger below.
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
 
 concurrency:
   group: main-${{ github.ref }}
