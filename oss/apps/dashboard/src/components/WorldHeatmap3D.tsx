@@ -217,7 +217,7 @@ export function WorldHeatmap3D({
             colors[i * 4 + 2] = b;
             colors[i * 4 + 3] = 1;
           }
-          marker.thinInstanceSetBuffer("matrix", matrices, 16, true);
+          marker.thinInstanceSetBuffer("matrix", matrices, 16, false);
           marker.thinInstanceSetBuffer("color", colors, 4, true);
 
           // Keep markers legible when zoomed out on large scenes: grow each

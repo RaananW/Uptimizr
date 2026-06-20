@@ -552,6 +552,25 @@ export default function Page() {
     setHiddenTypes(new Set());
   }, [projectPath, pushPath]);
 
+  // Switching projects in the selector picks a new API key but does NOT auto-load.
+  // Clear the previously rendered panels (and any open session) so the stale data
+  // doesn't masquerade as the new project — the empty state prompts a fresh Load.
+  const selectProject = useCallback(
+    (id: string) => {
+      const next = projects.find((p) => p.id === id);
+      setSelectedId(id);
+      if (next) setApiKey(next.apiKey);
+      setData(EMPTY);
+      setScenes([]);
+      setStatus("idle");
+      setError(null);
+      setDetail(null);
+      setDetailStatus("idle");
+      setHiddenTypes(new Set());
+    },
+    [projects],
+  );
+
   const toggleHiddenType = useCallback((type: string) => {
     setHiddenTypes((prev) => {
       const next = new Set(prev);
@@ -671,11 +690,7 @@ export default function Page() {
             <select
               className="min-w-56 rounded-md border border-edge bg-ink px-3 py-2 text-sm text-fg outline-none focus:border-saffron"
               value={selectedId}
-              onChange={(e) => {
-                const next = projects.find((p) => p.id === e.target.value);
-                setSelectedId(e.target.value);
-                if (next) setApiKey(next.apiKey);
-              }}
+              onChange={(e) => selectProject(e.target.value)}
             >
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
