@@ -14,6 +14,7 @@ import {
   resolveEngineForScene,
   runPlayground,
   wireEngineSelector,
+  wirePanelToggle,
   wireSceneSelector,
 } from "./shell.js";
 import type { SceneDefinition } from "./scenes/catalog.js";
@@ -66,6 +67,7 @@ async function main(): Promise<void> {
   notifyEmbedHost(scene.id, engineId);
   wireSceneSelector(scene.id);
   wireEngineSelector(engineId, scene);
+  wirePanelToggle();
   const { engine } = await loadEngine(scene, engineId);
   await runPlayground(engine, scene);
 }

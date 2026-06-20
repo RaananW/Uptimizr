@@ -55,6 +55,12 @@
         line-height: 1.45;
         z-index: 10;
       }
+      /* Collapsed by default: every signal is captured automatically, so the panel
+         is rarely needed. The topbar "Controls" button toggles it (see shell.ts).
+         On phones it would otherwise eat most of the viewport. */
+      #panel.collapsed {
+        display: none;
+      }
       #panel h1 {
         margin: 0 0 6px;
         font-size: 15px;
@@ -173,6 +179,38 @@
         background: #0b0e14;
         color: #e2e8f0;
         min-width: 150px;
+      }
+      /* "Controls" button: toggles the side panel. Mirrors the secondary button
+         look and turns accent when the panel is open (aria-expanded="true"). */
+      #panelToggle {
+        margin: 0;
+        padding: 6px 12px;
+        border: 1px solid #222a3a;
+        border-radius: 8px;
+        background: #1e293b;
+        color: #e2e8f0;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      #panelToggle:hover {
+        background: #334155;
+      }
+      #panelToggle[aria-expanded="true"] {
+        background: #0284c7;
+        border-color: #0284c7;
+        color: #fff;
+      }
+
+      /* On narrow screens the panel must never eat the whole viewport: keep a
+         16px gutter on the right and clamp the height. (It also starts collapsed.) */
+      @media (max-width: 540px) {
+        #panel {
+          left: 16px;
+          right: 16px;
+          max-width: none;
+        }
       }
 
       /* Collapsible panel sections (native <details>) keep the panel compact:
@@ -333,6 +371,9 @@
         Engine
         <select id="engineSelect"></select>
       </label>
+      <button id="panelToggle" type="button" aria-controls="panel" aria-expanded="false">
+        <span aria-hidden="true">☰</span> Controls
+      </button>
     </div>
 
     <div id="panel">

@@ -65,7 +65,10 @@ engine demo so analytics flow immediately — edit them to build your own geomet
 | A-Frame (WebXR)   | `aframe`     |  (own)  |      —       |   —    |    —    |      —      |    —     |
 
 The **top bar** holds the primary navigation — the Scene and Engine selectors —
-always visible. The **panel** below it is intentionally compact: a collapsible
+always visible, plus a **Controls** button that toggles the side panel. The panel
+**starts collapsed** (every signal is captured by default, so there is rarely
+anything to touch, and on phones it would otherwise cover the scene); the choice
+persists per browser. When opened it is intentionally compact: a collapsible
 **Session & scene** section (project/session ids, the read-only camera mode, the
 lobby/gallery sub-area switcher, sampling + input-source readouts) and a collapsible
 **Capture** section (one checkbox per recorded signal), followed by the replay /

@@ -40,6 +40,7 @@ const WALKABLE_API_KEY = (import.meta.env.VITE_API_KEY_WALKABLE as string) || AP
 
 const ENGINE_STORAGE_KEY = "uptimizr.playground.engine";
 const SCENE_STORAGE_KEY = "uptimizr.playground.scene";
+const PANEL_OPEN_STORAGE_KEY = "uptimizr.playground.panelOpen";
 
 function requireElement<T extends Element>(id: string, ctor: new () => T): T {
   const el = document.getElementById(id);
@@ -185,6 +186,41 @@ export function wireEngineSelector(active: EngineId, scene: SceneDefinition): vo
     url.searchParams.set("engine", next);
     url.searchParams.set("scene", scene.id);
     location.href = url.toString();
+  });
+}
+
+/**
+ * Wire the topbar "Controls" button to collapse/expand the whole side panel.
+ * The panel starts collapsed — every signal is captured by default, so there is
+ * rarely anything to touch, and on phones it would otherwise cover the scene.
+ * The choice persists to localStorage so a returning user keeps their preference.
+ */
+export function wirePanelToggle(): void {
+  const panel = document.getElementById("panel");
+  const toggle = document.getElementById("panelToggle");
+  if (!panel || !(toggle instanceof HTMLButtonElement)) return;
+
+  let open = false;
+  try {
+    open = localStorage.getItem(PANEL_OPEN_STORAGE_KEY) === "1";
+  } catch {
+    /* ignore storage failure */
+  }
+
+  const apply = (next: boolean): void => {
+    panel.classList.toggle("collapsed", !next);
+    toggle.setAttribute("aria-expanded", String(next));
+  };
+  apply(open);
+
+  toggle.addEventListener("click", () => {
+    open = !open;
+    apply(open);
+    try {
+      localStorage.setItem(PANEL_OPEN_STORAGE_KEY, open ? "1" : "0");
+    } catch {
+      /* ignore storage failure */
+    }
   });
 }
 
