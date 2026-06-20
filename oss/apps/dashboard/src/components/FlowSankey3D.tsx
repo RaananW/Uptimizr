@@ -935,15 +935,17 @@ export function FlowSankey3D({
                 onSelect={(key) => setStandpointFocus((cur) => (cur === key ? ALL : key))}
               />
             ) : null}
-            <div className="pointer-events-none absolute bottom-3 right-3 rounded-md border border-edge bg-ink/80 px-2 py-1 text-xs text-fg backdrop-blur">
-              Active links: {activeCount}/{totalCount}
-            </div>
-            {selfFetch && !hasFirstPerson ? (
-              <div className="pointer-events-none absolute bottom-3 left-3 max-w-[20rem] rounded-md border border-edge bg-ink/80 px-2 py-1 text-xs text-fg-muted backdrop-blur">
-                Orbit-dominated scene — viewer <em>position</em> adds little here. Use the{" "}
-                <strong>View dome</strong> (§7.5) above for where viewers looked.
+            <div className="pointer-events-none absolute bottom-3 right-3 flex max-w-[20rem] flex-col items-end gap-2">
+              {selfFetch && !hasFirstPerson ? (
+                <div className="rounded-md border border-edge bg-ink/80 px-2 py-1 text-xs text-fg-muted backdrop-blur">
+                  Orbit-dominated scene — viewer <em>position</em> adds little here. Use the{" "}
+                  <strong>View dome</strong> (§7.5) above for where viewers looked.
+                </div>
+              ) : null}
+              <div className="rounded-md border border-edge bg-ink/80 px-2 py-1 text-xs text-fg backdrop-blur">
+                Active links: {activeCount}/{totalCount}
               </div>
-            ) : null}
+            </div>
             <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
             <HeatLegend
               title="Flow volume"
