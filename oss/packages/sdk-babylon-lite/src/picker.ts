@@ -36,19 +36,33 @@ export interface LitePickProbe {
 export function createScenePicker(scene: SceneContext): LitePickProbe {
   let picker: ReturnType<typeof createGpuPicker> | undefined;
   let disposed = false;
+  // A GPU picker owns a single readback buffer; issuing a second `pickAsync`
+  // while a prior `mapAsync` is still pending throws "Buffer already has an
+  // outstanding map pending". The pointer path and the gaze probe (ADR 0030)
+  // share one picker, so picks can overlap. Serialize them through a promise
+  // chain so only one readback is ever in flight — each call still resolves with
+  // its own coordinates.
+  let tail: Promise<unknown> = Promise.resolve();
 
   return {
-    async pick(pixelX: number, pixelY: number): Promise<LitePickHit | undefined> {
-      if (disposed) return undefined;
-      picker ??= createGpuPicker(scene);
-      const info = await pickAsync(picker, pixelX, pixelY);
-      if (disposed || !info.hit) return undefined;
-      const pickedPoint = info.pickedPoint;
-      const pickedMesh = info.pickedMesh as Mesh | null;
-      return {
-        point: pickedPoint ? [pickedPoint[0], pickedPoint[1], pickedPoint[2]] : undefined,
-        mesh: pickedMesh?.name ? pickedMesh.name : undefined,
+    pick(pixelX: number, pixelY: number): Promise<LitePickHit | undefined> {
+      if (disposed) return Promise.resolve(undefined);
+      const run = async (): Promise<LitePickHit | undefined> => {
+        if (disposed) return undefined;
+        picker ??= createGpuPicker(scene);
+        const info = await pickAsync(picker, pixelX, pixelY);
+        if (disposed || !info.hit) return undefined;
+        const pickedPoint = info.pickedPoint;
+        const pickedMesh = info.pickedMesh as Mesh | null;
+        return {
+          point: pickedPoint ? [pickedPoint[0], pickedPoint[1], pickedPoint[2]] : undefined,
+          mesh: pickedMesh?.name ? pickedMesh.name : undefined,
+        };
       };
+      const result = tail.then(run, run);
+      // Keep the chain alive after a rejection without surfacing an unhandled one.
+      tail = result.catch(() => undefined);
+      return result;
     },
     dispose(): void {
       disposed = true;
