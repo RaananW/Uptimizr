@@ -45,6 +45,16 @@ Captures camera pose → view-direction heatmap, pointer move/click (with option
 screen heatmaps, mesh picks → object engagement, and FPS → performance. Opt-in: mesh visibility,
 hover dwell, and resource sample.
 
+## First-person scenes (pointer lock)
+
+When the canvas holds the browser [Pointer Lock](https://developer.mozilla.org/docs/Web/API/Pointer_Lock_API)
+(e.g. `PointerLockControls`, first-person/FPS navigation), the OS cursor is hidden and the aim point
+is the fixed crosshair at the viewport centre. The connector detects pointer lock and reports
+pointer/click events from screen centre (`screen = [0.5, 0.5]`), raycasting from the centre — so the
+2D pointer heatmap clusters at the centre for locked scenes. Read the cursor-independent gaze /
+floor-plan heatmaps instead; cursor (orbit/viewer) scenes are unaffected.
+See [Concepts → pointer lock](/docs/concepts/) (ADR 0034).
+
 ## Advanced
 
 For a custom transport, a `beforeSend` hook, or registering multiple collectors, compose the pieces

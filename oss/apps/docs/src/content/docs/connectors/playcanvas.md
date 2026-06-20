@@ -45,6 +45,15 @@ Captures camera pose, pointer move/click (with optional raycast hit), mesh picks
 mesh visibility and hover dwell. It tears down all DOM listeners, timers, and `frameend` handlers on
 stop.
 
+## First-person scenes (pointer lock)
+
+When the canvas holds the browser [Pointer Lock](https://developer.mozilla.org/docs/Web/API/Pointer_Lock_API)
+(first-person/FPS navigation), the OS cursor is hidden and the aim point is the fixed crosshair at the
+viewport centre. The connector detects pointer lock and reports pointer/click events from screen centre
+(`screen = [0.5, 0.5]`), raycasting from the centre — so the 2D pointer heatmap clusters at the centre
+for locked scenes. Read the cursor-independent gaze / floor-plan heatmaps instead; cursor
+(orbit/viewer) scenes are unaffected. See [Concepts → pointer lock](/docs/concepts/) (ADR 0034).
+
 ## Advanced
 
 ```ts

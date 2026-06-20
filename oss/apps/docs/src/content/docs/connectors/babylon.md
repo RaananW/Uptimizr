@@ -47,6 +47,17 @@ By default the connector records the engine's active camera. For multi-camera sc
 trackScene(scene, { projectId, endpoint, camera: mainCamera });
 ```
 
+## First-person scenes (pointer lock)
+
+When the rendering canvas holds the browser [Pointer Lock](https://developer.mozilla.org/docs/Web/API/Pointer_Lock_API)
+(`engine.enterPointerlock()`, first-person/FPS navigation), the OS cursor is hidden and the aim point
+is the fixed crosshair at the viewport centre. The connector detects pointer lock and reports
+`pointer_move` / `pointer_down` / `pointer_up` / `pointer_click` from screen centre
+(`screen = [0.5, 0.5]`), re-picking at the render-target centre — the crosshair the visitor actually
+aims with. The 2D pointer heatmap therefore clusters at the centre for locked scenes; read the
+cursor-independent gaze / floor-plan heatmaps instead. Cursor (orbit/viewer) scenes are unaffected.
+See [Concepts → pointer lock](/docs/concepts/) (ADR 0034).
+
 ## Capture fidelity
 
 Continuous channels are sampled at conservative defaults (≈1 Hz camera, ≈4 Hz pointer, ≈0.5 Hz
