@@ -32,3 +32,9 @@ overrides:
   # GHSA-h67p-54hq-rp68: quadratic-complexity DoS via merge keys (js-yaml <= 4.1.1),
   # via @changesets/cli (release tooling, dev-only).
   js-yaml: ">=4.2.0"
+  # @changesets/cli pulls read-yaml-file@1.1.0, which calls the `yaml.safeLoad` API
+  # that js-yaml 4 removed — so the js-yaml override above breaks `changeset version`.
+  # read-yaml-file@2.1.0 is the fix: still CJS (changesets `require()`s it) but built
+  # against js-yaml ^4 (uses `yaml.load`). 3.x is ESM-only (Node 22 pure ESM) and would
+  # break changesets' CommonJS require. Keep this pinned to the 2.x line.
+  read-yaml-file: ^2.1.0
