@@ -80,13 +80,19 @@ The seed prints once:
   API key (store securely, shown once): utk_xxx...
 ✓ project created: <PROJECT_ID> (Demo Project (Walkable))
   API key (store securely, shown once): utk_yyy...
+✓ project created: <PROJECT_ID> (Demo Project (Showcase))
+  API key (store securely, shown once): utk_zzz...
+✓ project created: <PROJECT_ID> (Demo Project (Gallery))
+  API key (store securely, shown once): utk_www...
 ✓ wrote VITE_PROJECT_ID, VITE_API_KEY, NEXT_PUBLIC_API_KEY, VITE_PROJECT_ID_WALKABLE, VITE_API_KEY_WALKABLE to <repo-root>/.env
-✓ recorded 2 project(s) in <repo-root>/.uptimizr/projects.json
+✓ recorded 4 project(s) in <repo-root>/.uptimizr/projects.json
 ```
 
-Two projects are seeded so viewer (arc-rotate) and first-person (walkable) sessions
-stay separate (ADR 0026): the playground sends each camera mode to its own project,
-and the dashboard's project picker lists both. The seed writes the viewer project
+Four projects are seeded, one per built-in demo scene, so distinct experiences stay
+separate (ADR 0026): a **viewer** (lobby) and **walkable** (atrium) pair plus a
+**showcase** (real glTF viewer) and **gallery** (walkable real models) project. The
+playground routes each scene to its own project via `.uptimizr/projects.json`, and
+the dashboard's project picker lists all four. The seed writes the viewer project
 into `VITE_PROJECT_ID` / `VITE_API_KEY` / `NEXT_PUBLIC_API_KEY` and the walkable
 project into `VITE_PROJECT_ID_WALKABLE` / `VITE_API_KEY_WALKABLE`, straight into your
 root `.env` (it must already exist — that's the `cp .env.example .env` from step 0).

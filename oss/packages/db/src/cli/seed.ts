@@ -81,7 +81,7 @@ interface RegistryEntry {
   scene?: SceneMeta;
 }
 
-/** The two built-in demo scenes (kept in sync with `examples/playground/scenes.json`). */
+/** The four built-in demo scenes (kept in sync with `examples/playground/scenes.json`). */
 const LOBBY_SCENE: SceneMeta = {
   id: "lobby",
   label: "Lobby (viewer)",
@@ -100,6 +100,26 @@ const ATRIUM_SCENE: SceneMeta = {
   engines: ["babylon", "three", "playcanvas"],
   defaultEngine: "babylon",
   builtin: true,
+};
+const SHOWCASE_SCENE: SceneMeta = {
+  id: "showcase",
+  label: "Showcase (real glTF viewer)",
+  description:
+    "An orbit camera framing a real glTF model (Khronos ToyCar) — inspecting a detailed PBR asset.",
+  cameraMode: "viewer",
+  engines: ["babylon", "three", "playcanvas"],
+  defaultEngine: "babylon",
+  builtin: false,
+};
+const GALLERY_SCENE: SceneMeta = {
+  id: "gallery",
+  label: "Gallery (walkable real models)",
+  description:
+    "A first-person walkable room with real glTF models (Khronos ToyCar, Fox, GlamVelvetSofa) on pedestals — walk up and inspect or pick the exhibits.",
+  cameraMode: "first-person",
+  engines: ["babylon", "three", "playcanvas"],
+  defaultEngine: "babylon",
+  builtin: false,
 };
 
 /**
@@ -120,19 +140,28 @@ function writeRegistry(root: string, entries: RegistryEntry[]): void {
     }
   }
   const ids = new Set(entries.map((e) => e.id));
-  const next = [...list.filter((p) => p && !ids.has(p.id)), ...entries];
+  // Also drop any prior entry bound to the same scene id, so re-seeding replaces a
+  // scene's project binding instead of stacking a duplicate card in the dashboard.
+  const sceneIds = new Set(
+    entries.map((e) => e.scene?.id).filter((s): s is string => typeof s === "string"),
+  );
+  const next = [
+    ...list.filter((p) => p && !ids.has(p.id) && !(p.scene?.id != null && sceneIds.has(p.scene.id))),
+    ...entries,
+  ];
   writeFileSync(registryPath, `${JSON.stringify(next, null, 2)}\n`);
 
   console.log(`✓ recorded ${entries.length} project(s) in ${registryPath}`);
 }
 
 /**
- * Seed a pair of demo projects — a **viewer** (arc-rotate) project and a
- * **walkable** (first-person) project — and issue an API key for each. Two
- * projects mirror how a real deployment keeps distinct experiences separate, and
- * let the playground route viewer vs. first-person sessions to their own project
- * (ADR 0026). Keys are printed once (stored only as hashes). Run via
- * `pnpm --filter @uptimizr/db seed -- "My Project"`.
+ * Seed the demo projects — a **viewer** (arc-rotate) and a **walkable**
+ * (first-person) project for the built-in lobby/atrium scenes, plus a
+ * **showcase** and **gallery** project for the real-glTF demo scenes — and issue
+ * an API key for each. One project per scene mirrors how a real deployment keeps
+ * distinct experiences separate, and lets the playground route each scene's
+ * sessions to its own project (ADR 0026). Keys are printed once (stored only as
+ * hashes). Run via `pnpm --filter @uptimizr/db seed -- "My Project"`.
  */
 async function main(): Promise<void> {
   const args = process.argv.slice(2).filter((arg) => arg !== "--");
@@ -144,12 +173,20 @@ async function main(): Promise<void> {
   const viewerKey = (await createApiKey(db, viewer.id)).key;
   const walkable = await createProject(db, `${baseName} (Walkable)`);
   const walkableKey = (await createApiKey(db, walkable.id)).key;
+  const showcase = await createProject(db, `${baseName} (Showcase)`);
+  const showcaseKey = (await createApiKey(db, showcase.id)).key;
+  const gallery = await createProject(db, `${baseName} (Gallery)`);
+  const galleryKey = (await createApiKey(db, gallery.id)).key;
   await db.close();
 
   console.log(`✓ project created: ${viewer.id} (${viewer.name})`);
   console.log(`  API key (store securely, shown once): ${viewerKey}`);
   console.log(`✓ project created: ${walkable.id} (${walkable.name})`);
   console.log(`  API key (store securely, shown once): ${walkableKey}`);
+  console.log(`✓ project created: ${showcase.id} (${showcase.name})`);
+  console.log(`  API key (store securely, shown once): ${showcaseKey}`);
+  console.log(`✓ project created: ${gallery.id} (${gallery.name})`);
+  console.log(`  API key (store securely, shown once): ${galleryKey}`);
 
   const root = findRepoRoot(process.cwd());
   if (!root) return;
@@ -164,6 +201,8 @@ async function main(): Promise<void> {
   writeRegistry(root, [
     { id: viewer.id, name: viewer.name, apiKey: viewerKey, createdAt, scene: LOBBY_SCENE },
     { id: walkable.id, name: walkable.name, apiKey: walkableKey, createdAt, scene: ATRIUM_SCENE },
+    { id: showcase.id, name: showcase.name, apiKey: showcaseKey, createdAt, scene: SHOWCASE_SCENE },
+    { id: gallery.id, name: gallery.name, apiKey: galleryKey, createdAt, scene: GALLERY_SCENE },
   ]);
 }
 
