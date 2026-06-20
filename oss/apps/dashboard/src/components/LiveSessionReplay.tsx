@@ -359,8 +359,8 @@ export function LiveSessionReplay({
         <>
           Tails the session&apos;s live event stream and re-drives it in a neutral birdview (camera
           origin + forward, fading interaction rays). This is the same replay stack used for
-          historical sessions, tailing an open stream. Requires raw-session retention
-          to be enabled on the collector.
+          historical sessions, tailing an open stream. Requires raw-session retention to be enabled
+          on the collector.
         </>
       }
     >

@@ -54,7 +54,10 @@ directly:
 import { UptimizrClient } from "@uptimizr/sdk-core";
 import { threeCollector, readDeviceCaps } from "@uptimizr/three";
 
-const client = new UptimizrClient({ projectId: "your-project", endpoint: "https://collect.example.com" });
+const client = new UptimizrClient({
+  projectId: "your-project",
+  endpoint: "https://collect.example.com",
+});
 client.use(threeCollector({ scene, camera, renderer }));
 client.start({ device: readDeviceCaps(renderer) });
 ```

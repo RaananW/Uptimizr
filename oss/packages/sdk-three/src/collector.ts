@@ -1073,8 +1073,9 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
         // Gaze raycast (ADR 0030): only after the idle-dedup check passes. The hit
         // point is in three's right-handed frame; normalize it like pointer hits.
         const gazeHit = gazeProbe?.();
-        const hitPoint =
-          gazeHit ? (toCanonicalPosition(gazeHit.point, "right") as Vec3T) : undefined;
+        const hitPoint = gazeHit
+          ? (toCanonicalPosition(gazeHit.point, "right") as Vec3T)
+          : undefined;
         const hitMesh = gazeHit && gazeHit.name ? gazeHit.name : undefined;
         ctx.emit({
           type: "camera_sample",

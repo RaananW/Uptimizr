@@ -189,7 +189,13 @@ export function buildTwoStageGraph(
   for (const r of kept) {
     const cur = gazeTotals.get(r.gazeId);
     if (cur) cur.count += r.count;
-    else gazeTotals.set(r.gazeId, { az: r.azimuthBin, el: r.elevationBin, sp: r.standpointId, count: r.count });
+    else
+      gazeTotals.set(r.gazeId, {
+        az: r.azimuthBin,
+        el: r.elevationBin,
+        sp: r.standpointId,
+        count: r.count,
+      });
   }
   const gazeNodes: TwoStageNode[] = [...gazeTotals.entries()].map(([id, g]) => {
     const spY = standpointY.get(g.sp) ?? 0;
@@ -206,5 +212,11 @@ export function buildTwoStageGraph(
   });
 
   const maxCount = kept.reduce((m, r) => Math.max(m, r.count), 1);
-  return { standpoints: standpointNodes, gazes: gazeNodes, meshes: meshNodes, ribbons: kept, maxCount };
+  return {
+    standpoints: standpointNodes,
+    gazes: gazeNodes,
+    meshes: meshNodes,
+    ribbons: kept,
+    maxCount,
+  };
 }

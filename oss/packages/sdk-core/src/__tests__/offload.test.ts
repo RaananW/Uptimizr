@@ -36,8 +36,7 @@ function makeFakeWorker() {
 
   return {
     worker,
-    batchMessages: () =>
-      posted.filter((p) => (p.message as { type?: string }).type === "batch"),
+    batchMessages: () => posted.filter((p) => (p.message as { type?: string }).type === "batch"),
   };
 }
 
@@ -54,9 +53,7 @@ afterEach(() => {
 
 describe("offload: worker (ADR 0031)", () => {
   it("routes steady-state flushes to the worker and the unload flush to the main thread", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue({ ok: true } as Response);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true } as Response);
     const fake = makeFakeWorker();
 
     const client = new UptimizrClient({
@@ -103,9 +100,7 @@ describe("offload: worker (ADR 0031)", () => {
   });
 
   it("falls back to the main-thread processor when the worker cannot be constructed", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue({ ok: true } as Response);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true } as Response);
 
     const client = new UptimizrClient({
       ...baseConfig,

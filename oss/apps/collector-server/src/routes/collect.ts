@@ -31,7 +31,10 @@ function rejectIngest(reply: FastifyReply, code: number, error: string): Fastify
  * exist, so events can never be written under an arbitrary/spoofed project. CORS
  * origin allow-listing and a dedicated per-client rate limit bound the rest.
  */
-export const collectRoutes: FastifyPluginAsync<Options> = async (app, { store, config, liveBus }) => {
+export const collectRoutes: FastifyPluginAsync<Options> = async (
+  app,
+  { store, config, liveBus },
+) => {
   const r = app.withTypeProvider<ZodTypeProvider>();
 
   r.post(

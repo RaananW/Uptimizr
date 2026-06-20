@@ -12,13 +12,13 @@ contract is documented here for custom transports and self-hosting.
 Batched events. The SDK uses `navigator.sendBeacon` (credentialed) and falls back to `fetch` with
 `keepalive`. Authenticate with the project API key.
 
-| Property      | Value                                              |
-| ------------- | -------------------------------------------------- |
-| Method        | `POST`                                             |
-| Path          | `/api/v1/collect`                                  |
-| Auth          | `x-api-key: <project key>`                         |
-| Content-Type  | `application/json`                                 |
-| Body          | A batch of events, each validated against `@uptimizr/schema` |
+| Property     | Value                                                        |
+| ------------ | ------------------------------------------------------------ |
+| Method       | `POST`                                                       |
+| Path         | `/api/v1/collect`                                            |
+| Auth         | `x-api-key: <project key>`                                   |
+| Content-Type | `application/json`                                           |
+| Body         | A batch of events, each validated against `@uptimizr/schema` |
 
 Events are validated against the Zod schemas in `@uptimizr/schema` at the edge; invalid batches are
 rejected. Every event carries the shared envelope (ordered, timestamped, keyed by `sessionId`).
@@ -36,8 +36,8 @@ rejected. Every event carries the shared envelope (ordered, timestamped, keyed b
 A scene can register a **proxy** of its geometry (per-mesh bounding boxes) so the dashboard's 3D
 heatmaps draw against a recognizable backdrop. Writes use the same project API key.
 
-| Method | Path                                     | Purpose                                                       | Body                |
-| ------ | ---------------------------------------- | ------------------------------------------------------------ | ------------------- |
+| Method | Path                                     | Purpose                                                              | Body                |
+| ------ | ---------------------------------------- | -------------------------------------------------------------------- | ------------------- |
 | `PUT`  | `/api/v1/scenes/:sceneId/representation` | Register/replace a scene proxy. `proxy.sceneId` must match the path. | `{ proxy, label? }` |
 
 ```bash

@@ -1,5 +1,10 @@
 import type { AppBase, BoundingBox } from "playcanvas";
-import { SDK_VERSION, toCanonicalAabb, toCanonicalPosition, toCanonicalQuat } from "@uptimizr/sdk-core";
+import {
+  SDK_VERSION,
+  toCanonicalAabb,
+  toCanonicalPosition,
+  toCanonicalQuat,
+} from "@uptimizr/sdk-core";
 import {
   SCENE_PROXY_VERSION,
   sceneProxySchema,

@@ -44,7 +44,7 @@ Per signal these costs are small today (microseconds). They matter in three situ
 [ADR 0012](./0012-sampling-and-fidelity.md) deliberately allows: per-frame bone capture (e.g. 60
 bones × 60 fps decompositions), large flush batches stringified in one main-thread span, and dense
 mesh-visibility profiles. For those, the integrator should be able to push the **processing** phase
-off the render thread. This ADR records *that capability and its boundary*; it does not change
+off the render thread. This ADR records _that capability and its boundary_; it does not change
 default behaviour and does not, by itself, attack per-frame snapshot cost (sampling cadence and a
 future frame-budget scheduler remain the levers for that).
 
@@ -53,7 +53,7 @@ included.
 
 ## Decision
 
-Add an **optional, opt-in worker mode** that relocates the offload-eligible *processing* phase off
+Add an **optional, opt-in worker mode** that relocates the offload-eligible _processing_ phase off
 the main thread, governed by one principle: **the main thread only snapshots; everything that can
 run on plain data may run in a worker.**
 
@@ -65,7 +65,7 @@ guarantee, not an implementation detail:
 - **Correctness never depends on the flag.** Not enabling it, or running where workers are
   unavailable (older embeds, restrictive CSP, SSR, tests), yields identical output via the
   main-thread processor. The flag is purely a performance valve.
-- It changes **execution location only** — never *what* is computed or *what* is sent. No data
+- It changes **execution location only** — never _what_ is computed or _what_ is sent. No data
   collection is added or removed, so there is no privacy-relevant choice to consent to (ADR 0003,
   `@uptimizr/schema` unchanged).
 
@@ -77,8 +77,8 @@ guarantee, not an implementation detail:
 
 2. **Keep the processing functions isomorphic and pure.** The math already lives in pure,
    engine-agnostic functions (gesture classifier in `@uptimizr/sdk-core` is the model). The same
-   function runs unchanged on the main thread or inside a worker; worker mode changes *where* it
-   runs, never *what* it computes. No worker-only forks of logic.
+   function runs unchanged on the main thread or inside a worker; worker mode changes _where_ it
+   runs, never _what_ it computes. No worker-only forks of logic.
 
 3. **Introduce a pluggable processing seam, mirroring the transport seam.** A `Processor` abstraction
    sits between capture and transport. The default is a synchronous main-thread processor (today's
@@ -116,17 +116,17 @@ guarantee, not an implementation detail:
 
 ### What can and cannot be offloaded
 
-| Work | Phase | Worker-eligible |
-|---|---|---|
-| Frustum/visibility reads, `pickWithRay`, `computeWorldMatrix`, FPS read, observers | Snapshot | **No** — engine state is main-thread-only |
-| Per-frame frame-time push | Snapshot | No (trivial; stays where the read is) |
-| Percentile (p95/p99) computation | Processing | **Yes** |
-| Camera-gesture classification | Processing | **Yes** |
-| Matrix → pos/quat/scale decomposition | Processing | **Yes** |
-| Mesh-visibility aggregation + AABB dedupe/round | Processing | **Yes** (the math; the reads stay) |
-| Idle-diffing | Processing | **Yes** |
-| `JSON.stringify` + steady-state `fetch`/`sendBeacon` | Processing | **Yes** |
-| Final unload flush | Processing | **No** — reliability requires page context |
+| Work                                                                               | Phase      | Worker-eligible                            |
+| ---------------------------------------------------------------------------------- | ---------- | ------------------------------------------ |
+| Frustum/visibility reads, `pickWithRay`, `computeWorldMatrix`, FPS read, observers | Snapshot   | **No** — engine state is main-thread-only  |
+| Per-frame frame-time push                                                          | Snapshot   | No (trivial; stays where the read is)      |
+| Percentile (p95/p99) computation                                                   | Processing | **Yes**                                    |
+| Camera-gesture classification                                                      | Processing | **Yes**                                    |
+| Matrix → pos/quat/scale decomposition                                              | Processing | **Yes**                                    |
+| Mesh-visibility aggregation + AABB dedupe/round                                    | Processing | **Yes** (the math; the reads stay)         |
+| Idle-diffing                                                                       | Processing | **Yes**                                    |
+| `JSON.stringify` + steady-state `fetch`/`sendBeacon`                               | Processing | **Yes**                                    |
+| Final unload flush                                                                 | Processing | **No** — reliability requires page context |
 
 ## Consequences
 
@@ -145,7 +145,7 @@ guarantee, not an implementation detail:
 - A second execution context adds bundle size, a build step for the worker module, and more states
   to test (worker present/absent, fallback, unload path).
 - `postMessage`/structured-clone (or transfer) has its own cost; for light default profiles it can
-  cost *more* than it saves, which is exactly why it is opt-in, not default.
+  cost _more_ than it saves, which is exactly why it is opt-in, not default.
 - Two flush paths (worker steady-state + main-thread unload) is extra complexity that must be
   covered by tests to preserve replay-completeness (ADR 0006).
 - Requires keeping all processing functions strictly pure/isomorphic — a constraint future
@@ -160,8 +160,8 @@ guarantee, not an implementation detail:
   should be opt-in.
 - **OffscreenCanvas.** Not applicable — the SDK reads scene state, it does not render.
 - **Do nothing; rely only on the sampling dial (ADR 0012) and a frame-budget scheduler.** These
-  remain the primary levers for *snapshot* cost and are complementary, but they cannot relocate the
-  *processing/serialization* spikes that a worker can. This ADR adds the offload option without
+  remain the primary levers for _snapshot_ cost and are complementary, but they cannot relocate the
+  _processing/serialization_ spikes that a worker can. This ADR adds the offload option without
   displacing those levers.
 - **A dedicated worker-only reimplementation of the math.** Rejected: forking logic per execution
   context invites drift. The same pure functions must serve both.

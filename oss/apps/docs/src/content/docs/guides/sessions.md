@@ -58,12 +58,12 @@ end-on-`pagehide` behavior is always active, independent of `captureLifecycle`.
 ```jsonc
 {
   "type": "runtime_error",
-  "kind": "error",                            // or "unhandledrejection"
-  "message": "…",                             // ≤ 1024 chars
-  "source": "https://app.example/main.js",    // ≤ 1024 chars, optional
+  "kind": "error", // or "unhandledrejection"
+  "message": "…", // ≤ 1024 chars
+  "source": "https://app.example/main.js", // ≤ 1024 chars, optional
   "lineno": 42,
   "colno": 7,
-  "stack": "…"                                // ≤ 4096 chars, optional
+  "stack": "…", // ≤ 4096 chars, optional
 }
 ```
 

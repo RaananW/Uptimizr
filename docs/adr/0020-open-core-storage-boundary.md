@@ -67,15 +67,15 @@ not stub or cripple features (e.g. heatmaps). The scale tier differs only in
 
 ## What moves where
 
-| Component (today: all Apache-2.0 in `oss/packages/db`)                                | After this ADR                                                                    |
-| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| ClickHouse client (`createClickHouseClient`)                                          | → optional scale tier (relocatable into OSS later)                                |
-| ClickHouse query builders (the ~13 aggregations, single-tenant)                       | → optional scale tier (relocatable into OSS later)                                |
-| Materialized-view rollups (`perf_daily`, `events_daily`)                              | → optional scale tier (**the actual scale layer**)                                |
-| Postgres metadata clients (`projects`, `api_keys`)                                    | re-homed onto the DuckDB store                                                    |
-| **New:** DuckDB client + the aggregations in DuckDB dialect                           | `oss/packages/db` (Apache-2.0)                                                    |
-| **New:** dialect-agnostic query layer (one definition per aggregation)                | `oss/packages/db` (Apache-2.0)                                                    |
-| `CollectorStore` interface, routes, enrichment, schema                                | unchanged                                                                         |
+| Component (today: all Apache-2.0 in `oss/packages/db`)                 | After this ADR                                     |
+| ---------------------------------------------------------------------- | -------------------------------------------------- |
+| ClickHouse client (`createClickHouseClient`)                           | → optional scale tier (relocatable into OSS later) |
+| ClickHouse query builders (the ~13 aggregations, single-tenant)        | → optional scale tier (relocatable into OSS later) |
+| Materialized-view rollups (`perf_daily`, `events_daily`)               | → optional scale tier (**the actual scale layer**) |
+| Postgres metadata clients (`projects`, `api_keys`)                     | re-homed onto the DuckDB store                     |
+| **New:** DuckDB client + the aggregations in DuckDB dialect            | `oss/packages/db` (Apache-2.0)                     |
+| **New:** dialect-agnostic query layer (one definition per aggregation) | `oss/packages/db` (Apache-2.0)                     |
+| `CollectorStore` interface, routes, enrichment, schema                 | unchanged                                          |
 
 ## Future: a ClickHouse store
 

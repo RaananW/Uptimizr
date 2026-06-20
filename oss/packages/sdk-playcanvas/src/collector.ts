@@ -906,7 +906,9 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
         // AFTER the idle-dedup check so static frames cost nothing. PlayCanvas
         // picks right-handed → normalize the hit to the canonical frame.
         const gazeHit = gazeProbe?.();
-        const hitPoint = gazeHit ? (toCanonicalPosition(gazeHit.point, "right") as Vec3T) : undefined;
+        const hitPoint = gazeHit
+          ? (toCanonicalPosition(gazeHit.point, "right") as Vec3T)
+          : undefined;
         const hitMesh = gazeHit && gazeHit.name ? gazeHit.name : undefined;
         ctx.emit({
           type: "camera_sample",
@@ -1017,7 +1019,9 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
             }
             const sample = readNodeTransform(node, cameraEpsilon);
             const prev = lastNodeSample.get(id);
-            if (!(suppressIdleSamples && prev && nodeSampleUnchanged(prev, sample, cameraEpsilon))) {
+            if (
+              !(suppressIdleSamples && prev && nodeSampleUnchanged(prev, sample, cameraEpsilon))
+            ) {
               lastNodeSample.set(id, sample);
               ctx.emit({
                 type: "node_transform",

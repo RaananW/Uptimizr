@@ -50,7 +50,9 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((s) => s.close()));
 });
 
-async function listen(config: CollectorConfig = baseConfig): Promise<{ app: FastifyInstance; base: string }> {
+async function listen(
+  config: CollectorConfig = baseConfig,
+): Promise<{ app: FastifyInstance; base: string }> {
   const app = await buildApp({ store: makeStore(), config });
   servers.push(app);
   await app.listen({ host: "127.0.0.1", port: 0 });

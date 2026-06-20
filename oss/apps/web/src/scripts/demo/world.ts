@@ -1,4 +1,11 @@
-import { Vector3, Color3, Matrix, MeshBuilder, StandardMaterial, type Mesh } from "@babylonjs/core/pure";
+import {
+  Vector3,
+  Color3,
+  Matrix,
+  MeshBuilder,
+  StandardMaterial,
+  type Mesh,
+} from "@babylonjs/core/pure";
 import { heatRgb } from "./heat.js";
 import { makeVoxels } from "./data.js";
 import { buildProxyBoxes } from "./meshes.js";
@@ -28,7 +35,11 @@ export function createWorldTab(): DemoTab {
 
       const voxels = makeVoxels(cellSize);
       const maxCount = voxels.reduce((m, v) => Math.max(m, v.count), 1);
-      marker = MeshBuilder.CreateSphere("world-voxel", { diameter: cellSize * 0.9, segments: 6 }, scene);
+      marker = MeshBuilder.CreateSphere(
+        "world-voxel",
+        { diameter: cellSize * 0.9, segments: 6 },
+        scene,
+      );
       const mat = new StandardMaterial("world-voxel-mat", scene);
       mat.specularColor = new Color3(0, 0, 0);
       mat.emissiveColor = new Color3(0.12, 0.12, 0.12);
@@ -48,7 +59,9 @@ export function createWorldTab(): DemoTab {
         const px = (v.vx + 0.5) * cellSize;
         const py = (v.vy + 0.5) * cellSize;
         const pz = (v.vz + 0.5) * cellSize;
-        Matrix.Scaling(s, s, s).multiply(Matrix.Translation(px, py, pz)).copyToArray(matrices, i * 16);
+        Matrix.Scaling(s, s, s)
+          .multiply(Matrix.Translation(px, py, pz))
+          .copyToArray(matrices, i * 16);
         const [r, g, b] = heatRgb(t);
         colors[i * 4] = r;
         colors[i * 4 + 1] = g;

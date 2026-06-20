@@ -1,4 +1,11 @@
-import { Color3, Matrix, MeshBuilder, StandardMaterial, type Mesh, type Scene } from "@babylonjs/core/pure";
+import {
+  Color3,
+  Matrix,
+  MeshBuilder,
+  StandardMaterial,
+  type Mesh,
+  type Scene,
+} from "@babylonjs/core/pure";
 import { PROXY_MESHES } from "./data.js";
 
 /**

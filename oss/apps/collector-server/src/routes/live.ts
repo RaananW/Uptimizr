@@ -48,10 +48,7 @@ function authLiveToken(
  * are never flushed. Without this, a cross-origin `EventSource` (e.g. the
  * dashboard on a different origin than the collector) is blocked by the browser.
  */
-function sseCorsHeaders(
-  request: FastifyRequest,
-  config: CollectorConfig,
-): Record<string, string> {
+function sseCorsHeaders(request: FastifyRequest, config: CollectorConfig): Record<string, string> {
   const origin = request.headers.origin;
   if (typeof origin === "string" && config.corsOrigins.includes(origin)) {
     return { "access-control-allow-origin": origin, vary: "Origin" };

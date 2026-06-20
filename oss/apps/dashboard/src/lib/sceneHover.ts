@@ -30,7 +30,8 @@ interface HoverMeta {
 function labelFor(mesh: AbstractMesh, thinInstanceIndex: number): string | null {
   const meta = mesh.metadata as HoverMeta | null | undefined;
   if (!meta) return null;
-  if (thinInstanceIndex >= 0 && meta.hoverLabels) return meta.hoverLabels[thinInstanceIndex] ?? null;
+  if (thinInstanceIndex >= 0 && meta.hoverLabels)
+    return meta.hoverLabels[thinInstanceIndex] ?? null;
   return meta.hoverLabel ?? null;
 }
 
@@ -53,7 +54,9 @@ export function attachMeshHover(
     frame = requestAnimationFrame(() => {
       frame = 0;
       const pick = scene.pick(x, y, (m) => m.isPickable && m.isEnabled());
-      const label = pick?.pickedMesh ? labelFor(pick.pickedMesh, pick.thinInstanceIndex ?? -1) : null;
+      const label = pick?.pickedMesh
+        ? labelFor(pick.pickedMesh, pick.thinInstanceIndex ?? -1)
+        : null;
       if (label) {
         onChange({ label, x, y });
       } else if (lastLabel !== null) {

@@ -19,7 +19,11 @@ function link(partial: Partial<FlowLink> & Pick<FlowLink, "mesh" | "count">): Fl
   } as FlowLink;
 }
 
-function standpoint(voxel: [number, number, number], count: number, origin?: [number, number, number]): FlowStandpoint {
+function standpoint(
+  voxel: [number, number, number],
+  count: number,
+  origin?: [number, number, number],
+): FlowStandpoint {
   return { key: voxelKey(voxel), voxel, count, origin };
 }
 
@@ -78,7 +82,10 @@ describe("buildTwoStageGraph", () => {
     for (let i = 0; i < 6; i++) {
       links.push(link({ mesh: `Mesh${i}`, count: 6 - i, originVoxel: [0, 0, 0], azimuth_bin: i }));
     }
-    const graph = buildTwoStageGraph(links, [standpoint([0, 0, 0], 21)], 8, { ...CAPS, maxMeshes: 2 });
+    const graph = buildTwoStageGraph(links, [standpoint([0, 0, 0], 21)], 8, {
+      ...CAPS,
+      maxMeshes: 2,
+    });
     const otherMesh = graph.meshes.find((n) => n.id === OTHER_MESH);
     expect(otherMesh).toBeDefined();
     expect(otherMesh?.isOther).toBe(true);

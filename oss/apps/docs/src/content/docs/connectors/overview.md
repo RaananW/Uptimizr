@@ -10,14 +10,14 @@ which renderer you use.
 
 ## Supported engines
 
-| Engine            | Package                  | Status | Entry point          |
-| ----------------- | ------------------------ | ------ | -------------------- |
-| Babylon.js        | `@uptimizr/babylon`      | Stable | `trackScene(scene, …)` |
-| Babylon Lite      | `@uptimizr/babylon-lite` | Stable | `trackScene(scene, camera, canvas, …)` |
+| Engine            | Package                  | Status | Entry point                              |
+| ----------------- | ------------------------ | ------ | ---------------------------------------- |
+| Babylon.js        | `@uptimizr/babylon`      | Stable | `trackScene(scene, …)`                   |
+| Babylon Lite      | `@uptimizr/babylon-lite` | Stable | `trackScene(scene, camera, canvas, …)`   |
 | three.js          | `@uptimizr/three`        | Stable | `trackScene(scene, camera, renderer, …)` |
-| PlayCanvas        | `@uptimizr/playcanvas`   | Beta   | `trackScene(app, camera, …)` |
-| react-three-fiber | `@uptimizr/r3f`          | Beta   | `<Uptimizr />` / `useUptimizr()` |
-| A-Frame           | `@uptimizr/aframe`       | Beta   | `uptimizr` HTML component |
+| PlayCanvas        | `@uptimizr/playcanvas`   | Beta   | `trackScene(app, camera, …)`             |
+| react-three-fiber | `@uptimizr/r3f`          | Beta   | `<Uptimizr />` / `useUptimizr()`         |
+| A-Frame           | `@uptimizr/aframe`       | Beta   | `uptimizr` HTML component                |
 
 ## What every connector captures
 

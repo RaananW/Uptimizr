@@ -113,7 +113,13 @@ export function FlowSankey3D({
     const api = new CollectorApi(baseUrl, apiKey ?? "");
     const mode = cameraMode === "all" ? undefined : cameraMode;
     api
-      .flowHeatmap({ ...flowQuery, bins: gridSize, limit: 400, groupByOrigin: true, cameraMode: mode })
+      .flowHeatmap({
+        ...flowQuery,
+        bins: gridSize,
+        limit: 400,
+        groupByOrigin: true,
+        cameraMode: mode,
+      })
       .then((res) => {
         if (!cancelled) setRows(res);
       })
@@ -133,7 +139,15 @@ export function FlowSankey3D({
   const standpoints = useMemo(() => {
     const map = new Map<
       string,
-      { key: string; voxel: [number, number, number]; count: number; ox: number; oy: number; oz: number; wsum: number }
+      {
+        key: string;
+        voxel: [number, number, number];
+        count: number;
+        ox: number;
+        oy: number;
+        oz: number;
+        wsum: number;
+      }
     >();
     for (const l of rows) {
       if (!l.originVoxel) continue;
@@ -166,7 +180,9 @@ export function FlowSankey3D({
         voxel: s.voxel,
         count: s.count,
         origin:
-          s.wsum > 0 ? ([s.ox / s.wsum, s.oy / s.wsum, s.oz / s.wsum] as [number, number, number]) : undefined,
+          s.wsum > 0
+            ? ([s.ox / s.wsum, s.oy / s.wsum, s.oz / s.wsum] as [number, number, number])
+            : undefined,
       }))
       .sort((a, b) => b.count - a.count);
   }, [rows]);
@@ -174,7 +190,8 @@ export function FlowSankey3D({
   const hasStandpoints = standpoints.length > 0;
 
   const selectedStandpoint = useMemo(
-    () => (standpointFocus === ALL ? null : (standpoints.find((s) => s.key === standpointFocus) ?? null)),
+    () =>
+      standpointFocus === ALL ? null : (standpoints.find((s) => s.key === standpointFocus) ?? null),
     [standpoints, standpointFocus],
   );
 
@@ -204,7 +221,13 @@ export function FlowSankey3D({
       const k = `${l.azimuth_bin}|${l.elevation_bin}|${l.mesh}`;
       const cur = map.get(k);
       if (cur) cur.count += l.count;
-      else map.set(k, { azimuth_bin: l.azimuth_bin, elevation_bin: l.elevation_bin, mesh: l.mesh, count: l.count });
+      else
+        map.set(k, {
+          azimuth_bin: l.azimuth_bin,
+          elevation_bin: l.elevation_bin,
+          mesh: l.mesh,
+          count: l.count,
+        });
     }
     return [...map.values()];
   }, [rows, standpointFocus, hasStandpoints]);
@@ -274,7 +297,8 @@ export function FlowSankey3D({
     if (isTwoStage) {
       return twoStage.ribbons.filter((r) => {
         const spOk = standpointFocus === ALL || r.standpointId === standpointFocus;
-        const gazeOk = sourceFocus === ALL || sourceKey(r.azimuthBin, r.elevationBin) === sourceFocus;
+        const gazeOk =
+          sourceFocus === ALL || sourceKey(r.azimuthBin, r.elevationBin) === sourceFocus;
         const meshOk = meshFocus === ALL || r.meshId === meshFocus;
         return spOk && gazeOk && meshOk;
       }).length;
@@ -570,7 +594,11 @@ export function FlowSankey3D({
         const standpointOrigin = selectedStandpoint?.origin;
         if (standpointOrigin) {
           const pinPos = new Vector3(standpointOrigin[0], standpointOrigin[1], standpointOrigin[2]);
-          const pin = MeshBuilder.CreateSphere("flow-standpoint", { diameter: 0.26, segments: 10 }, scene);
+          const pin = MeshBuilder.CreateSphere(
+            "flow-standpoint",
+            { diameter: 0.26, segments: 10 },
+            scene,
+          );
           pin.position = pinPos;
           const pinMat = new StandardMaterial("flow-standpoint-mat", scene);
           pinMat.disableLighting = true;
@@ -657,7 +685,8 @@ export function FlowSankey3D({
 
         const ribbonActive = (r: TwoStageRibbon): boolean => {
           const spOk = standpointFocus === ALL || r.standpointId === standpointFocus;
-          const gazeOk = sourceFocus === ALL || sourceKey(r.azimuthBin, r.elevationBin) === sourceFocus;
+          const gazeOk =
+            sourceFocus === ALL || sourceKey(r.azimuthBin, r.elevationBin) === sourceFocus;
           const meshOk = meshFocus === ALL || r.meshId === meshFocus;
           return spOk && gazeOk && meshOk;
         };
@@ -732,7 +761,10 @@ export function FlowSankey3D({
           if (!spPos || !gazePos || !meshPos) continue;
           const intensity = r.count / twoStage.maxCount;
           const lift = 0.18 + intensity * 0.5;
-          const path = [...arcSegment(spPos, gazePos, lift), ...arcSegment(gazePos, meshPos, lift).slice(1)];
+          const path = [
+            ...arcSegment(spPos, gazePos, lift),
+            ...arcSegment(gazePos, meshPos, lift).slice(1),
+          ];
           const isActive = ribbonActive(r);
           const [cr, cg, cb] = heatRgb(intensity);
           const tube = MeshBuilder.CreateTube(
@@ -746,7 +778,10 @@ export function FlowSankey3D({
             },
             scene,
           );
-          const mat = new StandardMaterial(`ts-link-mat-${r.standpointId}-${r.gazeId}-${r.meshId}`, scene);
+          const mat = new StandardMaterial(
+            `ts-link-mat-${r.standpointId}-${r.gazeId}-${r.meshId}`,
+            scene,
+          );
           mat.disableLighting = true;
           mat.emissiveColor = new Color3(cr, cg, cb);
           mat.alpha = isActive ? 0.35 + 0.65 * intensity : anyFocus ? 0.06 : 0.18;
@@ -755,7 +790,14 @@ export function FlowSankey3D({
           tube.metadata = { hoverLabel: labelById.get(r.meshId) ?? r.meshId };
         }
 
-        const camera = new ArcRotateCamera("ts-cam", Math.PI / 2, Math.PI / 2.4, 8.5, Vector3.Zero(), scene);
+        const camera = new ArcRotateCamera(
+          "ts-cam",
+          Math.PI / 2,
+          Math.PI / 2.4,
+          8.5,
+          Vector3.Zero(),
+          scene,
+        );
         camera.attachControl(canvas, true);
         disableWheelZoom(camera);
         cameraRef.current = camera;
@@ -847,7 +889,10 @@ export function FlowSankey3D({
                   >
                     Orbit
                   </ViewToggleButton>
-                  <ViewToggleButton active={cameraMode === "all"} onClick={() => setCameraMode("all")}>
+                  <ViewToggleButton
+                    active={cameraMode === "all"}
+                    onClick={() => setCameraMode("all")}
+                  >
                     All
                   </ViewToggleButton>
                 </div>
@@ -1097,12 +1142,10 @@ function StandpointMinimap({
 
   return (
     <div className="absolute right-3 top-3 rounded-md border border-edge bg-ink/80 p-1 backdrop-blur">
-      <div className="px-1 pb-0.5 text-[10px] font-medium text-fg-muted">Standpoints (top view)</div>
-      <canvas
-        ref={ref}
-        className="h-27.5 w-37.5 cursor-pointer rounded"
-        onClick={handleClick}
-      />
+      <div className="px-1 pb-0.5 text-[10px] font-medium text-fg-muted">
+        Standpoints (top view)
+      </div>
+      <canvas ref={ref} className="h-27.5 w-37.5 cursor-pointer rounded" onClick={handleClick} />
     </div>
   );
 }

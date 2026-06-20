@@ -8,11 +8,7 @@
 export { UptimizrClient } from "./client.js";
 export { EventQueue } from "./queue.js";
 export { createBeaconTransport } from "./transport.js";
-export {
-  createMainProcessor,
-  createWorkerProcessor,
-  collectTransferables,
-} from "./processor.js";
+export { createMainProcessor, createWorkerProcessor, collectTransferables } from "./processor.js";
 export { randomId } from "./idgen.js";
 export { SDK_VERSION } from "./version.js";
 export { resolveCadence } from "./sampling.js";
@@ -46,12 +42,7 @@ export type {
   UptimizrConfig,
 } from "./types.js";
 
-export type {
-  Processor,
-  WorkerLike,
-  WorkerFactory,
-  WorkerProcessorOptions,
-} from "./processor.js";
+export type { Processor, WorkerLike, WorkerFactory, WorkerProcessorOptions } from "./processor.js";
 
 export type {
   SampleRate,

@@ -51,21 +51,21 @@ coerced and bounded by Zod at the edge — out-of-range values are rejected with
 
 Read the full table in docs/integration.md; the high-frequency ones:
 
-| Need                           | Endpoint                                                              | Key extra params                         |
-| ------------------------------ | --------------------------------------------------------------------- | ---------------------------------------- |
-| Recent sessions                | `/api/v1/sessions`                                                    | `limit`                                  |
-| 2D pointer heatmap             | `/api/v1/heatmaps/pointer`                                            | `bins`, `scene`, `source`, `session`     |
-| 3D world-space pointer heatmap | `/api/v1/heatmaps/world`                                              | `cellSize`, `scene`, `source`            |
-| View-direction (gaze) heatmap  | `/api/v1/heatmaps/camera`                                             | `bins`, `scene`, `session`               |
-| View-gated click rays          | `/api/v1/heatmaps/click-rays`                                         | `cellSize`, `scene`, `source`, `session` |
+| Need                           | Endpoint                                                              | Key extra params                                                                              |
+| ------------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Recent sessions                | `/api/v1/sessions`                                                    | `limit`                                                                                       |
+| 2D pointer heatmap             | `/api/v1/heatmaps/pointer`                                            | `bins`, `scene`, `source`, `session`                                                          |
+| 3D world-space pointer heatmap | `/api/v1/heatmaps/world`                                              | `cellSize`, `scene`, `source`                                                                 |
+| View-direction (gaze) heatmap  | `/api/v1/heatmaps/camera`                                             | `bins`, `scene`, `session`                                                                    |
+| View-gated click rays          | `/api/v1/heatmaps/click-rays`                                         | `cellSize`, `scene`, `source`, `session`                                                      |
 | Gaze→mesh flow links           | `/api/v1/heatmaps/flow`                                               | `bins`, `limit`, `scene`, `session`, `cellSize`, `groupByOrigin`, `originVoxel`, `cameraMode` |
-| Most-interacted meshes         | `/api/v1/meshes/top`                                                  | `limit`, `session`                       |
-| Rendering-performance summary  | `/api/v1/perf`                                                        | `session`                                |
-| Scene picker (distinct scenes) | `/api/v1/scenes`                                                      | `limit`                                  |
-| Event volume over time         | `/api/v1/timeseries`                                                  | `scene`, `interval`, `type`              |
-| Per-event-type counts          | `/api/v1/event-counts`                                                | `scene`                                  |
-| One session's descriptor       | `/api/v1/sessions/:id/meta`                                           | —                                        |
-| Registered scene proxies       | `/api/v1/scene-representations` / `/api/v1/scenes/:id/representation` | —                                        |
+| Most-interacted meshes         | `/api/v1/meshes/top`                                                  | `limit`, `session`                                                                            |
+| Rendering-performance summary  | `/api/v1/perf`                                                        | `session`                                                                                     |
+| Scene picker (distinct scenes) | `/api/v1/scenes`                                                      | `limit`                                                                                       |
+| Event volume over time         | `/api/v1/timeseries`                                                  | `scene`, `interval`, `type`                                                                   |
+| Per-event-type counts          | `/api/v1/event-counts`                                                | `scene`                                                                                       |
+| One session's descriptor       | `/api/v1/sessions/:id/meta`                                           | —                                                                                             |
+| Registered scene proxies       | `/api/v1/scene-representations` / `/api/v1/scenes/:id/representation` | —                                                                                             |
 
 ## 4. Pitfalls (where queries go wrong)
 

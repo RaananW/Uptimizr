@@ -19,9 +19,9 @@ UPTIMIZR_API_KEY="utk_…" \
 npx @uptimizr/mcp
 ```
 
-| Environment variable     | Required | Notes                                       |
-| ------------------------ | -------- | ------------------------------------------- |
-| `UPTIMIZR_COLLECTOR_URL` | yes      | Base URL of **your** collector.             |
+| Environment variable     | Required | Notes                                              |
+| ------------------------ | -------- | -------------------------------------------------- |
+| `UPTIMIZR_COLLECTOR_URL` | yes      | Base URL of **your** collector.                    |
 | `UPTIMIZR_API_KEY`       | yes      | Your project API key (`x-api-key`), read-only use. |
 
 ## Configure an MCP client
@@ -36,10 +36,10 @@ Most MCP clients (Claude Desktop, VS Code, etc.) launch the server over stdio:
       "args": ["-y", "@uptimizr/mcp"],
       "env": {
         "UPTIMIZR_COLLECTOR_URL": "https://collect.example.com",
-        "UPTIMIZR_API_KEY": "utk_…"
-      }
-    }
-  }
+        "UPTIMIZR_API_KEY": "utk_…",
+      },
+    },
+  },
 }
 ```
 

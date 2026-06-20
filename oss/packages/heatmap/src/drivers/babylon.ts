@@ -270,9 +270,7 @@ export interface ShowGazeSkydomeOptions extends FetchGazeHeatmapOptions {
  * §7.6): {@link buildGazeEquirect} splats the bins into a texture which is mapped
  * onto a back-faced sphere so the developer can stand inside the distribution.
  */
-export async function showGazeSkydome(
-  options: ShowGazeSkydomeOptions,
-): Promise<GazeSkydomeHandle> {
+export async function showGazeSkydome(options: ShowGazeSkydomeOptions): Promise<GazeSkydomeHandle> {
   const data = await fetchGazeHeatmap(options);
   const scene = options.scene;
   const name = options.name ?? "uptimizr-gaze-sky";

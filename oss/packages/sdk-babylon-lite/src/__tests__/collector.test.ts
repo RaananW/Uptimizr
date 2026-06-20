@@ -163,9 +163,7 @@ describe("liteCollector — gaze", () => {
     vi.advanceTimersByTime(1000); // next camera sample carries the cached hit
 
     // Lite is left-handed → canonical is identity.
-    const withGaze = events
-      .filter((e) => e.type === "camera_sample")
-      .find((e) => "hitPoint" in e);
+    const withGaze = events.filter((e) => e.type === "camera_sample").find((e) => "hitPoint" in e);
     expect(withGaze).toMatchObject({ hitPoint: [4, 5, 6], hitMesh: "Wall" });
     handle.stop();
   });
@@ -186,9 +184,7 @@ describe("liteCollector — gaze", () => {
     await flush();
     vi.advanceTimersByTime(1000);
 
-    const withGaze = events
-      .filter((e) => e.type === "camera_sample")
-      .find((e) => "hitPoint" in e);
+    const withGaze = events.filter((e) => e.type === "camera_sample").find((e) => "hitPoint" in e);
     expect(withGaze).toBeUndefined();
     expect(picker.pick).not.toHaveBeenCalled();
     handle.stop();
@@ -210,9 +206,7 @@ describe("liteCollector — gaze", () => {
     await flush();
     vi.advanceTimersByTime(1000);
 
-    const withGaze = events
-      .filter((e) => e.type === "camera_sample")
-      .find((e) => "hitPoint" in e);
+    const withGaze = events.filter((e) => e.type === "camera_sample").find((e) => "hitPoint" in e);
     expect(withGaze).toBeUndefined();
     expect(picker.pick).toHaveBeenCalled();
     handle.stop();

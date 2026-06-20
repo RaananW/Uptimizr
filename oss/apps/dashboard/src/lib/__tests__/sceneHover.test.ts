@@ -30,7 +30,9 @@ describe("attachMeshHover", () => {
   let rafCb: FrameRequestCallback | null;
   let pickResult: FakePick | null;
   let pickArgs: Array<{ x: number; y: number }>;
-  let scene: { pick: (x: number, y: number, predicate: (m: FakeMesh) => boolean) => FakePick | null };
+  let scene: {
+    pick: (x: number, y: number, predicate: (m: FakeMesh) => boolean) => FakePick | null;
+  };
   let tips: Array<HoverTip | null>;
 
   beforeEach(() => {
@@ -59,7 +61,8 @@ describe("attachMeshHover", () => {
       pick: (x: number, y: number, predicate: (m: FakeMesh) => boolean) => {
         pickArgs.push({ x, y });
         // Honor the pickable/enabled predicate the helper passes in.
-        if (pickResult?.pickedMesh && !predicate(pickResult.pickedMesh)) return { pickedMesh: null };
+        if (pickResult?.pickedMesh && !predicate(pickResult.pickedMesh))
+          return { pickedMesh: null };
         return pickResult;
       },
     };
@@ -78,11 +81,7 @@ describe("attachMeshHover", () => {
   }
 
   function attach() {
-    return attachMeshHover(
-      scene as never,
-      canvas,
-      (tip) => tips.push(tip),
-    );
+    return attachMeshHover(scene as never, canvas, (tip) => tips.push(tip));
   }
 
   it("reports the whole-mesh hoverLabel at the pointer position", () => {

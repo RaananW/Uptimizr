@@ -44,8 +44,8 @@ There are therefore **two distinct, composable needs**, and ADR 0027 addresses n
   from a single declared skinned node. The asymmetry (bones may wildcard, nodes may not) is the bug.
 - **Volume is still the gate (ADR 0012).** Cost ≈ `nodes × rate`. A naive subtree walk on a 1000-node
   scene at `"frame"` is the precise firehose ADR 0027 §4 guards against. Any wildcard MUST be
-  **bounded** (depth, count) and **default OFF** — the relaxation is "a *bounded* subtree of a
-  *declared* actor," never "the whole graph."
+  **bounded** (depth, count) and **default OFF** — the relaxation is "a _bounded_ subtree of a
+  _declared_ actor," never "the whole graph."
 - **Replay-completeness (ADR 0006).** Whatever is captured must reconstruct deterministically.
   Rigid reconstruction from a root stream is exact **only when the parts are rigid w.r.t. the root**;
   the system must not silently fake internal motion it never recorded.
@@ -76,10 +76,10 @@ trackScene({
     nodes: {
       machine: {
         hz: 20,
-        include: "*",        // walk descendant transform nodes of `machine`
-        maxDepth: 6,         // default 8 — hard depth cap from the anchor
-        maxNodes: 64,        // default 64 — hard count cap (deterministic truncation)
-        exclude: ["FX_*"],   // optional name globs skipped during the walk
+        include: "*", // walk descendant transform nodes of `machine`
+        maxDepth: 6, // default 8 — hard depth cap from the anchor
+        maxNodes: 64, // default 64 — hard count cap (deterministic truncation)
+        exclude: ["FX_*"], // optional name globs skipped during the walk
       },
     },
   },
@@ -90,7 +90,7 @@ Rules (connectors MUST honor, integration docs MUST publish):
 
 - **Anchored, never global.** `include` only ever walks descendants of a node **declared in
   `actors`**. There is still no way to say "track the whole scene." The allowlist gate of ADR 0027 §4
-  is preserved at the *root*; the relaxation is strictly *within* a declared actor's subtree.
+  is preserved at the _root_; the relaxation is strictly _within_ a declared actor's subtree.
 - **Bounded by construction.** `maxDepth` (default **8**) and `maxNodes` (default **64**) are hard
   caps. When the walk would exceed `maxNodes`, it stops at a **deterministic** order
   (breadth-first, then by child index) and emits a single dev-mode warning naming the dropped count —
@@ -197,7 +197,7 @@ connector without subtree support simply ignores `include` and keeps single-root
   anchored `include`.
 - **Synthesize a flat `nodeId` per child (`"root/child"`).** Avoids a new field, but bakes engine
   child names into the top-level wire key — the collision/drift problem ADR 0027 rejected for roots.
-  Rejected for the scoped `childPath` (engine name allowed only *under* a declared anchor).
+  Rejected for the scoped `childPath` (engine name allowed only _under_ a declared anchor).
 - **Skip subtree capture; rely solely on proxy reconstruction.** Covers the rigid case elegantly but
   cannot reproduce parts moving relative to the root. Kept as the cheap default, not the whole answer.
 - **Treat transform-node rigs as skeletons (reuse Tier 2).** Conflates two different engine concepts

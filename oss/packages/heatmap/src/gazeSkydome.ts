@@ -93,13 +93,15 @@ export function buildGazeEquirect(
   data: GazeData,
   options: GazeEquirectOptions = {},
 ): GazeEquirectTexture {
-  const width = options.width !== undefined && options.width > 0 ? Math.floor(options.width) : DEFAULTS.width;
+  const width =
+    options.width !== undefined && options.width > 0 ? Math.floor(options.width) : DEFAULTS.width;
   const height =
     options.height !== undefined && options.height > 0
       ? Math.floor(options.height)
       : Math.max(1, Math.floor(width / 2));
   const colorRamp = options.colorRamp ?? defaultColorRamp;
-  const blurBins = options.blurBins !== undefined && options.blurBins > 0 ? options.blurBins : DEFAULTS.blurBins;
+  const blurBins =
+    options.blurBins !== undefined && options.blurBins > 0 ? options.blurBins : DEFAULTS.blurBins;
   const alphaFloor = clamp01(options.alphaFloor ?? DEFAULTS.alphaFloor);
   const opacity = clamp01(options.opacity ?? DEFAULTS.opacity);
   const gridSize = data.gridSize > 0 ? data.gridSize : 1;

@@ -4,7 +4,11 @@ import type { CameraKind, SessionUser } from "@uptimizr/schema";
 import type { AppBase, Entity } from "playcanvas";
 
 import { playcanvasCollector } from "./collector.js";
-import type { PlayCanvasActor, PlayCanvasCaptureOptions, PlayCanvasGazeOptions } from "./collector.js";
+import type {
+  PlayCanvasActor,
+  PlayCanvasCaptureOptions,
+  PlayCanvasGazeOptions,
+} from "./collector.js";
 import { readDeviceCaps } from "./device.js";
 import { readGraphics } from "./graphics.js";
 import { readConnector } from "./connector.js";

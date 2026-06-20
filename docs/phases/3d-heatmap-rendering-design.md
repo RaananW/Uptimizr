@@ -312,8 +312,8 @@ ribbon silently merges spatially distinct situations and the directional intent 
 
 The data already distinguishes these cases — only the visualization collapses them. §7.8 restores
 **position as a first-class source dimension** so the Sankey answers the question that actually
-matters in a walkable space: **"standing *where*, and looking *which way*, did people click mesh
-*Y*?"** It is the de-cluttered, no-timeline aggregate counterpart to §7.2 `ClickRays3D` (which
+matters in a walkable space: **"standing _where_, and looking _which way_, did people click mesh
+_Y_?"** It is the de-cluttered, no-timeline aggregate counterpart to §7.2 `ClickRays3D` (which
 preserves position but draws discrete rays) and §7.4 birdview replay (which preserves position but
 needs a playhead).
 
@@ -328,14 +328,14 @@ holding total link count bounded (no hairball).
 A naive `(positionVoxel × directionBin × mesh)` cross-product re-introduces the clutter the Sankey
 exists to avoid. Two complementary controls keep it legible:
 
-1. **Standpoint gating (default, cheapest).** The position axis is a *filter*, not extra geometry:
+1. **Standpoint gating (default, cheapest).** The position axis is a _filter_, not extra geometry:
    pick / hover one **standpoint voxel** and render the familiar §7.5 direction-dome → mesh Sankey
    scoped to clicks made from that voxel. Identical render code to §7.5; one voxel at a time, so
    link count stays ≈ §7.5. Mirrors the §7.2 viewpoint dropdown.
 2. **Two-stage Sankey (the powerful form).** A genuine three-column flow
    `standpoint → gaze sector → mesh`: top-`P` standpoints by volume on the left, each with its own
    compact gaze fan, ribboned to the meshes they clicked. Cardinality is bounded by capping `P`
-   standpoints and top-`N` links overall, with a "merge tail into *other*" bucket.
+   standpoints and top-`N` links overall, with a "merge tail into _other_" bucket.
 
 Standpoint count is further tamed by (a) a coarser `cellSize` for the origin grid than for the hit
 grid, and (b) an optional follow-up **standpoint clustering** pass (grid-merge / k-means over

@@ -83,7 +83,9 @@ export function createDomeTab(): DemoTab {
         const dz = ce * Math.sin(az);
         const t = b.count / maxCount;
         const s = 0.03 + 0.12 * t;
-        Matrix.Scaling(s, s, s).multiply(Matrix.Translation(dx, dy, dz)).copyToArray(matrices, i * 16);
+        Matrix.Scaling(s, s, s)
+          .multiply(Matrix.Translation(dx, dy, dz))
+          .copyToArray(matrices, i * 16);
         const [r, g, bl] = heatRgb(t);
         colors[i * 4] = r;
         colors[i * 4 + 1] = g;

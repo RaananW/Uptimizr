@@ -141,8 +141,14 @@ export function makeDirectionBins(gridSize: number): DirBin[] {
   for (const [af, ef, w] of clusters) {
     const n = Math.round(48 * w);
     for (let i = 0; i < n; i++) {
-      const az = Math.min(gridSize - 1, Math.max(0, Math.round((af + (rng() - 0.5) * 0.16) * gridSize)));
-      const el = Math.min(gridSize - 1, Math.max(0, Math.round((ef + (rng() - 0.5) * 0.14) * gridSize)));
+      const az = Math.min(
+        gridSize - 1,
+        Math.max(0, Math.round((af + (rng() - 0.5) * 0.16) * gridSize)),
+      );
+      const el = Math.min(
+        gridSize - 1,
+        Math.max(0, Math.round((ef + (rng() - 0.5) * 0.14) * gridSize)),
+      );
       const key = `${az},${el}`;
       const cur = map.get(key);
       if (cur) cur.count += 1;

@@ -1,7 +1,12 @@
 import { expect, test } from "@playwright/test";
 
 import { API_KEY, COLLECTOR_URL, DASHBOARD_URL } from "./constants.js";
-import { bootEngine, driveInteractions, enableAllCapture, waitForEventTypes } from "./helpers/capture.js";
+import {
+  bootEngine,
+  driveInteractions,
+  enableAllCapture,
+  waitForEventTypes,
+} from "./helpers/capture.js";
 
 /**
  * Live layer (ADR 0032) end to end. A running playground session must surface in

@@ -34,11 +34,11 @@ summary per tracked object per window (never per frame):
 trackScene(scene, {
   // ...
   meshVisibility: {
-    windowMs: 5000,            // one summary per object every 5 s (default)
-    meshes: ["product-hero"],  // allowlist; omit to track all visible meshes
-    maxMeshes: 50,             // cap when no allowlist is given (default)
-    centeredAngleDeg: 12,      // "looking at it" half-angle (default)
-    boundingBox: true,         // ride each object's world AABB along (off by default)
+    windowMs: 5000, // one summary per object every 5 s (default)
+    meshes: ["product-hero"], // allowlist; omit to track all visible meshes
+    maxMeshes: 50, // cap when no allowlist is given (default)
+    centeredAngleDeg: 12, // "looking at it" half-angle (default)
+    boundingBox: true, // ride each object's world AABB along (off by default)
   },
 });
 ```
@@ -61,8 +61,8 @@ trackScene(scene, {
   // ...
   capture: { hoverDwell: true },
   hoverDwell: {
-    minDwellMs: 500,           // ignore pass-overs shorter than this (default)
-    meshes: ["product-hero"],  // allowlist; omit to track every hovered mesh
+    minDwellMs: 500, // ignore pass-overs shorter than this (default)
+    meshes: ["product-hero"], // allowlist; omit to track every hovered mesh
   },
 });
 ```
@@ -88,13 +88,13 @@ trackScene(scene, {
   // ...
   actors: {
     "npc-guard": () => scene.getMeshByName("Guard_root"), // resolver (preferred — robust to load order/clones)
-    elevator: "Elevator.001",                              // engine name/id string
-    "showroom-door": doorMeshRef,                          // direct engine ref
+    elevator: "Elevator.001", // engine name/id string
+    "showroom-door": doorMeshRef, // direct engine ref
   },
   sampling: {
     // Tier 1 — node/root transform (world frame): locomotion + heading.
     nodes: {
-      "npc-guard": 10,    // Hz
+      "npc-guard": 10, // Hz
       elevator: "frame",
     },
     // Tier 2 — skeleton bones (opt-in, skeleton-local; Babylon, three, PlayCanvas).
@@ -123,17 +123,17 @@ capture works on Babylon, three (`SkinnedMesh.skeleton.bones`), and PlayCanvas
 The mechanism is "any node that exposes a world transform," but the trackable set is a closed,
 normative list:
 
-| Category                                | Status                        | Notes                                                          |
-| --------------------------------------- | ----------------------------- | -------------------------------------------------------------- |
-| Meshes / skinned-mesh root              | In scope (Tier 1)             | The common case; root transform = locomotion/heading.          |
-| Transform-only nodes / groups / pivots  | In scope (Tier 1)             | Often preferred — one stream drives a whole parented assembly. |
-| Skeleton bones                          | In scope (Tier 2, opt-in)     | Per-bone allowlist; skeleton-local; needs matching rig.        |
-| Moving lights                           | Allowed, default **OFF**      | Replay only matches if the target scene has the same light.    |
-| Non-active cameras                      | Allowed, default **OFF** (niche) | Track its parent transform; rarely worth it.                |
-| The active / visitor camera             | **Excluded**                  | Already captured as `camera_sample`; connectors refuse it.     |
-| Particle systems                        | Out of scope                  | GPU/simulation-driven, no per-node transform.                  |
-| Morph targets / blend shapes            | Out of scope                  | Driven by weight scalars, not a transform.                     |
-| Instanced meshes / thin-instances / crowds | Out of scope (v1)          | N transforms in one node; needs an `instanceId` dimension.     |
+| Category                                   | Status                           | Notes                                                          |
+| ------------------------------------------ | -------------------------------- | -------------------------------------------------------------- |
+| Meshes / skinned-mesh root                 | In scope (Tier 1)                | The common case; root transform = locomotion/heading.          |
+| Transform-only nodes / groups / pivots     | In scope (Tier 1)                | Often preferred — one stream drives a whole parented assembly. |
+| Skeleton bones                             | In scope (Tier 2, opt-in)        | Per-bone allowlist; skeleton-local; needs matching rig.        |
+| Moving lights                              | Allowed, default **OFF**         | Replay only matches if the target scene has the same light.    |
+| Non-active cameras                         | Allowed, default **OFF** (niche) | Track its parent transform; rarely worth it.                   |
+| The active / visitor camera                | **Excluded**                     | Already captured as `camera_sample`; connectors refuse it.     |
+| Particle systems                           | Out of scope                     | GPU/simulation-driven, no per-node transform.                  |
+| Morph targets / blend shapes               | Out of scope                     | Driven by weight scalars, not a transform.                     |
+| Instanced meshes / thin-instances / crowds | Out of scope (v1)                | N transforms in one node; needs an `instanceId` dimension.     |
 
 The active/visitor camera and particle/morph/instance targets are rejected with a dev-mode warning.
 

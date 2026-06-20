@@ -79,10 +79,8 @@ function makeFakeWorker() {
   return {
     worker,
     posted,
-    batchMessages: () =>
-      posted.filter((p) => (p.message as { type?: string }).type === "batch"),
-    initMessages: () =>
-      posted.filter((p) => (p.message as { type?: string }).type === "init"),
+    batchMessages: () => posted.filter((p) => (p.message as { type?: string }).type === "batch"),
+    initMessages: () => posted.filter((p) => (p.message as { type?: string }).type === "init"),
     emitResult: (id: number, ok: boolean) => {
       for (const l of messageListeners) l({ data: { type: "result", id, ok } });
     },
@@ -165,9 +163,7 @@ describe("createWorkerProcessor", () => {
     });
     const init = fake.initMessages();
     expect(init).toHaveLength(1);
-    expect((init[0]!.message as { url: string }).url).toBe(
-      "https://collect.test/api/v1/collect",
-    );
+    expect((init[0]!.message as { url: string }).url).toBe("https://collect.test/api/v1/collect");
   });
 
   it("routes steady-state batches to the worker and resolves with its result", async () => {

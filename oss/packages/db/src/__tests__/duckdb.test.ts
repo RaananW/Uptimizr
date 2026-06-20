@@ -238,7 +238,11 @@ describe("duckdb store", () => {
       mesh: string;
     }>(
       db,
-      buildFlowHeatmap(PID, { ...RANGE, bins: 24, cellSize: 1, groupByOrigin: true }, duckdbDialect),
+      buildFlowHeatmap(
+        PID,
+        { ...RANGE, bins: 24, cellSize: 1, groupByOrigin: true },
+        duckdbDialect,
+      ),
     );
     expect(links).toHaveLength(1);
     expect(links[0].mesh).toBe("box");
@@ -273,7 +277,11 @@ describe("duckdb store", () => {
       mesh: string;
     }>(
       db,
-      buildFlowHeatmap(PID, { ...RANGE, bins: 24, cellSize: 1, groupByOrigin: true }, duckdbDialect),
+      buildFlowHeatmap(
+        PID,
+        { ...RANGE, bins: 24, cellSize: 1, groupByOrigin: true },
+        duckdbDialect,
+      ),
     );
     expect(links).toHaveLength(1);
     expect(links[0].mesh).toBe("panel");

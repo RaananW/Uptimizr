@@ -48,7 +48,7 @@ const sky = await showGazeSkydome({
 });
 
 world.setVisible(false); // toggle any overlay
-gaze.dispose();          // remove from the scene when done
+gaze.dispose(); // remove from the scene when done
 sky.dispose();
 ```
 

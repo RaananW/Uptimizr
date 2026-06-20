@@ -26,8 +26,10 @@ export function decomposeWorldMatrix(e: ArrayLike<number>): DecomposedTransform 
   const sy = Math.hypot(e[4] as number, e[5] as number, e[6] as number);
   const sz = Math.hypot(e[8] as number, e[9] as number, e[10] as number);
   const det =
-    (e[0] as number) * ((e[5] as number) * (e[10] as number) - (e[6] as number) * (e[9] as number)) -
-    (e[4] as number) * ((e[1] as number) * (e[10] as number) - (e[2] as number) * (e[9] as number)) +
+    (e[0] as number) *
+      ((e[5] as number) * (e[10] as number) - (e[6] as number) * (e[9] as number)) -
+    (e[4] as number) *
+      ((e[1] as number) * (e[10] as number) - (e[2] as number) * (e[9] as number)) +
     (e[8] as number) * ((e[1] as number) * (e[6] as number) - (e[2] as number) * (e[5] as number));
   if (det < 0) sx = -sx;
   const ix = sx !== 0 ? 1 / sx : 0;

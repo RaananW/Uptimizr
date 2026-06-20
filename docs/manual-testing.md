@@ -205,14 +205,14 @@ docker compose -f infra/docker/docker-compose.yml down -v
 
 ## Troubleshooting
 
-| Symptom                                         | Cause / fix                                                                                                           |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Collector exits immediately on start            | `VISITOR_HASH_SECRET` empty. Use the `pnpm dev:collector` script so `.env` is loaded, and ensure the value is set.    |
-| Dashboard/playground gets `401`                 | Missing/wrong `x-api-key`. Use the seeded `utk_...`.                                                                  |
-| Dashboard empty but collector has data          | Playground `VITE_PROJECT_ID` doesn't match the project the API key resolves to. They must be the same seeded project. |
-| Browser CORS error                              | Add the origin to `COLLECTOR_CORS_ORIGINS` (`:3000` and `:5173` are included by default) and restart the collector.   |
-| `GET /api/v1/sessions/:id/events` returns `403` | `ENABLE_RAW_SESSION_RETENTION` is false. Set it true and restart the collector.                                       |
-| No rows in the store                            | Confirm `pnpm db:setup` ran and the collector flushed (batch interval ~3s).                                           |
-| `IO Error: Could not set lock on file` (DuckDB) | Another process holds the single-writer lock. Stop the other collector/CLI (or use `duckdb -readonly`) and retry.     |
-| Next build/prerender crash about `useContext`   | The `build`/`start` scripts pin `NODE_ENV=production`, so this shouldn't recur. If you invoke `next build` directly, prefix it with `NODE_ENV=production`.                              |
-| Port already in use                             | Change the port in `.env` / `infra/docker/docker-compose.yml`.                                                        |
+| Symptom                                         | Cause / fix                                                                                                                                                |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Collector exits immediately on start            | `VISITOR_HASH_SECRET` empty. Use the `pnpm dev:collector` script so `.env` is loaded, and ensure the value is set.                                         |
+| Dashboard/playground gets `401`                 | Missing/wrong `x-api-key`. Use the seeded `utk_...`.                                                                                                       |
+| Dashboard empty but collector has data          | Playground `VITE_PROJECT_ID` doesn't match the project the API key resolves to. They must be the same seeded project.                                      |
+| Browser CORS error                              | Add the origin to `COLLECTOR_CORS_ORIGINS` (`:3000` and `:5173` are included by default) and restart the collector.                                        |
+| `GET /api/v1/sessions/:id/events` returns `403` | `ENABLE_RAW_SESSION_RETENTION` is false. Set it true and restart the collector.                                                                            |
+| No rows in the store                            | Confirm `pnpm db:setup` ran and the collector flushed (batch interval ~3s).                                                                                |
+| `IO Error: Could not set lock on file` (DuckDB) | Another process holds the single-writer lock. Stop the other collector/CLI (or use `duckdb -readonly`) and retry.                                          |
+| Next build/prerender crash about `useContext`   | The `build`/`start` scripts pin `NODE_ENV=production`, so this shouldn't recur. If you invoke `next build` directly, prefix it with `NODE_ENV=production`. |
+| Port already in use                             | Change the port in `.env` / `infra/docker/docker-compose.yml`.                                                                                             |

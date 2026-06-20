@@ -51,7 +51,10 @@ stop.
 import { UptimizrClient } from "@uptimizr/sdk-core";
 import { playcanvasCollector, readDeviceCaps } from "@uptimizr/playcanvas";
 
-const client = new UptimizrClient({ projectId: "your-project", endpoint: "https://collect.example.com" });
+const client = new UptimizrClient({
+  projectId: "your-project",
+  endpoint: "https://collect.example.com",
+});
 client.use(playcanvasCollector({ app, camera: cameraEntity }));
 ```
 

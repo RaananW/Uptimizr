@@ -1,11 +1,7 @@
 import type { CollectRequest } from "@uptimizr/schema";
 
 import type { Transport } from "./types.js";
-import type {
-  WorkerBatchMessage,
-  WorkerInitMessage,
-  WorkerOutbound,
-} from "./offloadProtocol.js";
+import type { WorkerBatchMessage, WorkerInitMessage, WorkerOutbound } from "./offloadProtocol.js";
 
 /**
  * A **Processor** owns the offload-eligible *processing* phase of the SDK

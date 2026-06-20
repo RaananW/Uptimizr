@@ -48,8 +48,7 @@ export function initSceneDemo(elements: DemoElements): DemoHandle {
   const { canvas, tabButtons, badge, hint } = elements;
 
   const reduced =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const engine = new Engine(canvas, true, { preserveDrawingBuffer: false, stencil: false }, true);
   // Babylon sets the canvas tabindex to 1 during engine init; override to 0 so the
@@ -60,7 +59,14 @@ export function initSceneDemo(elements: DemoElements): DemoHandle {
   // Dark navy, opaque — the same backdrop the dashboard panels use.
   scene.clearColor = new Color4(0.04, 0.05, 0.07, 1);
 
-  const camera = new ArcRotateCamera("demo-cam", Math.PI / 4, Math.PI / 3, 4, Vector3.Zero(), scene);
+  const camera = new ArcRotateCamera(
+    "demo-cam",
+    Math.PI / 4,
+    Math.PI / 3,
+    4,
+    Vector3.Zero(),
+    scene,
+  );
   camera.attachControl(canvas, true);
   // Drop mouse-wheel zoom so scrolling the page past the demo never zooms the scene.
   camera.inputs.removeByType("ArcRotateCameraMouseWheelInput");
@@ -74,7 +80,12 @@ export function initSceneDemo(elements: DemoElements): DemoHandle {
 
   const ctx: DemoContext = { scene, camera, canvas, reduced };
 
-  const tabs: DemoTab[] = [createDomeTab(), createClickRaysTab(), createFlowTab(), createWorldTab()];
+  const tabs: DemoTab[] = [
+    createDomeTab(),
+    createClickRaysTab(),
+    createFlowTab(),
+    createWorldTab(),
+  ];
   for (const tab of tabs) tab.build(ctx);
 
   let active = tabs[0]!;

@@ -1159,7 +1159,9 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
             }
             const sample = readNodeTransform(node, cameraEpsilon);
             const prev = lastNodeSample.get(id);
-            if (!(suppressIdleSamples && prev && nodeSampleUnchanged(prev, sample, cameraEpsilon))) {
+            if (
+              !(suppressIdleSamples && prev && nodeSampleUnchanged(prev, sample, cameraEpsilon))
+            ) {
               lastNodeSample.set(id, sample);
               ctx.emit({
                 type: "node_transform",
@@ -1174,7 +1176,10 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
             // suppression is keyed per (actor, childPath) so a static part costs
             // nothing on the wire.
             if (subtree) {
-              for (const { childPath, node: child } of collectSubtree(node as WorldTransformNode, subtree)) {
+              for (const { childPath, node: child } of collectSubtree(
+                node as WorldTransformNode,
+                subtree,
+              )) {
                 const childSample = readNodeTransform(child, cameraEpsilon);
                 const key = `${id}\u0000${childPath}`;
                 const childPrev = lastNodeSample.get(key);

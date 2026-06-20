@@ -13,16 +13,16 @@ map rendered as a brand.
 The logo is an isometric cube — a stand-in for a 3D scene — shaded as a thermal
 heat map (hot top, cooling down the sides). A **U-shaped groove** ("U" for
 Uptimizr) is cut into the two lower front faces and is correctly flat-shaded in
-3D: you look *down into* the recess, so its floor and the openings where it
+3D: you look _down into_ the recess, so its floor and the openings where it
 emerges through the top edge read as darker, occluded surfaces.
 
-| Asset | File | Use |
-| --- | --- | --- |
-| App-icon / primary | [logo.svg](logo.svg) | Default. Includes the rounded espresso plate. |
-| Transparent mark | [logo-transparent.svg](logo-transparent.svg) | The cube only, no plate — for placing on brand surfaces. |
-| Monochrome | [logo-mono.svg](logo-mono.svg) | Single-colour silhouette (`currentColor`) for stamps, favicons, watermarks, etching. |
-| Horizontal lockup (dark) | [logo-lockup.svg](logo-lockup.svg) | Mark + wordmark, light text — for dark backgrounds. |
-| Horizontal lockup (light) | [logo-lockup-light.svg](logo-lockup-light.svg) | Mark + wordmark, dark text — for light backgrounds. |
+| Asset                     | File                                           | Use                                                                                  |
+| ------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
+| App-icon / primary        | [logo.svg](logo.svg)                           | Default. Includes the rounded espresso plate.                                        |
+| Transparent mark          | [logo-transparent.svg](logo-transparent.svg)   | The cube only, no plate — for placing on brand surfaces.                             |
+| Monochrome                | [logo-mono.svg](logo-mono.svg)                 | Single-colour silhouette (`currentColor`) for stamps, favicons, watermarks, etching. |
+| Horizontal lockup (dark)  | [logo-lockup.svg](logo-lockup.svg)             | Mark + wordmark, light text — for dark backgrounds.                                  |
+| Horizontal lockup (light) | [logo-lockup-light.svg](logo-lockup-light.svg) | Mark + wordmark, dark text — for light backgrounds.                                  |
 
 ### Construction
 
@@ -44,7 +44,7 @@ node gen-brand-assets.mjs                      # logo-transparent.svg, logo-mono
 
 ### Clear space & minimum size
 
-- **Clear space:** keep a margin of at least the cube's *half-width* (≈ one third
+- **Clear space:** keep a margin of at least the cube's _half-width_ (≈ one third
   of the mark's height) clear of other elements on all sides. In the lockups this
   is already built into the padding.
 - **Minimum size:** the full-colour mark stays legible down to **24 px**. Below
@@ -70,45 +70,45 @@ the heat-map metaphor.
 
 ### Surfaces & text (espresso)
 
-| Token | Hex | Use |
-| --- | --- | --- |
-| `ink` | `#161210` | App background / logo plate. |
-| `panel` | `#201913` | Cards, panels, raised surfaces. |
-| `edge` | `#34291F` | Hairline borders, dividers. |
-| `text-hi` | `#F4EADF` | Primary text on dark, wordmark on dark. |
-| `text` | `#D8C8B8` | Body text on dark. |
-| `text-muted` | `#A8917C` | Secondary / muted text, captions. |
+| Token        | Hex       | Use                                     |
+| ------------ | --------- | --------------------------------------- |
+| `ink`        | `#161210` | App background / logo plate.            |
+| `panel`      | `#201913` | Cards, panels, raised surfaces.         |
+| `edge`       | `#34291F` | Hairline borders, dividers.             |
+| `text-hi`    | `#F4EADF` | Primary text on dark, wordmark on dark. |
+| `text`       | `#D8C8B8` | Body text on dark.                      |
+| `text-muted` | `#A8917C` | Secondary / muted text, captions.       |
 
 ### Heat ramp (data + accents)
 
-| Token | Hex | Role |
-| --- | --- | --- |
-| `saffron` | `#F4C84B` | Hottest / highlight, focus rings. |
-| `amber` | `#EDA63E` | **Primary brand accent.** |
-| `ember` | `#E07B39` | **Secondary accent.** |
-| `coral` | `#D85438` | Warm mid. |
-| `rust` | `#B22F26` | Coolest of the warm ramp / deep emphasis. |
+| Token     | Hex       | Role                                      |
+| --------- | --------- | ----------------------------------------- |
+| `saffron` | `#F4C84B` | Hottest / highlight, focus rings.         |
+| `amber`   | `#EDA63E` | **Primary brand accent.**                 |
+| `ember`   | `#E07B39` | **Secondary accent.**                     |
+| `coral`   | `#D85438` | Warm mid.                                 |
+| `rust`    | `#B22F26` | Coolest of the warm ramp / deep emphasis. |
 
 - **Hero / data gradient:** `amber → coral → rust`.
 - **Logo edge gradient (gold rim):** `#FFD15A → #F5B72E → #E0632B`.
 
 ### Semantic colours
 
-| State | Hex |
-| --- | --- |
+| State        | Hex       |
+| ------------ | --------- |
 | Info / focus | `#F4C84B` |
-| Warning | `#EDA63E` |
-| Error | `#D64533` |
-| Success | `#9BB23E` |
+| Warning      | `#EDA63E` |
+| Error        | `#D64533` |
+| Success      | `#9BB23E` |
 
 ### Logo face gradients (reference)
 
 The cube faces use three fixed gradients (see [logo.svg](logo.svg)):
 
-| Face | Stops |
-| --- | --- |
-| Top (hottest) | `#F7CE57 → #EDAE42` |
-| Left | `#EC9B3D → #D9633A` |
+| Face            | Stops               |
+| --------------- | ------------------- |
+| Top (hottest)   | `#F7CE57 → #EDAE42` |
+| Left            | `#EC9B3D → #D9633A` |
 | Right (coolest) | `#D4513A → #A82E26` |
 
 The recessed groove faces (floor + walls) are flat-shaded darker variants of the
@@ -143,12 +143,12 @@ body text:
 --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 ```
 
-| Role | Font / weight |
-| --- | --- |
-| Wordmark / logotype | Space Grotesk **SemiBold (600)** |
-| Headings (H1–H3) | Space Grotesk **Medium–SemiBold (500–600)** |
-| Body | system-ui Regular (400) |
-| Code / data labels | monospace |
+| Role                | Font / weight                               |
+| ------------------- | ------------------------------------------- |
+| Wordmark / logotype | Space Grotesk **SemiBold (600)**            |
+| Headings (H1–H3)    | Space Grotesk **Medium–SemiBold (500–600)** |
+| Body                | system-ui Regular (400)                     |
+| Code / data labels  | monospace                                   |
 
 ### Wordmark spec
 

@@ -34,13 +34,13 @@ aggregate endpoints never expose raw events.
 Several capture channels are off by default for privacy and cost, and must be enabled per scene in
 the connector (`capture.*` / options):
 
-| Channel           | Event                | Discloses                                  |
-| ----------------- | -------------------- | ------------------------------------------ |
-| `meshVisibility`  | `mesh_visibility`    | Per-object dwell; with `boundingBox`, scene layout. |
-| `hoverDwell`      | `hover_dwell`        | Hover hesitation per object.               |
-| `resourceSample`  | `resource_sample`    | GPU/memory footprint.                      |
-| `gaze`            | `camera_sample.hitPoint` | Where users looked on the geometry.    |
-| `captureErrors`   | `runtime_error`      | Error messages (not auto-redacted).        |
+| Channel          | Event                    | Discloses                                           |
+| ---------------- | ------------------------ | --------------------------------------------------- |
+| `meshVisibility` | `mesh_visibility`        | Per-object dwell; with `boundingBox`, scene layout. |
+| `hoverDwell`     | `hover_dwell`            | Hover hesitation per object.                        |
+| `resourceSample` | `resource_sample`        | GPU/memory footprint.                               |
+| `gaze`           | `camera_sample.hitPoint` | Where users looked on the geometry.                 |
+| `captureErrors`  | `runtime_error`          | Error messages (not auto-redacted).                 |
 
 Enable only what you need.
 

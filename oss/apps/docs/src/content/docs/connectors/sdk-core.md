@@ -32,16 +32,16 @@ await client.stop("manual");
 
 ## Client configuration
 
-| Option            | Default        | Effect                                                            |
-| ----------------- | -------------- | ----------------------------------------------------------------- |
-| `projectId`       | —              | Your project id (required).                                       |
-| `endpoint`        | —              | Collector base URL (required).                                    |
-| `batchSize`       | `20`           | Events per network flush.                                         |
-| `flushIntervalMs` | `5000`         | Max time between flushes (`0` disables the timer).                |
+| Option            | Default        | Effect                                                                       |
+| ----------------- | -------------- | ---------------------------------------------------------------------------- |
+| `projectId`       | —              | Your project id (required).                                                  |
+| `endpoint`        | —              | Collector base URL (required).                                               |
+| `batchSize`       | `20`           | Events per network flush.                                                    |
+| `flushIntervalMs` | `5000`         | Max time between flushes (`0` disables the timer).                           |
 | `beforeSend`      | —              | Per-event hook; return `null` to drop. Runs after the envelope is filled in. |
-| `transport`       | beacon → fetch | Custom delivery (e.g. to observe sends).                          |
-| `offload`         | `main`         | Run batching on the main thread or a worker.                      |
-| `disabled`        | `false`        | Collect nothing (e.g. honor Do-Not-Track).                        |
+| `transport`       | beacon → fetch | Custom delivery (e.g. to observe sends).                                     |
+| `offload`         | `main`         | Run batching on the main thread or a worker.                                 |
+| `disabled`        | `false`        | Collect nothing (e.g. honor Do-Not-Track).                                   |
 
 `beforeSend` runs on every event after the envelope is filled in; use it to redact fields or sample
 a noisy channel. It is **not** exposed through `trackScene` — reach for the custom-client path when

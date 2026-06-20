@@ -14,7 +14,7 @@
 [Issue #102](https://github.com/RaananW/Uptimizr/issues/102) asks for three things the dashboard
 cannot do today:
 
-1. **Presence** — show how many people are running a live session *right now*, and a roster of the
+1. **Presence** — show how many people are running a live session _right now_, and a roster of the
    currently active sessions (an "active now" metric, aggregate).
 2. **Live dashboard updates** — watch the dashboard's own panels (event feed, counters, and the
    analytics tiles) **update in place as events arrive**, instead of only on a manual/polled
@@ -35,12 +35,12 @@ Today's pipeline is deliberately **batch + pull**:
 
 Three forces constrain the design:
 
-- **Latency is bounded by the SDK flush cadence.** "Real-time" is honestly *near*-real-time. We
+- **Latency is bounded by the SDK flush cadence.** "Real-time" is honestly _near_-real-time. We
   must not lower the default flush to chase latency — that would break the conservative,
   cost-first defaults of ADR 0012 / ADR 0031.
 - **Privacy.** Following an individual session live is the same act as replaying it: it requires
   the raw, ordered per-session stream, which is **opt-in** (`ENABLE_RAW_SESSION_RETENTION`,
-  ADR 0003 / ADR 0006). A *count* of active sessions is aggregate and privacy-safe.
+  ADR 0003 / ADR 0006). A _count_ of active sessions is aggregate and privacy-safe.
 - **Topology.** The OSS collector is a **single process** (DuckDB is single-writer, ADR 0020), so
   every event already passes through one place at ingest. A multi-instance, multi-writer deployment
   at scale is where a single process does **not** see every event.
@@ -51,7 +51,7 @@ Add a **live layer** to the OSS collector and dashboard: a privacy-safe **presen
 **live dashboard-update** tier, and a retention-gated **live-follow (replay)** tier — all delivered
 over **Server-Sent Events (SSE)** and fanned out from a single **in-process event bus**. The light
 path (presence, feed, live counters, throttled panel refresh, per-session live follow) is
-**Phase 1**; the heavy path (continuous *incremental* aggregation of spatial heatmaps and
+**Phase 1**; the heavy path (continuous _incremental_ aggregation of spatial heatmaps and
 percentile rollups) is **Phase 2** (see §9).
 
 ### 1. Liveness is a sliding window, not a new event
@@ -83,7 +83,7 @@ All endpoints sit behind the same project/API-key authorization as the query API
   filtered by scene/event-type), used by the dashboard to **update its panels in place**: the live
   event feed and light counters update directly from the stream; heavier analytics tiles trigger a
   **throttled re-query** of the existing read endpoints when the stream signals new activity
-  (Phase 1). Continuous *incremental* aggregation of those tiles is Phase 2 (§9). Event payloads in
+  (Phase 1). Continuous _incremental_ aggregation of those tiles is Phase 2 (§9). Event payloads in
   this stream carry **no more than the aggregate read API already exposes** (no raw per-session
   detail unless raw-retention is on).
 - **`GET /api/v1/live/sessions/:id`** — the **live-follow** tail: the ordered event stream of one
@@ -160,7 +160,7 @@ it cannot drag the rest:
   this maintains server-side running aggregates.
 - **Phase 2 (heavy, deferred):** **continuous incremental aggregation** — maintaining running
   server-side rollups so the spatial 3D heatmaps, percentile/perf panels, and click↔gaze surfaces
-  update *continuously* (not by throttled re-query). This is the part with real CPU/memory cost
+  update _continuously_ (not by throttled re-query). This is the part with real CPU/memory cost
   (streaming voxel binning, per-session percentile state) and is where a shared bus and possibly the
   worker-offload seam (ADR 0031) matter. Deferring it keeps Phase 1 small while still delivering the
   felt "everything updates live" experience via the throttled-refresh path.
@@ -202,7 +202,7 @@ it cannot drag the rest:
 - **Poll the read API faster (no streaming).** Simplest — reuse the existing pull model on a short
   interval. Rejected as the primary mechanism: wasteful at the fan-out (every viewer re-queries the
   store), laggy, and it gives no clean per-session live tail. (Polling remains an acceptable
-  *fallback* for the presence count where SSE is unavailable.)
+  _fallback_ for the presence count where SSE is unavailable.)
 - **WebSocket instead of SSE.** Bidirectional, but the live layer is one-way server→browser;
   WebSocket adds a second protocol, manual reconnection, and proxy/keep-alive complexity for no
   benefit here. SSE fits the thin-HTTP backend (ADR 0005).
@@ -216,7 +216,7 @@ it cannot drag the rest:
 - **Lower the default SDK flush to make it feel real-time.** Rejected: violates the cost-first
   defaults of ADR 0012 / ADR 0031. Lower latency is an explicit opt-in, never the default.
 - **Incrementally aggregate every panel live in Phase 1** (maintain running 3D-heatmap/percentile
-  state server-side). Rejected *for now*: it is the genuinely heavy part (streaming voxel binning,
+  state server-side). Rejected _for now_: it is the genuinely heavy part (streaming voxel binning,
   per-session percentile state) and would bloat Phase 1. The throttled re-query of existing
   endpoints delivers a live-feeling dashboard cheaply; true incremental aggregation is Phase 2 (\u00a79).
 - **Per-session detail in the presence roster** (geo/UA per active session). Rejected against the

@@ -63,7 +63,7 @@ See the [Quickstart](https://uptimizr.com/docs/quickstart/) and
 
 ### Work on Uptimizr from source (contributors)
 
-The commands above are all you need to *use* Uptimizr. The rest of this section is for **contributing
+The commands above are all you need to _use_ Uptimizr. The rest of this section is for **contributing
 to the project itself** — clone the repo and run it from source. The open-source collector stores
 everything in a single DuckDB file, so running from source needs **no external database service**:
 

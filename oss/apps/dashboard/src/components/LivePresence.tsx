@@ -84,17 +84,17 @@ export function LivePresence({
       subtitle="Active sessions and a real-time event feed, updating in place."
       help={
         <>
-          Sessions seen within the liveness window, streamed over SSE from the collector. The
-          roster is intentionally non-identifying — no geo, user-agent, or visitor id. Click a
-          session to follow it live.
+          Sessions seen within the liveness window, streamed over SSE from the collector. The roster
+          is intentionally non-identifying — no geo, user-agent, or visitor id. Click a session to
+          follow it live.
         </>
       }
     >
       <div className="mb-3 flex flex-wrap items-center gap-4">
         <LiveBadge status={status} sessions={activeSessions} />
         <span className="text-xs text-fg-muted">
-          <span className="font-semibold text-fg">{formatNumber(activeVisitors)}</span>{" "}
-          visitor{activeVisitors === 1 ? "" : "s"}
+          <span className="font-semibold text-fg">{formatNumber(activeVisitors)}</span> visitor
+          {activeVisitors === 1 ? "" : "s"}
         </span>
       </div>
 
@@ -122,9 +122,7 @@ export function LivePresence({
                         className={`h-2 w-2 flex-none rounded-full ${ACTIVITY_DOT[s.activity]}`}
                         aria-hidden="true"
                       />
-                      <span className="font-mono text-xs text-fg">
-                        {shortId(s.sessionId)}
-                      </span>
+                      <span className="font-mono text-xs text-fg">{shortId(s.sessionId)}</span>
                       <span className="truncate text-xs text-fg-muted">{s.sceneId}</span>
                       <span className="ml-auto flex-none text-xs text-fg-muted">
                         {ago(s.lastSeen, now)}
@@ -136,9 +134,7 @@ export function LivePresence({
                         className={`h-2 w-2 flex-none rounded-full ${ACTIVITY_DOT[s.activity]}`}
                         aria-hidden="true"
                       />
-                      <span className="font-mono text-xs text-fg">
-                        {shortId(s.sessionId)}
-                      </span>
+                      <span className="font-mono text-xs text-fg">{shortId(s.sessionId)}</span>
                       <span className="truncate text-xs text-fg-muted">{s.sceneId}</span>
                       <span className="ml-auto flex-none text-xs text-fg-muted">
                         {ago(s.lastSeen, now)}

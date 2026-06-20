@@ -242,10 +242,7 @@ export function WorldHeatmap3D({
   }, [voxels, cellSize, proxyMeshes, markerShape]);
 
   return (
-    <Panel
-      title={title}
-      subtitle={subtitle}
-    >
+    <Panel title={title} subtitle={subtitle}>
       <div className="relative">
         <canvas
           ref={canvasRef}

@@ -67,7 +67,11 @@ export function createFlowTab(): DemoTab {
         );
 
         if (!srcSeen.has(key)) {
-          const s = MeshBuilder.CreateSphere(`flow-src-${key}`, { diameter: 0.12, segments: 6 }, scene);
+          const s = MeshBuilder.CreateSphere(
+            `flow-src-${key}`,
+            { diameter: 0.12, segments: 6 },
+            scene,
+          );
           s.position = src;
           s.material = srcMat;
           s.isPickable = false;
@@ -75,7 +79,11 @@ export function createFlowTab(): DemoTab {
           srcSeen.add(key);
         }
         if (!tgtSeen.has(link.mesh)) {
-          const t = MeshBuilder.CreateSphere(`flow-tgt-${link.mesh}`, { diameter: 0.2, segments: 8 }, scene);
+          const t = MeshBuilder.CreateSphere(
+            `flow-tgt-${link.mesh}`,
+            { diameter: 0.2, segments: 8 },
+            scene,
+          );
           t.position = dst.clone();
           t.material = tgtMat;
           t.isPickable = false;
@@ -89,7 +97,11 @@ export function createFlowTab(): DemoTab {
         const len = fromCenter.length();
         const nrm = len > 1e-6 ? fromCenter.scale(1 / len) : new Vector3(0, 1, 0);
         const lift = 0.35 + intensity * 0.75;
-        const ctrl = new Vector3(mid.x + nrm.x * lift, mid.y + nrm.y * lift + 0.12, mid.z + nrm.z * lift);
+        const ctrl = new Vector3(
+          mid.x + nrm.x * lift,
+          mid.y + nrm.y * lift + 0.12,
+          mid.z + nrm.z * lift,
+        );
         const path: Vector3[] = [];
         const seg = 18;
         for (let i = 0; i <= seg; i++) {
@@ -118,7 +130,11 @@ export function createFlowTab(): DemoTab {
         meshes.push(tube);
       }
 
-      dome = MeshBuilder.CreateSphere("flow-dome", { diameter: sourceRadius * 2, segments: 20 }, scene);
+      dome = MeshBuilder.CreateSphere(
+        "flow-dome",
+        { diameter: sourceRadius * 2, segments: 20 },
+        scene,
+      );
       dome.position = center.clone();
       const dm = new StandardMaterial("flow-dome-mat", scene);
       dm.wireframe = true;
