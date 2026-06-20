@@ -688,6 +688,26 @@ percentiles and render resolution measured over the sampling window:
 `asset_load` likewise carries an optional `ttiMs` (time-to-interactive for the
 asset) alongside `loadMs`/`ttffMs`.
 
+### Pointer lock (first-person / FPS scenes)
+
+First-person / walkable scenes (ADR 0026) navigate with the browser **Pointer
+Lock API** — `PointerLockControls` (three), `Mouse.enablePointerLock()`
+(PlayCanvas), or `engine.enterPointerlock()` (Babylon). While locked the OS cursor
+is hidden and its absolute position freezes, so the aim point is the fixed
+**crosshair at the viewport centre**, not a cursor.
+
+The connectors handle this automatically (ADR 0034): when the rendering canvas
+holds the pointer lock, `pointer_move` / `pointer_down` / `pointer_up` /
+`pointer_click` report `screen = [0.5, 0.5]` and pick from NDC `(0, 0)`, so
+`hitMesh` / `hitPoint` describe what the visitor actually aimed at. No
+configuration is required, and nothing changes for cursor (orbit/viewer) scenes.
+
+Consequently the **2D pointer/click heatmap degenerates to a centre cluster**
+while locked (that is the truthful signal — "FPS aiming"). The meaningful spatial
+reads for a locked first-person scene are the cursor-independent ones: the
+**world-space gaze heatmap** (above), the **floor-plan position heatmap**, and the
+**session trajectory** (ADR 0026).
+
 ---
 
 ## 3. Replay

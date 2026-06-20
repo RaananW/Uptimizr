@@ -101,6 +101,18 @@ is needed; a finger tap and a stylus click are distinguishable downstream (the
 pointer/world heatmap query endpoints accept a `source` filter). Unknown pointer
 types map to `other`, and the field is omitted when the source is unknown.
 
+### Pointer lock (ADR 0034)
+
+When the rendering canvas holds the browser pointer lock (`engine.enterPointerlock()`,
+first-person/FPS navigation), the OS cursor is hidden and `scene.pointerX/Y` freeze
+at the lock point. The connector detects this and reports `pointer_move` /
+`pointer_down` / `pointer_up` / `pointer_click` from the viewport centre
+(`screen = [0.5, 0.5]`), re-picking at the render-target centre (`scene.pick(width/2,
+height/2)`) — the crosshair the visitor actually aims with. The 2D pointer heatmap
+therefore clusters at the centre for locked scenes; read the cursor-independent
+gaze/floor-plan heatmaps and trajectories instead. Cursor (orbit/viewer) scenes are
+unaffected.
+
 ### Capability changes (`capability_change`, #49)
 
 Backend fallbacks and fidelity changes — a WebGPU→WebGL2 downgrade, a quality/LOD

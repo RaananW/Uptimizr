@@ -36,6 +36,7 @@ than editing history.
 | [0031](./0031-optional-worker-offload.md)                          | Optional Web Worker offload of client-side processing                 | Accepted   |
 | [0032](./0032-live-sessions-and-realtime-presence.md)              | Live sessions and real-time presence (active-now + live follow)       | Accepted   |
 | [0033](./0033-actor-subtree-and-proxy-reconstruction.md)           | Actor subtree capture + proxy-driven replay reconstruction            | Accepted   |
+| [0034](./0034-pointer-lock-aware-capture.md)                       | Pointer-lock-aware pointer capture (crosshair = viewport centre)      | Accepted   |
 
 ## Template
 

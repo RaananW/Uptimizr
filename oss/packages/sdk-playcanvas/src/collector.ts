@@ -87,6 +87,19 @@ function pointerSource(ev: PointerEventView): InputSource | undefined {
   return typeof t === "string" && t.length > 0 ? "other" : undefined;
 }
 
+/**
+ * True when the rendering canvas currently holds the browser Pointer Lock (ADR
+ * 0034). While locked the OS cursor is hidden and `clientX/Y` freeze, so the
+ * connector treats the crosshair (viewport centre) as the pointer. The canvas is
+ * read lazily and only when a lock is actually held, so headless capture (no
+ * `document`) is never touched.
+ */
+function isPointerLocked(getCanvas: () => unknown): boolean {
+  if (typeof document === "undefined") return false;
+  const locked = document.pointerLockElement;
+  return locked != null && (locked as unknown) === getCanvas();
+}
+
 type Vec3T = [number, number, number];
 
 function vec3Close(a: Vec3T, b: Vec3T, eps: number): boolean {
@@ -1236,6 +1249,9 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
       };
 
       const screenOf = (ev: PointerEventView): [number, number] => {
+        // Pointer Lock (ADR 0034): the OS cursor is frozen and the crosshair is the
+        // viewport centre, so report centre; `pickAt` then raycasts from centre.
+        if (isPointerLocked(() => canvas)) return [0.5, 0.5];
         const rect =
           canvas && typeof canvas.getBoundingClientRect === "function"
             ? canvas.getBoundingClientRect()

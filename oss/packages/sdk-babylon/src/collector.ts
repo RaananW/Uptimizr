@@ -38,6 +38,19 @@ function pointerSource(info: PointerInfo): InputSource | undefined {
 }
 
 /**
+ * True when the rendering canvas currently holds the browser Pointer Lock (ADR
+ * 0034). While locked the OS cursor is hidden and `scene.pointerX/Y` freeze, so
+ * the connector treats the crosshair (viewport centre) as the pointer. `getCanvas`
+ * is read lazily and only when a lock is actually held, so headless capture (no
+ * `document`) and engines without a canvas are never touched.
+ */
+function isPointerLocked(getCanvas: () => unknown): boolean {
+  if (typeof document === "undefined") return false;
+  const locked = document.pointerLockElement;
+  return locked != null && (locked as unknown) === getCanvas();
+}
+
+/**
  * Babylon's `PointerEventTypes` bit flags, mirrored locally so this connector has
  * no runtime dependency on `@babylonjs/core` (it stays a peer dependency).
  * Values match Babylon's `Events/pointerEvents.ts`.
@@ -1444,11 +1457,19 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
 
         pointerObserver = scene.onPointerObservable.add((info) => {
           const engine = scene.getEngine();
-          const screen: [number, number] = [
-            clamp01(scene.pointerX / engine.getRenderWidth()),
-            clamp01(scene.pointerY / engine.getRenderHeight()),
-          ];
-          const pick = info.pickInfo;
+          // Pointer Lock (ADR 0034): the OS cursor is frozen and the crosshair is
+          // the viewport centre, so report centre and re-pick there instead of
+          // using Babylon's cursor-position `info.pickInfo`.
+          const locked = isPointerLocked(() => engine.getRenderingCanvas());
+          const screen: [number, number] = locked
+            ? [0.5, 0.5]
+            : [
+                clamp01(scene.pointerX / engine.getRenderWidth()),
+                clamp01(scene.pointerY / engine.getRenderHeight()),
+              ];
+          const pick = locked
+            ? scene.pick(engine.getRenderWidth() / 2, engine.getRenderHeight() / 2)
+            : info.pickInfo;
           const hitPoint = pick?.hit && pick.pickedPoint ? toVec3(pick.pickedPoint) : undefined;
           const hitMesh = pick?.hit && pick.pickedMesh ? pick.pickedMesh.name : undefined;
           const source = pointerSource(info);

@@ -47,6 +47,12 @@ Uptimizr aggregates raw spatial events into several heatmap types:
   (opt-in).
 - **Click rays / flow** — clicks ray-cast into the scene, and gaze→mesh flow links.
 
+In **first-person / walkable** scenes that use the browser Pointer Lock API, the cursor is hidden and
+the aim point is the fixed crosshair at the viewport centre. The connectors detect pointer lock and
+report pointer/click events from screen centre (ADR 0034), so the 2D pointer heatmap naturally
+clusters at the centre — for those scenes read the cursor-independent **gaze heatmap**, the
+floor-plan position heatmap, and session trajectories instead.
+
 ## Performance
 
 `frame_perf` samples carry FPS, frame time, long-frame counts, and draw metrics. The query API

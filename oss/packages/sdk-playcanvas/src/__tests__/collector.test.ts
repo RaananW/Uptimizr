@@ -343,6 +343,41 @@ describe("playcanvasCollector", () => {
     handle.stop();
   });
 
+  it("reports the crosshair (centre) and re-picks at NDC (0,0) while pointer-locked (ADR 0034)", () => {
+    const canvas = makeCanvas();
+    const ndc: Array<[number, number]> = [];
+    const raycast: RaycastProbe = (x, y) => {
+      ndc.push([x, y]);
+      return { point: [1, 1, -1], name: "Exhibit" };
+    };
+    const { ctx, events } = makeCtx();
+
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    (globalThis as { document?: unknown }).document = { pointerLockElement: canvas };
+    try {
+      const handle = playcanvasCollector({
+        app: makeApp(canvas),
+        camera: makeCamera(),
+        capture: { camera: false, perf: false },
+        raycast,
+      }).start(ctx)!;
+
+      // A click far from centre: unlocked this would be screen ~[0.875, 0.167].
+      canvas.dispatch("click", { clientX: 700, clientY: 100, button: 0, pointerType: "mouse" });
+
+      expect(events.find((e) => e.type === "pointer_click")).toMatchObject({
+        type: "pointer_click",
+        screen: [0.5, 0.5],
+        hitMesh: "Exhibit",
+      });
+      expect(ndc).toContainEqual([0, 0]);
+      handle.stop();
+    } finally {
+      if (prevDoc === undefined) delete (globalThis as { document?: unknown }).document;
+      else (globalThis as { document?: unknown }).document = prevDoc;
+    }
+  });
+
   it("emits throttled pointer_move with normalized screen and hit", () => {
     const canvas = makeCanvas();
     const raycast: RaycastProbe = () => ({ point: [0, 0, 0], name: "Floor" });

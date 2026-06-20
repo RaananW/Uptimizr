@@ -249,6 +249,43 @@ describe("babylonCollector", () => {
     handle.stop();
   });
 
+  it("reports the crosshair (centre) and re-picks at the viewport centre while pointer-locked (ADR 0034)", () => {
+    const { scene, onPointerObservable, engine } = makeScene();
+    // Stale cursor far from centre — locked it must be ignored in favour of centre.
+    (scene as unknown as { pointerX: number; pointerY: number }).pointerX = 700;
+    (scene as unknown as { pointerX: number; pointerY: number }).pointerY = 100;
+    const canvas = { id: "render-canvas" };
+    (engine as unknown as { getRenderingCanvas: () => unknown }).getRenderingCanvas = () => canvas;
+    const pick = vi.fn(() => ({
+      hit: true,
+      pickedPoint: { x: 1, y: 1, z: 1 },
+      pickedMesh: { name: "Exhibit" },
+    }));
+    (scene as unknown as { pick: unknown }).pick = pick;
+    const { ctx, events } = makeCtx();
+
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    (globalThis as { document?: unknown }).document = { pointerLockElement: canvas };
+    try {
+      const handle = babylonCollector({ scene, capture: { perf: false } }).start(ctx)!;
+
+      onPointerObservable.trigger({ type: POINTER_TAP, event: { button: 0 }, pickInfo: null });
+
+      expect(events.find((e) => e.type === "pointer_click")).toMatchObject({
+        type: "pointer_click",
+        screen: [0.5, 0.5],
+        hitMesh: "Exhibit",
+        hitPoint: [1, 1, 1],
+      });
+      // Re-picked at the render-target centre (800/2, 600/2), not the stale cursor.
+      expect(pick).toHaveBeenCalledWith(400, 300);
+      handle.stop();
+    } finally {
+      if (prevDoc === undefined) delete (globalThis as { document?: unknown }).document;
+      else (globalThis as { document?: unknown }).document = prevDoc;
+    }
+  });
+
   it("emits a camera_gesture when the view turns between pointer down and up (ADR 0025)", () => {
     const { scene, onPointerObservable } = makeScene();
     const now = { value: 1000 };

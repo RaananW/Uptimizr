@@ -318,6 +318,46 @@ describe("threeCollector", () => {
     handle.stop();
   });
 
+  it("reports the crosshair (centre) and re-picks at NDC (0,0) while pointer-locked (ADR 0034)", () => {
+    const canvas = makeCanvas();
+    // Record the NDC the connector raycasts at so we can prove it picks centre.
+    const ndc: Array<[number, number]> = [];
+    const raycast: RaycastProbe = (x, y) => {
+      ndc.push([x, y]);
+      return { point: [1, 1, -1], name: "Exhibit" };
+    };
+    const { ctx, events } = makeCtx();
+
+    // Lock the pointer to this canvas. The connector reads
+    // `document.pointerLockElement`; stub a minimal document for the node test env.
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    (globalThis as { document?: unknown }).document = { pointerLockElement: canvas };
+    try {
+      const handle = threeCollector({
+        scene: emptyScene,
+        camera: makeCamera(),
+        renderer: makeRenderer(canvas),
+        capture: { camera: false, perf: false },
+        raycast,
+      }).start(ctx)!;
+
+      // A click far from centre: unlocked this would be screen ~[0.875, 0.167].
+      canvas.dispatch("click", { clientX: 700, clientY: 100, button: 0, pointerType: "mouse" });
+
+      expect(events.find((e) => e.type === "pointer_click")).toMatchObject({
+        type: "pointer_click",
+        screen: [0.5, 0.5],
+        hitMesh: "Exhibit",
+      });
+      // The raycast ran at the crosshair, not the stale cursor.
+      expect(ndc).toContainEqual([0, 0]);
+      handle.stop();
+    } finally {
+      if (prevDoc === undefined) delete (globalThis as { document?: unknown }).document;
+      else (globalThis as { document?: unknown }).document = prevDoc;
+    }
+  });
+
   it("emits throttled pointer_move with normalized screen and hit", () => {
     const canvas = makeCanvas();
     const raycast: RaycastProbe = () => ({ point: [0, 0, 0], name: "Floor" });

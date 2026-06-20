@@ -137,6 +137,11 @@ boundary so the emitted events are identical:
   is correct (it never reconstructs orientation from the local quaternion).
 - **Pointer/raycast:** three has no pointer observable, so DOM listeners are
   attached to `renderer.domElement` and hits are resolved with `THREE.Raycaster`.
+- **Pointer lock (ADR 0034):** when `renderer.domElement` holds the pointer lock
+  (`PointerLockControls`, first-person/FPS scenes), the OS cursor freezes, so the
+  connector reports `pointer_move`/`pointer_click` from the viewport centre
+  (`screen = [0.5, 0.5]`) and raycasts from NDC `(0, 0)` — the crosshair. Read the
+  spatial story from the gaze/floor-plan heatmaps, not the 2D pointer heatmap.
 - **FPS:** derived from the `renderer.info.render.frame` delta over the sample
   interval (three has no `getFps()`).
 - **Mesh visibility:** three has no `mesh.isInFrustum(...)` or

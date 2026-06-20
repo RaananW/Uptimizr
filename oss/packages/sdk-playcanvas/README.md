@@ -147,6 +147,11 @@ connector boundary so the emitted events are identical:
   against the scene's mesh-instance world AABBs (`BoundingBox.intersectsRay`). The
   pick is **physics-free** — it never touches the rigidbody system, so the
   connector adds no `ammo` dependency.
+- **Pointer lock (ADR 0034):** when the canvas holds the pointer lock
+  (`Mouse.enablePointerLock()`, first-person/FPS scenes), the OS cursor freezes, so
+  the connector reports `pointer_move`/`pointer_click` from the viewport centre
+  (`screen = [0.5, 0.5]`) and raycasts from NDC `(0, 0)` — the crosshair. Read the
+  spatial story from the gaze/floor-plan heatmaps, not the 2D pointer heatmap.
 - **FPS:** read directly from `app.stats.frame.fps` (PlayCanvas computes it), so —
   unlike three — there is no frame-counter delta.
 - **"frame" cadence:** the connector owns no animation loop; it subscribes to the
