@@ -40,7 +40,7 @@ import {
   nodeSampleRowToEvent,
   type QuerySpec,
 } from "@uptimizr/db/query";
-import { anyEventSchema, type AnyEvent } from "@uptimizr/schema";
+import { anyEventSchema, sceneProxySchema, type AnyEvent } from "@uptimizr/schema";
 import { DEMO_PROJECT_ID } from "./constants.js";
 import type { WasmDb } from "./db.js";
 
@@ -229,13 +229,39 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
     return handleSessionMeta(db, decodeURIComponent(sessionMeta[1]!));
   }
 
-  // Scene registry is a no-op in v1: the demo's aggregates do not require a proxy
-  // (world/gaze heatmaps degrade gracefully without one). List is empty; a fetch
-  // 404s (dashboard falls back to no proxy); a PUT is accepted.
-  if (path === "/api/v1/scene-representations") return ok([]);
-  if (path.endsWith("/representation")) {
-    if (req.method === "PUT") return ok({ ok: true });
-    return { status: 404, body: { error: "scene representation not found" } };
+  // Scene registry (ADR 0014): the playground auto-registers its scene proxy so
+  // world/gaze heatmaps and session replay can render the scene's geometry. The
+  // demo persists it in the in-browser store exactly like the collector, then
+  // serves it back (or 404s) so the dashboard sees identical behavior.
+  if (path === "/api/v1/scene-representations") {
+    return ok(await db.listSceneRepresentations());
+  }
+  const representation = path.match(/^\/api\/v1\/scenes\/([^/]+)\/representation$/);
+  if (representation) {
+    const sceneId = decodeURIComponent(representation[1]!);
+    if (req.method === "PUT") {
+      let body: { proxy?: unknown; label?: unknown };
+      try {
+        body = JSON.parse(req.body ?? "{}") as { proxy?: unknown; label?: unknown };
+      } catch {
+        return { status: 400, body: { error: "invalid JSON" } };
+      }
+      const result = sceneProxySchema.safeParse(body.proxy);
+      if (!result.success) {
+        return { status: 400, body: { error: "invalid scene proxy" } };
+      }
+      if (result.data.sceneId !== sceneId) {
+        return { status: 400, body: { error: "proxy sceneId does not match path" } };
+      }
+      const label = typeof body.label === "string" ? body.label : null;
+      await db.putSceneProxy(result.data, label);
+      return ok(await db.getSceneRepresentation(sceneId));
+    }
+    if (req.method === "GET") {
+      const stored = await db.getSceneRepresentation(sceneId);
+      if (!stored) return { status: 404, body: { error: "scene representation not found" } };
+      return ok(stored);
+    }
   }
 
   if (req.method === "GET") {

@@ -39,9 +39,31 @@ function loadEngine(scene: SceneDefinition, engineId: EngineId): Promise<{ engin
   return builtinLoaders[engineId]();
 }
 
+/**
+ * When embedded in the demo host (a same-origin iframe), announce the active
+ * scene + engine so the host can reset its single-project store whenever they
+ * change — otherwise analytics from different scenes would pile into one project
+ * and the dashboard would show mixed, incorrect data. No-op when run standalone.
+ */
+function notifyEmbedHost(sceneId: string, engineId: EngineId): void {
+  if (window.parent === window) return;
+  try {
+    window.parent.postMessage(
+      { type: "uptimizr:playground-context", sceneId, engineId },
+      location.origin,
+    );
+  } catch {
+    /* ignore cross-origin / messaging failures */
+  }
+}
+
 async function main(): Promise<void> {
   const scene = resolveActiveScene();
   const engineId = resolveEngineForScene(scene);
+  // Announce before loading the engine so the host can reset its store while the
+  // engine chunk is still downloading (the reset lands before this scene's proxy
+  // + events are registered).
+  notifyEmbedHost(scene.id, engineId);
   wireSceneSelector(scene.id);
   wireEngineSelector(engineId, scene);
   const { engine } = await loadEngine(scene, engineId);

@@ -11,7 +11,7 @@ import {
   type NodeSampleRow,
   type QuerySpec,
 } from "@uptimizr/db/query";
-import type { AnyEvent, NodeTransformEvent } from "@uptimizr/schema";
+import type { AnyEvent, NodeTransformEvent, SceneProxy } from "@uptimizr/schema";
 import { tableToRows, type ArrowTableLike } from "./arrow.js";
 import {
   DEMO_PROJECT_ID,
@@ -97,6 +97,68 @@ const INSERT_CHUNK = 400;
 
 function* chunk<T>(items: readonly T[], size: number): Generator<readonly T[]> {
   for (let i = 0; i < items.length; i += size) yield items.slice(i, i + size);
+}
+
+/** Raw `scene_representations` row as selected (proxy/bounds are JSON text). */
+interface SceneRepresentationRow {
+  scene_id: string;
+  label: string | null;
+  kind: string;
+  up_axis: string;
+  unit_scale: number;
+  bounds: string | null;
+  proxy: string | null;
+  content_hash: string | null;
+  proxy_version: number | null;
+  captured_at_ms: number | null;
+  updated_at_ms: number;
+}
+
+/** A scene representation as returned to the dashboard (proxy blob parsed). */
+export interface DemoSceneRepresentation {
+  projectId: string;
+  sceneId: string;
+  label: string | null;
+  kind: "proxy";
+  upAxis: string;
+  unitScale: number;
+  bounds: number[] | null;
+  proxy: SceneProxy | null;
+  assetUrl: null;
+  contentHash: string | null;
+  proxyVersion: number | null;
+  capturedAt: string | null;
+  updatedAt: string;
+}
+
+/** A scene representation summary (no proxy blob) for the registry listing. */
+export interface SceneRepresentationSummary {
+  sceneId: string;
+  label: string | null;
+  kind: "proxy";
+  bounds: number[] | null;
+  contentHash: string | null;
+  capturedAt: string | null;
+  updatedAt: string;
+}
+
+/** Map a raw representation row to the dashboard-facing shape (JSON parsed). */
+function rowToRepresentation(row: SceneRepresentationRow): DemoSceneRepresentation {
+  return {
+    projectId: DEMO_PROJECT_ID,
+    sceneId: row.scene_id,
+    label: row.label ?? null,
+    kind: "proxy",
+    upAxis: row.up_axis,
+    unitScale: Number(row.unit_scale),
+    bounds: row.bounds ? (JSON.parse(row.bounds) as number[]) : null,
+    proxy: row.proxy ? (JSON.parse(row.proxy) as SceneProxy) : null,
+    assetUrl: null,
+    contentHash: row.content_hash ?? null,
+    proxyVersion: row.proxy_version ?? null,
+    capturedAt: row.captured_at_ms == null ? null : new Date(row.captured_at_ms).toISOString(),
+    updatedAt: new Date(row.updated_at_ms).toISOString(),
+  };
 }
 
 /**
@@ -204,6 +266,77 @@ export class WasmDb {
     );
   }
 
+  /**
+   * Upsert a scene **proxy** (ADR 0014) keyed by `sceneId` so world/gaze heatmaps
+   * and session replay can render the scene's geometry. Mirrors the Node store's
+   * `upsertSceneProxy`: stores the full proxy as JSON and promotes the
+   * bounds/hash/version/captured-at to columns for cheap listing.
+   */
+  async putSceneProxy(proxy: SceneProxy, label: string | null): Promise<void> {
+    const capturedAt = formatTimestamp(proxy.capturedAt);
+    await this.#conn.query(
+      `INSERT INTO scene_representations
+         (project_id, scene_id, label, kind, up_axis, unit_scale, bounds, proxy,
+          asset_url, content_hash, proxy_version, captured_at, updated_at)
+       VALUES (${sqlString(DEMO_PROJECT_ID)}, ${sqlString(proxy.sceneId)},
+               ${label == null ? "NULL" : sqlString(label)}, 'proxy',
+               ${sqlString(proxy.upAxis)}, ${sqlNumber(proxy.unitScale)},
+               ${sqlString(JSON.stringify(proxy.bounds))}, ${sqlString(JSON.stringify(proxy))},
+               NULL, ${sqlString(proxy.contentHash)}, ${sqlNumber(proxy.version)},
+               ${sqlTimestamp(capturedAt)}, now())
+       ON CONFLICT (project_id, scene_id) DO UPDATE SET
+         label         = COALESCE(EXCLUDED.label, scene_representations.label),
+         kind          = 'proxy',
+         up_axis       = EXCLUDED.up_axis,
+         unit_scale    = EXCLUDED.unit_scale,
+         bounds        = EXCLUDED.bounds,
+         proxy         = EXCLUDED.proxy,
+         asset_url     = NULL,
+         content_hash  = EXCLUDED.content_hash,
+         proxy_version = EXCLUDED.proxy_version,
+         captured_at   = EXCLUDED.captured_at,
+         updated_at    = now()`,
+    );
+  }
+
+  /** Fetch one scene representation (including the proxy blob), or `null`. */
+  async getSceneRepresentation(sceneId: string): Promise<DemoSceneRepresentation | null> {
+    const rows = await this.all<SceneRepresentationRow>({
+      query: `SELECT scene_id, label, kind, up_axis, unit_scale, bounds, proxy,
+                     content_hash, proxy_version,
+                     epoch_ms(captured_at) AS captured_at_ms,
+                     epoch_ms(updated_at) AS updated_at_ms
+              FROM scene_representations
+              WHERE project_id = ${sqlString(DEMO_PROJECT_ID)} AND scene_id = ${sqlString(sceneId)}`,
+      query_params: {},
+    });
+    const row = rows[0];
+    return row ? rowToRepresentation(row) : null;
+  }
+
+  /** List the demo project's scene representations (summaries, no proxy blob). */
+  async listSceneRepresentations(): Promise<SceneRepresentationSummary[]> {
+    const rows = await this.all<Omit<SceneRepresentationRow, "proxy">>({
+      query: `SELECT scene_id, label, kind, up_axis, unit_scale, bounds, content_hash,
+                     proxy_version,
+                     epoch_ms(captured_at) AS captured_at_ms,
+                     epoch_ms(updated_at) AS updated_at_ms
+              FROM scene_representations
+              WHERE project_id = ${sqlString(DEMO_PROJECT_ID)}
+              ORDER BY updated_at DESC`,
+      query_params: {},
+    });
+    return rows.map((row) => ({
+      sceneId: row.scene_id,
+      label: row.label ?? null,
+      kind: "proxy",
+      bounds: row.bounds ? (JSON.parse(row.bounds) as number[]) : null,
+      contentHash: row.content_hash ?? null,
+      capturedAt: row.captured_at_ms == null ? null : new Date(row.captured_at_ms).toISOString(),
+      updatedAt: new Date(row.updated_at_ms).toISOString(),
+    }));
+  }
+
   /** Clear all collected data while keeping the schema and demo project. */
   async reset(): Promise<void> {
     await this.#conn.query("DELETE FROM events");
@@ -218,12 +351,17 @@ export class WasmDb {
   }
 }
 
-/** Current time as a naive-UTC `YYYY-MM-DD HH:MM:SS.mmm` string. */
-function formatNow(): string {
-  const d = new Date();
+/** A given epoch-ms instant as a naive-UTC `YYYY-MM-DD HH:MM:SS.mmm` string. */
+function formatTimestamp(ms: number): string {
+  const d = new Date(ms);
   const p = (n: number, w = 2) => String(n).padStart(w, "0");
   return (
     `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ` +
     `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}.${p(d.getUTCMilliseconds(), 3)}`
   );
+}
+
+/** Current time as a naive-UTC `YYYY-MM-DD HH:MM:SS.mmm` string. */
+function formatNow(): string {
+  return formatTimestamp(Date.now());
 }
