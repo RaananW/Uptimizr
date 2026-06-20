@@ -101,6 +101,13 @@ export function FlowSankey3D({
     }
   }, [hasFirstPerson]);
 
+  // Orbit (viewer) flow is disabled for walkable scenes; if the scene turns out
+  // to be walkable while Orbit was selected, fall back to walk so the now-
+  // disabled button can't leave the panel stuck in a broken state.
+  useEffect(() => {
+    if (hasFirstPerson && cameraMode === "viewer") setCameraMode("first-person");
+  }, [hasFirstPerson, cameraMode]);
+
   // Keep rows in sync with the prop when the panel can't self-fetch.
   useEffect(() => {
     if (!selfFetch) setRows(links);
@@ -439,6 +446,11 @@ export function FlowSankey3D({
         }
         const sourceRadius = targetExtent * 0.75 + 1;
 
+        // Scale node/tube sizes with the scene extent so links stay visible on
+        // large (walkable) scenes, not just small viewer models. ~1.0 at the
+        // 1.8 floor; grows proportionally as the proxy meshes spread out.
+        const sizeScale = Math.max(1, targetExtent / 1.8);
+
         const maxCount = visible.reduce((m, l) => Math.max(m, l.count), 1);
 
         // Draw source and target nodes for legibility.
@@ -489,7 +501,7 @@ export function FlowSankey3D({
           if (!sourceSeen.has(key)) {
             const s = MeshBuilder.CreateSphere(
               `flow-src-${key}`,
-              { diameter: 0.12, segments: 6 },
+              { diameter: 0.12 * sizeScale, segments: 6 },
               scene,
             );
             s.position = src;
@@ -503,7 +515,7 @@ export function FlowSankey3D({
           if (!targetSeen.has(link.mesh)) {
             const t = MeshBuilder.CreateSphere(
               `flow-target-${link.mesh}`,
-              { diameter: 0.2, segments: 7 },
+              { diameter: 0.2 * sizeScale, segments: 7 },
               scene,
             );
             t.position = dst;
@@ -524,8 +536,12 @@ export function FlowSankey3D({
           const nx = centerLen > 1e-6 ? fromCenter.x / centerLen : 0;
           const ny = centerLen > 1e-6 ? fromCenter.y / centerLen : 1;
           const nz = centerLen > 1e-6 ? fromCenter.z / centerLen : 0;
-          const lift = 0.35 + (link.count / maxCount) * 0.75;
-          const ctrl = new Vector3(mid.x + nx * lift, mid.y + ny * lift + 0.12, mid.z + nz * lift);
+          const lift = (0.35 + (link.count / maxCount) * 0.75) * sizeScale;
+          const ctrl = new Vector3(
+            mid.x + nx * lift,
+            mid.y + ny * lift + 0.12 * sizeScale,
+            mid.z + nz * lift,
+          );
 
           const path: InstanceType<typeof Vector3>[] = [];
           const seg = 18;
@@ -547,7 +563,7 @@ export function FlowSankey3D({
             `flow-link-${link.mesh}-${key}`,
             {
               path,
-              radius: (isActive ? 1 : 0.4) * (0.012 + 0.04 * intensity),
+              radius: (isActive ? 1 : 0.4) * (0.012 + 0.04 * intensity) * sizeScale,
               tessellation: 8,
               cap: 0,
               sideOrientation: 0,
@@ -599,7 +615,7 @@ export function FlowSankey3D({
           const pinPos = new Vector3(standpointOrigin[0], standpointOrigin[1], standpointOrigin[2]);
           const pin = MeshBuilder.CreateSphere(
             "flow-standpoint",
-            { diameter: 0.26, segments: 10 },
+            { diameter: 0.26 * sizeScale, segments: 10 },
             scene,
           );
           pin.position = pinPos;
@@ -892,6 +908,12 @@ export function FlowSankey3D({
                   <ViewToggleButton
                     active={cameraMode === "viewer"}
                     onClick={() => setCameraMode("viewer")}
+                    disabled={hasFirstPerson}
+                    title={
+                      hasFirstPerson
+                        ? "Orbit (viewer) flow isn't available for walkable scenes"
+                        : undefined
+                    }
                   >
                     Orbit
                   </ViewToggleButton>
@@ -1010,17 +1032,27 @@ function ViewToggleButton({
   active,
   onClick,
   children,
+  disabled = false,
+  title,
 }: {
   active: boolean;
   onClick: () => void;
   children: ReactNode;
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      title={title}
       className={`rounded px-2 py-0.5 font-medium transition ${
-        active ? "bg-amber text-ink" : "text-fg-muted hover:text-fg"
+        disabled
+          ? "cursor-not-allowed text-fg-muted/40"
+          : active
+            ? "bg-amber text-ink"
+            : "text-fg-muted hover:text-fg"
       }`}
     >
       {children}
