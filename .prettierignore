@@ -1,5 +1,8 @@
 dist/
+build/
+out/
 .next/
+.astro/
 .turbo/
 coverage/
 pnpm-lock.yaml
