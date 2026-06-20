@@ -194,11 +194,15 @@ export function WorldHeatmap3D({
           const n = voxels.length;
           const matrices = new Float32Array(n * 16);
           const colors = new Float32Array(n * 4);
+          // Per-instance base scale (intensity-driven) kept so the render loop
+          // can re-apply it on top of the zoom factor without losing it.
+          const baseScales = new Float32Array(n);
           for (let i = 0; i < n; i++) {
             const v = voxels[i]!;
             const t = v.count / maxCount;
             // Scale each marker by intensity (min 35%) so hotspots read as larger.
             const s = 0.35 + 0.65 * t;
+            baseScales[i] = s;
             const m = Matrix.Scaling(s, s, s).multiply(
               Matrix.Translation(
                 (v.vx + 0.5) * cellSize,
@@ -215,6 +219,28 @@ export function WorldHeatmap3D({
           }
           marker.thinInstanceSetBuffer("matrix", matrices, 16, true);
           marker.thinInstanceSetBuffer("color", colors, 4, true);
+
+          // Keep markers legible when zoomed out on large scenes: grow each
+          // marker with the camera distance so its on-screen size stays roughly
+          // constant. We only rewrite the scale diagonal of each instance matrix
+          // (translation untouched), and only when the zoom changes meaningfully.
+          const baseRadius = camera.radius;
+          let lastZoom = 0;
+          const applyZoomScale = () => {
+            const zoom = Math.min(8, Math.max(0.6, camera.radius / baseRadius));
+            if (Math.abs(zoom - lastZoom) < 0.01) return;
+            lastZoom = zoom;
+            for (let i = 0; i < n; i++) {
+              const s = baseScales[i]! * zoom;
+              const o = i * 16;
+              matrices[o] = s;
+              matrices[o + 5] = s;
+              matrices[o + 10] = s;
+            }
+            marker.thinInstanceBufferUpdated("matrix");
+          };
+          applyZoomScale();
+          scene.onBeforeRenderObservable.add(applyZoomScale);
         }
 
         engine.runRenderLoop(() => scene.render());
