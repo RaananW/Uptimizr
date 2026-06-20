@@ -2,6 +2,17 @@
   "name": "@uptimizr/aframe",
   "version": "0.1.0",
   "description": "A-Frame (WebXR) connector for Uptimizr — registers the `uptimizr` component over @uptimizr/three and adds XR controller/gaze capture.",
+  "keywords": [
+    "uptimizr",
+    "analytics",
+    "3d",
+    "aframe",
+    "webxr",
+    "vr",
+    "webgl",
+    "heatmap",
+    "privacy"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

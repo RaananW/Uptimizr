@@ -2,6 +2,18 @@
   "name": "@uptimizr/three",
   "version": "0.1.0",
   "description": "three.js connector for Uptimizr — captures camera, pointer, mesh, and perf events as an sdk-core collector.",
+  "keywords": [
+    "uptimizr",
+    "analytics",
+    "3d",
+    "three",
+    "threejs",
+    "webgl",
+    "webgpu",
+    "heatmap",
+    "session-replay",
+    "privacy"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

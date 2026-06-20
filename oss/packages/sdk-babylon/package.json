@@ -2,6 +2,18 @@
   "name": "@uptimizr/babylon",
   "version": "0.1.0",
   "description": "Babylon.js connector for Uptimizr — captures camera, pointer, mesh, and perf events as an sdk-core collector.",
+  "keywords": [
+    "uptimizr",
+    "analytics",
+    "3d",
+    "babylon",
+    "babylonjs",
+    "webgl",
+    "webgpu",
+    "heatmap",
+    "session-replay",
+    "privacy"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

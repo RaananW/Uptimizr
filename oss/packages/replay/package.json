@@ -2,6 +2,15 @@
   "name": "@uptimizr/replay",
   "version": "0.1.0",
   "description": "Framework-agnostic session-replay core + Babylon driver. Re-drives a captured session in the user's own scene.",
+  "keywords": [
+    "uptimizr",
+    "analytics",
+    "3d",
+    "session-replay",
+    "replay",
+    "heatmap",
+    "privacy"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

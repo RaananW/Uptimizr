@@ -2,6 +2,16 @@
   "name": "@uptimizr/collector-server",
   "version": "0.1.0",
   "description": "Uptimizr ingestion + query API (Fastify). Self-hostable collector for the OSS data-collector.",
+  "keywords": [
+    "uptimizr",
+    "analytics",
+    "collector",
+    "ingestion",
+    "fastify",
+    "server",
+    "3d",
+    "privacy"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

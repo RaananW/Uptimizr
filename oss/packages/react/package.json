@@ -2,6 +2,15 @@
   "name": "@uptimizr/react",
   "version": "0.1.0",
   "description": "Embeddable React analytics panels for the Uptimizr collector — sessions, pointer heatmap, view-direction heatmap, and performance summary. Reads the collector query API through a shared client; configure once with <UptimizrProvider>.",
+  "keywords": [
+    "uptimizr",
+    "analytics",
+    "3d",
+    "react",
+    "hooks",
+    "provider",
+    "privacy"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
