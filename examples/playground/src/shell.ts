@@ -572,21 +572,24 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   // --- Scene proxy registration (ADR 0014) -----------------------------------
   if (caps.sceneProxy && instance.registerSceneProxy && heatmapStatus) {
     const registerSceneProxy = instance.registerSceneProxy.bind(instance);
+    const runProxyScan = async (): Promise<void> => {
+      if (!activeApiKey) {
+        heatmapStatus.textContent = "Set VITE_API_KEY to register the scene proxy.";
+        return;
+      }
+      heatmapStatus.textContent = `Scanning "${currentScene}" scene proxy…`;
+      try {
+        const meshCount = await registerSceneProxy(currentScene);
+        heatmapStatus.textContent = `Registered proxy for "${currentScene}" (${meshCount} meshes).`;
+      } catch (err) {
+        heatmapStatus.textContent = err instanceof Error ? err.message : "Proxy scan failed.";
+      }
+    };
     const registerProxyButton = requireElement("registerProxyButton", HTMLButtonElement);
-    registerProxyButton.addEventListener("click", () => {
-      void (async () => {
-        if (!activeApiKey) {
-          heatmapStatus.textContent = "Set VITE_API_KEY to register the scene proxy.";
-          return;
-        }
-        heatmapStatus.textContent = `Scanning "${currentScene}" scene proxy…`;
-        try {
-          const meshCount = await registerSceneProxy(currentScene);
-          heatmapStatus.textContent = `Registered proxy for "${currentScene}" (${meshCount} meshes).`;
-        } catch (err) {
-          heatmapStatus.textContent = err instanceof Error ? err.message : "Proxy scan failed.";
-        }
-      })();
-    });
+    registerProxyButton.addEventListener("click", () => void runProxyScan());
+    // Auto-register the scene proxy on mount so session replay and the 3D panels
+    // (which need the scene representation, ADR 0014) always render without a
+    // manual click. Skipped when no API key is configured (standalone dev).
+    if (activeApiKey) void runProxyScan();
   }
 }

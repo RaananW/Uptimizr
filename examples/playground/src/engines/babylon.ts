@@ -12,6 +12,11 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder.js";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder.js";
 import { Scene } from "@babylonjs/core/scene.js";
+// Side-effect import: `RegisterRay()` augments `Scene.prototype.pick` /
+// `pickWithRay` / `createPickingRay`. With deep (tree-shaken) imports this is
+// NOT pulled in automatically, so `scene.onPointerObservable` POINTERPICK never
+// resolves a mesh and clicking the scene does nothing — re-register it here.
+import "@babylonjs/core/Culling/ray.js";
 import type { Camera } from "@babylonjs/core/Cameras/camera.js";
 import type { Scene as BabylonScene } from "@babylonjs/core/scene.js";
 
@@ -34,7 +39,7 @@ const CAPTURE_FEATURES: CaptureFeature[] = [
   ...COMMON_CAPTURE_FEATURES.slice(0, 7), // camera … contextLoss
   { key: "compileStall", label: "Compile stalls", default: true },
   ...COMMON_CAPTURE_FEATURES.slice(7), // meshVisibility … gaze
-  { key: "keyboard", label: "Keyboard", default: false },
+  { key: "keyboard", label: "Keyboard", default: true },
   // Scene-actor capture (ADR 0027): the walkable scene's ambient NPC is tracked
   // as a `node_transform` so replay reproduces its patrol. No-op in viewer mode
   // (the orbital scene has no moving actor).

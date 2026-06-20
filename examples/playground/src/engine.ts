@@ -174,12 +174,13 @@ export const COMMON_CAPTURE_FEATURES: CaptureFeature[] = [
   { key: "meshPicks", label: "Mesh picks", default: true },
   { key: "perf", label: "Frame perf", default: true },
   { key: "contextLoss", label: "Context loss", default: true },
-  { key: "meshVisibility", label: "Mesh visibility", default: false },
-  { key: "hoverDwell", label: "Hover dwell", default: false },
-  { key: "resourceSample", label: "Resource sample", default: false },
-  // World-space gaze raycast (`camera_sample.hitPoint`, ADR 0030). Opt-in,
-  // off by default (privacy + cost, ADR 0003) — powers the gaze heatmap.
-  { key: "gaze", label: "Gaze raycast", default: false },
+  { key: "meshVisibility", label: "Mesh visibility", default: true },
+  { key: "hoverDwell", label: "Hover dwell", default: true },
+  { key: "resourceSample", label: "Resource sample", default: true },
+  // World-space gaze raycast (`camera_sample.hitPoint`, ADR 0030) powers the gaze
+  // heatmap. The SDK keeps this opt-in (privacy + cost, ADR 0003 / ADR 0012); the
+  // playground enables it so every 3D panel renders out of the box.
+  { key: "gaze", label: "Gaze raycast", default: true },
 ];
 
 /** Demo scene box colors (shared so every engine renders the same five boxes). */
