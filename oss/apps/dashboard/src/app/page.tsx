@@ -671,6 +671,32 @@ export default function Page() {
     };
   }, [detailIsLive, detailStatus, fetchSessionPanels]);
 
+  // While the open session is live, its aggregate panels (heatmaps, top meshes,
+  // perf) would otherwise stay frozen at the values fetched when it opened. Poll
+  // them once a second so the panels visibly update as events stream in. The
+  // live replay tails over its own SSE channel and is unaffected (its props —
+  // sessionId / isLive — don't change here).
+  useEffect(() => {
+    if (!detailIsLive || detailStatus !== "ready") return;
+    const id = detailRef.current?.id;
+    if (!id) return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const next = await fetchSessionPanels(id);
+          if (!cancelled && detailRef.current?.id === id) setDetail(next);
+        } catch {
+          // Keep the existing panels if a refresh fails; they're only stale.
+        }
+      })();
+    }, 1_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [detailIsLive, detailStatus, fetchSessionPanels]);
+
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
       <header className="mb-6 flex items-center gap-3">
