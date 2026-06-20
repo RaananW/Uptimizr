@@ -1,3 +1,8 @@
+# DISABLED WHILE THE REPO IS PRIVATE.
+# GitHub only reads `.github/dependabot.yml`; this `.disabled` name is ignored,
+# so no Dependabot version-update runs fire on push/schedule while private.
+# RE-ENABLE WHEN GOING PUBLIC: `git mv .github/dependabot.yml.disabled .github/dependabot.yml`
+#
 version: 2
 
 updates:
