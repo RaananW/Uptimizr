@@ -20,8 +20,8 @@ export interface FilterState {
   cameraMode?: "viewer" | "first-person";
 }
 
-/** Default to the last 24h so all-time averages never hide a recent regression. */
-export const DEFAULT_FILTERS: FilterState = { window: "24h" };
+/** Default to the last hour so panels foreground the most recent activity. */
+export const DEFAULT_FILTERS: FilterState = { window: "1h" };
 
 export const TIME_PRESETS: { id: TimeWindow; label: string }[] = [
   { id: "1h", label: "Last hour" },
