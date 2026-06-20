@@ -143,6 +143,18 @@ function formatClock(ms: number): string {
 }
 
 /**
+ * Shorten a label for the floating overlay: use the leaf segment of a
+ * `nodeId/childPath` key (the meaningful node name) and cap it at 20 chars with
+ * an ellipsis so deep subtree actors don't paint long, overlapping strings. The
+ * full key stays available via the element's `title` (hover) tooltip.
+ */
+const MAX_LABEL_CHARS = 20;
+function shortLabel(name: string): string {
+  const leaf = name.slice(name.lastIndexOf("/") + 1);
+  return leaf.length > MAX_LABEL_CHARS ? `${leaf.slice(0, MAX_LABEL_CHARS - 1)}\u2026` : leaf;
+}
+
+/**
  * Color-coded event-timeline overview rendered beneath the scrubber. Each lane is
  * a channel of events; ticks mark when events fired. The whole strip is
  * click-to-seek and shows a shared playhead synced to the scrubber.
@@ -577,7 +589,8 @@ export function SessionReplay({
           actorColorIdx++;
           const samples = actorSamples.get(key) ?? [];
           actorMarkers.push({ key, mesh: marker, samples });
-          actorLabelElsRef.current = actorMarkers.map(() => null);
+          const prevEls = actorLabelElsRef.current;
+          actorLabelElsRef.current = actorMarkers.map((_, i) => prevEls[i] ?? null);
           setActorLabels(actorMarkers.map((a) => a.key));
         };
 
@@ -736,6 +749,13 @@ export function SessionReplay({
           grow(r.hit);
         }
         for (const arr of actorSamples.values()) for (const s of arr) grow(s.position);
+        // Include the registered scene-proxy AABBs so the opening frame fits the
+        // whole scene, not just where the camera/clicks happened to land — a big
+        // scene with little camera travel otherwise opened zoomed-in.
+        for (const m of proxyMeshes) {
+          grow(m.aabb.slice(0, 3));
+          grow(m.aabb.slice(3, 6));
+        }
         frameCamera();
 
         const findCameraAt = (elapsed: number): CameraSample | null => {
@@ -1179,23 +1199,25 @@ export function SessionReplay({
           {proxyLabels.map((name, i) => (
             <div
               key={name}
+              title={name}
               ref={(el) => {
-                labelElsRef.current[i] = el;
+                if (el) labelElsRef.current[i] = el;
               }}
               className="absolute left-0 top-0 whitespace-nowrap rounded bg-ink/80 px-1.5 py-0.5 text-[10px] font-medium text-saffron opacity-0 ring-1 ring-amber/30"
             >
-              {name}
+              {shortLabel(name)}
             </div>
           ))}
           {actorLabels.map((name, i) => (
             <div
               key={`actor-${name}`}
+              title={name}
               ref={(el) => {
-                actorLabelElsRef.current[i] = el;
+                if (el) actorLabelElsRef.current[i] = el;
               }}
               className="absolute left-0 top-0 whitespace-nowrap rounded bg-ink/80 px-1.5 py-0.5 text-[10px] font-medium text-fuchsia-300 opacity-0 ring-1 ring-fuchsia-400/30"
             >
-              {name}
+              {shortLabel(name)}
             </div>
           ))}
         </div>
