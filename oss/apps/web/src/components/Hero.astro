@@ -1,0 +1,213 @@
+---
+const repo = "https://github.com/RaananW/Uptimizr";
+const docs = "/docs/";
+---
+
+<section class="hero" id="demo">
+  <div class="hero__glow" aria-hidden="true"></div>
+  <div class="container hero__inner">
+    <div class="hero__copy">
+      <p class="eyebrow">Open-source · Privacy-first · Self-hostable</p>
+      <h1>Analytics for <span class="heat-text">3D scenes</span> on the web.</h1>
+      <p class="lead">
+        Uptimizr is Google-Analytics-for-3D. Whether users orbit a model in a viewer or walk
+        through a first-person world, capture view-direction and click heatmaps, mesh interactions,
+        performance and session replay — then understand exactly what your users look at, click,
+        and miss.
+      </p>
+      <div class="hero__cta">
+        <a class="btn btn--primary" href={repo} target="_blank" rel="noopener">Star on GitHub</a>
+        <a class="btn btn--ghost" href={docs}>Read the docs</a>
+        <a class="btn btn--ghost" href="#quickstart">Quickstart</a>
+      </div>
+    </div>
+
+    <div class="hero__demo reveal">
+      <div class="hero__demo-frame">
+        <div class="demo-tabs" role="tablist" aria-label="Analytics visualizations">
+          <button class="demo-tab" role="tab" data-mode="dome" aria-selected="true">View dome</button>
+          <button class="demo-tab" role="tab" data-mode="clicks" aria-selected="false" tabindex="-1">
+            Click rays
+          </button>
+          <button class="demo-tab" role="tab" data-mode="flow" aria-selected="false" tabindex="-1">
+            Flow Sankey
+          </button>
+          <button class="demo-tab" role="tab" data-mode="world" aria-selected="false" tabindex="-1">
+            World heatmap
+          </button>
+        </div>
+        <div class="demo-stage">
+          <canvas id="heat-demo" aria-label="Interactive 3D analytics demo" data-demo-canvas></canvas>
+          <div class="hero__demo-badge" data-demo-badge>
+            view-direction dome (3D) · where the audience looked
+          </div>
+        </div>
+      </div>
+      <p class="hero__hint" data-demo-hint>
+        Each marker is a camera look-direction mapped onto a sphere — the blue line is forward, the
+        ring is the horizon. Size and color scale with how often that direction was viewed.
+      </p>
+    </div>
+  </div>
+</section>
+
+<script>
+  const frame = document.querySelector<HTMLElement>(".hero__demo-frame");
+  const canvas = frame?.querySelector<HTMLCanvasElement>("[data-demo-canvas]") ?? null;
+  const badge = frame?.querySelector<HTMLElement>("[data-demo-badge]") ?? null;
+  const hint = document.querySelector<HTMLElement>("[data-demo-hint]");
+  const tabButtons = frame
+    ? Array.from(frame.querySelectorAll<HTMLButtonElement>("[role='tab']"))
+    : [];
+
+  if (canvas && badge && hint && tabButtons.length) {
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      // Dynamic import keeps Babylon.js off the initial critical path: the demo
+      // bundle is only fetched once the canvas scrolls into view.
+      void import("../scripts/demo").then(({ initSceneDemo }) => {
+        initSceneDemo({ canvas, tabButtons, badge, hint });
+      });
+    };
+    if ("IntersectionObserver" in window) {
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (e.isIntersecting) {
+              start();
+              io.disconnect();
+            }
+          }
+        },
+        { threshold: 0.15 },
+      );
+      io.observe(canvas);
+    } else {
+      start();
+    }
+  }
+</script>
+
+<style>
+  .hero {
+    position: relative;
+    overflow: hidden;
+    padding: clamp(3rem, 7vw, 6rem) 0 clamp(3rem, 6vw, 5rem);
+  }
+  .hero__glow {
+    position: absolute;
+    inset: -20% -10% auto -10%;
+    height: 70%;
+    background: radial-gradient(60% 70% at 70% 20%, rgba(224, 123, 57, 0.22), transparent 70%),
+      radial-gradient(50% 60% at 20% 0%, rgba(244, 200, 75, 0.12), transparent 70%);
+    filter: blur(8px);
+    pointer-events: none;
+  }
+  .hero__inner {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: clamp(1.5rem, 4vw, 3.5rem);
+    align-items: center;
+  }
+  .hero__copy h1 {
+    font-size: clamp(2.4rem, 5.5vw, 4rem);
+    line-height: 1.04;
+    letter-spacing: -0.02em;
+    margin: 0.4rem 0 0.8rem;
+  }
+  .hero__cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+    margin-top: 1.6rem;
+  }
+  .hero__hint {
+    margin-top: 1.1rem;
+    color: var(--fg-muted);
+    font-size: 0.86rem;
+    min-height: 2.6em;
+  }
+  .hero__demo-frame {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--edge);
+    border-radius: 18px;
+    box-shadow: 0 30px 80px -40px rgba(224, 123, 57, 0.5);
+    overflow: hidden;
+  }
+  .demo-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 6px;
+    background: rgba(22, 18, 16, 0.6);
+    border-bottom: 1px solid var(--edge);
+  }
+  .demo-tab {
+    flex: 1;
+    appearance: none;
+    border: 0;
+    border-radius: 9px;
+    padding: 0.5em 0.4em;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.02em;
+    color: var(--fg-muted);
+    background: transparent;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+  .demo-tab:hover {
+    color: var(--fg);
+  }
+  .demo-tab[aria-selected="true"] {
+    color: var(--fg);
+    background: rgba(224, 123, 57, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(224, 123, 57, 0.3);
+  }
+  .demo-tab:focus-visible {
+    outline: 2px solid var(--brand, #e07b39);
+    outline-offset: 1px;
+  }
+  .demo-stage {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: #0a0d12;
+  }
+  #heat-demo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+    outline: none;
+  }
+  .hero__demo-badge {
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    color: var(--fg);
+    background: rgba(22, 18, 16, 0.7);
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    padding: 0.35em 0.8em;
+    backdrop-filter: blur(6px);
+  }
+  @media (max-width: 880px) {
+    .hero__inner {
+      grid-template-columns: 1fr;
+    }
+    .hero__demo {
+      max-width: 460px;
+      margin-inline: auto;
+      width: 100%;
+    }
+  }
+</style>

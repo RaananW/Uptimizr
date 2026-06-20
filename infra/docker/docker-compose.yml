@@ -1,0 +1,71 @@
+# Optional scale tier for Uptimizr — ClickHouse (events) + Postgres (metadata).
+#
+# NOT required for the OSS default. The open-source collector self-hosts on a single
+# DuckDB file with no external database service (ADR 0020); see the `run-local-stack`
+# skill and the root README quickstart. These engines back a ClickHouse-backed store
+# behind the `@uptimizr/db` contracts and the cross-engine parity suite.
+#
+#   docker compose up -d        # start ClickHouse + Postgres (+ Adminer)
+#   # run the scale migrations/seed against these engines
+#   docker compose down [-v]    # stop (-v also drops data volumes)
+#
+# Settings mirror `.env.example`; override via a sibling `.env` if needed.
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: uptimizr-clickhouse
+    environment:
+      CLICKHOUSE_DB: uptimizr
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123" # HTTP interface (used by @clickhouse/client)
+      # Native protocol — not used by the app (HTTP 8123 is). Host port is
+      # configurable to avoid clashes with other local services that default to
+      # 9000 (e.g. MinIO): set CLICKHOUSE_NATIVE_HOST_PORT in your .env.
+      - "${CLICKHOUSE_NATIVE_HOST_PORT:-9000}:9000"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:16
+    container_name: uptimizr-postgres
+    environment:
+      POSTGRES_USER: uptimizr
+      POSTGRES_PASSWORD: uptimizr
+      POSTGRES_DB: uptimizr
+    ports:
+      # Host port is configurable to avoid clashes with other local Postgres
+      # instances (set POSTGRES_HOST_PORT in your .env). Container side is 5432.
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uptimizr -d uptimizr"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  adminer:
+    image: adminer:4
+    container_name: uptimizr-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  clickhouse-data:
+  postgres-data:

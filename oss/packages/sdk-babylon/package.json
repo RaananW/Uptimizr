@@ -1,0 +1,56 @@
+{
+  "name": "@uptimizr/babylon",
+  "version": "0.1.0",
+  "description": "Babylon.js connector for Uptimizr — captures camera, pointer, mesh, and perf events as an sdk-core collector.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/sdk-babylon"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://github.com/RaananW/Uptimizr/tree/main/oss/packages/sdk-babylon#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md",
+    "llms.txt"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && pnpm run bundle && pnpm run bundle:global",
+    "bundle": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --external:@babylonjs/core --minify --legal-comments=none --banner:js=\"/* @uptimizr/babylon standalone bundle — Apache-2.0. Async-import into any page (e.g. playground.babylonjs.com); @babylonjs/core stays external (type-only). */\" --outfile=dist/uptimizr-babylon.js",
+    "bundle:global": "esbuild src/index.ts --bundle --format=iife --global-name=Uptimizr --platform=browser --target=es2022 --external:@babylonjs/core --minify --legal-comments=none --banner:js=\"/* @uptimizr/babylon standalone bundle (global) — Apache-2.0. Inject via a <script> tag into any page (e.g. playground.babylonjs.com); exposes window.Uptimizr. @babylonjs/core stays external (type-only). */\" --outfile=dist/uptimizr-babylon.global.js",
+    "bundle:watch": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --external:@babylonjs/core --sourcemap --watch --outfile=dist/uptimizr-babylon.js",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@babylonjs/core": "^7.0.0 || ^8.0.0 || ^9.0.0"
+  },
+  "dependencies": {
+    "@uptimizr/schema": "workspace:*",
+    "@uptimizr/sdk-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@babylonjs/core": "^9.13.0",
+    "esbuild": "^0.25.0",
+    "vitest": "^4.1.9"
+  }
+}

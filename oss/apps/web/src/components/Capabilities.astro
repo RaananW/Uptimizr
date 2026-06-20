@@ -1,0 +1,88 @@
+---
+const features = [
+  {
+    title: "Viewer & walkable experiences",
+    body: "Built for both: orbit-and-inspect viewers and first-person, walkable worlds. View-direction heatmaps show what seated users look at; floor-plan heatmaps show where visitors stand and roam.",
+  },
+  {
+    title: "View-direction heatmaps",
+    body: "See where users actually look. Gaze density is projected into world space and onto meshes — in 2D panels and full 3D.",
+  },
+  {
+    title: "Pointer & click heatmaps",
+    body: "Every hover and click, ray-cast into the scene and aggregated into spatial heat on the surfaces users touch.",
+  },
+  {
+    title: "Mesh interactions",
+    body: "Which objects get hovered, picked, and ignored — ranked, with dwell time and interaction counts per mesh.",
+  },
+  {
+    title: "Session & performance",
+    body: "FPS, frame time, draw calls and device class over the session, with percentile aggregation so p95 is one query away.",
+  },
+  {
+    title: "Session replay",
+    body: "Re-drive a recorded session inside your own scene from an ordered, timestamped event stream — no video, just data.",
+  },
+  {
+    title: "Multi-engine connectors",
+    body: "Babylon.js first, plus Babylon Lite, three.js, PlayCanvas, react-three-fiber and A-Frame. One schema, every engine.",
+  },
+  {
+    title: "Privacy-first by design",
+    body: "Cookieless, no client persistent IDs and no PII by default. The visitor ID is a server-side, daily-rotating hash.",
+  },
+  {
+    title: "Self-host in minutes",
+    body: "A single collector binary with an embedded store runs locally with zero infrastructure. Scale up to ClickHouse + Postgres when you need to.",
+  },
+];
+---
+
+<section id="features" class="section">
+  <div class="container">
+    <p class="eyebrow reveal">What you get</p>
+    <h2 class="reveal">Everything you need to understand a 3D scene</h2>
+    <p class="lead reveal">
+      Drop in one connector and Uptimizr captures the spatial signals that flat web analytics can't —
+      then aggregates them into heatmaps, rankings and replays.
+    </p>
+    <div class="grid grid--3 features">
+      {
+        features.map((f, i) => (
+          <article class="card reveal" style={`transition-delay:${(i % 3) * 60}ms`}>
+            <div class="features__dot" aria-hidden="true" />
+            <h3>{f.title}</h3>
+            <p>{f.body}</p>
+          </article>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .features {
+    margin-top: 2.4rem;
+  }
+  .features .card {
+    position: relative;
+  }
+  .features__dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--heat);
+    box-shadow: 0 0 18px 2px rgba(224, 123, 57, 0.55);
+    margin-bottom: 1rem;
+  }
+  .features h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1.1rem;
+  }
+  .features p {
+    color: var(--fg-muted);
+    font-size: 0.94rem;
+    margin: 0;
+  }
+</style>

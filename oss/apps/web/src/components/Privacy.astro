@@ -1,0 +1,59 @@
+---
+const points = [
+  {
+    title: "Cookieless, no client IDs",
+    body: "No cookies, no localStorage identifiers, no fingerprinting. Nothing persistent is written to the visitor's device.",
+  },
+  {
+    title: "Server-side rotating visitor hash",
+    body: "Visitors are counted with a hash computed on the server that rotates every day, so individuals can't be tracked across days.",
+  },
+  {
+    title: "No PII by default",
+    body: "Events carry spatial and performance signals — not personal data. Raw per-session retention is strictly opt-in.",
+  },
+  {
+    title: "You own the data",
+    body: "Self-host the collector and store. Your events never leave your infrastructure unless you choose to send them.",
+  },
+];
+---
+
+<section id="privacy" class="section">
+  <div class="container privacy">
+    <div class="privacy__copy reveal">
+      <p class="eyebrow">Privacy by architecture</p>
+      <h2>Analytics that respects your users</h2>
+      <p class="lead">
+        Uptimizr was designed privacy-first from the ground up. The collector is built so that the
+        responsible default is also the easy default.
+      </p>
+    </div>
+    <div class="grid grid--2 privacy__grid">
+      {
+        points.map((p, i) => (
+          <article class="card reveal" style={`transition-delay:${(i % 2) * 60}ms`}>
+            <h3>{p.title}</h3>
+            <p>{p.body}</p>
+          </article>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .privacy__copy {
+    max-width: 640px;
+    margin-bottom: 2.2rem;
+  }
+  .privacy__grid .card h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+  }
+  .privacy__grid .card p {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 0.94rem;
+  }
+</style>

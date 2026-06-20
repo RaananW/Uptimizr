@@ -1,0 +1,122 @@
+---
+title: Session replay
+description: Re-drive a captured session in your own scene with @uptimizr/replay — camera pose, pointer, mesh, custom, input, and scene-actor events.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Replay re-drives a captured session in **your own** scene: camera pose is applied directly, and
+pointer / mesh / custom / input events are surfaced to callbacks so you can draw a cursor, highlight a
+mesh, or annotate a timeline.
+
+:::caution
+The collector must have **raw-session retention** enabled (`ENABLE_RAW_SESSION_RETENTION=true`) for
+the session-events endpoint to return data. A `403` means it's off.
+:::
+
+## Option A — npm
+
+```bash
+npm install @uptimizr/replay
+```
+
+<Tabs syncKey="engine">
+  <TabItem label="Babylon.js">
+  ```ts
+  import { fetchSessionEvents, ReplayPlayer } from "@uptimizr/replay";
+  import { createBabylonReplayDriver } from "@uptimizr/replay/babylon";
+
+  const events = await fetchSessionEvents({ endpoint, apiKey, sessionId });
+  const driver = createBabylonReplayDriver({
+    scene,
+    onPointer: (screen, hitPoint, hitMesh, type) => { /* draw cursor / flash */ },
+    onMeshInteraction: (mesh, kind) => { /* highlight */ },
+    onCustom: (name, props) => { /* timeline marker */ },
+    onInputAction: (input, ts) => { /* input.action / input.source / input.code / input.button */ },
+    onLifecycle: (event, ts) => { /* viewport_resize / focus_change / context_lost / … */ },
+    onError: (error, ts) => { /* mark a runtime_error (only if captureErrors was on) */ },
+  });
+
+  const player = new ReplayPlayer(events, driver, { speed: 1 });
+  player.play();
+  // player.pause(); player.seek(ms); player.stop();
+  ```
+  </TabItem>
+  <TabItem label="three.js">
+  ```ts
+  import { fetchSessionEvents, ReplayPlayer } from "@uptimizr/replay";
+  import { createThreeReplayDriver } from "@uptimizr/replay/three";
+
+  const events = await fetchSessionEvents({ endpoint, apiKey, sessionId });
+  // three has no scene.activeCamera, so `camera` is required.
+  const driver = createThreeReplayDriver({
+    scene,
+    camera, // required
+    onPointer: (screen, hitPoint, hitMesh, type) => { /* draw cursor / flash */ },
+  });
+
+  const player = new ReplayPlayer(events, driver, { speed: 1 });
+  player.play();
+  ```
+  </TabItem>
+</Tabs>
+
+`ReplayPlayer` is deterministic — seeking backward resets the driver and replays from the start.
+`player.durationMs` gives the total length.
+
+### Replaying scene actors
+
+To replay [scene actors](/docs/guides/mesh-tracking/#scene-actors-node_transform--opt-in)
+(`node_transform`), pass a `nodes` map from each recorded `nodeId` to the engine node to
+drive, and/or an `onNodeTransform` callback to observe every sample:
+
+```ts
+const driver = createBabylonReplayDriver({
+  scene,
+  nodes: {
+    "npc-guard": () => scene.getMeshByName("Guard_root"), // resolver, name, or ref
+  },
+  onNodeTransform: (sample, ts) => {
+    /* sample.nodeId / sample.boneId? / sample.position / sample.rotation / sample.scale? */
+  },
+});
+```
+
+The Babylon, three, and PlayCanvas drivers re-apply Tier-1 root transforms **and** Tier-2 skeleton bones
+(matching each bone by name on the node's skeleton). The `babylon-lite` driver drives the Tier-1 root
+and forwards bone samples to the callback only. Unknown `nodeId` / `boneId` are skipped without error
+(forward/back-compatible).
+
+## Option B — `<script>` tag
+
+The global build exposes `window.UptimizrReplay`, with a one-call `replayInScene` convenience that
+fetches and plays a session:
+
+```js
+const r = document.createElement("script");
+r.src = "https://cdn.jsdelivr.net/npm/@uptimizr/replay/dist/uptimizr-replay.global.js";
+r.onload = () => {
+  UptimizrReplay.replayInScene({
+    scene,
+    endpoint: "https://collect.example.com",
+    apiKey: "your-project-api-key",
+    sessionId: "<copy from the dashboard Sessions table>",
+    debug: true, // log fetch/play progress to the console
+  });
+};
+document.head.appendChild(r);
+```
+
+`replayInScene` starts playback immediately — it does not wait for the scene to be "ready", so call it
+once `scene` exists and has an `activeCamera`. It always logs a concise summary and warns about the
+common "nothing happens" causes: an empty session, a session with no `camera_sample` events (camera
+won't move), or a scene with no active camera. (`pnpm playground` prints this snippet pre-filled and
+serves the bundle at `/uptimizr-replay.global.js`.)
+
+## Troubleshooting
+
+- **`403` from the events endpoint** — raw-session retention is off (`ENABLE_RAW_SESSION_RETENTION`).
+- **`200` with 0 events** — usually an **API-key / project mismatch**: reads are scoped to the key's
+  project, so a valid session id looked up with another project's key returns nothing. Copy the session
+  id and the API key from the **same** dashboard project.
+- **Camera doesn't move** — the session has no `camera_sample` events.

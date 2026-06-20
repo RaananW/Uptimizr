@@ -1,0 +1,59 @@
+{
+  "name": "@uptimizr/dashboard",
+  "version": "0.1.0",
+  "description": "Uptimizr analytics dashboard — a static-export SPA that reads the collector query API. Serve it standalone, all-in-one via the collector, or drop the assets on any static host.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/apps/dashboard"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://github.com/RaananW/Uptimizr/tree/main/oss/apps/dashboard#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "bin": {
+    "uptimizr-dashboard": "./server/standalone.mjs"
+  },
+  "files": [
+    "out",
+    "server",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "dotenv -e ../../../.env -- next dev -p 3000",
+    "build": "NODE_ENV=production next build",
+    "build:static": "NODE_ENV=production DASHBOARD_STATIC=1 next build",
+    "prepack": "NODE_ENV=production DASHBOARD_STATIC=1 next build",
+    "start": "NODE_ENV=production next start -p 3000",
+    "serve:static": "node server/standalone.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf .next out"
+  },
+  "dependencies": {
+    "@babylonjs/core": "^9.13.0",
+    "@uptimizr/heatmap": "workspace:*",
+    "@uptimizr/react": "workspace:*",
+    "@uptimizr/replay": "workspace:*",
+    "next": "^16.2.9",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.21",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@tailwindcss/postcss": "^4.3.1",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^4.3.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}

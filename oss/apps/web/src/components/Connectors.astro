@@ -1,0 +1,146 @@
+---
+const connectors = [
+  { name: "Babylon.js", pkg: "@uptimizr/babylon", engine: "Babylon", status: "Stable" },
+  { name: "Babylon Lite", pkg: "@uptimizr/babylon-lite", engine: "Babylon", status: "Stable" },
+  { name: "three.js", pkg: "@uptimizr/three", engine: "three.js", status: "Stable" },
+  { name: "PlayCanvas", pkg: "@uptimizr/playcanvas", engine: "PlayCanvas", status: "Beta" },
+  { name: "react-three-fiber", pkg: "@uptimizr/r3f", engine: "React Three Fiber", status: "Beta" },
+  { name: "A-Frame", pkg: "@uptimizr/aframe", engine: "A-Frame", status: "Beta" },
+];
+---
+
+<section id="connectors" class="section section--alt">
+  <div class="container">
+    <p class="eyebrow reveal">One schema, every engine</p>
+    <h2 class="reveal">Connectors for the engines you ship</h2>
+    <p class="lead reveal">
+      Every connector emits the same versioned event contract, so heatmaps and replay work
+      identically no matter which renderer you use. Pick one to preview its setup below
+      <span aria-hidden="true">↓</span>
+    </p>
+    <p class="conns__scope reveal">
+      Uptimizr targets <strong>3D on the web</strong> — WebGL/WebGPU engines that run in the
+      browser. Native runtimes like Unity and Godot aren't supported yet.
+    </p>
+    <div class="grid grid--3 conns">
+      {
+        connectors.map((c, i) => (
+          <button
+            type="button"
+            class="card conn reveal"
+            style={`transition-delay:${(i % 3) * 60}ms`}
+            data-pkg={c.pkg}
+            data-engine={c.engine}
+            aria-pressed={i === 0 ? "true" : "false"}
+          >
+            <div class="conn__head">
+              <h3>{c.name}</h3>
+              <span class={`tag ${c.status === "Stable" ? "tag--stable" : "tag--beta"}`}>{c.status}</span>
+            </div>
+            <code class="conn__pkg">{c.pkg}</code>
+          </button>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<script>
+  const buttons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>("#connectors .conn"),
+  );
+  const pkgTargets = document.querySelectorAll<HTMLElement>("[data-uz-pkg]");
+  const engineTargets = document.querySelectorAll<HTMLElement>("[data-uz-engine]");
+  const codecard = document.querySelector<HTMLElement>(".quickstart__code .codecard");
+
+  function select(btn: HTMLButtonElement) {
+    const pkg = btn.dataset.pkg;
+    if (!pkg) return;
+    const engine = btn.dataset.engine ?? "";
+
+    for (const b of buttons) b.setAttribute("aria-pressed", String(b === btn));
+    for (const el of pkgTargets) el.textContent = pkg;
+    for (const el of engineTargets) el.textContent = engine;
+
+    if (codecard) {
+      codecard.classList.remove("codecard--flash");
+      void codecard.offsetWidth; // restart the highlight animation
+      codecard.classList.add("codecard--flash");
+    }
+  }
+
+  for (const btn of buttons) {
+    btn.addEventListener("click", () => select(btn));
+  }
+</script>
+
+<style>
+  .conns {
+    margin-top: 2.4rem;
+  }
+  .conns__scope {
+    margin-top: 0.9rem;
+    max-width: 60ch;
+    font-size: 0.92rem;
+    color: var(--fg-muted);
+  }
+  .conns__scope strong {
+    color: var(--fg-hi);
+    font-weight: 600;
+  }
+  .conn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    background: var(--panel);
+  }
+  .conn:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+  .conn[aria-pressed="true"] {
+    border-color: var(--amber);
+    box-shadow:
+      0 0 0 1px var(--amber) inset,
+      0 18px 50px -32px rgba(237, 166, 62, 0.7);
+  }
+  .conn[aria-pressed="true"] .conn__pkg {
+    color: var(--fg-hi);
+  }
+  .conn__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+  }
+  .conn h3 {
+    margin: 0;
+    font-size: 1.1rem;
+  }
+  .conn__pkg {
+    display: inline-block;
+    margin-top: 0.9rem;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    color: var(--saffron);
+  }
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 0.25em 0.6em;
+    border-radius: 999px;
+    border: 1px solid var(--edge);
+  }
+  .tag--stable {
+    color: var(--saffron);
+    border-color: rgba(244, 200, 75, 0.4);
+  }
+  .tag--beta {
+    color: var(--fg-muted);
+  }
+</style>

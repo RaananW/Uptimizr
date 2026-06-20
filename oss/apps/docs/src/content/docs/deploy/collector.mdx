@@ -1,0 +1,122 @@
+---
+title: Run the collector
+description: Self-host the Uptimizr collector from npm — the OSS default needs no Docker, just a single DuckDB file.
+---
+
+import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The collector is a single Fastify process that ingests events and serves the query API. You run it
+**straight from npm** — there is nothing to clone. The **OSS default store is DuckDB**: one
+`.duckdb` file holds both events and metadata, so the collector self-hosts in **one process with no
+external database service**.
+
+:::tip[Working _on_ Uptimizr instead of _with_ it?]
+This page is for **running** the collector in your own project. If you want to hack on Uptimizr
+itself, clone the monorepo and follow [Contributing](/docs/contributing/) — that path uses
+`pnpm` from source, not the published package.
+:::
+
+## OSS quickstart (no Docker, from npm)
+
+<Tabs>
+  <TabItem label="Scaffold (recommended)">
+
+The scaffolder generates a ready-to-run, Docker-free self-host folder — a strong secret, a local
+config, a tiny runner, and a client snippet for your engine:
+
+```bash
+npm create uptimizr@latest
+```
+
+Follow the prompts, then start it:
+
+```bash
+cd <your-folder>
+npm start            # runs `uptimizr serve` under the hood
+```
+
+  </TabItem>
+  <TabItem label="CLI (manual)">
+
+Use the `uptimizr` CLI shipped with `@uptimizr/collector-server` directly:
+
+<Steps>
+
+1. **Initialise.** Generates a `VISITOR_HASH_SECRET`, creates the DuckDB store, mints a first
+   project + API key, and writes a local `.env`. The project id, endpoint, and key are printed
+   **once** — copy the key into your app config.
+
+   ```bash
+   npx -p @uptimizr/collector-server uptimizr init
+   ```
+
+2. **Serve.** Runs the ingestion + query API (migrations run automatically). Defaults to
+   `COLLECTOR_STORE=duckdb` on port `4318`.
+
+   ```bash
+   npx -p @uptimizr/collector-server uptimizr serve
+   ```
+
+3. **Send events.** Point your connector's `endpoint` at the collector — e.g.
+   `http://localhost:4318` — then query them back via the [HTTP API](/docs/api/overview/).
+
+   ```ts
+   trackScene(scene, {
+     projectId: "<printed-project-id>",
+     endpoint: "http://localhost:4318",
+   });
+   ```
+
+</Steps>
+
+Need more projects/keys later? `npx -p @uptimizr/collector-server uptimizr new-project "<name>"`.
+
+  </TabItem>
+</Tabs>
+
+## Inspect & back up
+
+- Inspect the store directly with the DuckDB CLI (`DUCKDB_PATH` defaults to
+  `./data/uptimizr.duckdb`):
+
+  ```bash
+  duckdb ./data/uptimizr.duckdb "SELECT event_type, count(*) FROM events GROUP BY 1"
+  ```
+
+- **Back up** = copy the `.duckdb` file. **Reset** = delete it and re-run `uptimizr init`.
+
+:::caution[Single-writer constraint]
+DuckDB is an embedded, single-writer store: only **one process** may open the file read-write at a
+time. Run a single collector instance against a given file, and stop it before inspecting with
+another writer. Concurrent readers are fine in read-only mode. For multi-writer / horizontal scale,
+use the optional ClickHouse + Postgres scale tier.
+:::
+
+## Serve the dashboard too
+
+The collector can optionally serve the dashboard static assets at `/`, so a single process exposes
+the ingestion API, query API, UI, and the DuckDB file. See [Serve the
+dashboard](/docs/deploy/dashboard/) for the all-in-one and standalone options.
+
+## Scale path (Docker)
+
+When you outgrow a single file, the ClickHouse (events) + Postgres (metadata) engines back the
+larger deployment. Set `COLLECTOR_STORE` to the scale store and point the collector at those
+engines. This path lives in the monorepo's `infra/docker` and is documented for contributors in
+[Contributing](/docs/contributing/).
+
+## Configuration
+
+Key environment variables (the CLI writes a starter `.env`; see the repo's `.env.example` for the
+full list):
+
+| Variable                       | Purpose                                                            |
+| ------------------------------ | ----------------------------------------------------------------- |
+| `COLLECTOR_STORE`              | `duckdb` (default) or the scale store.                            |
+| `DUCKDB_PATH`                  | Path to the DuckDB file (default `./data/uptimizr.duckdb`).       |
+| `COLLECTOR_PORT`               | Port the collector listens on (default `4318`).                  |
+| `VISITOR_HASH_SECRET`          | Secret for the daily-rotating, server-side visitor hash.          |
+| `COLLECTOR_CORS_ORIGINS`       | Allowed browser origins for ingestion/query (comma-separated).    |
+| `ENABLE_RAW_SESSION_RETENTION` | Opt-in raw per-session event retention, required for replay.      |
+
+See [Privacy & configuration](/docs/deploy/privacy/) for the privacy-relevant settings.

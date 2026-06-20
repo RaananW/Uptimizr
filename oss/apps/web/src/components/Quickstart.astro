@@ -1,0 +1,144 @@
+---
+const docs = "/docs/";
+---
+
+<section id="quickstart" class="section section--snug">
+  <div class="container quickstart">
+    <div class="quickstart__copy reveal">
+      <p class="eyebrow">Three lines to first heatmap</p>
+      <h2>Instrument your scene in minutes</h2>
+      <p class="lead">
+        Install the connector for your engine, point it at a collector, and Uptimizr starts
+        capturing gaze, clicks, mesh interactions and performance — batched and sent over a beacon,
+        cookieless by default.
+      </p>
+      <ol class="quickstart__steps">
+        <li>Install the connector package for your engine.</li>
+        <li>Call <code>trackScene</code> with your project id and collector endpoint.</li>
+        <li>Open the dashboard and watch heatmaps fill in.</li>
+      </ol>
+      <a class="btn btn--primary" href={docs}>Full integration guide</a>
+    </div>
+
+    <div class="quickstart__code reveal">
+      <div class="codecard">
+        <div class="codecard__bar">
+          <span></span><span></span><span></span>
+          <em>scene.ts</em>
+        </div>
+        <pre class="code"><code><span class="tok-com"># install the connector for your engine</span>
+<span class="tok-fn">npm</span> i <span class="tok-pkg" data-uz-pkg>@uptimizr/babylon</span>
+
+<span class="tok-com">// instrument an existing <span data-uz-engine>Babylon</span> scene</span>
+<span class="tok-key">import</span> &#123; trackScene &#125; <span class="tok-key">from</span> <span class="tok-str">"<span data-uz-pkg>@uptimizr/babylon</span>"</span>;
+
+<span class="tok-key">const</span> tracker = <span class="tok-fn">trackScene</span>(scene, &#123;
+  projectId: <span class="tok-str">"my-3d-app"</span>,
+  endpoint: <span class="tok-str">"https://collector.example.com"</span>,
+&#125;);
+
+<span class="tok-com">// later, on teardown</span>
+tracker.<span class="tok-fn">dispose</span>();</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .quickstart {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(1.5rem, 4vw, 3rem);
+    align-items: center;
+  }
+  .quickstart__copy,
+  .quickstart__code {
+    min-width: 0;
+  }
+  .section--snug {
+    padding-top: clamp(28px, 3.5vw, 52px);
+  }
+  .quickstart__steps {
+    margin: 1.4rem 0;
+    padding-left: 1.2rem;
+    color: var(--fg-muted);
+    display: grid;
+    gap: 0.5rem;
+  }
+  .quickstart__steps code {
+    color: var(--saffron);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+  .codecard {
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--panel);
+    box-shadow: 0 30px 70px -45px rgba(224, 123, 57, 0.5);
+  }
+  .codecard--flash {
+    animation: codecard-flash 0.6s var(--ease);
+  }
+  @keyframes codecard-flash {
+    0% {
+      border-color: var(--amber);
+      box-shadow:
+        0 0 0 1px var(--amber) inset,
+        0 30px 70px -45px rgba(224, 123, 57, 0.5);
+    }
+    100% {
+      border-color: var(--edge);
+      box-shadow: 0 30px 70px -45px rgba(224, 123, 57, 0.5);
+    }
+  }
+  .tok-pkg {
+    color: var(--saffron);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .codecard--flash {
+      animation: none;
+    }
+  }
+  .codecard__bar {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--edge);
+    background: var(--panel-2);
+  }
+  .codecard__bar span {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--edge);
+  }
+  .codecard__bar span:first-child {
+    background: var(--coral);
+  }
+  .codecard__bar span:nth-child(2) {
+    background: var(--amber);
+  }
+  .codecard__bar span:nth-child(3) {
+    background: var(--saffron);
+  }
+  .codecard__bar em {
+    margin-left: auto;
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    color: var(--fg-muted);
+  }
+  .codecard .code {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  @media (max-width: 880px) {
+    .quickstart {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

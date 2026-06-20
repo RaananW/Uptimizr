@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/*
+ * Brand tokens — the Ember palette (docs/design/brand-guidelines.md).
+ * Warm espresso surfaces under a saffron→rust heat ramp. These are the single
+ * source of truth for the dashboard's colours and type; use the semantic
+ * utilities (bg-panel, text-fg, border-edge, text-amber, …) rather than raw
+ * Tailwind palette steps.
+ */
+@theme {
+  /* Surfaces & text (espresso) */
+  --color-ink: #161210;
+  --color-panel: #201913;
+  --color-edge: #34291f;
+  --color-fg-hi: #f4eadf;
+  --color-fg: #d8c8b8;
+  --color-fg-muted: #a8917c;
+
+  /* Heat ramp (data + accents) */
+  --color-saffron: #f4c84b;
+  --color-amber: #eda63e;
+  --color-ember: #e07b39;
+  --color-coral: #d85438;
+  --color-rust: #b22f26;
+
+  /* Semantic */
+  --color-info: #f4c84b;
+  --color-warn: #eda63e;
+  --color-error: #d64533;
+  --color-success: #9bb23e;
+
+  /* Type */
+  --font-display: var(--font-space-grotesk), system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-ink text-fg antialiased;
+  font-family: var(--font-body);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@uptimizr/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Uptimizr marketing site (uptimizr.com) — OSS 3D-scene analytics. Astro static site.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --port 4321",
+    "build": "astro build",
+    "preview": "astro preview",
+    "lint": "eslint .",
+    "typecheck": "astro check --minimumSeverity error",
+    "clean": "rm -rf dist .astro node_modules/.vite"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.3",
+    "@babylonjs/core": "^9.13.0",
+    "@fontsource-variable/space-grotesk": "^5.2.5",
+    "@fontsource/jetbrains-mono": "^5.2.5",
+    "astro": "^6.4.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.4"
+  }
+}

@@ -1,0 +1,17 @@
+# @uptimizr/heatmap
+
+> Draws a world-space voxel heatmap (and a gaze dome) into the developer's own 3D scene — the
+> Tier 0 overlay of ADR 0010. Framework-agnostic core with engine adapters behind subpaths.
+
+## Docs
+
+- [Package reference](./README.md): world heatmap, gaze dome, the pure builders, driver design, color ramp.
+- [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): the heatmap query endpoints.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): spatial 3D heatmaps (0010).
+
+## Key exports
+
+- `showWorldHeatmap(options)` / `showGazeDome(options)` (subpath `./babylon`) — one-call fetch + render.
+- `HeatmapOverlay` / `GazeOverlay` + `buildHeatmapInstances` / `buildGazeInstances` — engine-free core.
+- `createBabylonHeatmapDriver(options)` — the Babylon `HeatmapDriver`.

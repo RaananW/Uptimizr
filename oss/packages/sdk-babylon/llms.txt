@@ -1,0 +1,17 @@
+# @uptimizr/babylon
+
+> The Babylon.js connector for Uptimizr. Registers as an sdk-core collector and captures camera
+> pose, pointer move/click, mesh picks, and FPS. `@babylonjs/core` is a (type-only) peer dependency.
+
+## Docs
+
+- [Package reference](./README.md): `trackScene`, advanced composition, sampling/fidelity, standalone playground bundle.
+- [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): input-source-agnostic events (0011), sampling & fidelity (0012).
+
+## Key exports
+
+- `trackScene(scene, options)` — one-call integration; returns the `UptimizrClient`.
+- `babylonCollector(options)` — the collector for manual composition.
+- `readDeviceCaps(scene)` — device/GPU caps for `session_start`.

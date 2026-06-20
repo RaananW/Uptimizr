@@ -1,0 +1,120 @@
+---
+title: Multi-scene experiences
+description: Track game levels, multi-room walkthroughs, and viewers that swap models — all within a single, replay-complete session.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Real 3D apps rarely show one fixed scene. A game moves the player between **levels**; a configurator
+or product viewer **swaps models** in and out; an architectural walkthrough crosses **rooms or
+floors**. Uptimizr treats all of these as *scenes within one session* — you keep a single tracker
+running and tell it when the active scene changes.
+
+## Why one session, not many
+
+Stopping and restarting tracking on every level/model change would fragment the visit into
+disconnected sessions and **break replay continuity** (the timeline must stay ordered and
+`sessionId`-keyed). Instead, keep one `trackScene(...)` client alive for the whole visit and mark
+the transitions. Each scene becomes a **segment** of the same session, so you can:
+
+- compare heatmaps, dwell, and performance **per level / per model**, and
+- still replay the entire visit end to end as one ordered stream.
+
+## The two calls
+
+Set the **initial** scene id when you start, then call `setScene(id)` every time the active scene
+changes.
+
+```ts
+const client = trackScene(scene, {
+  projectId,
+  endpoint,
+  meta: { sceneId: "level-1" }, // initial scene / area / model
+});
+
+// Later, when the next scene loads:
+client.setScene("level-2");
+```
+
+`setScene` emits an ordered `scene_change` marker and stamps the new `sceneId` onto **every
+subsequent event**, so gaze/click heatmaps, mesh interactions, performance, and custom events are
+all attributable to the scene that was active when they happened. Filter any read endpoint by the
+`scene` query param to get per-scene results.
+
+:::note[Scene id, not engine scene]
+`sceneId` is a stable analytics label _you_ choose (`"level-2"`, `"sku-chair-walnut"`,
+`"lobby"`). It does not have to match an engine `Scene` object — swapping models inside a single
+engine scene is still a scene change for analytics.
+:::
+
+## Patterns
+
+<Tabs>
+  <TabItem label="Game levels">
+
+Call `setScene` from your level-loaded hook, after the new level is live:
+
+```ts
+async function loadLevel(id: string) {
+  await engine.loadLevel(id);
+  client.setScene(id); // e.g. "level-3", "boss-arena"
+}
+```
+
+Use stable, low-cardinality ids (the level's slug), not a per-playthrough guid — that keeps
+aggregates meaningful across visitors.
+
+  </TabItem>
+  <TabItem label="Viewer / configurator">
+
+When the visitor switches the displayed model, treat each model as a scene:
+
+```ts
+function showModel(sku: string) {
+  viewer.load(sku);
+  client.setScene(sku); // e.g. "sku-chair-walnut"
+}
+```
+
+Now each model has its own view-direction and click heatmaps even though they share one canvas and
+one session.
+
+  </TabItem>
+  <TabItem label="Rooms / floors">
+
+For a continuous walkthrough, fire `setScene` on the trigger that marks entering a new area
+(portal volume, teleport, floor change):
+
+```ts
+onRoomEnter((room) => client.setScene(room.id)); // "lobby", "gallery-2", "roof"
+```
+
+  </TabItem>
+</Tabs>
+
+## Querying per scene
+
+Most read endpoints accept a `scene` filter, so you can scope an aggregate to a single
+level/model/area. Reads are scoped to the project behind your `x-api-key` — there is no
+`projectId` query param:
+
+```bash
+curl "$ENDPOINT/api/v1/meshes/dwell?scene=level-2" \
+  -H "x-api-key: $KEY"
+```
+
+Omit the filter to see the whole session across all scenes, and use `/api/v1/scenes` to list the
+distinct scenes that have activity. See the [query endpoints](/docs/api/query/) for the full
+parameter list.
+
+## Replay across scenes
+
+Because the transitions are recorded as ordered `scene_change` markers in the same stream, [session
+replay](/docs/guides/replay/) re-drives the visit through every scene change in order — your replay
+target can switch levels/models in lockstep by reacting to the `scene_change` events.
+
+## Related
+
+- [Custom events & input](/docs/guides/events/) — the rest of the client API (`track`, `trackInput`).
+- [Sessions & lifecycle](/docs/guides/sessions/) — how a session starts, flushes, and ends.
+- [Query endpoints](/docs/api/query/) — filtering aggregates by `sceneId`.

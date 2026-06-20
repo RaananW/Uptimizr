@@ -1,0 +1,54 @@
+{
+  "name": "@uptimizr/playcanvas",
+  "version": "0.1.0",
+  "description": "PlayCanvas connector for Uptimizr — captures camera, pointer, mesh, and perf events as an sdk-core collector.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/sdk-playcanvas"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://github.com/RaananW/Uptimizr/tree/main/oss/packages/sdk-playcanvas#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && pnpm run bundle && pnpm run bundle:global",
+    "bundle": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --external:playcanvas --minify --legal-comments=none --banner:js=\"/* @uptimizr/playcanvas standalone bundle — Apache-2.0. Async-import into any page that already runs PlayCanvas; playcanvas stays external (peer dependency, never bundled). */\" --outfile=dist/uptimizr-playcanvas.js",
+    "bundle:global": "esbuild src/index.ts --bundle --format=iife --global-name=Uptimizr --platform=browser --target=es2022 --external:playcanvas --minify --legal-comments=none --banner:js=\"/* @uptimizr/playcanvas standalone bundle (global) — Apache-2.0. Inject via a <script> tag into a page that runs PlayCanvas; exposes window.Uptimizr. playcanvas stays external (peer dependency, never bundled). */\" --outfile=dist/uptimizr-playcanvas.global.js",
+    "bundle:watch": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --external:playcanvas --sourcemap --watch --outfile=dist/uptimizr-playcanvas.js",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "playcanvas": "^2.0.0"
+  },
+  "dependencies": {
+    "@uptimizr/schema": "workspace:*",
+    "@uptimizr/sdk-core": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "playcanvas": "2.19.7",
+    "vitest": "^4.1.9"
+  }
+}

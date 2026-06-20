@@ -1,0 +1,5 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Uptimizr">
+  <!-- Single-colour mark. Set color via the SVG element's color / currentColor. -->
+  <path fill-rule="evenodd" fill="currentColor"
+    d="M128 40 L202 82 L202 170 L128 212 L54 170 L54 82 Z M83.6 98.8 L83.6 151.3 L128.0 176.5 L172.4 151.3 L172.4 98.8 L157.6 107.2 L157.6 142.7 L128.0 159.5 L98.4 142.7 L98.4 107.2 Z M128.79 122.61 L54.79 80.61 L53.21 83.39 L127.21 125.39 Z M128.79 125.39 L202.79 83.39 L201.21 80.61 L127.21 122.61 Z M126.40 124.00 L126.40 212.00 L129.60 212.00 L129.60 124.00 Z"/>
+</svg>
