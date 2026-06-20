@@ -318,6 +318,10 @@ export function SessionReplay({
           import("@babylonjs/core/Meshes/meshBuilder.js"),
           import("@babylonjs/core/Materials/standardMaterial.js"),
           import("@uptimizr/replay"),
+          // Side effect only: registers Babylon's `Ray` so `scene.pick()` (used by
+          // the hover overlay) works. Deep imports tree-shake it out otherwise →
+          // "Ray was not registered as a side effect". Not destructured.
+          import("@babylonjs/core/Culling/ray.js"),
         ]);
 
         const events = await fetchSessionEvents({ endpoint: baseUrl, apiKey, sessionId });

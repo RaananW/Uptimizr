@@ -382,6 +382,9 @@ export function FlowSankey3D({
           import("@babylonjs/core/Maths/math.js"),
           import("@babylonjs/core/Meshes/meshBuilder.js"),
           import("@babylonjs/core/Materials/standardMaterial.js"),
+          // Side-effect: registers Babylon's `Ray` so `scene.pick()` (hover
+          // overlay) works; deep imports tree-shake it out otherwise.
+          import("@babylonjs/core/Culling/ray.js"),
         ]);
         if (disposed) return;
 
@@ -676,6 +679,9 @@ export function FlowSankey3D({
           import("@babylonjs/core/Maths/math.js"),
           import("@babylonjs/core/Meshes/meshBuilder.js"),
           import("@babylonjs/core/Materials/standardMaterial.js"),
+          // Side-effect: registers Babylon's `Ray` so `scene.pick()` (hover
+          // overlay) works; deep imports tree-shake it out otherwise.
+          import("@babylonjs/core/Culling/ray.js"),
         ]);
         if (disposed) return;
 

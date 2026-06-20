@@ -77,6 +77,10 @@ export function LiveSessionReplay({
           import("@babylonjs/core/Maths/math.js"),
           import("@babylonjs/core/Meshes/meshBuilder.js"),
           import("@babylonjs/core/Materials/standardMaterial.js"),
+          // Side effect only: registers Babylon's `Ray` so `scene.pick()` (used by
+          // the hover overlay) works. Deep imports tree-shake it out otherwise →
+          // "Ray was not registered as a side effect". Not destructured.
+          import("@babylonjs/core/Culling/ray.js"),
         ]);
         if (disposed) return;
 

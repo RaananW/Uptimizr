@@ -67,6 +67,9 @@ export function CameraDome3D({ bins, gridSize }: { bins: DirectionBin[]; gridSiz
           import("@babylonjs/core/Materials/Textures/dynamicTexture.js"),
           // Side-effect: augments Mesh.prototype with thinInstance* methods.
           import("@babylonjs/core/Meshes/thinInstanceMesh.js"),
+          // Side-effect: registers Babylon's `Ray` so `scene.pick()` (hover
+          // overlay) works; deep imports tree-shake it out otherwise.
+          import("@babylonjs/core/Culling/ray.js"),
         ]);
         if (disposed) return;
 
