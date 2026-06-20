@@ -2,19 +2,18 @@
 // connector, and exposes replay, 3D heatmap overlay, and scene-proxy glue. The
 // shared shell (src/shell.ts) owns all of the surrounding UI.
 
-import {
-  ArcRotateCamera,
-  Color3,
-  CreateBox,
-  CreateGround,
-  Engine,
-  HemisphericLight,
-  PointerEventTypes,
-  StandardMaterial,
-  Vector3,
-} from "@babylonjs/core";
-import type { Camera, Scene as BabylonScene } from "@babylonjs/core";
+import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera.js";
+import { Engine } from "@babylonjs/core/Engines/engine.js";
+import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents.js";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight.js";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import { Color3 } from "@babylonjs/core/Maths/math.color.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder.js";
+import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder.js";
 import { Scene } from "@babylonjs/core/scene.js";
+import type { Camera } from "@babylonjs/core/Cameras/camera.js";
+import type { Scene as BabylonScene } from "@babylonjs/core/scene.js";
 
 import { scanSceneProxy, trackScene } from "@uptimizr/babylon";
 import { showWorldHeatmap } from "@uptimizr/heatmap/babylon";

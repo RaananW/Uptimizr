@@ -21,8 +21,9 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 import { createThreeEngineModule, type ThreeSceneSetup } from "../../engines/three.js";
 import type { EngineMountContext } from "../../engine.js";
+import { assetUrl } from "../../assets.js";
 
-const MODEL_URL = "/models/ToyCar.glb";
+const MODEL_URL = assetUrl("models/ToyCar.glb");
 const TARGET_SIZE = 2.5;
 
 async function buildShowcaseScene(

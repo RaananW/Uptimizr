@@ -25,6 +25,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 
 import { BOX_COLORS } from "../engine.js";
+import { assetUrl } from "../assets.js";
 
 const ROOM = 28;
 const WALL_HEIGHT = 6;
@@ -125,7 +126,7 @@ export function buildWalkableScene(
   scene.add(npc);
   let npcMixer: AnimationMixer | null = null;
   void new GLTFLoader()
-    .loadAsync("/models/RiggedFigure.glb")
+    .loadAsync(assetUrl("models/RiggedFigure.glb"))
     .then((gltf) => {
       const figure = gltf.scene;
       figure.name = "npc-figure";

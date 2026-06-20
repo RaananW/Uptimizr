@@ -5,19 +5,22 @@
 // first-person navigation model the dashboard segments on (see ADR 0026).
 
 import "@babylonjs/loaders/glTF";
-import {
-  Color3,
-  CreateBox,
-  CreateGround,
-  HemisphericLight,
-  LoadAssetContainerAsync,
-  StandardMaterial,
-  TransformNode,
-  UniversalCamera,
-  Vector3,
-} from "@babylonjs/core";
-import type { Camera, Engine, Scene as BabylonScene } from "@babylonjs/core";
+import "@babylonjs/core/Collisions/collisionCoordinator.js";
+import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera.js";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight.js";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import { Color3 } from "@babylonjs/core/Maths/math.color.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder.js";
+import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader.js";
 import { Scene } from "@babylonjs/core/scene.js";
+import type { Camera } from "@babylonjs/core/Cameras/camera.js";
+import type { Engine } from "@babylonjs/core/Engines/engine.js";
+import type { Scene as BabylonScene } from "@babylonjs/core/scene.js";
+
+import { assetUrl } from "../assets.js";
 
 import { BOX_COLORS } from "../engine.js";
 
@@ -135,7 +138,7 @@ export function buildWalkableScene(
   // walk animation groups loop via the scene render loop; until it arrives the
   // (empty) patrol node still walks the loop.
   const npc = new TransformNode("npc", scene);
-  void LoadAssetContainerAsync("/models/RiggedFigure.glb", scene)
+  void LoadAssetContainerAsync(assetUrl("models/RiggedFigure.glb"), scene)
     .then((container) => {
       container.addAllToScene();
       let min = new Vector3(Infinity, Infinity, Infinity);

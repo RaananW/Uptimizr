@@ -9,6 +9,7 @@ import * as pc from "playcanvas";
 import { createPlayCanvasEngineModule, type PlayCanvasSceneSetup } from "../../engines/playcanvas.js";
 import { buildWalkableScene } from "../../engines/playcanvas-walkable.js";
 import type { EngineMountContext } from "../../engine.js";
+import { assetUrl } from "../../assets.js";
 
 interface GalleryModel {
   readonly name: string;
@@ -17,9 +18,9 @@ interface GalleryModel {
 }
 
 const MODELS: GalleryModel[] = [
-  { name: "toycar", url: "/models/ToyCar.glb", size: 2.4 },
-  { name: "fox", url: "/models/Fox.glb", size: 2.8 },
-  { name: "sofa", url: "/models/GlamVelvetSofa.glb", size: 2.8 },
+  { name: "toycar", url: assetUrl("models/ToyCar.glb"), size: 2.4 },
+  { name: "fox", url: assetUrl("models/Fox.glb"), size: 2.8 },
+  { name: "sofa", url: assetUrl("models/GlamVelvetSofa.glb"), size: 2.8 },
 ];
 
 // Pedestal indices (into the walkable's `itemSpots`) to display the models on —

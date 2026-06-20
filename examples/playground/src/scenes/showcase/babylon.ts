@@ -4,24 +4,24 @@
 // scene-building (load + frame the model) is custom here.
 
 import "@babylonjs/loaders/glTF";
-import {
-  ArcRotateCamera,
-  Color3,
-  CreateGround,
-  DirectionalLight,
-  HemisphericLight,
-  LoadAssetContainerAsync,
-  StandardMaterial,
-  TransformNode,
-  Vector3,
-} from "@babylonjs/core";
-import type { AbstractMesh, Engine } from "@babylonjs/core";
+import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera.js";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight.js";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight.js";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import { Color3 } from "@babylonjs/core/Maths/math.color.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader.js";
 import { Scene } from "@babylonjs/core/scene.js";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh.js";
+import type { Engine } from "@babylonjs/core/Engines/engine.js";
 
 import { createBabylonEngineModule, type BabylonSceneSetup } from "../../engines/babylon.js";
 import type { EngineMountContext } from "../../engine.js";
+import { assetUrl } from "../../assets.js";
 
-const MODEL_URL = "/models/ToyCar.glb";
+const MODEL_URL = assetUrl("models/ToyCar.glb");
 
 async function buildShowcaseScene(
   engine: Engine,

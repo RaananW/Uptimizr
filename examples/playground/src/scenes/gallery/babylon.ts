@@ -5,12 +5,17 @@
 // `createBabylonEngineModule`; only the model loading/placement is custom.
 
 import "@babylonjs/loaders/glTF";
-import { DirectionalLight, LoadAssetContainerAsync, TransformNode, Vector3 } from "@babylonjs/core";
-import type { Engine, Scene as BabylonScene } from "@babylonjs/core";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader.js";
+import type { Engine } from "@babylonjs/core/Engines/engine.js";
+import type { Scene as BabylonScene } from "@babylonjs/core/scene.js";
 
 import { createBabylonEngineModule, type BabylonSceneSetup } from "../../engines/babylon.js";
 import { buildWalkableScene } from "../../engines/babylon-walkable.js";
 import type { EngineMountContext } from "../../engine.js";
+import { assetUrl } from "../../assets.js";
 
 interface GalleryModel {
   readonly name: string;
@@ -19,9 +24,9 @@ interface GalleryModel {
 }
 
 const MODELS: GalleryModel[] = [
-  { name: "toycar", url: "/models/ToyCar.glb", size: 2.4 },
-  { name: "fox", url: "/models/Fox.glb", size: 2.8 },
-  { name: "sofa", url: "/models/GlamVelvetSofa.glb", size: 2.8 },
+  { name: "toycar", url: assetUrl("models/ToyCar.glb"), size: 2.4 },
+  { name: "fox", url: assetUrl("models/Fox.glb"), size: 2.8 },
+  { name: "sofa", url: assetUrl("models/GlamVelvetSofa.glb"), size: 2.8 },
 ];
 
 // Pedestal indices (into the walkable's `itemSpots`) to display the models on —

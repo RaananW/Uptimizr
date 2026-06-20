@@ -7,6 +7,7 @@
 import * as pc from "playcanvas";
 
 import { BOX_COLORS } from "../engine.js";
+import { assetUrl } from "../assets.js";
 
 const ROOM = 28;
 const WALL_HEIGHT = 6;
@@ -120,7 +121,7 @@ export function buildWalkableScene(
   // (empty) patrol node still walks the loop.
   const npc = new pc.Entity("npc");
   app.root.addChild(npc);
-  const figureAsset = new pc.Asset("npc-figure", "container", { url: "/models/RiggedFigure.glb" });
+  const figureAsset = new pc.Asset("npc-figure", "container", { url: assetUrl("models/RiggedFigure.glb") });
   app.assets.add(figureAsset);
   figureAsset.once("load", () => {
     const container = figureAsset.resource as pc.ContainerResource;
