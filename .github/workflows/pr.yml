@@ -50,6 +50,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Audit (production deps, high+)
+        run: pnpm audit --prod --audit-level=high
+
   scrub-gate:
     name: Scrub gate
     runs-on: ubuntu-latest
@@ -59,3 +62,23 @@ jobs:
 
       - name: Fail on forbidden tokens
         run: bash scripts/scrub-gate.sh
+
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan full history for secrets
+        run: gitleaks detect --source . --log-opts="--all" --redact --no-banner -v
