@@ -5,9 +5,15 @@
 // collector) is responsible for the SPA deep-link fallback.
 const isStatic = process.env.DASHBOARD_STATIC === "1";
 
+// Optional sub-path the static export is served under (e.g. `/dashboard` when the
+// embedded demo mounts the dashboard beside the playground on one origin). Only
+// applied when set, so the default root-served build is unaffected.
+const basePath = process.env.NEXT_BASE_PATH || undefined;
+
 const nextConfig = {
   reactStrictMode: true,
   ...(isStatic ? { output: "export" } : {}),
+  ...(basePath ? { basePath, assetPrefix: basePath } : {}),
   // Linting runs as its own Turborepo task (`pnpm lint`) with the repo's flat
   // ESLint config. Next 16 removed the build-time lint pass, so no `eslint`
   // key is needed here.

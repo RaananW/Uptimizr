@@ -25,6 +25,14 @@ Uptimizr is an **open-source data-collector** — a self-hostable SDK + ingestio
 licensed Apache-2.0. Run it on a single embedded DuckDB file with no external database service,
 or scale out to ClickHouse + Postgres when you need to.
 
+## Live demo
+
+Try it with **zero setup** at **[demo.uptimizr.com](https://demo.uptimizr.com)** — a fully
+in-browser test drive: the playground and dashboard run side-by-side, and the analytics database
+runs **on your device** via DuckDB-Wasm. No account, no server, nothing uploaded; closing the tab
+wipes everything. From source, run it with `pnpm dev:web` (demo on `http://localhost:4320`). See
+[oss/apps/demo](./oss/apps/demo/README.md).
+
 ## Tech stack
 
 - **Monorepo:** pnpm workspaces + Turborepo · TypeScript everywhere
@@ -41,7 +49,7 @@ or scale out to ClickHouse + Postgres when you need to.
 
 ```
 oss/        Open-source product (Apache-2.0)
-  apps/       collector-server (Fastify), dashboard (Next.js)
+  apps/       collector-server (Fastify), dashboard (Next.js), demo (in-browser test drive)
   packages/   schema, sdk-core, sdk-babylon, sdk-three, replay, db (DuckDB store + contracts)
 examples/   babylon-playground, three-playground — demo scenes for end-to-end testing
 infra/      docker-compose for the optional ClickHouse + Postgres scale engines

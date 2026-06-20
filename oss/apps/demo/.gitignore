@@ -1,0 +1,6 @@
+# Built embeds — produced by scripts/prepare-embeds.mjs, never committed.
+public/playground/
+public/dashboard/
+
+# Vite output
+dist/

@@ -13,6 +13,9 @@ export default tseslint.config(
       "**/.turbo/**",
       "**/coverage/**",
       "**/node_modules/**",
+      // Staged third-party app builds copied into the demo by prepare-embeds.
+      "oss/apps/demo/public/dashboard/**",
+      "oss/apps/demo/public/playground/**",
     ],
   },
   eslint.configs.recommended,
@@ -33,7 +36,7 @@ export default tseslint.config(
   },
   {
     // Node-run scripts and standalone server bins (not bundled for the browser).
-    files: ["**/server/**/*.{js,cjs,mjs}", "scripts/**/*.{js,cjs,mjs}"],
+    files: ["**/server/**/*.{js,cjs,mjs}", "**/scripts/**/*.{js,cjs,mjs}"],
     languageOptions: {
       globals: {
         process: "readonly",

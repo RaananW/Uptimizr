@@ -21,6 +21,7 @@ choices so they can evolve without churning an immutable record.
 | Sketch                                                                | Focus                                                                   |
 | --------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | [3D heatmap rendering](./3d-heatmap-rendering-design.md)              | Rendering, viewers, and scene representation for spatial heatmaps       |
+| [In-browser demo (`demo.uptimizr.com`)](./demo-in-browser-design.md)  | Backend-less side-by-side demo: DuckDB-Wasm store, SW shim, disposal    |
 | [Browser & runtime event capture](./browser-events-capture-design.md) | Full scene feedback: resize, focus, visibility, errors, context loss    |
 | [Dashboard improvement plan](./dashboard-improvement-plan.md)         | Filters, the time dimension (scrubber), 3D heatmap & health views       |
 | [Performance section](./performance-section-design.md)                | FPS distribution, frame-time/jank, device & scene breakdown, stability  |

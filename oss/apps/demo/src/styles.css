@@ -1,0 +1,218 @@
+:root {
+  --bg: #0b0d12;
+  --panel: #12151c;
+  --ink: #e8eaf0;
+  --muted: #9aa3b2;
+  --brand: #5b8cff;
+  --brand-ink: #ffffff;
+  --border: #232838;
+  font-family:
+    "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* --- Welcome -------------------------------------------------------------- */
+
+.welcome {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 2rem 1rem;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(91, 140, 255, 0.18), transparent 70%),
+    var(--bg);
+}
+
+.welcome__card {
+  width: min(760px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2.5rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.welcome__title {
+  margin: 0 0 1rem;
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+}
+
+.welcome__lede {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0 0 1rem;
+}
+
+.welcome__lede strong {
+  color: var(--ink);
+}
+
+.welcome__prepare {
+  margin: 1.75rem 0;
+}
+
+.welcome__button {
+  appearance: none;
+  border: 0;
+  border-radius: 10px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  font: inherit;
+  font-weight: 600;
+  padding: 0.85rem 1.6rem;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.welcome__button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.welcome__button:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.welcome__progress {
+  margin: 0.85rem 0 0;
+  color: var(--brand);
+}
+
+.welcome__error {
+  margin: 0.85rem 0 0;
+  color: #ff6b6b;
+}
+
+.welcome__hint {
+  margin: 0.85rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* --- Limitations ---------------------------------------------------------- */
+
+.limitations {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+}
+
+.limitations summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.limitations__list {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 1rem 0;
+  padding-left: 1.1rem;
+}
+
+.limitations__list strong {
+  color: var(--ink);
+}
+
+.limitations__cta {
+  color: var(--muted);
+}
+
+.limitations__cta a,
+.welcome__error button {
+  color: var(--brand);
+}
+
+/* --- Split view ----------------------------------------------------------- */
+
+.split {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.split__bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.split__brand {
+  font-weight: 700;
+}
+
+.split__note {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.split__reset {
+  margin-left: auto;
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  border-radius: 8px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+}
+
+.split__reset:hover:not(:disabled) {
+  border-color: var(--brand);
+}
+
+.split__panes {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 0;
+}
+
+.split__pane {
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+}
+
+.split__pane:last-child {
+  border-right: 0;
+}
+
+.split__frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+@media (max-width: 900px) {
+  .split__panes {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+
+  .split__pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}
