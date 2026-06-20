@@ -40,6 +40,9 @@ pnpm-debug.log*
 !.vscode/extensions.json
 !.vscode/settings.json
 
+# Personal, untracked scratch notes (never committed)
+.local/
+
 # Docker / data volumes
 infra/docker/data/
 clickhouse-data/

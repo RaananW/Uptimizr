@@ -83,7 +83,9 @@ pnpm format      # prettier --write
    (`docs/integration.md`) in the same PR — a feature isn't done until it's documented.
 4. Major / user-visible features also need a **Playwright E2E** under `examples/playground/e2e/`
    that drives the real browser → SDK → collector → dashboard/replay round trip.
-5. Keep PRs focused; describe the change and link related issues.
+5. If your change touches a publishable `@uptimizr/*` package, add a changeset (`pnpm changeset`)
+   and commit the generated `.changeset/*.md` file — see [Releases & changelog](#releases--changelog).
+6. Keep PRs focused; describe the change and link related issues.
 
 ### AI-assisted contributions
 
@@ -102,21 +104,90 @@ level of scrutiny. You remain responsible for everything you submit: make sure i
 
 ## Releases & changelog
 
-Until the first published release, Uptimizr is pre-1.0 and the public packages are unversioned —
-there is no changelog to maintain yet. The policy below takes effect when we start publishing
-versioned packages to npm:
+Uptimizr publishes the public `@uptimizr/*` packages to npm with
+[Changesets](https://github.com/changesets/changesets). Versions are **declared per change**, not
+bumped by hand, and publishing is a **manual, reviewer-gated** GitHub Actions run — pushes never
+auto-publish.
 
-- **Versioning:** published `@uptimizr/*` packages follow [Semantic Versioning](https://semver.org).
-  While pre-1.0, minor (`0.x`) bumps may carry breaking changes; we will call those out explicitly.
-- **Changelog:** each publishable package keeps a `CHANGELOG.md` following
-  [Keep a Changelog](https://keepachangelog.com). Entries are grouped under
-  _Added / Changed / Fixed / Removed_ and derived from the Conventional Commit history since the
-  last tag.
-- **Conventional Commits drive it:** `feat:` → minor, `fix:` → patch, and a `!` or
-  `BREAKING CHANGE:` footer → a breaking bump. Keep commit subjects accurate so release notes stay
-  trustworthy.
-- **Release notes:** tagged GitHub releases summarize user-facing changes and link the relevant
-  ADRs.
+### Contributors: add a changeset to your PR
+
+Any PR that changes a publishable package must include a changeset:
+
+```bash
+pnpm changeset
+```
+
+Pick the affected packages and a bump level for each, then write a one-line summary (it becomes the
+changelog entry). Commit the generated `.changeset/*.md` file with your PR. Choose the level by
+[Semantic Versioning](https://semver.org):
+
+| Level     | When                                                                                        | Example                                           |
+| --------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| **patch** | Backward-compatible bug fix, perf, internal/docs change — no public API change              | Fix a wrong heatmap coordinate                    |
+| **minor** | Backward-compatible new feature, option, event, or export — existing code keeps working     | Add a new event type or optional config           |
+| **major** | Breaking change — removed/renamed export, changed signature, changed event shape or default | Rename a public function; change a required field |
+
+Rules specific to this monorepo:
+
+- **`@uptimizr/schema` is the contract.** Any change to an event shape is a **major** for `schema`
+  and ripples to every SDK that imports it ("events live once").
+- **Pre-1.0 caveat:** while packages are `0.x`, a minor (`0.x`) bump may carry breaking changes; we
+  call those out explicitly in the changeset summary.
+- You don't write a changeset for packages that only need an internal-dependency bump — the release
+  config bumps those as a `patch` automatically (`updateInternalDependencies: "patch"`).
+
+The summary lines you write are aggregated into each package's `CHANGELOG.md` at release time, so
+keep them accurate and user-facing.
+
+### Maintainers: cut a release
+
+Publishing runs through the **Release** workflow
+([`.github/workflows/release.yml`](./.github/workflows/release.yml)) — `workflow_dispatch` only:
+
+1. **Dry run first.** Trigger the workflow with `dry-run: true` (the default). It lints, typechecks,
+   builds, tests, runs the scrub gate, applies the pending version bumps, and runs
+   `changeset publish --dry-run` so you can review the exact publish set. No approval, no token.
+2. **Real publish.** Re-trigger with `dry-run: false`. The job now requests the protected
+   **`npm-production`** environment and **waits for a required reviewer to approve**. Only after
+   approval is the environment-scoped `NPM_TOKEN` injected; the job then commits the version bump,
+   runs `changeset publish`, and pushes the git tags.
+
+Protections in effect:
+
+- **Manual dispatch + dry-run default** — no accidental releases.
+- **`npm-production` environment** — required reviewer approval and an environment-scoped
+  `NPM_TOKEN` that no other job or workflow (including dry runs) can read.
+- **npm provenance (OIDC)** — `id-token: write` + `NPM_CONFIG_PROVENANCE` sign each artifact and
+  link it to the exact commit and workflow run.
+- **Conventional Commits** still apply to commit messages (`feat:`, `fix:`, `docs:` …); they keep
+  history readable, but the **changeset files**, not the commit history, drive the published
+  versions and changelogs.
+
+Tagged GitHub releases summarize user-facing changes and link the relevant ADRs.
+
+### `create-uptimizr` is published manually (not via Changesets)
+
+`create-uptimizr` is the only published package that is **excluded from the automated release**.
+It's listed under `ignore` in [`.changeset/config.json`](./.changeset/config.json), so
+`changeset publish` never versions or publishes it. There are two reasons:
+
+- It is **unscoped** (`create-uptimizr`, not `@uptimizr/create-uptimizr`), so the CI `NPM_TOKEN` —
+  which is restricted to the `@uptimizr` scope for least privilege — cannot publish it.
+- npm won't let a granular token publish a **brand-new unscoped** package, so the name has to be
+  claimed by a human first anyway.
+
+To release it (initial publish and every subsequent change), do it manually from an account with
+publish rights, bumping the version in its `package.json` yourself:
+
+```bash
+pnpm --filter create-uptimizr build
+cd oss/packages/create-uptimizr
+npm publish   # interactive login / 2FA; --access public is taken from publishConfig
+```
+
+Because Changesets ignores it, bumping the other `@uptimizr/*` packages never touches
+`create-uptimizr`, and the automated release will simply skip it. Do **not** widen the CI token to
+cover it — keep the manual step.
 
 ## License
 
