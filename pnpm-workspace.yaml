@@ -22,6 +22,16 @@ minimumReleaseAgeExclude:
 # Astro tooling and Next.js that lag behind their security advisories. These are
 # not direct deps, so they can only be bumped via overrides. Revisit/remove each
 # entry once the parent package ships a release that resolves the advisory.
+#
+# REVIEW PERIODICALLY (e.g. each release, or quarterly): every override is tech
+# debt — it pins a version the dependency tree did not choose, so it can silently
+# hold back upstream fixes or, as the read-yaml-file case showed, force an
+# incompatible major into a transitive dep. For each entry below, check whether
+# the parent has since shipped a fix and the override is still needed:
+#   1. Temporarily comment the entry out and run `pnpm install`.
+#   2. Run `pnpm audit` (advisory cleared upstream?) and `pnpm -r build && pnpm test`.
+#   3. If audit stays clean and nothing breaks, delete the entry for good.
+# Keep this list as small as possible; remove anything no longer required.
 overrides:
   # GHSA: stack overflow via deeply nested YAML (yaml < 2.8.3), via @astrojs/check.
   yaml: ">=2.8.3"
