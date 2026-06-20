@@ -83,6 +83,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(helmet, config.dashboardDir ? { contentSecurityPolicy } : {});
   await app.register(cors, {
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
+    // @fastify/cors defaults `methods` to GET,HEAD,POST — which omits PUT and so
+    // breaks the browser preflight for scene-proxy registration
+    // (PUT /api/v1/scenes/:id/representation). List the verbs the HTTP API uses.
+    methods: ["GET", "HEAD", "POST", "PUT"],
   });
   await app.register(rateLimit, {
     max: config.rateLimitMax,

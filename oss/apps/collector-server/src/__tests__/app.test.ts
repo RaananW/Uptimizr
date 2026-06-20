@@ -1315,6 +1315,28 @@ describe("scene registry routes", () => {
     await app.close();
   });
 
+  it("allows the PUT method in the CORS preflight (proxy registration from the browser)", async () => {
+    // @fastify/cors defaults `methods` to GET,HEAD,POST; without an explicit PUT
+    // the browser preflight for proxy registration fails with "Failed to fetch".
+    const app = await buildApp({
+      store: makeStore(),
+      config: { ...config, corsOrigins: ["http://localhost:5173"] },
+    });
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/api/v1/scenes/lobby/representation",
+      headers: {
+        origin: "http://localhost:5173",
+        "access-control-request-method": "PUT",
+        "access-control-request-headers": "x-api-key,content-type",
+      },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    expect(String(res.headers["access-control-allow-methods"])).toContain("PUT");
+    await app.close();
+  });
+
   it("rejects a PUT whose path scene id mismatches the proxy", async () => {
     const app = await buildApp({ store: makeStore(), config });
     const res = await app.inject({
