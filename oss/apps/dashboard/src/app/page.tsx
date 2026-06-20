@@ -499,6 +499,24 @@ export default function Page() {
     return () => clearInterval(t);
   }, [liveEnabled]);
 
+  // Fetch the aggregate panels (heatmaps, top meshes, perf, meta) for one
+  // session. Shared by the initial open and the live → ended refresh below.
+  const fetchSessionPanels = useCallback(
+    async (id: string): Promise<SessionDetail> => {
+      const params = toQueryParams(filtersRef.current);
+      const api = new CollectorApi(baseUrl, apiKey);
+      const [pointer, camera, meshes, perf, meta] = await Promise.all([
+        api.pointerHeatmap({ ...params, bins: POINTER_BINS, session: id }),
+        api.cameraHeatmap({ ...params, source: undefined, bins: CAMERA_BINS, session: id }),
+        api.topMeshes({ ...params, source: undefined, scene: undefined, limit: 25, session: id }),
+        api.perf({ ...params, source: undefined, session: id }),
+        api.sessionMeta(id).catch(() => null),
+      ]);
+      return { id, meta, pointer, camera, meshes, perf };
+    },
+    [baseUrl, apiKey],
+  );
+
   const openSession = useCallback(
     async (id: string) => {
       const pid = selectedIdRef.current;
@@ -507,23 +525,8 @@ export default function Page() {
       setDetail({ id, meta: null, pointer: [], camera: [], meshes: [], perf: null });
       setDetailStatus("loading");
       setHiddenTypes(new Set());
-      const params = toQueryParams(filtersRef.current);
-      const api = new CollectorApi(baseUrl, apiKey);
       try {
-        const [pointer, camera, meshes, perf, meta] = await Promise.all([
-          api.pointerHeatmap({ ...params, bins: POINTER_BINS, session: id }),
-          api.cameraHeatmap({ ...params, source: undefined, bins: CAMERA_BINS, session: id }),
-          api.topMeshes({
-            ...params,
-            source: undefined,
-            scene: undefined,
-            limit: 25,
-            session: id,
-          }),
-          api.perf({ ...params, source: undefined, session: id }),
-          api.sessionMeta(id).catch(() => null),
-        ]);
-        setDetail({ id, meta, pointer, camera, meshes, perf });
+        setDetail(await fetchSessionPanels(id));
         setDetailStatus("ready");
       } catch (err) {
         setDetailStatus("error");
@@ -536,7 +539,7 @@ export default function Page() {
         );
       }
     },
-    [apiKey, baseUrl, projectPath, pushPath],
+    [fetchSessionPanels, projectPath, pushPath],
   );
 
   const closeSession = useCallback(() => {
@@ -606,6 +609,32 @@ export default function Page() {
   const detailIsLive = Boolean(
     detail && livePresence?.sessions.some((s) => s.sessionId === detail.id),
   );
+
+  // The aggregate panels (heatmaps, top meshes, perf) are fetched once when a
+  // session opens. While the session is live they keep streaming events the
+  // dashboard never re-queries, so those panels go stale. When the open session
+  // stops being live, re-fetch them once so every panel reflects the final data.
+  const wasLiveRef = useRef(detailIsLive);
+  useEffect(() => {
+    const wasLive = wasLiveRef.current;
+    wasLiveRef.current = detailIsLive;
+    if (!wasLive || detailIsLive) return; // only on the live → ended transition
+    const open = detailRef.current;
+    if (!open || detailStatus !== "ready") return;
+    const id = open.id;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await fetchSessionPanels(id);
+        if (!cancelled && detailRef.current?.id === id) setDetail(next);
+      } catch {
+        // Keep the existing panels if the refresh fails; they're only stale.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [detailIsLive, detailStatus, fetchSessionPanels]);
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
