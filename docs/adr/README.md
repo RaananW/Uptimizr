@@ -37,6 +37,7 @@ than editing history.
 | [0032](./0032-live-sessions-and-realtime-presence.md)              | Live sessions and real-time presence (active-now + live follow)       | Accepted   |
 | [0033](./0033-actor-subtree-and-proxy-reconstruction.md)           | Actor subtree capture + proxy-driven replay reconstruction            | Accepted   |
 | [0034](./0034-pointer-lock-aware-capture.md)                       | Pointer-lock-aware pointer capture (crosshair = viewport centre)      | Accepted   |
+| [0035](./0035-unified-live-follow-replay-window.md)                | Unified live-follow replay window (single birdview, internal playhead) | Accepted   |
 
 ## Template
 

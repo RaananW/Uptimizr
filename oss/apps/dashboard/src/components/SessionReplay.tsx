@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { CollectorApi } from "@/lib/api";
+import { useLiveSession, type LiveEvent } from "@/lib/live";
 import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "@/lib/orbitZoom";
 import { Panel } from "./Panel";
 import { ZoomButtons } from "./ZoomButtons";
@@ -231,12 +232,19 @@ export function SessionReplay({
   apiKey,
   sessionId,
   hiddenTypes,
+  isLive = false,
 }: {
   baseUrl: string;
   apiKey: string;
   sessionId: string;
   /** Event types to hide from the 3D overlay + timeline (driven by the inspector). */
   hiddenTypes?: ReadonlySet<string>;
+  /**
+   * When the session is currently live (present in the presence roster), the
+   * replay tails `/api/v1/live/sessions/:id` and follows the live edge with a
+   * growing timeline (ADR 0035). Defaults to historical-only.
+   */
+  isLive?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraRef = useRef<OrbitZoomCamera | null>(null);
@@ -248,6 +256,14 @@ export function SessionReplay({
     pause: () => void;
     seek: (ms: number) => void;
   } | null>(null);
+  // Live-follow refs (ADR 0035). `followingRef`/`playingRef` mirror state so the
+  // render-loop clock can read them without re-running the build effect;
+  // `liveIngestRef` is the scene's per-event sink (assigned during build);
+  // `liveEdgeRef` holds the current live edge so "jump to live" can snap there.
+  const followingRef = useRef(false);
+  const playingRef = useRef(false);
+  const liveIngestRef = useRef<((ev: LiveEvent) => void) | null>(null);
+  const liveEdgeRef = useRef(0);
   // Proxy-mesh AABB labels: their world-space box centers (set on scene build),
   // the DOM nodes that float over the canvas, and a ref-mirrored visibility flag
   // so the per-frame projection loop can short-circuit without a React re-render.
@@ -266,11 +282,21 @@ export function SessionReplay({
   const [proxyLabels, setProxyLabels] = useState<string[]>([]);
   const [actorLabels, setActorLabels] = useState<string[]>([]);
   const [showLabels, setShowLabels] = useState(true);
+  // True while the playhead is pinned to the growing live edge (ADR 0035).
+  const [following, setFollowing] = useState(false);
 
   // Mirror the labels-visible flag into a ref for the render loop.
   useEffect(() => {
     showLabelsRef.current = showLabels;
   }, [showLabels]);
+
+  // Mirror play/follow state into refs for the per-frame live clock.
+  useEffect(() => {
+    playingRef.current = playing;
+  }, [playing]);
+  useEffect(() => {
+    followingRef.current = following;
+  }, [following]);
 
   // Keep the overlay filter in a ref so toggling a type re-renders the 3D view
   // (via `dirtyRef`) without tearing down and rebuilding the whole Babylon scene.
@@ -532,6 +558,29 @@ export function SessionReplay({
         actorLabelElsRef.current = actorMarkers.map(() => null);
         setActorLabels(actorMarkers.map((a) => a.key));
 
+        // Create a marker on demand for an actor first seen during live follow
+        // (ADR 0035), mirroring the build loop above. The sample array is shared
+        // with `actorSamples` so later live pushes drive the marker.
+        const ensureActorMarker = (key: string): void => {
+          const marker = MeshBuilder.CreateSphere(
+            `replay-actor-${key}`,
+            { diameter: 0.5, segments: 12 },
+            scene,
+          );
+          const markerMat = new StandardMaterial(`replay-actor-mat-${key}`, scene);
+          markerMat.disableLighting = true;
+          const c = ACTOR_COLORS[actorColorIdx % ACTOR_COLORS.length]!;
+          markerMat.emissiveColor = new Color3(c[0], c[1], c[2]);
+          marker.material = markerMat;
+          marker.isPickable = false;
+          marker.isVisible = false;
+          actorColorIdx++;
+          const samples = actorSamples.get(key) ?? [];
+          actorMarkers.push({ key, mesh: marker, samples });
+          actorLabelElsRef.current = actorMarkers.map(() => null);
+          setActorLabels(actorMarkers.map((a) => a.key));
+        };
+
         // Interpolate an actor's world position at the playhead. Returns null
         // before its first sample (not yet seen) so the marker stays hidden.
         const findActorPos = (
@@ -650,28 +699,26 @@ export function SessionReplay({
 
         const safeRadius = (value: number) => (Number.isFinite(value) ? Math.max(8, value) : 12);
 
-        const allPoints: [number, number, number][] = [];
-        for (const s of cameraSamples) allPoints.push(s.position);
-        for (const r of rays) {
-          allPoints.push(r.origin);
-          allPoints.push(r.hit);
-        }
-        for (const arr of actorSamples.values()) for (const s of arr) allPoints.push(s.position);
-        if (allPoints.length > 0) {
-          let minX = allPoints[0]![0];
-          let minY = allPoints[0]![1];
-          let minZ = allPoints[0]![2];
-          let maxX = minX;
-          let maxY = minY;
-          let maxZ = minZ;
-          for (const p of allPoints) {
-            minX = Math.min(minX, p[0]);
-            minY = Math.min(minY, p[1]);
-            minZ = Math.min(minZ, p[2]);
-            maxX = Math.max(maxX, p[0]);
-            maxY = Math.max(maxY, p[1]);
-            maxZ = Math.max(maxZ, p[2]);
-          }
+        // Scene bounds, grown as data arrives. Live follow (ADR 0035) appends new
+        // points via `grow`; `frameCamera` frames the orbit camera exactly once so
+        // streaming updates never fight the viewer's orbit.
+        let minX = Infinity;
+        let minY = Infinity;
+        let minZ = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        let maxZ = -Infinity;
+        let framed = false;
+        const grow = (p: readonly number[]): void => {
+          minX = Math.min(minX, p[0]!);
+          minY = Math.min(minY, p[1]!);
+          minZ = Math.min(minZ, p[2]!);
+          maxX = Math.max(maxX, p[0]!);
+          maxY = Math.max(maxY, p[1]!);
+          maxZ = Math.max(maxZ, p[2]!);
+        };
+        const frameCamera = (): void => {
+          if (framed || !Number.isFinite(minX)) return;
           const cx = (minX + maxX) / 2;
           const cy = (minY + maxY) / 2;
           const cz = (minZ + maxZ) / 2;
@@ -681,7 +728,15 @@ export function SessionReplay({
           const span = Math.sqrt(dx * dx + dy * dy + dz * dz);
           camera.setTarget(new Vector3(cx, cy, cz));
           camera.radius = safeRadius(span * 1.3);
+          framed = true;
+        };
+        for (const s of cameraSamples) grow(s.position);
+        for (const r of rays) {
+          grow(r.origin);
+          grow(r.hit);
         }
+        for (const arr of actorSamples.values()) for (const s of arr) grow(s.position);
+        frameCamera();
 
         const findCameraAt = (elapsed: number): CameraSample | null => {
           if (cameraSamples.length === 0) return null;
@@ -801,31 +856,135 @@ export function SessionReplay({
           trailHits = rebuildLines(trailHits, "replay-trail-hits", hitCrosses, hitColors);
         };
 
-        const driver = {
-          reset() {
-            // Visualization state is fully driven by playhead time in redrawAt.
-          },
-          apply() {
-            // No-op: data application is deterministic from elapsedMs.
-          },
+        // Live-follow bookkeeping (ADR 0035). A live session's timeline grows as
+        // events arrive, which the fixed-duration ReplayPlayer can't represent, so
+        // for live we drive the playhead from an internal wall clock (below) and
+        // append events into the same precomputed arrays the historical path uses.
+        let durationMs = sorted.length > 0 ? sorted[sorted.length - 1]!.ts - baseTs : 0;
+        let lastEventAt = durationMs;
+        let frontierTs = sorted.length > 0 ? sorted[sorted.length - 1]!.ts : -Infinity;
+        const timelineEvents: { type: string; ts: number }[] = sorted.map((e) => ({
+          type: e.type,
+          ts: e.ts,
+        }));
+        let lastTimelineBuild = 0;
+
+        // Append one streamed event to the visualization, mirroring the historical
+        // precompute switch. `frontierTs` dedupes the connect-time backfill overlap;
+        // brand-new tracked actors get a marker on demand.
+        const ingestLive = (ev: LiveEvent): void => {
+          if (disposed) return;
+          const ts = typeof ev.ts === "number" ? ev.ts : NaN;
+          if (!Number.isFinite(ts) || ts <= frontierTs) return;
+          frontierTs = ts;
+          const at = ts - baseTs;
+          if (at > lastEventAt) lastEventAt = at;
+          if (at > durationMs) durationMs = at;
+          timelineEvents.push({ type: ev.type, ts });
+
+          if (ev.type === "camera_sample") {
+            const pos = ev.position as number[] | undefined;
+            const dir = ev.direction as number[] | undefined;
+            if (pos && dir) {
+              const position: [number, number, number] = [pos[0]!, pos[1]!, pos[2]!];
+              latestCamera = position;
+              cameraSamples.push({ at, position, direction: [dir[0]!, dir[1]!, dir[2]!] });
+              grow(position);
+              frameCamera();
+            }
+          } else if (ev.type === "pointer_click") {
+            const hit = ev.hitPoint as number[] | undefined;
+            const ray = ev.ray as { origin?: number[] } | undefined;
+            const origin = ray?.origin ?? latestCamera;
+            if (hit && origin) {
+              rays.push({
+                at,
+                type: "pointer_click",
+                origin: [origin[0]!, origin[1]!, origin[2]!],
+                hit: [hit[0]!, hit[1]!, hit[2]!],
+              });
+              grow(hit);
+              dirtyRef.current = true;
+            }
+          } else if (ev.type === "mesh_interaction") {
+            const point = ev.point as number[] | undefined;
+            if (point && latestCamera) {
+              rays.push({
+                at,
+                type: "mesh_interaction",
+                origin: [latestCamera[0], latestCamera[1], latestCamera[2]],
+                hit: [point[0]!, point[1]!, point[2]!],
+              });
+              grow(point);
+              dirtyRef.current = true;
+            }
+          } else if (ev.type === "node_transform") {
+            const point = ev.position as number[] | undefined;
+            if (ev.boneId || typeof ev.nodeId !== "string" || !point) return;
+            const childPath = typeof ev.childPath === "string" ? ev.childPath : undefined;
+            const key = childPath ? `${ev.nodeId}/${childPath}` : ev.nodeId;
+            let arr = actorSamples.get(key);
+            if (!arr) {
+              arr = [];
+              actorSamples.set(key, arr);
+              ensureActorMarker(key);
+            }
+            arr.push({ at, position: [point[0]!, point[1]!, point[2]!] });
+            grow(point);
+          }
+
+          // Rebuild the timeline strip at most ~4×/s; live batches are seconds apart.
+          const nowMs = performance.now();
+          if (nowMs - lastTimelineBuild > 250) {
+            lastTimelineBuild = nowMs;
+            setTimeline(buildTimeline(timelineEvents, baseTs, Math.max(1, durationMs)));
+          }
+          if (followingRef.current && at > progressRef.current) {
+            progressRef.current = at;
+          }
         };
 
-        const player = new ReplayPlayer(events, driver, {
-          onProgress: (elapsed) => {
-            if (!disposed) {
-              progressRef.current = elapsed;
-              setProgress(elapsed);
-            }
-          },
-          onComplete: () => {
-            if (!disposed) setPlaying(false);
-          },
-        });
-        playerRef.current = player;
-        setDuration(player.durationMs);
-        setTimeline(buildTimeline(sorted, baseTs, player.durationMs));
-        player.update(0);
-        redrawAt(0);
+        if (isLive) {
+          // Live: the internal render-loop clock owns the playhead. Start pinned to
+          // the live edge, following.
+          playerRef.current = null;
+          liveIngestRef.current = ingestLive;
+          liveEdgeRef.current = durationMs;
+          progressRef.current = durationMs;
+          followingRef.current = true;
+          setFollowing(true);
+          setPlaying(false);
+          setDuration(durationMs);
+          setProgress(durationMs);
+          setTimeline(buildTimeline(timelineEvents, baseTs, Math.max(1, durationMs)));
+          redrawAt(durationMs);
+        } else {
+          const driver = {
+            reset() {
+              // Visualization state is fully driven by playhead time in redrawAt.
+            },
+            apply() {
+              // No-op: data application is deterministic from elapsedMs.
+            },
+          };
+
+          const player = new ReplayPlayer(events, driver, {
+            onProgress: (elapsed) => {
+              if (!disposed) {
+                progressRef.current = elapsed;
+                setProgress(elapsed);
+              }
+            },
+            onComplete: () => {
+              if (!disposed) setPlaying(false);
+            },
+          });
+          playerRef.current = player;
+          setDuration(player.durationMs);
+          setTimeline(buildTimeline(sorted, baseTs, player.durationMs));
+          player.update(0);
+          redrawAt(0);
+        }
 
         // Float each proxy-mesh label over its box by projecting the box's
         // top-center into client pixels every frame. Drives the DOM directly
@@ -870,7 +1029,31 @@ export function SessionReplay({
           }
         };
 
+        let lastTick = performance.now();
+        let lastDurationPush = 0;
         engine.runRenderLoop(() => {
+          if (isLive) {
+            const now = performance.now();
+            const dt = now - lastTick;
+            lastTick = now;
+            if (followingRef.current) {
+              // Free-run at the live edge so trails fade in real time; the edge
+              // (and duration) grow with the wall clock between event batches.
+              progressRef.current += dt;
+              if (progressRef.current > durationMs) durationMs = progressRef.current;
+              liveEdgeRef.current = durationMs;
+              setProgress(progressRef.current);
+              if (now - lastDurationPush > 250) {
+                lastDurationPush = now;
+                setDuration(durationMs);
+              }
+            } else if (playingRef.current) {
+              let p = progressRef.current + dt;
+              if (p >= durationMs) p = durationMs; // hold at edge; live never "completes"
+              progressRef.current = p;
+              setProgress(p);
+            }
+          }
           redrawAt(progressRef.current);
           scene.render();
           positionLabels();
@@ -881,7 +1064,8 @@ export function SessionReplay({
         setPhase("ready");
         cleanup = () => {
           window.removeEventListener("resize", onResize);
-          player.pause();
+          liveIngestRef.current = null;
+          playerRef.current?.pause();
           frustumLine.dispose();
           trailLines?.dispose();
           trailHits?.dispose();
@@ -903,9 +1087,20 @@ export function SessionReplay({
       disposed = true;
       cleanup?.();
     };
-  }, [baseUrl, apiKey, sessionId]);
+  }, [baseUrl, apiKey, sessionId, isLive]);
 
   const togglePlay = useCallback(() => {
+    if (isLive) {
+      // Live: pause/resume the internal clock and drop out of follow mode.
+      setFollowing(false);
+      followingRef.current = false;
+      setPlaying((p) => {
+        const next = !p;
+        playingRef.current = next;
+        return next;
+      });
+      return;
+    }
     const player = playerRef.current;
     if (!player) return;
     setPlaying((p) => {
@@ -913,22 +1108,62 @@ export function SessionReplay({
       else player.play();
       return !p;
     });
+  }, [isLive]);
+
+  const onSeek = useCallback(
+    (value: number) => {
+      if (isLive) {
+        // Scrubbing a live session reviews history: leave follow + pause.
+        setFollowing(false);
+        followingRef.current = false;
+        setPlaying(false);
+        playingRef.current = false;
+        progressRef.current = value;
+        setProgress(value);
+        return;
+      }
+      const player = playerRef.current;
+      if (!player) return;
+      player.pause();
+      player.seek(value);
+      setPlaying(false);
+      progressRef.current = value;
+      setProgress(value);
+    },
+    [isLive],
+  );
+
+  // Snap the playhead back to the growing live edge and resume following.
+  const jumpToLive = useCallback(() => {
+    setFollowing(true);
+    followingRef.current = true;
+    setPlaying(false);
+    playingRef.current = false;
+    progressRef.current = liveEdgeRef.current;
+    setProgress(liveEdgeRef.current);
   }, []);
 
-  const onSeek = useCallback((value: number) => {
-    const player = playerRef.current;
-    if (!player) return;
-    player.pause();
-    player.seek(value);
-    setPlaying(false);
-    progressRef.current = value;
-    setProgress(value);
-  }, []);
+  // Tail the per-session live stream once the scene is built, feeding each event
+  // into the visualization sink. `gated` surfaces the retention 403 (ADR 0032).
+  const { gated: liveGated } = useLiveSession(
+    baseUrl,
+    apiKey,
+    sessionId,
+    isLive && phase === "ready",
+    (event) => liveIngestRef.current?.(event),
+    () => {
+      /* frontierTs dedupes the connect-time backfill; nothing to reset. */
+    },
+  );
 
   return (
     <Panel
-      title="Session replay (birdview timeline)"
-      subtitle="Scrub the camera path and interaction rays; every click stays marked and glows as the playhead passes it. The color-coded strip marks when each event fired (click to seek)."
+      title={isLive ? "Session replay · live" : "Session replay (birdview timeline)"}
+      subtitle={
+        isLive
+          ? "Following this session live — new camera moves and interactions stream in and the timeline grows. Scrub back to review, then press ● LIVE to return to the edge."
+          : "Scrub the camera path and interaction rays; every click stays marked and glows as the playhead passes it. The color-coded strip marks when each event fired (click to seek)."
+      }
     >
       <div className="relative">
         <canvas
@@ -999,6 +1234,26 @@ export function SessionReplay({
         >
           {playing ? "Pause" : "Play"}
         </button>
+        {isLive ? (
+          <button
+            type="button"
+            onClick={jumpToLive}
+            disabled={phase !== "ready"}
+            aria-pressed={following ? "true" : "false"}
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition disabled:opacity-40 ${
+              following
+                ? "bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/40"
+                : "border border-edge text-fg hover:bg-ink hover:text-white"
+            }`}
+          >
+            <span
+              className={`inline-block h-2 w-2 rounded-full ${
+                following ? "animate-pulse bg-rose-400" : "bg-fg-muted"
+              }`}
+            />
+            {following ? "LIVE" : "Resume live"}
+          </button>
+        ) : null}
         <span className="w-12 text-right font-mono text-xs tabular-nums text-fg-muted">
           {formatClock(progress)}
         </span>
@@ -1025,6 +1280,11 @@ export function SessionReplay({
           onSeek={onSeek}
           hiddenTypes={hiddenTypes ?? EMPTY_HIDDEN}
         />
+      ) : null}
+      {isLive && liveGated && phase === "ready" ? (
+        <p className="mt-2 text-xs text-fg-muted">
+          Live follow is unavailable — raw session retention is disabled on the collector.
+        </p>
       ) : null}
     </Panel>
   );

@@ -120,3 +120,16 @@ serves the bundle at `/uptimizr-replay.global.js`.)
   project, so a valid session id looked up with another project's key returns nothing. Copy the session
   id and the API key from the **same** dashboard project.
 - **Camera doesn't move** — the session has no `camera_sample` events.
+
+## In the dashboard: replay + live follow
+
+The dashboard's **Session replay** birdview is the same engine, no code required. Open a session from
+the Sessions table to scrub its camera path, interaction rays, and moving scene actors, with a
+colour-coded event timeline you can click to seek.
+
+When the session is **live right now** (it has produced an event within the active-now window), the
+same window switches to **live follow**: new camera moves and interactions stream in and the timeline
+grows in real time. A **● LIVE** control pins the playhead to the live edge; scrub back (or press Play)
+to review what already happened, then press **● LIVE** to jump back to the edge. Live follow uses the
+same raw-retention gate as replay — with retention off, the window shows nothing to follow.
+

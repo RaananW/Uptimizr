@@ -60,10 +60,6 @@ const SessionReplay = dynamic(
   () => import("@/components/SessionReplay").then((m) => m.SessionReplay),
   { ssr: false },
 );
-const LiveSessionReplay = dynamic(
-  () => import("@/components/LiveSessionReplay").then((m) => m.LiveSessionReplay),
-  { ssr: false },
-);
 const WorldHeatmap3D = dynamic(
   () => import("@/components/WorldHeatmap3D").then((m) => m.WorldHeatmap3D),
   { ssr: false },
@@ -731,13 +727,9 @@ export default function Page() {
               apiKey={apiKey}
               sessionId={detail.id}
               hiddenTypes={hiddenTypes}
+              isLive={detailIsLive}
             />
           </div>
-          {detailIsLive ? (
-            <div className="lg:col-span-2">
-              <LiveSessionReplay baseUrl={baseUrl} apiKey={apiKey} sessionId={detail.id} />
-            </div>
-          ) : null}
           <div className="lg:col-span-2">
             <SessionInspector
               baseUrl={baseUrl}
