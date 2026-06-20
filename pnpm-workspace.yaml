@@ -29,3 +29,6 @@ overrides:
   postcss: ">=8.5.10"
   # GHSA: dev-server arbitrary file read on Windows (esbuild < 0.28.1), via astro.
   esbuild: ">=0.28.1"
+  # GHSA-h67p-54hq-rp68: quadratic-complexity DoS via merge keys (js-yaml <= 4.1.1),
+  # via @changesets/cli (release tooling, dev-only).
+  js-yaml: ">=4.2.0"

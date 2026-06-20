@@ -74,6 +74,22 @@ pnpm format      # prettier --write
 - **Conventional Commits** for messages (e.g. `feat(schema): add camera_sample event`).
 - **Document decisions** — significant choices get a new ADR (copy `docs/adr/template.md`).
 
+## Dependencies & licenses
+
+The published `@uptimizr/*` packages are Apache-2.0, so the dependency tree must stay
+redistribution-compatible.
+
+- **Acceptable licenses** for any dependency: permissive (MIT, ISC, BSD-2-Clause, BSD-3-Clause,
+  Apache-2.0, 0BSD, BlueOak-1.0.0, CC0, Unlicense, Python-2.0). Weak / file-level copyleft (LGPL,
+  MPL-2.0) is acceptable **only** as an unmodified, transitive build- or app-runtime dependency
+  that is **never bundled into a published `@uptimizr/*` tarball**.
+- **Not acceptable** anywhere in a published package's dependency tree: strong copyleft (GPL, AGPL)
+  and source-available licenses (SSPL, BUSL). Flag these in review.
+- **Security:** keep `pnpm audit` free of **high/critical** advisories in production dependencies
+  before a release. Patch advisories in transitive (build/dev) deps via `overrides` in
+  `pnpm-workspace.yaml`, with a comment linking the advisory; revisit when the parent ships a fix.
+  CI runs `pnpm audit --prod --audit-level=high`, and Dependabot opens grouped weekly update PRs.
+
 ## Pull requests
 
 1. Branch from `main`.
