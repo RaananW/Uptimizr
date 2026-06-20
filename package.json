@@ -13,6 +13,7 @@
   "scripts": {
     "build": "turbo run build",
     "build:site": "pnpm --filter @uptimizr/web build && pnpm --filter @uptimizr/docs build && rm -rf oss/apps/web/dist/docs && cp -r oss/apps/docs/dist oss/apps/web/dist/docs",
+    "build:demo": "turbo run build --filter='./oss/packages/*' && pnpm --filter @uptimizr/demo build",
     "dev": "turbo run dev --filter=@uptimizr/collector-server... --filter=@uptimizr/dashboard...",
     "dev:web": "turbo run dev --filter=@uptimizr/web --filter=@uptimizr/docs --filter=@uptimizr/demo",
     "dev:stack": "turbo run dev --concurrency=20 --filter=@uptimizr/collector-server... --filter=@uptimizr/dashboard... --filter=@uptimizr/example-playground...",

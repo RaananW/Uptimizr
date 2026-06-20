@@ -1,7 +1,0 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": null,
-  "installCommand": "pnpm install",
-  "buildCommand": "pnpm --filter @uptimizr/web build && pnpm --filter @uptimizr/docs build && rm -rf oss/apps/web/dist/docs && cp -r oss/apps/docs/dist oss/apps/web/dist/docs",
-  "outputDirectory": "oss/apps/web/dist"
-}
