@@ -42,7 +42,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "devDependencies": {
-    "@types/node": "^22.19.21",
+    "@types/node": "^26.0.0",
     "vitest": "^4.1.9"
   }
 }
