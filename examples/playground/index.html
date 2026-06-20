@@ -8,6 +8,10 @@
     <style>
       :root {
         color-scheme: dark;
+        /* Brand ramp shared with the demo: azure primary + gold accent. */
+        --accent: #3b82f6;
+        --accent-hover: #60a5fa;
+        --gold: #f4c84b;
       }
       * {
         box-sizing: border-box;
@@ -90,13 +94,13 @@
         padding: 7px 12px;
         border: 0;
         border-radius: 8px;
-        background: #0284c7;
+        background: var(--accent);
         color: #fff;
         font-weight: 600;
         cursor: pointer;
       }
       #panel button:hover {
-        background: #0ea5e9;
+        background: var(--accent-hover);
       }
       #panel button.secondary {
         background: #1e293b;
@@ -105,7 +109,7 @@
         background: #334155;
       }
       #panel button.secondary.active {
-        background: #0284c7;
+        background: var(--accent);
       }
       #panel code.muted {
         color: #64748b;
@@ -164,6 +168,16 @@
         font-weight: 700;
         font-size: 14px;
         margin-right: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+      #topbarTitle::before {
+        content: "";
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+        background: linear-gradient(135deg, var(--gold), var(--accent));
       }
       #topbar label {
         display: flex;
@@ -199,8 +213,8 @@
         background: #334155;
       }
       #panelToggle[aria-expanded="true"] {
-        background: #0284c7;
-        border-color: #0284c7;
+        background: var(--accent);
+        border-color: var(--accent);
         color: #fff;
       }
 

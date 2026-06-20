@@ -3,8 +3,10 @@
   --panel: #12151c;
   --ink: #e8eaf0;
   --muted: #9aa3b2;
-  --brand: #5b8cff;
+  /* Brand ramp: azure primary warming to a gold accent (mirrors the favicon). */
+  --brand: #3b82f6;
   --brand-ink: #ffffff;
+  --accent: #f4c84b;
   --border: #232838;
   font-family:
     "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -34,7 +36,8 @@ body {
   place-items: center;
   padding: 2rem 1rem;
   background:
-    radial-gradient(1200px 600px at 50% -10%, rgba(91, 140, 255, 0.18), transparent 70%),
+    radial-gradient(1100px 560px at 78% -10%, rgba(244, 200, 75, 0.12), transparent 68%),
+    radial-gradient(1200px 600px at 32% -10%, rgba(59, 130, 246, 0.2), transparent 70%),
     var(--bg);
 }
 
@@ -71,7 +74,7 @@ body {
   appearance: none;
   border: 0;
   border-radius: 10px;
-  background: var(--brand);
+  background: linear-gradient(120deg, var(--brand) 0%, var(--brand) 60%, var(--accent) 180%);
   color: var(--brand-ink);
   font: inherit;
   font-weight: 600;
@@ -158,6 +161,17 @@ body {
 
 .split__brand {
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.split__brand::before {
+  content: "";
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  background: linear-gradient(135deg, var(--accent), var(--brand));
 }
 
 .split__note {

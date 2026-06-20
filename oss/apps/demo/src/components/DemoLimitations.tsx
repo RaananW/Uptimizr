@@ -27,7 +27,11 @@ export function DemoLimitations() {
       </ul>
       <p className="limitations__cta">
         Ready for the real thing?{" "}
-        <a href="https://github.com/RaananW/Uptimizr" target="_blank" rel="noreferrer">
+        <a
+          href="https://uptimizr.com/docs/deploy/collector/"
+          target="_blank"
+          rel="noreferrer noopener"
+        >
           Self-host the collector
         </a>{" "}
         — same dashboard, your data, your infrastructure.
