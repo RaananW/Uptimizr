@@ -536,62 +536,106 @@ export function SessionReplay({
         labelElsRef.current = labelCenters.map(() => null);
         setProxyLabels(labelCenters.map((l) => l.name));
 
-        // Moving scene actors (ADR 0027) → one emissive marker per tracked
-        // `nodeId[/childPath]`. A subtree actor (ADR 0033) yields one marker for
-        // the root and one per captured child, each re-positioned every frame
-        // from its interpolated `node_transform` track so self-driven motion (an
-        // ambient NPC, a door) reads in the birdview.
+        // Moving scene actors (ADR 0027) → ONE emissive marker per declared actor
+        // ROOT. A subtree actor (ADR 0033) streams the root plus one track per
+        // child node (`nodeId/childPath`); exploding every child into its own
+        // labelled marker turns an articulated character into a scattered cloud of
+        // joints in the overview. The birdview only needs "where the character is",
+        // so each root collapses to a single marker that follows the root track
+        // (or, if the root itself was not sampled, the richest child track). Full
+        // per-joint motion still reconstructs in replay-in-your-scene.
         type ReplayMesh = ReturnType<typeof MeshBuilder.CreateSphere>;
+        type ActorMarker = {
+          key: string; // root id (also the label)
+          mesh: ReplayMesh;
+          samples: ActorSample[]; // the driving track
+          driveKey: string; // which captured key currently drives this marker
+        };
         const ACTOR_COLORS: [number, number, number][] = [
           [0.91, 0.47, 0.98], // fuchsia
           [0.4, 0.95, 0.6], // green
           [0.98, 0.8, 0.3], // amber
           [0.45, 0.85, 1], // sky
         ];
-        const actorMarkers: { key: string; mesh: ReplayMesh; samples: ActorSample[] }[] = [];
+        const rootOf = (key: string): string => {
+          const i = key.indexOf("/");
+          return i === -1 ? key : key.slice(0, i);
+        };
+        const actorMarkers: ActorMarker[] = [];
+        const markerByRoot = new Map<string, ActorMarker>();
         let actorColorIdx = 0;
-        for (const [key, samples] of actorSamples) {
-          if (samples.length === 0) continue;
+        const createActorMarker = (
+          root: string,
+          driveKey: string,
+          samples: ActorSample[],
+        ): ActorMarker => {
           const marker = MeshBuilder.CreateSphere(
-            `replay-actor-${key}`,
+            `replay-actor-${root}`,
             { diameter: 0.5, segments: 12 },
             scene,
           );
-          const markerMat = new StandardMaterial(`replay-actor-mat-${key}`, scene);
+          const markerMat = new StandardMaterial(`replay-actor-mat-${root}`, scene);
           markerMat.disableLighting = true;
           const c = ACTOR_COLORS[actorColorIdx % ACTOR_COLORS.length]!;
           markerMat.emissiveColor = new Color3(c[0], c[1], c[2]);
           marker.material = markerMat;
           marker.isPickable = false;
           marker.isVisible = false;
-          actorMarkers.push({ key, mesh: marker, samples });
           actorColorIdx++;
+          const entry: ActorMarker = { key: root, mesh: marker, samples, driveKey };
+          actorMarkers.push(entry);
+          markerByRoot.set(root, entry);
+          return entry;
+        };
+
+        // Choose each root's driving track up front: prefer the bare-root track,
+        // else the child track with the most samples.
+        const bareRootTracks = new Map<string, ActorSample[]>();
+        const bestChildTracks = new Map<string, { key: string; samples: ActorSample[] }>();
+        for (const [key, samples] of actorSamples) {
+          if (samples.length === 0) continue;
+          const root = rootOf(key);
+          if (key === root) {
+            bareRootTracks.set(root, samples);
+          } else {
+            const cur = bestChildTracks.get(root);
+            if (!cur || samples.length > cur.samples.length) {
+              bestChildTracks.set(root, { key, samples });
+            }
+          }
+        }
+        for (const root of new Set([...bareRootTracks.keys(), ...bestChildTracks.keys()])) {
+          const bare = bareRootTracks.get(root);
+          if (bare) {
+            createActorMarker(root, root, bare);
+          } else {
+            const child = bestChildTracks.get(root)!;
+            createActorMarker(root, child.key, child.samples);
+          }
         }
         actorLabelElsRef.current = actorMarkers.map(() => null);
         setActorLabels(actorMarkers.map((a) => a.key));
 
-        // Create a marker on demand for an actor first seen during live follow
-        // (ADR 0035), mirroring the build loop above. The sample array is shared
-        // with `actorSamples` so later live pushes drive the marker.
-        const ensureActorMarker = (key: string): void => {
-          const marker = MeshBuilder.CreateSphere(
-            `replay-actor-${key}`,
-            { diameter: 0.5, segments: 12 },
-            scene,
-          );
-          const markerMat = new StandardMaterial(`replay-actor-mat-${key}`, scene);
-          markerMat.disableLighting = true;
-          const c = ACTOR_COLORS[actorColorIdx % ACTOR_COLORS.length]!;
-          markerMat.emissiveColor = new Color3(c[0], c[1], c[2]);
-          marker.material = markerMat;
-          marker.isPickable = false;
-          marker.isVisible = false;
-          actorColorIdx++;
-          const samples = actorSamples.get(key) ?? [];
-          actorMarkers.push({ key, mesh: marker, samples });
-          const prevEls = actorLabelElsRef.current;
-          actorLabelElsRef.current = actorMarkers.map((_, i) => prevEls[i] ?? null);
-          setActorLabels(actorMarkers.map((a) => a.key));
+        // Route one live `node_transform` sample to its root's marker (ADR 0035),
+        // creating the marker on first sight. A child sample only drives the marker
+        // until the bare-root track appears, then the marker upgrades to it.
+        const ingestActorSample = (key: string, sample: ActorSample): void => {
+          const root = rootOf(key);
+          let entry = markerByRoot.get(root);
+          if (!entry) {
+            entry = createActorMarker(root, key, []);
+            const prevEls = actorLabelElsRef.current;
+            actorLabelElsRef.current = actorMarkers.map((_, i) => prevEls[i] ?? null);
+            setActorLabels(actorMarkers.map((a) => a.key));
+          }
+          if (key === entry.driveKey) {
+            entry.samples.push(sample);
+          } else if (key === root && entry.driveKey !== root) {
+            entry.driveKey = root;
+            entry.samples.length = 0;
+            entry.samples.push(sample);
+          }
+          // A non-driving child sample is ignored in the overview.
         };
 
         // Interpolate an actor's world position at the playhead. Returns null
@@ -943,13 +987,7 @@ export function SessionReplay({
             if (ev.boneId || typeof ev.nodeId !== "string" || !point) return;
             const childPath = typeof ev.childPath === "string" ? ev.childPath : undefined;
             const key = childPath ? `${ev.nodeId}/${childPath}` : ev.nodeId;
-            let arr = actorSamples.get(key);
-            if (!arr) {
-              arr = [];
-              actorSamples.set(key, arr);
-              ensureActorMarker(key);
-            }
-            arr.push({ at, position: [point[0]!, point[1]!, point[2]!] });
+            ingestActorSample(key, { at, position: [point[0]!, point[1]!, point[2]!] });
             grow(point);
           }
 

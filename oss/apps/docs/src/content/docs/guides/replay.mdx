@@ -125,7 +125,10 @@ serves the bundle at `/uptimizr-replay.global.js`.)
 
 The dashboard's **Session replay** birdview is the same engine, no code required. Open a session from
 the Sessions table to scrub its camera path, interaction rays, and moving scene actors, with a
-colour-coded event timeline you can click to seek.
+colour-coded event timeline you can click to seek. Each tracked actor is drawn as **one labelled
+marker per root** — a [subtree actor](/docs/guides/mesh-tracking/#scene-actors-node_transform--opt-in)
+(an articulated character) shows a single dot for "where it is" rather than a marker per joint; its
+full per-joint motion still reconstructs when you replay it in your own scene.
 
 When the session is **live right now** (it has produced an event within the active-now window), the
 same window switches to **live follow**: new camera moves and interactions stream in and the timeline
