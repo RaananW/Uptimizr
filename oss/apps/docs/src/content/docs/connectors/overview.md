@@ -1,0 +1,47 @@
+---
+title: Connectors overview
+description: How Uptimizr connectors work, which engines are supported, and what they all capture.
+---
+
+A **connector** is the engine-specific adapter that observes your 3D scene and emits events. Every
+connector registers as a collector on `@uptimizr/sdk-core`, captures the same channels, and emits
+the same versioned event schema — so heatmaps, rankings, and replay behave identically no matter
+which renderer you use.
+
+## Supported engines
+
+| Engine            | Package                  | Status | Entry point          |
+| ----------------- | ------------------------ | ------ | -------------------- |
+| Babylon.js        | `@uptimizr/babylon`      | Stable | `trackScene(scene, …)` |
+| Babylon Lite      | `@uptimizr/babylon-lite` | Stable | `trackScene(scene, camera, canvas, …)` |
+| three.js          | `@uptimizr/three`        | Stable | `trackScene(scene, camera, renderer, …)` |
+| PlayCanvas        | `@uptimizr/playcanvas`   | Beta   | `trackScene(app, camera, …)` |
+| react-three-fiber | `@uptimizr/r3f`          | Beta   | `<Uptimizr />` / `useUptimizr()` |
+| A-Frame           | `@uptimizr/aframe`       | Beta   | `uptimizr` HTML component |
+
+## What every connector captures
+
+- **Camera pose** (position + forward direction) → view-direction heatmap
+- **Pointer move / click** (normalized screen + optional raycast hit) → screen & world heatmaps
+- **Mesh picks** → object-engagement analytics
+- **FPS / frame perf** → performance
+- **Mesh visibility**, **hover dwell**, **resource sample** (opt-in) → attention & footprint
+
+## Shared principles
+
+- **The engine is a peer dependency.** Connectors read your existing engine instance and never
+  bundle or mutate the scene.
+- **Clean teardown.** Calling `dispose()` / `stop()` removes every DOM listener, timer, and
+  animation-frame callback. No cookies, no persistent IDs.
+- **Canonical coordinate frame.** World-space data is normalized to Uptimizr's canonical wire frame
+  (left-handed, y-up) at the emission boundary, while `connector.coordinateSystem` records the
+  engine's native frame for provenance.
+- **Same options everywhere.** Capture fidelity (`sampling`), channel toggles (`capture`), scene
+  actors, and opt-in channels work the same across connectors. Engine differences are only in how
+  you hand the scene/camera/renderer to `trackScene`.
+
+## Advanced setup
+
+Every connector's one-call `trackScene` returns an `@uptimizr/sdk-core` `UptimizrClient`. For a
+custom transport, a `beforeSend` hook, or registering multiple collectors on one session, compose
+the pieces yourself — see [sdk-core (advanced)](/docs/connectors/sdk-core/).

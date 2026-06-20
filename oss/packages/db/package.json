@@ -1,0 +1,57 @@
+{
+  "name": "@uptimizr/db",
+  "version": "0.1.0",
+  "description": "OSS storage contracts (dialect-agnostic query layer, neutral event/metadata types) and the single-file DuckDB store for Uptimizr.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/db"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://github.com/RaananW/Uptimizr/tree/main/oss/packages/db#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "uptimizr-db-migrate": "./dist/cli/migrate.js",
+    "uptimizr-db-new-project": "./dist/cli/createProject.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md",
+    "llms.txt"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "migrate": "tsx src/cli/migrate.ts",
+    "seed": "tsx src/cli/seed.ts",
+    "new-project": "tsx src/cli/createProject.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "^1.5.4-r.1",
+    "@uptimizr/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.21",
+    "tsx": "^4.22.4",
+    "vitest": "^4.1.9"
+  }
+}

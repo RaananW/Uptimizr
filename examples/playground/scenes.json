@@ -1,0 +1,20 @@
+[
+  {
+    "id": "lobby",
+    "label": "Lobby (viewer)",
+    "description": "An orbit / arc-rotate camera framing a model — how people inspect an object.",
+    "cameraMode": "viewer",
+    "engines": ["babylon", "babylon-lite", "three", "playcanvas", "r3f", "aframe"],
+    "defaultEngine": "babylon",
+    "builtin": true
+  },
+  {
+    "id": "atrium",
+    "label": "Atrium (first-person)",
+    "description": "A walkable scene traversed with WASD + look — where people walk and what they approach.",
+    "cameraMode": "first-person",
+    "engines": ["babylon", "three", "playcanvas"],
+    "defaultEngine": "babylon",
+    "builtin": true
+  }
+]

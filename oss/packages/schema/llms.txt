@@ -1,0 +1,17 @@
+# @uptimizr/schema
+
+> The single source of truth for every Uptimizr analytics event: Zod runtime schemas plus
+> inferred TypeScript types. Import event shapes from here — never redefine them elsewhere.
+
+## Docs
+
+- [Package reference](./README.md): install, envelope, full event catalog, extension point.
+- [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track, replay, and query the data.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003) and the registry-based event design.
+
+## Key exports
+
+- `anyEventSchema` — discriminated union over all event `type`s.
+- `collectRequestSchema` — the `/api/v1/collect` batch body.
+- Per-event schemas and inferred types (e.g. `CameraSampleEvent`).

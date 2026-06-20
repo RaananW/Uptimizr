@@ -1,0 +1,50 @@
+---
+title: Uptimizr Documentation
+description: Open-source, privacy-first analytics for 3D scenes — view-direction & click heatmaps, mesh interactions, performance, and session replay.
+template: splash
+hero:
+  tagline: Google-Analytics-for-3D. Capture what users look at, click, and miss inside any 3D scene — then replay it.
+  image:
+    file: ../../assets/logo-lockup.svg
+  actions:
+    - text: Quickstart
+      link: /docs/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/RaananW/Uptimizr
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What is Uptimizr?
+
+Uptimizr is an open-source, self-hostable analytics platform for 3D scenes. Drop a connector into
+your Babylon.js, three.js, PlayCanvas, react-three-fiber, or A-Frame app and it captures the
+spatial signals flat web analytics can't — gaze, clicks, mesh interactions, performance — then
+aggregates them into heatmaps, rankings, and full session replay.
+
+<CardGrid stagger>
+	<Card title="Instrument in minutes" icon="rocket">
+		Install one connector, call `trackScene`, and heatmaps start filling in. See the
+		[Quickstart](/docs/quickstart/).
+	</Card>
+	<Card title="Every major engine" icon="puzzle">
+		One event schema across Babylon.js, three.js, PlayCanvas, R3F, and A-Frame. See
+		[Connectors](/docs/connectors/overview/).
+	</Card>
+	<Card title="Privacy-first" icon="approve-check">
+		Cookieless, no client persistent IDs, no PII by default. See
+		[Privacy & configuration](/docs/deploy/privacy/).
+	</Card>
+	<Card title="Self-host anywhere" icon="setting">
+		A single collector with an embedded store — zero infrastructure to start. See
+		[Deploy](/docs/deploy/collector/).
+	</Card>
+	<Card title="HTTP API" icon="seti:json">
+		Ingest events and query heatmaps, sessions, and performance over a simple, key-authenticated
+		REST API. See the [API reference](/docs/api/overview/).
+	</Card>
+</CardGrid>

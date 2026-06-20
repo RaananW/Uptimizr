@@ -1,0 +1,94 @@
+---
+title: Quickstart
+description: Instrument a 3D scene with Uptimizr in three steps and see your first heatmap.
+---
+
+import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Get from an uninstrumented scene to your first heatmap in three steps.
+
+<Steps>
+
+1. **Install the connector for your engine.**
+
+   <Tabs syncKey="engine">
+     <TabItem label="Babylon.js">
+     ```bash
+     npm i @uptimizr/babylon
+     ```
+     </TabItem>
+     <TabItem label="three.js">
+     ```bash
+     npm i @uptimizr/three
+     ```
+     </TabItem>
+     <TabItem label="PlayCanvas">
+     ```bash
+     npm i @uptimizr/playcanvas
+     ```
+     </TabItem>
+     <TabItem label="R3F">
+     ```bash
+     npm i @uptimizr/r3f
+     ```
+     </TabItem>
+     <TabItem label="A-Frame">
+     ```bash
+     npm i @uptimizr/aframe
+     ```
+     </TabItem>
+   </Tabs>
+
+2. **Call `trackScene`** with your project id and collector endpoint.
+
+   ```ts
+   import { trackScene } from "@uptimizr/babylon";
+
+   const tracker = trackScene(scene, {
+     projectId: "my-3d-app",
+     endpoint: "https://collector.example.com",
+   });
+
+   // later, on teardown
+   tracker.dispose();
+   ```
+
+3. **Open the dashboard** and watch heatmaps fill in as users explore your scene.
+
+</Steps>
+
+:::tip[No build step?]
+Prefer a `<script>` tag over npm? Every connector also ships a standalone CDN bundle that exposes
+`window.Uptimizr` — see [Install via CDN / script tag](/docs/connectors/cdn/). Working in an online
+editor? See [Playgrounds & online editors](/docs/connectors/playgrounds/).
+:::
+
+## What you get out of the box
+
+With the one-call setup above, Uptimizr captures — at privacy-safe default rates — camera/gaze
+pose, pointer movement and clicks, mesh picks, performance, and session lifecycle. Discrete events
+(clicks, mesh interactions, scene changes, custom events) are always captured at 100%; continuous
+channels (camera, pointer, perf) are sampled at conservative defaults you can raise.
+
+## Custom events
+
+Track your own domain events on the same envelope:
+
+```ts
+tracker.track("add_to_cart", { sku: "ABC-123", price: 49 });
+tracker.setScene("level-2"); // segment analytics by scene/area/level
+```
+
+## Next steps
+
+- Prefer a `<script>` tag over npm — see [Install via CDN / script tag](/docs/connectors/cdn/).
+- Tune capture fidelity, scene actors, and opt-in channels — see the
+  [configuration reference](/docs/guides/configuration/) and
+  [mesh & object tracking](/docs/guides/mesh-tracking/).
+- Capture custom events, input actions, and scene changes — see
+  [custom events & input](/docs/guides/events/).
+- Track game levels, viewers that swap models, or multi-room walkthroughs in one session — see
+  [multi-scene experiences](/docs/guides/multi-scene/).
+- Re-drive a session in your own scene — see [session replay](/docs/guides/replay/).
+- Understand events, heatmaps, and replay — see [Concepts](/docs/concepts/).
+- Run the collector and dashboard yourself — see [Deploy & self-host](/docs/deploy/collector/).

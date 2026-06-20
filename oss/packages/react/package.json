@@ -1,0 +1,52 @@
+{
+  "name": "@uptimizr/react",
+  "version": "0.1.0",
+  "description": "Embeddable React analytics panels for the Uptimizr collector — sessions, pointer heatmap, view-direction heatmap, and performance summary. Reads the collector query API through a shared client; configure once with <UptimizrProvider>.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://github.com/RaananW/Uptimizr/tree/main/oss/packages/react#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "happy-dom": "^20.10.6",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "vitest": "^4.1.9"
+  }
+}

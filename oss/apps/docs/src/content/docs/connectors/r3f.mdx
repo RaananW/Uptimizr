@@ -1,0 +1,54 @@
+---
+title: react-three-fiber
+description: Instrument a react-three-fiber scene with the @uptimizr/r3f connector.
+---
+
+The react-three-fiber (R3F) connector. R3F renders three.js, so this package is a thin React layer
+over [`@uptimizr/three`](/docs/connectors/three/) — it does not re-implement capture. It pulls the
+live `scene`, `camera`, and `gl` (`WebGLRenderer`) from the R3F store via `useThree()` and hands
+them to the three connector.
+
+`react`, `@react-three/fiber`, and `three` are peer dependencies.
+
+## Install
+
+```bash
+npm install @uptimizr/r3f @react-three/fiber react three
+```
+
+## Declarative component
+
+Drop `<Uptimizr />` anywhere **inside** your `<Canvas>`:
+
+```tsx
+import { Canvas } from "@react-three/fiber";
+import { Uptimizr } from "@uptimizr/r3f";
+
+function App() {
+  return (
+    <Canvas>
+      <Uptimizr projectId="your-project" endpoint="https://collect.example.com" />
+      <YourScene />
+    </Canvas>
+  );
+}
+```
+
+## Hook
+
+For access to the `UptimizrClient` (read `sessionId`, emit custom events, stop early), call
+`useUptimizr()` from a component rendered inside `<Canvas>`:
+
+```tsx
+import { useUptimizr } from "@uptimizr/r3f";
+
+function Telemetry() {
+  const client = useUptimizr({ projectId: "your-project", endpoint: "https://collect.example.com" });
+  // client.track("add_to_cart", { sku: "ABC-123" });
+  return null;
+}
+```
+
+Capture starts when the hook/component mounts and stops on unmount, tearing down every listener,
+timer, and animation-frame callback — no cookies, no persistent IDs. World-space data is normalized
+to the canonical wire frame by `@uptimizr/three`; the session is attributed to the `r3f` connector.

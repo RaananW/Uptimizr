@@ -1,0 +1,18 @@
+# @uptimizr/mcp
+
+> A read-only Model Context Protocol server over an Uptimizr collector's query API. Lets an agent
+> query a consumer's own 3D analytics; thin wrapper, GET-only, no data egress.
+
+## Docs
+
+- [Package reference](./README.md): run instructions, MCP client config, the full tool table, programmatic use.
+- [Agent guide](./AGENTS.md): rules and tool catalog for AI agents.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): the underlying query endpoints.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), thin backends (0005), consumer-facing agents (0017).
+
+## Key exports
+
+- `createMcpServer(client)` — build the read-only MCP server.
+- `createCollectorClient(config)` — the thin GET-only collector client.
+- `readMcpConfig()` — read `UPTIMIZR_COLLECTOR_URL` + `UPTIMIZR_API_KEY` from the environment.
+- `readTools` — the read-only tool catalog (one entry per query endpoint).

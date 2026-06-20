@@ -1,0 +1,238 @@
+---
+title: Playgrounds & online editors
+description: Add Uptimizr to the Babylon Playground, CodePen/JSFiddle, Glitch, StackBlitz, and the PlayCanvas Editor — no build step required.
+---
+
+import { Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+You don't need a bundler or a local project to try Uptimizr. Every connector ships a
+[standalone global bundle](/docs/connectors/cdn/) that exposes `window.Uptimizr`, so you can
+instrument a scene that lives in an online editor with a few lines.
+
+There are two kinds of surface, and they integrate differently:
+
+- **Code playgrounds** — you write the scene in JS (Babylon Playground, CodePen, JSFiddle, Glitch,
+  StackBlitz). Load the bundle, then call `trackScene(...)` once the engine scene exists.
+- **Visual editors** — you build the scene in a UI and attach scripts (PlayCanvas Editor). Bring in
+  the connector (as an external global bundle or an ESM import), then call `trackScene(...)` from a
+  script component.
+
+:::note[You still need a collector + project]
+`trackScene` needs a `projectId` and an `endpoint` (your collector's URL). Spin one up with the
+[run-the-collector guide](/docs/deploy/collector/) — locally it serves at `http://localhost:4318`.
+Every option works exactly as in the [configuration reference](/docs/guides/configuration/).
+:::
+
+## Babylon Playground
+
+The [Babylon Playground](https://playground.babylonjs.com) supports ES module imports, so you can
+import the connector directly and call `trackScene` once your `scene` exists — no DOM injection and
+no global needed. Add this inside `createScene`, just before `return scene;` (swap in your
+`projectId` and `endpoint`):
+
+<Tabs>
+  <TabItem label="ESM import (recommended)">
+  Import the connector from a CDN ESM URL and call it after the scene is built. jsDelivr's `/+esm`
+  endpoint serves the published npm package as a ready ES module (deps resolved) — no bundler and
+  nothing to host:
+
+  ```ts
+  import { trackScene } from "https://cdn.jsdelivr.net/npm/@uptimizr/babylon/+esm";
+
+  // ...inside createScene, after the scene is built:
+  trackScene(scene, {
+    projectId: "your-project",
+    endpoint: "https://collect.example.com",
+    meta: { sceneId: "playground" },
+  });
+  ```
+
+  In a real project (npm + bundler) you'd use the bare specifier
+  `import { trackScene } from "@uptimizr/babylon"` — node resolution maps it. The Playground doesn't
+  resolve arbitrary bare names, so use the full URL there (or [esm.sh](https://esm.sh):
+  `https://esm.sh/@uptimizr/babylon`).
+  </TabItem>
+  <TabItem label="Script tag (older Playground)">
+  On a Playground build that predates ESM-import support, inject the
+  [global bundle](/docs/connectors/cdn/) through the DOM — the Playground strips static `<script>`
+  tags from markup — and call `trackScene` in its `onload`:
+
+  ```js
+  const s = document.createElement("script");
+  s.src = "https://cdn.jsdelivr.net/npm/@uptimizr/babylon/dist/uptimizr-babylon.global.js";
+  s.onload = () => {
+    Uptimizr.trackScene(scene, {
+      projectId: "your-project",
+      endpoint: "https://collect.example.com",
+      meta: { sceneId: "playground" },
+    });
+  };
+  document.head.appendChild(s);
+  ```
+  </TabItem>
+</Tabs>
+
+Run the Playground and interact with the scene. Camera pose, pointer/click, mesh picks, and FPS
+start flowing to your collector — confirm them in the dashboard or the [query API](/docs/api/query/).
+
+:::tip
+Using the [Babylon Lite](/docs/connectors/babylon-lite/) build instead? Import from
+`@uptimizr/babylon-lite` (or point the script `src` at `uptimizr-babylon-lite.global.js`) — the call
+is identical.
+:::
+
+## CodePen, JSFiddle, Glitch & StackBlitz
+
+These sandboxes let you add `<script>` tags directly, so you can load the engine and the Uptimizr
+bundle side by side. Load the Uptimizr global **after** the engine, then call `trackScene` once the
+scene/camera/renderer exist.
+
+<Tabs syncKey="engine">
+  <TabItem label="Babylon.js">
+  ```html
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@uptimizr/babylon/dist/uptimizr-babylon.global.js"></script>
+  <script>
+    // ...create engine + scene...
+    Uptimizr.trackScene(scene, {
+      projectId: "your-project",
+      endpoint: "https://collect.example.com",
+    });
+  </script>
+  ```
+  </TabItem>
+  <TabItem label="three.js">
+  ```html
+  <script src="https://cdn.jsdelivr.net/npm/@uptimizr/three/dist/uptimizr-three.global.js"></script>
+  <script type="module">
+    // ...create scene, camera, renderer...
+    // three has no active camera, so pass camera + renderer explicitly.
+    Uptimizr.trackScene(scene, camera, renderer, {
+      projectId: "your-project",
+      endpoint: "https://collect.example.com",
+    });
+  </script>
+  ```
+  </TabItem>
+  <TabItem label="PlayCanvas">
+  ```html
+  <script src="https://code.playcanvas.com/playcanvas-stable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@uptimizr/playcanvas/dist/uptimizr-playcanvas.global.js"></script>
+  <script>
+    // ...create app + a camera entity...
+    Uptimizr.trackScene(app, cameraEntity, {
+      projectId: "your-project",
+      endpoint: "https://collect.example.com",
+    });
+  </script>
+  ```
+  </TabItem>
+  <TabItem label="A-Frame">
+  ```html
+  <head>
+    <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
+    <!-- Load AFTER A-Frame: it registers the `uptimizr` component. -->
+    <script src="https://cdn.jsdelivr.net/npm/@uptimizr/aframe/dist/uptimizr-aframe.global.js"></script>
+  </head>
+  <body>
+    <a-scene uptimizr="projectId: your-project; collector: https://collect.example.com">
+      <a-box position="0 1 -3" color="#4db4e6"></a-box>
+      <a-sky color="#0b0e14"></a-sky>
+    </a-scene>
+  </body>
+  ```
+  </TabItem>
+</Tabs>
+
+:::note
+react-three-fiber is React-only and has no global bundle. In a React sandbox (StackBlitz, CodeSandbox)
+use the [npm package](/docs/connectors/r3f/) instead.
+:::
+
+## PlayCanvas Editor
+
+The PlayCanvas Editor attaches scripts to entities and runs them in the published app. There are two
+ways to bring in the connector — pick the one that matches how your project is scripted.
+
+<Tabs>
+  <TabItem label="External script (global bundle)">
+  Load the Uptimizr [global bundle](/docs/connectors/cdn/) as an **external script** (it runs before
+  your scripts and exposes `window.Uptimizr`), then call `trackScene` from a classic script
+  component. Simplest path, works with PlayCanvas' classic `pc.createScript` scripts.
+
+  <Steps>
+
+  1. **Project Settings → External Scripts** — add the bundle URL so it loads before your code:
+
+     ```text
+     https://cdn.jsdelivr.net/npm/@uptimizr/playcanvas/dist/uptimizr-playcanvas.global.js
+     ```
+
+  2. Create a script (for example `analytics.js`), attach it to an entity, and reference your camera
+     entity via a script attribute:
+
+     ```js
+     var Analytics = pc.createScript("analytics");
+
+     // Drag your camera entity onto this attribute in the Editor.
+     Analytics.attributes.add("camera", { type: "entity" });
+
+     Analytics.prototype.initialize = function () {
+       this.tracker = Uptimizr.trackScene(this.app, this.camera, {
+         projectId: "your-project",
+         endpoint: "https://collect.example.com",
+       });
+       this.on("destroy", () => this.tracker.stop("manual"));
+     };
+     ```
+
+  3. Launch the scene and interact with it; events flow to your collector. Read
+     `this.tracker.sessionId` or emit custom events with `this.tracker.track(...)` — the return value
+     is the same [`UptimizrClient`](/docs/connectors/sdk-core/) as the npm path.
+
+  </Steps>
+  </TabItem>
+  <TabItem label="ESM script asset">
+  If your project uses PlayCanvas' **ESM scripts** (script assets written as ES modules), skip the
+  global bundle and `import` the connector directly — the package's ESM entry resolves the same way
+  as any other module in your project (via the Editor's module resolution / import map):
+
+  ```js
+  import { Script } from "playcanvas";
+  import { trackScene } from "@uptimizr/playcanvas";
+
+  export class Analytics extends Script {
+    initialize() {
+      // `camera` is an entity attribute set in the Editor.
+      this.tracker = trackScene(this.app, this.camera, {
+        projectId: "your-project",
+        endpoint: "https://collect.example.com",
+      });
+      this.on("destroy", () => this.tracker.stop("manual"));
+    }
+  }
+  ```
+
+  Use this when you already author ESM scripts; otherwise the external-script tab is the lighter
+  setup. Both return the same [`UptimizrClient`](/docs/connectors/sdk-core/).
+  </TabItem>
+</Tabs>
+
+## Babylon Editor & other engine editors
+
+The [Babylon Editor](https://github.com/BabylonJS/Editor), the [three.js
+editor](https://threejs.org/editor/), Unity/Unreal WebGL exports, and similar tools all produce a
+**standard web project or page** rather than a hosted runtime you script inline. There's no
+editor-specific Uptimizr plugin — once you have the exported project:
+
+- If it has a build step, follow the connector's [npm install](/docs/connectors/overview/).
+- If it's a static page, drop in the [CDN `<script>` bundle](/docs/connectors/cdn/).
+
+In both cases you call the same `trackScene(...)` once the engine's `scene` (and, for three.js,
+`camera` + `renderer`) exist.
+
+## Next steps
+
+- [Install via CDN / script tag](/docs/connectors/cdn/) — bundle names, globals, and self-hosting.
+- [Configuration reference](/docs/guides/configuration/) — every `trackScene` option.
+- [Multi-scene experiences](/docs/guides/multi-scene/) — track levels/models within one session.

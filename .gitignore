@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Local Uptimizr project registry (project id → dev API key map)
+.uptimizr/
+
+# Editor / OS
+.DS_Store
+.idea/
+*.swp
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Docker / data volumes
+infra/docker/data/
+clickhouse-data/
+postgres-data/
+
+# DuckDB (OSS single-file store, ADR 0020) — canonical store lives at <repo-root>/data/
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp/
+/data/
+oss/apps/collector-server/data/

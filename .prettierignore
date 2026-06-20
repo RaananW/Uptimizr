@@ -1,0 +1,6 @@
+dist/
+.next/
+.turbo/
+coverage/
+pnpm-lock.yaml
+LICENSE

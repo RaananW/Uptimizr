@@ -1,0 +1,74 @@
+---
+title: Serve the dashboard
+description: Run the Uptimizr dashboard to visualize heatmaps, mesh rankings, performance, and replay.
+---
+
+The dashboard is a Next.js app that reads from the collector's query API and renders heatmaps,
+mesh rankings, performance panels, and session replay.
+
+## Run it locally
+
+```bash
+pnpm dev:dashboard
+```
+
+The dashboard authenticates to the collector with a **project API key**. Configure it via the
+environment (e.g. `NEXT_PUBLIC_API_KEY` and the collector URL) so the browser can call the read API
+with `x-api-key`. The key only ever reads its own project's data.
+
+## What it shows
+
+- **View-direction & pointer heatmaps** — 2D panels and full 3D against a scene proxy backdrop.
+- **Flow Sankey** — gaze→click flow links rendered in 3D, with position-aware **standpoint** gating,
+  a **two-stage** (standpoint → gaze → mesh) view, and a camera-mode toggle (see below).
+- **Mesh rankings** — most-interacted meshes, object dwell, hover hesitation.
+- **Performance** — FPS/frame-time summaries with percentile aggregation, compile stalls, resource
+  footprint.
+- **Navigation & XR** — camera gestures, coverage/dead zones, XR rotation and source usage.
+- **Session replay** — re-drive a recorded session inside a scene (requires raw retention; see
+  below).
+
+:::tip[Hover to identify]
+Every 3D panel (Flow Sankey, Click rays, World/Gaze heatmap, View-direction dome) shows a **name
+tooltip on hover**: point at a mesh node, ribbon, or proxy box to read the mesh name; on the
+direction dome the tooltip names the look-direction bin and its view count. The tooltip clears on
+pointer-out and never interferes with orbit/zoom.
+:::
+
+## Flow Sankey panel
+
+The Flow Sankey panel visualizes how viewers move from where they look to what they click, in 3D.
+It reads `GET /api/v1/heatmaps/flow` and exposes three controls:
+
+- **Standpoints** — when the scene is walkable, clicks are binned by the **camera standpoint** they
+  were made from (position-aware mode, `groupByOrigin`). Pick a standpoint to gate the flow to clicks
+  made from that spot, or keep _All_ to collapse origins together. A standpoint marker is drawn at
+  the averaged camera position so you can see where the audience stood.
+- **Aggregate / Two-stage** — _Aggregate_ draws direct gaze→mesh ribbons; _Two-stage_ inserts the
+  standpoint as a first column (standpoint → gaze → mesh) so you can read the full path.
+- **Camera mode (Walk / Orbit / All)** — restrict to free/walkable (`first-person`) or orbit
+  (`viewer`) sessions, or show both. The panel **defaults to Walk** when the scene has first-person
+  data, and shows an "orbit-dominated" hint linking to the view-direction dome when it doesn't.
+
+:::tip[Position-aware flow]
+Standpoint gating is most meaningful in **walkable** scenes. For a single fixed orbit camera there is
+effectively one standpoint, so _Aggregate / All_ is the natural view.
+:::
+
+## Build for production
+
+The dashboard builds to a deployable Next.js app:
+
+```bash
+pnpm --filter @uptimizr/dashboard build
+```
+
+Host it wherever you run Next.js. Point it at your collector's public URL and provide the project
+API key through the environment. Because reads are scoped to the key's project, you can run one
+dashboard per project or switch keys per environment.
+
+## Replay prerequisites
+
+Session replay reads the raw, ordered event stream from `/api/v1/sessions/:id/events`, which is
+gated behind `ENABLE_RAW_SESSION_RETENTION` on the collector. Enable it only if you
+intend to retain raw per-session events — see [Privacy & configuration](/docs/deploy/privacy/).

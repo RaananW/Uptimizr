@@ -1,0 +1,309 @@
+/*
+ * Uptimizr brand (Ember) — marketing site global styles.
+ * Palette + type from docs/design/brand-guidelines.md. Warm espresso base under
+ * a saffron→rust heat ramp; the whole site reads like a heat map.
+ */
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource/jetbrains-mono";
+
+:root {
+  /* Surfaces (espresso) */
+  --ink: #161210;
+  --panel: #201913;
+  --panel-2: #281f17;
+  --edge: #34291f;
+
+  /* Text */
+  --fg-hi: #f4eadf;
+  --fg: #d8c8b8;
+  --fg-muted: #a8917c;
+
+  /* Heat ramp (data + accents) */
+  --saffron: #f4c84b;
+  --amber: #eda63e;
+  --ember: #e07b39;
+  --coral: #d85438;
+  --rust: #b22f26;
+
+  /* Gradients */
+  --heat: linear-gradient(120deg, var(--amber), var(--coral) 55%, var(--rust));
+  --gold-rim: linear-gradient(120deg, #ffd15a, #f5b72e 50%, #e0632b);
+
+  --font-display: "Space Grotesk Variable", system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --maxw: 1120px;
+  --radius: 14px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Visible keyboard focus across all interactive elements */
+:focus-visible {
+  outline: 2px solid var(--saffron);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Skip-to-content link — visible only when focused */
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -3rem;
+  z-index: 100;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  background: var(--amber);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.15s var(--ease);
+}
+.skip-link:focus {
+  top: 1rem;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--fg);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  color: var(--fg-hi);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.5em;
+  font-weight: 600;
+}
+
+h2 {
+  font-size: clamp(1.7rem, 1.1rem + 2.4vw, 2.6rem);
+}
+
+h3 {
+  font-size: 1.25rem;
+}
+
+p {
+  margin: 0 0 1rem;
+}
+
+a {
+  color: var(--amber);
+  text-decoration: none;
+  transition: color 0.15s var(--ease);
+}
+
+a:hover {
+  color: var(--saffron);
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-mono);
+}
+
+.container {
+  width: 100%;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ember);
+  margin: 0 0 0.75rem;
+}
+
+.section {
+  padding: clamp(64px, 8vw, 120px) 0;
+  position: relative;
+}
+
+.section--alt {
+  background: linear-gradient(180deg, transparent, rgba(32, 25, 19, 0.55) 12%, rgba(32, 25, 19, 0.55) 88%, transparent);
+}
+
+.lead {
+  font-size: clamp(1.05rem, 0.95rem + 0.6vw, 1.25rem);
+  color: var(--fg);
+  max-width: 60ch;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.98rem;
+  padding: 0.72em 1.25em;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    transform 0.18s var(--ease),
+    box-shadow 0.18s var(--ease),
+    background 0.18s var(--ease),
+    border-color 0.18s var(--ease);
+  white-space: nowrap;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+}
+
+.btn--primary {
+  background: var(--amber);
+  color: var(--ink);
+  box-shadow: 0 8px 30px -10px rgba(237, 166, 62, 0.6);
+}
+
+.btn--primary:hover {
+  background: var(--saffron);
+  color: var(--ink);
+}
+
+.btn--ghost {
+  background: rgba(244, 234, 223, 0.04);
+  border-color: var(--edge);
+  color: var(--fg-hi);
+}
+
+.btn--ghost:hover {
+  border-color: var(--ember);
+  color: var(--fg-hi);
+}
+
+/* Cards */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.25s var(--ease),
+    border-color 0.25s var(--ease);
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(224, 123, 57, 0.5);
+}
+
+.grid {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.grid--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.grid--2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (max-width: 880px) {
+  .grid--3 {
+    grid-template-columns: 1fr;
+  }
+  .grid--2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Scroll-reveal */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s var(--ease),
+    transform 0.7s var(--ease);
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Heat-gradient text */
+.heat-text {
+  background: var(--heat);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Code blocks */
+pre.code {
+  background: #100d0b;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+  overflow-x: auto;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: var(--fg);
+  margin: 0;
+}
+
+pre.code .tok-key {
+  color: var(--ember);
+}
+
+pre.code .tok-str {
+  color: var(--saffron);
+}
+
+pre.code .tok-fn {
+  color: var(--amber);
+}
+
+pre.code .tok-com {
+  color: var(--fg-muted);
+}

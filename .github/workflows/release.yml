@@ -1,0 +1,82 @@
+name: Release
+
+# Manual, semver-oriented publish (Changesets). Never auto-publishes on push.
+# Defaults to a dry run so the publish set can be validated before the first
+# real release. Set `dry-run` to false to actually publish to npm.
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Validate the publish set without publishing (changeset publish --dry-run)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the version-bump commit + git tags
+  id-token: write # npm provenance (OIDC)
+
+jobs:
+  release:
+    name: Version & publish (Changesets)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Proprietary-hosted scrub gate
+        run: bash scripts/scrub-gate.sh
+
+      - name: Apply version bumps
+        run: pnpm changeset version
+
+      - name: Publish (dry run)
+        if: ${{ inputs.dry-run }}
+        run: pnpm changeset publish --dry-run
+
+      - name: Commit version bump
+        if: ${{ !inputs.dry-run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || git commit -m "chore(release): version packages"
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry-run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          pnpm changeset publish
+          git push --follow-tags

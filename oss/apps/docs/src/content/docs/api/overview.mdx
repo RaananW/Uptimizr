@@ -1,0 +1,51 @@
+---
+title: HTTP API — overview & auth
+description: How to authenticate against the collector's ingestion and query API, and the shared parameters.
+---
+
+The collector exposes one **ingestion** endpoint and a set of **read** endpoints. All requests
+authenticate with a **project API key** in the `x-api-key` header; the project is resolved from the
+key server-side, so a client can only ever read or write its own data.
+
+```bash
+KEY=…   # a project API key
+BASE=https://collect.example.com   # or http://localhost:8787 locally
+curl -s -H "x-api-key: $KEY" "$BASE/api/v1/sessions?limit=20"
+```
+
+- No key / unknown key → `401`.
+- There is no cross-project query — a caller can only ever read its own data.
+- Do **not** add a `projectId` query param to "widen" a query; it is ignored.
+
+## Shared parameters
+
+Binned and aggregate endpoints accept these (coerced and bounded by Zod at the edge — out-of-range
+values are rejected with `400`, not clamped):
+
+| Param      | Unit / type           | Notes                                                              |
+| ---------- | --------------------- | ----------------------------------------------------------------- |
+| `since`    | epoch **milliseconds** | Range start. Omit for the server default window.                  |
+| `until`    | epoch **milliseconds** | Range end.                                                        |
+| `bins`     | `1`–`500`             | Bin count for binned heatmaps.                                    |
+| `limit`    | `1`–`1000`            | Result cap on list/top endpoints (no cursors beyond this).        |
+| `cellSize` | `> 0`, `≤ 1000`       | Voxel size in world units for world / click-ray heatmaps.         |
+| `interval` | **seconds**           | Bucket width for `timeseries`.                                    |
+| `scene`    | id                    | Scope to one scene/area/level (the value passed to `setScene`).   |
+| `source`   | enum                  | Input-source filter: `mouse`, `touch`, `stylus`, `pen`, `xr-controller`, `hand`, `gaze`, `transient`, `other`. |
+| `session`  | id                    | Scope an aggregate to a single session.                           |
+| `cameraMode` | `viewer` \| `first-person` | Restrict to orbit (`viewer`) or free/walkable (`first-person`) camera sessions. |
+
+:::caution[Common pitfalls]
+- **`since`/`until` are milliseconds; `interval` is seconds.** Mixing units is the most common
+  "empty result" cause.
+- **Aggregate columns come back as JSON strings** (e.g. `"42"`). Coerce to numbers before doing math.
+- **Empty (200 + no rows) is not an error** — usually the time window or a filter excluded
+  everything. Widen `since`/`until` and drop filters to confirm data exists, then narrow.
+:::
+
+## Prefer the MCP server for agents
+
+For an AI agent (or any MCP client) that should read analytics, use the read-only
+[`@uptimizr/mcp`](https://github.com/RaananW/Uptimizr/tree/main/oss/packages/mcp) server instead of
+hand-rolling HTTP calls. It wraps each read endpoint as a typed, GET-only tool, configured with
+`UPTIMIZR_COLLECTOR_URL` + `UPTIMIZR_API_KEY`. It exposes no ingestion, mutation, or raw-event tools.

@@ -1,0 +1,21 @@
+# @uptimizr/db
+
+> OSS storage contracts + the single-file DuckDB store (events + metadata in one `.duckdb` file;
+> ADR 0020). Dialect-agnostic query builders defined once and emitted per engine. No
+> ClickHouse/Postgres dependency — those live with a separately-licensed scale store. Server/Node
+> only. Query-time aggregation; forward-only, additive migrations. Single-writer store.
+
+## Docs
+
+- [Package reference](./README.md): DuckDB usage, the spec-once/emit-per-dialect extension point, single-writer constraint.
+- [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): how queries surface to consumers.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): database choice (0002), migrations (0007), open-core storage boundary (0020).
+
+## Key exports
+
+- DuckDB store: `createDuckdbClient`, `migrateDuckdb`, `duckdbInsertEvents`, `duckdbGetSessionEvents`, `duckdbResolveApiKey`, `runDuckdbQuery`.
+- Query layer: `buildX(projectId, opts, dialect)` builders, `duckdbDialect`, `Dialect`/`QuerySpec` types.
+- Neutral helpers: `toEventRow`, `formatUtcTimestamp`, api-key helpers, `Project`/`ApiKeyRecord`/`SceneRepresentation*` types.
+- Parity: `PARITY_CASES`, `diffParity` (DuckDB-vs-ClickHouse cross-engine equality).
+- `readDbSettings()` — environment-driven DuckDB settings with a local-dev default (`DUCKDB_PATH`).

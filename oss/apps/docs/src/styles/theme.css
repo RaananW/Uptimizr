@@ -1,0 +1,53 @@
+/* Uptimizr "Ember" theme for Starlight. Maps the brand palette onto
+   Starlight's CSS custom properties (dark-first; the product is dark). */
+:root {
+  --uz-saffron: #f4c84b;
+  --uz-amber: #eda63e;
+  --uz-ember: #e07b39;
+  --uz-coral: #d85438;
+  --uz-rust: #b22f26;
+}
+
+:root[data-theme="dark"] {
+  --sl-color-accent-low: #3a1c10;
+  --sl-color-accent: var(--uz-ember);
+  --sl-color-accent-high: var(--uz-saffron);
+
+  --sl-color-white: #f4eadf;
+  --sl-color-gray-1: #e7dccf;
+  --sl-color-gray-2: #d8c8b8;
+  --sl-color-gray-3: #a8917c;
+  --sl-color-gray-4: #6f5f50;
+  --sl-color-gray-5: #34291f;
+  --sl-color-gray-6: #241c15;
+  --sl-color-black: #161210;
+
+  --sl-color-bg: #161210;
+  --sl-color-bg-nav: rgba(22, 18, 16, 0.8);
+  --sl-color-bg-sidebar: #1a140f;
+  --sl-color-hairline: #34291f;
+  --sl-color-text-accent: var(--uz-saffron);
+}
+
+/* Light theme: warm paper, ember accents. */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #f7e2c9;
+  --sl-color-accent: var(--uz-coral);
+  --sl-color-accent-high: var(--uz-rust);
+  --sl-color-text-accent: var(--uz-rust);
+}
+
+/* Heat-gradient on the hero title and key links. */
+.sl-markdown-content a {
+  text-underline-offset: 0.2em;
+}
+
+site-title,
+.site-title {
+  font-weight: 700;
+}
+
+/* Inline code + code blocks lean into the brand mono + warm panels. */
+:root[data-theme="dark"] {
+  --sl-color-bg-inline-code: #241c15;
+}

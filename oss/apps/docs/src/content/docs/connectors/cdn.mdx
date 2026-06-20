@@ -1,0 +1,118 @@
+---
+title: Install via CDN / script tag
+description: Use Uptimizr connectors with no build step — load a standalone bundle from a CDN or your collector and call window.Uptimizr.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+You don't have to use npm. Every connector also ships a **standalone global (IIFE) bundle** you can
+drop onto a page with a single `<script>` tag — ideal for the Babylon Playground, CodePen, a CMS, or
+any page where you can't run a bundler. The bundle exposes a `window.Uptimizr` global and **never
+bundles the engine** (your page already provides Babylon/three/PlayCanvas).
+
+:::tip
+Working in an online editor? See [Playgrounds & online editors](/docs/connectors/playgrounds/) for
+step-by-step recipes (Babylon Playground, CodePen/JSFiddle, the PlayCanvas Editor, and more).
+:::
+
+## Bundles & globals
+
+| Connector    | Bundle file                       | Global exposed       |
+| ------------ | --------------------------------- | -------------------- |
+| Babylon.js   | `uptimizr-babylon.global.js`      | `window.Uptimizr`    |
+| Babylon Lite | `uptimizr-babylon-lite.global.js` | `window.Uptimizr`    |
+| three.js     | `uptimizr-three.global.js`        | `window.Uptimizr`    |
+| PlayCanvas   | `uptimizr-playcanvas.global.js`   | `window.Uptimizr`    |
+| A-Frame      | `uptimizr-aframe.global.js`       | `window.UptimizrAframe` (registers the `uptimizr` component) |
+| Replay       | `uptimizr-replay.global.js`       | `window.UptimizrReplay` |
+
+:::note
+react-three-fiber is React-only — there is no global bundle. Use the [npm package](/docs/connectors/r3f/).
+:::
+
+## Where to load it from
+
+The standalone bundle is just a static file, so serve it however you like:
+
+- **From a public npm CDN** — because the connectors are published to npm, a CDN like jsDelivr or
+  unpkg can serve the bundle straight from the package:
+
+  ```html
+  <script src="https://cdn.jsdelivr.net/npm/@uptimizr/babylon/dist/uptimizr-babylon.global.js"></script>
+  <!-- or pin a version: .../npm/@uptimizr/babylon@0.1.0/dist/uptimizr-babylon.global.js -->
+  ```
+
+- **From your own collector / static host** — self-host the file (any static host, object store, or
+  CDN works) and point the `<script>` at it. The local playground serves it at
+  `/uptimizr-babylon.global.js`.
+
+## Usage
+
+Inject the script through the DOM (this also sidesteps any TypeScript/`import` rewriting on the host
+page), then call `trackScene` once the engine scene exists:
+
+<Tabs syncKey="engine">
+  <TabItem label="Babylon.js">
+  ```html
+  <script>
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/@uptimizr/babylon/dist/uptimizr-babylon.global.js";
+    s.onload = () => {
+      Uptimizr.trackScene(scene, {
+        projectId: "your-project-id",
+        endpoint: "https://collect.example.com",
+        meta: { sceneId: "playground" },
+      });
+    };
+    document.head.appendChild(s);
+  </script>
+  ```
+  </TabItem>
+  <TabItem label="three.js">
+  ```html
+  <script src="https://cdn.jsdelivr.net/npm/@uptimizr/three/dist/uptimizr-three.global.js"></script>
+  <script>
+    // three has no active camera, so pass camera + renderer explicitly.
+    Uptimizr.trackScene(scene, camera, renderer, {
+      projectId: "your-project-id",
+      endpoint: "https://collect.example.com",
+    });
+  </script>
+  ```
+  </TabItem>
+  <TabItem label="PlayCanvas">
+  ```html
+  <script src="https://cdn.jsdelivr.net/npm/@uptimizr/playcanvas/dist/uptimizr-playcanvas.global.js"></script>
+  <script>
+    Uptimizr.trackScene(app, cameraEntity, {
+      projectId: "your-project-id",
+      endpoint: "https://collect.example.com",
+    });
+  </script>
+  ```
+  </TabItem>
+  <TabItem label="A-Frame">
+  ```html
+  <head>
+    <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
+    <!-- Load AFTER A-Frame: it registers the `uptimizr` component. -->
+    <script src="https://cdn.jsdelivr.net/npm/@uptimizr/aframe/dist/uptimizr-aframe.global.js"></script>
+  </head>
+  <body>
+    <a-scene uptimizr="projectId: your-project; collector: https://collect.example.com">
+      <a-box position="0 1 -3" color="#4db4e6"></a-box>
+    </a-scene>
+  </body>
+  ```
+  </TabItem>
+</Tabs>
+
+`Uptimizr.trackScene(...)` returns the same client as the npm path, so you can read
+`client.sessionId`, emit custom events with `client.track(...)`, change scenes with
+`client.setScene(...)`, and `client.stop()` — everything in the [configuration
+reference](/docs/guides/configuration/) works identically.
+
+## Replay from a script tag
+
+The replay bundle exposes `window.UptimizrReplay` with a one-call `replayInScene` helper — see the
+[session replay guide](/docs/guides/replay/#option-b--script-tag).

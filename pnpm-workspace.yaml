@@ -1,0 +1,31 @@
+# pnpm workspace definition.
+packages:
+  - "oss/apps/*"
+  - "oss/packages/*"
+  - "examples/*"
+
+# Dependencies whose install/build scripts are allowed to run (pnpm blocks them by
+# default). esbuild ships a platform binary required by vitest; sharp ships native
+# image-processing binaries used by Next.js. Using the `allowBuilds` map (pnpm 11+)
+# so the approval is persisted in committed config and fresh checkouts / git
+# worktrees install non-interactively without an `approve-builds` prompt.
+allowBuilds:
+  canvas: true
+  esbuild: true
+  sharp: true
+
+minimumReleaseAgeExclude:
+  - "@babylonjs/core@9.13.0"
+  - "@babylonjs/lite@1.2.0"
+
+# Force patched versions of transitive (build/dev-time) dependencies pulled in by
+# Astro tooling and Next.js that lag behind their security advisories. These are
+# not direct deps, so they can only be bumped via overrides. Revisit/remove each
+# entry once the parent package ships a release that resolves the advisory.
+overrides:
+  # GHSA: stack overflow via deeply nested YAML (yaml < 2.8.3), via @astrojs/check.
+  yaml: ">=2.8.3"
+  # GHSA: XSS via unescaped </style> in CSS stringify (postcss < 8.5.10), via next.
+  postcss: ">=8.5.10"
+  # GHSA: dev-server arbitrary file read on Windows (esbuild < 0.28.1), via astro.
+  esbuild: ">=0.28.1"

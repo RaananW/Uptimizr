@@ -1,0 +1,68 @@
+{
+  "name": "@uptimizr/heatmap",
+  "version": "0.1.0",
+  "description": "Framework-agnostic 3D heatmap overlay core + Babylon adapter. Draws a world-space (voxel) heatmap into the developer's own scene (Tier 0 overlay, ADR 0010).",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/heatmap"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://github.com/RaananW/Uptimizr/tree/main/oss/packages/heatmap#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./babylon": {
+      "types": "./dist/drivers/babylon.d.ts",
+      "import": "./dist/drivers/babylon.js"
+    },
+    "./babylon-lite": {
+      "types": "./dist/drivers/babylon-lite.d.ts",
+      "import": "./dist/drivers/babylon-lite.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md",
+    "llms.txt"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && pnpm run bundle",
+    "bundle": "esbuild src/babylonEntry.ts --bundle --format=esm --platform=browser --target=es2022 --external:@babylonjs/core --minify --legal-comments=none --banner:js=\"/* @uptimizr/heatmap Babylon overlay (ESM) — Apache-2.0. Import into a page that already provides @babylonjs/core (it is left external); draws a world-space heatmap into your own scene. */\" --outfile=dist/uptimizr-heatmap.babylon.js",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@babylonjs/core": "^7.0.0 || ^8.0.0 || ^9.0.0",
+    "@babylonjs/lite": "^1.0.1"
+  },
+  "peerDependenciesMeta": {
+    "@babylonjs/core": {
+      "optional": true
+    },
+    "@babylonjs/lite": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@babylonjs/core": "^9.13.0",
+    "@babylonjs/lite": "^1.2.0",
+    "esbuild": "^0.25.0",
+    "vitest": "^4.1.9"
+  }
+}

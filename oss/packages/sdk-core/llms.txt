@@ -1,0 +1,16 @@
+# @uptimizr/sdk-core
+
+> The framework-agnostic Uptimizr capture runtime: session, in-memory batching, flush
+> scheduling, and a cookieless transport, with a pluggable collector system. No engine knowledge.
+
+## Docs
+
+- [Package reference](./README.md): usage, collector extension point, all config options, transport.
+- [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): how tracking flows end-to-end.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), thin backends (0005).
+
+## Key exports
+
+- `UptimizrClient` — create, `start()`, `track(name, props)`, `use(collector)`, `stop()`.
+- `Collector` / `Transport` types — the extension points.

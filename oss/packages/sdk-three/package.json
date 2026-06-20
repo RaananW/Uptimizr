@@ -1,0 +1,55 @@
+{
+  "name": "@uptimizr/three",
+  "version": "0.1.0",
+  "description": "three.js connector for Uptimizr — captures camera, pointer, mesh, and perf events as an sdk-core collector.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/sdk-three"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://github.com/RaananW/Uptimizr/tree/main/oss/packages/sdk-three#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && pnpm run bundle && pnpm run bundle:global",
+    "bundle": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --external:three --minify --legal-comments=none --banner:js=\"/* @uptimizr/three standalone bundle — Apache-2.0. Async-import into any page that already runs three.js; three stays external (peer dependency, never bundled). */\" --outfile=dist/uptimizr-three.js",
+    "bundle:global": "esbuild src/index.ts --bundle --format=iife --global-name=Uptimizr --platform=browser --target=es2022 --external:three --minify --legal-comments=none --banner:js=\"/* @uptimizr/three standalone bundle (global) — Apache-2.0. Inject via a <script> tag into a page that runs three.js; exposes window.Uptimizr. three stays external (peer dependency, never bundled). */\" --outfile=dist/uptimizr-three.global.js",
+    "bundle:watch": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --external:three --sourcemap --watch --outfile=dist/uptimizr-three.js",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "three": ">=0.150.0"
+  },
+  "dependencies": {
+    "@uptimizr/schema": "workspace:*",
+    "@uptimizr/sdk-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/three": "^0.184.0",
+    "esbuild": "^0.25.0",
+    "three": "^0.184.0",
+    "vitest": "^4.1.9"
+  }
+}

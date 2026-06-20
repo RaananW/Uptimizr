@@ -1,0 +1,60 @@
+{
+  "name": "@uptimizr/r3f",
+  "version": "0.1.0",
+  "description": "react-three-fiber connector for Uptimizr — a thin React layer over @uptimizr/three that wires capture into the R3F render store.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/sdk-r3f"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://github.com/RaananW/Uptimizr/tree/main/oss/packages/sdk-r3f#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@react-three/fiber": ">=8.0.0",
+    "react": ">=18.0.0",
+    "three": ">=0.150.0"
+  },
+  "dependencies": {
+    "@uptimizr/schema": "workspace:*",
+    "@uptimizr/sdk-core": "workspace:*",
+    "@uptimizr/three": "workspace:*"
+  },
+  "devDependencies": {
+    "@react-three/fiber": "9.6.1",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^19.2.0",
+    "@types/three": "^0.184.0",
+    "jsdom": "^29.1.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "three": "^0.184.0",
+    "vitest": "^4.1.9"
+  }
+}

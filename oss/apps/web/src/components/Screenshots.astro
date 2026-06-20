@@ -1,0 +1,466 @@
+---
+// Brand-styled dashboard previews rendered inline (SVG/CSS) so the marketing
+// site ships no heavy raster assets and always matches the live product theme.
+// Each card mirrors a real panel from oss/apps/dashboard — the 2D charts/heatmaps
+// and the Babylon-rendered 3D views (the same ones the hero demo shows live).
+
+// 2D — pointer heatmap: normalized screen-space click/move density (6×6 mini-grid).
+const pointer = Array.from({ length: 36 }, (_, i) => (Math.sin(i * 1.7) + 1) / 2);
+
+// 2D — floor-plan heatmap: top-down standing density, two clusters (8×6 mini-grid).
+const floor = Array.from({ length: 48 }, (_, i) => {
+  const x = i % 8;
+  const y = Math.floor(i / 8);
+  const d = Math.min(Math.hypot(x - 2, y - 1.5), Math.hypot(x - 6, y - 4));
+  return Math.max(0, 1 - d / 3.2);
+});
+
+// 2D — rendering performance: per-bucket frame time.
+const bars = [38, 52, 47, 63, 71, 58, 80, 74, 66, 88, 79, 92];
+
+// 2D — top meshes by interaction count.
+const meshes = [
+  { name: "ProductHero", v: 0.94 },
+  { name: "CTA_Button", v: 0.78 },
+  { name: "Floor_Plane", v: 0.41 },
+  { name: "Backdrop", v: 0.22 },
+];
+
+// 2D — event volume over time, drawn as an area sparkline.
+const volume = [12, 18, 15, 24, 30, 27, 38, 34, 45, 52, 47, 61, 55, 69, 64, 76];
+const vmax = Math.max(...volume);
+const vpts = volume.map((v, i) => {
+  const x = (i / (volume.length - 1)) * 100;
+  const y = 36 - (v / vmax) * 30;
+  return `${x.toFixed(1)},${y.toFixed(1)}`;
+});
+const volumeArea = `M0,38 L${vpts.join(" L")} L100,38 Z`;
+const volumeLine = `M${vpts.join(" L")}`;
+---
+
+<section id="dashboard" class="section section--alt">
+  <div class="container">
+    <p class="eyebrow reveal">Inside the dashboard</p>
+    <h2 class="reveal">Flat panels and 3D views — every angle of your scene</h2>
+    <p class="lead reveal">
+      The self-hostable dashboard turns raw spatial events into panels you can act on: 2D
+      heatmaps, rankings and performance charts, plus interactive 3D reconstructions of where
+      people looked, clicked and moved.
+    </p>
+
+    <h3 class="shots__group reveal">2D panels</h3>
+    <div class="shots grid grid--3">
+      <article class="card shot reveal">
+        <header class="shot__head">
+          <span>Pointer heatmap</span>
+          <em>2D</em>
+        </header>
+        <div class="shot__heat" aria-hidden="true">
+          {pointer.map((r) => <span style={`--v:${r.toFixed(2)}`} />)}
+        </div>
+      </article>
+
+      <article class="card shot reveal" style="transition-delay:60ms">
+        <header class="shot__head">
+          <span>View-direction heatmap</span>
+          <em>2D</em>
+        </header>
+        <div class="shot__radial" aria-hidden="true">
+          <svg viewBox="0 0 100 100" role="img">
+            <defs>
+              <clipPath id="vdClip"><circle cx="50" cy="50" r="46" /></clipPath>
+              <radialGradient id="vdA" cx="48%" cy="34%" r="26%">
+                <stop offset="0%" stop-color="var(--saffron)" />
+                <stop offset="60%" stop-color="var(--ember)" stop-opacity="0.5" />
+                <stop offset="100%" stop-color="var(--ember)" stop-opacity="0" />
+              </radialGradient>
+              <radialGradient id="vdB" cx="64%" cy="62%" r="20%">
+                <stop offset="0%" stop-color="var(--coral)" />
+                <stop offset="100%" stop-color="var(--coral)" stop-opacity="0" />
+              </radialGradient>
+            </defs>
+            <circle cx="50" cy="50" r="46" fill="var(--panel-2)" stroke="var(--edge)" stroke-width="1.2" />
+            <g clip-path="url(#vdClip)">
+              <rect x="0" y="0" width="100" height="100" fill="url(#vdA)" />
+              <rect x="0" y="0" width="100" height="100" fill="url(#vdB)" />
+            </g>
+            <g fill="none" stroke="var(--edge)" stroke-width="0.8" opacity="0.7">
+              <circle cx="50" cy="50" r="31" />
+              <circle cx="50" cy="50" r="16" />
+              <line x1="50" y1="4" x2="50" y2="96" />
+              <line x1="4" y1="50" x2="96" y2="50" />
+            </g>
+          </svg>
+        </div>
+      </article>
+
+      <article class="card shot reveal" style="transition-delay:120ms">
+        <header class="shot__head">
+          <span>Floor-plan heatmap</span>
+          <em>2D</em>
+        </header>
+        <div class="shot__floor" aria-hidden="true">
+          {floor.map((r) => <span style={`--v:${r.toFixed(2)}`} />)}
+        </div>
+      </article>
+
+      <article class="card shot reveal">
+        <header class="shot__head">
+          <span>Rendering performance</span>
+          <em>p95</em>
+        </header>
+        <div class="shot__chart" aria-hidden="true">
+          {bars.map((h) => <i style={`height:${h}%`} />)}
+        </div>
+        <div class="shot__meta">
+          <span>16.7 ms median</span>
+          <span class="heat-text">60 fps</span>
+        </div>
+      </article>
+
+      <article class="card shot reveal" style="transition-delay:60ms">
+        <header class="shot__head">
+          <span>Top meshes</span>
+          <em>by interaction</em>
+        </header>
+        <ul class="shot__ranks">
+          {
+            meshes.map((m) => (
+              <li>
+                <span class="shot__ranks-name">{m.name}</span>
+                <span class="shot__ranks-bar">
+                  <i style={`width:${Math.round(m.v * 100)}%`} />
+                </span>
+              </li>
+            ))
+          }
+        </ul>
+      </article>
+
+      <article class="card shot reveal" style="transition-delay:120ms">
+        <header class="shot__head">
+          <span>Event volume</span>
+          <em>over time</em>
+        </header>
+        <div class="shot__spark" aria-hidden="true">
+          <svg viewBox="0 0 100 40" role="img">
+            <defs>
+              <linearGradient id="volFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--ember)" stop-opacity="0.5" />
+                <stop offset="100%" stop-color="var(--ember)" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={volumeArea} fill="url(#volFill)" />
+            <path d={volumeLine} fill="none" stroke="var(--saffron)" stroke-width="1.5" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <div class="shot__meta">
+          <span>24h window</span>
+          <span class="heat-text">+18%</span>
+        </div>
+      </article>
+    </div>
+
+    <h3 class="shots__group reveal">
+      3D views <span class="shots__tag">Babylon</span>
+    </h3>
+    <p class="shots__note reveal">
+      The dashboard reconstructs your scene in 3D — gaze, clicks and movement in world space.
+      The interactive demo at the top of the page renders these live. <a href="#demo">Back to the demo ↑</a>
+    </p>
+    <div class="shots shots--3d reveal">
+      <article class="card shot shot--3d">
+        <div class="shot__art" aria-hidden="true">
+          <svg viewBox="0 0 120 80" role="img">
+            <ellipse cx="60" cy="58" rx="48" ry="11" fill="none" stroke="var(--edge)" stroke-width="1" />
+            <path d="M12,58 A48,50 0 0 1 108,58" fill="none" stroke="var(--ember)" stroke-width="1.3" stroke-opacity="0.75" />
+            <g fill="none" stroke="var(--edge)" stroke-width="0.8" opacity="0.8">
+              <path d="M22,46 A38,28 0 0 0 98,46" />
+              <path d="M34,32 A26,17 0 0 0 86,32" />
+              <path d="M60,10 A24,48 0 0 0 60,58" />
+              <path d="M60,10 A24,48 0 0 1 60,58" />
+            </g>
+            <circle cx="58" cy="24" r="3.6" fill="var(--saffron)" />
+            <circle cx="71" cy="35" r="2.6" fill="var(--ember)" />
+            <circle cx="48" cy="39" r="2.2" fill="var(--coral)" />
+          </svg>
+        </div>
+        <header class="shot__head shot__head--3d">
+          <span>View dome</span>
+          <em>3D</em>
+        </header>
+        <p class="shot__cap">Gaze direction on a hemisphere</p>
+      </article>
+
+      <article class="card shot shot--3d">
+        <div class="shot__art" aria-hidden="true">
+          <svg viewBox="0 0 120 80" role="img">
+            <g fill="none" stroke="var(--edge)" stroke-width="0.9">
+              <path d="M60,14 L100,36 L60,58 L20,36 Z" />
+              <path d="M20,36 L20,52 L60,74 L60,58" />
+              <path d="M60,58 L60,74 L100,52 L100,36" />
+            </g>
+            <circle cx="54" cy="35" r="6" fill="var(--saffron)" />
+            <circle cx="67" cy="41" r="5" fill="var(--ember)" />
+            <circle cx="48" cy="45" r="4.2" fill="var(--coral)" />
+            <circle cx="73" cy="33" r="3.4" fill="var(--rust)" />
+            <circle cx="60" cy="49" r="3" fill="var(--ember)" />
+          </svg>
+        </div>
+        <header class="shot__head shot__head--3d">
+          <span>World heatmap</span>
+          <em>3D</em>
+        </header>
+        <p class="shot__cap">Pointer-hit density in world space</p>
+      </article>
+
+      <article class="card shot shot--3d">
+        <div class="shot__art" aria-hidden="true">
+          <svg viewBox="0 0 120 80" role="img">
+            <defs>
+              <linearGradient id="rayGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="var(--saffron)" />
+                <stop offset="100%" stop-color="var(--rust)" stop-opacity="0.45" />
+              </linearGradient>
+            </defs>
+            <path d="M72,18 L106,38 L72,66 Z" fill="var(--panel-2)" stroke="var(--edge)" stroke-width="0.9" />
+            <g stroke="url(#rayGrad)" stroke-width="1.5">
+              <line x1="18" y1="39" x2="86" y2="30" />
+              <line x1="18" y1="41" x2="94" y2="44" />
+              <line x1="18" y1="40" x2="82" y2="56" />
+            </g>
+            <circle cx="16" cy="40" r="4.6" fill="var(--saffron)" />
+            <circle cx="86" cy="30" r="2.6" fill="var(--coral)" />
+            <circle cx="94" cy="44" r="2.6" fill="var(--coral)" />
+            <circle cx="82" cy="56" r="2.6" fill="var(--coral)" />
+          </svg>
+        </div>
+        <header class="shot__head shot__head--3d">
+          <span>Click rays</span>
+          <em>3D</em>
+        </header>
+        <p class="shot__cap">Each click joined to its viewpoint</p>
+      </article>
+
+      <article class="card shot shot--3d">
+        <div class="shot__art" aria-hidden="true">
+          <svg viewBox="0 0 120 80" role="img">
+            <defs>
+              <linearGradient id="flowGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#6f9fd0" />
+                <stop offset="100%" stop-color="var(--ember)" />
+              </linearGradient>
+            </defs>
+            <g fill="none" stroke="url(#flowGrad)" stroke-opacity="0.7">
+              <path d="M26,22 C60,22 60,30 96,30" stroke-width="5" />
+              <path d="M26,40 C60,40 60,47 96,47" stroke-width="7" />
+              <path d="M26,58 C60,58 60,38 96,38" stroke-width="3.5" />
+            </g>
+            <g fill="#6f9fd0">
+              <rect x="18" y="16" width="8" height="12" rx="2" />
+              <rect x="18" y="34" width="8" height="12" rx="2" />
+              <rect x="18" y="52" width="8" height="12" rx="2" />
+            </g>
+            <g fill="var(--ember)">
+              <rect x="96" y="23" width="8" height="14" rx="2" />
+              <rect x="96" y="41" width="8" height="13" rx="2" />
+            </g>
+          </svg>
+        </div>
+        <header class="shot__head shot__head--3d">
+          <span>Flow Sankey</span>
+          <em>3D</em>
+        </header>
+        <p class="shot__cap">Gaze direction → clicked mesh</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<style>
+  .shots {
+    margin-top: 2.4rem;
+  }
+  .shot {
+    padding: 1rem;
+  }
+  .shot__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    color: var(--fg-muted);
+    margin-bottom: 0.9rem;
+  }
+  .shot__head em {
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--saffron);
+  }
+  .shot__heat {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+    aspect-ratio: 6 / 5;
+  }
+  .shot__heat span {
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--rust) calc(var(--v) * 100%), var(--panel-2));
+    box-shadow: 0 0 calc(var(--v) * 12px) rgba(224, 123, 57, calc(var(--v) * 0.7));
+  }
+  .shot__chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 5px;
+    height: 120px;
+  }
+  .shot__chart i {
+    flex: 1;
+    border-radius: 3px 3px 0 0;
+    background: var(--heat);
+    opacity: 0.9;
+  }
+  .shot__meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.8rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--fg-muted);
+  }
+  .shot__ranks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.85rem;
+  }
+  .shot__ranks li {
+    display: grid;
+    gap: 0.35rem;
+  }
+  .shot__ranks-name {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--fg);
+  }
+  .shot__ranks-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    overflow: hidden;
+  }
+  .shot__ranks-bar i {
+    display: block;
+    height: 100%;
+    background: var(--heat);
+  }
+
+  /* Group headings + 3D note */
+  .shots__group {
+    margin: 2.6rem 0 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .shots__tag {
+    font-size: 0.66rem;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    color: var(--saffron);
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    padding: 0.1rem 0.55rem;
+  }
+  .shots__note {
+    margin: 0 0 1.3rem;
+    max-width: 60ch;
+    font-size: 0.9rem;
+    color: var(--fg-muted);
+  }
+  .shots__note a {
+    color: var(--saffron);
+    white-space: nowrap;
+  }
+
+  /* 2D — radial view-direction sphere */
+  .shot__radial {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 6 / 5;
+  }
+  .shot__radial svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* 2D — floor-plan top-down grid */
+  .shot__floor {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 3px;
+    aspect-ratio: 8 / 6;
+  }
+  .shot__floor span {
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--ember) calc(var(--v) * 100%), var(--panel-2));
+    box-shadow: 0 0 calc(var(--v) * 9px) rgba(237, 166, 62, calc(var(--v) * 0.55));
+  }
+
+  /* 2D — event-volume sparkline */
+  .shot__spark {
+    aspect-ratio: 5 / 2;
+  }
+  .shot__spark svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* 3D views group */
+  .shots--3d {
+    display: grid;
+    gap: 1.1rem;
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .shot--3d {
+    padding: 0.85rem;
+  }
+  .shot__art {
+    aspect-ratio: 3 / 2;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    border: 1px solid var(--edge);
+    background: radial-gradient(120% 120% at 50% 0%, var(--panel-2), var(--panel));
+  }
+  .shot__art svg {
+    width: 88%;
+    height: 88%;
+  }
+  .shot__head--3d {
+    margin: 0.85rem 0 0.3rem;
+  }
+  .shot__cap {
+    margin: 0;
+    font-size: 0.76rem;
+    color: var(--fg-muted);
+  }
+
+  @media (max-width: 880px) {
+    .shots--3d {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (max-width: 520px) {
+    .shots--3d {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

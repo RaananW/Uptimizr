@@ -1,0 +1,46 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Uptimizr logo">
+  <defs>
+    <linearGradient id="uz-top" x1="54" y1="40" x2="202" y2="124" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7CE57"/><stop offset="1" stop-color="#EDAE42"/>
+    </linearGradient>
+    <linearGradient id="uz-left" x1="54" y1="82" x2="128" y2="212" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EC9B3D"/><stop offset="1" stop-color="#D9633A"/>
+    </linearGradient>
+    <linearGradient id="uz-right" x1="128" y1="124" x2="202" y2="212" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D4513A"/><stop offset="1" stop-color="#A82E26"/>
+    </linearGradient>
+    <!-- Occlusion = the groove's PORTAL: the U-band opening on the front faces plus the two
+         top-face openings where the cut emerges. The solid wedge between the openings (near
+         vertex 4) is excluded, hiding the small triangle that projects up behind it. -->
+    <clipPath id="frontfaces">
+      <path d="M83.6 98.8 L83.6 151.3 L128.0 176.5 L172.4 151.3 L172.4 98.8 L157.6 107.2 L157.6 142.7 L128.0 159.5 L98.4 142.7 L98.4 107.2 Z"/>
+      <path d="M98.4 107.2 L83.6 98.8 L91.0 94.6 L105.8 103.0 Z"/>
+      <path d="M157.6 107.2 L172.4 98.8 L165.0 94.6 L150.2 103.0 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Transparent mark (app-icon plate omitted): sits on any header background. -->
+
+  <!-- Isometric cube, faces shaded as a thermal heatmap. -->
+  <path d="M128 40 L202 82 L128 124 L54 82 Z" fill="url(#uz-top)"/>
+  <path d="M54 82 L128 124 L128 212 L54 170 Z" fill="url(#uz-left)"/>
+  <path d="M202 82 L202 170 L128 212 L128 124 Z" fill="url(#uz-right)"/>
+
+  <!-- U-shaped hole, flat-shaded per 3D face: recessed floor + walls (incl. top openings).
+       Clipped to the front faces so the centre-joint sliver stays behind the top face. -->
+  <g clip-path="url(#frontfaces)">
+  <path d="M91.0 94.6 L91.0 147.1 L128.0 168.1 L128.0 151.1 L105.8 138.5 L105.8 103.0 Z" fill="#71461f"/>
+  <path d="M128.0 168.1 L165.0 147.1 L165.0 94.6 L150.2 103.0 L150.2 138.5 L128.0 151.1 Z" fill="#4c1a14"/>
+  <path d="M83.6 151.3 L128.0 176.5 L128.0 168.1 L91.0 147.1 Z" fill="#dc893c"/>
+  <path d="M128.0 176.5 L172.4 151.3 L165.0 147.1 L128.0 168.1 Z" fill="#bb4030"/>
+  <path d="M83.6 98.8 L83.6 151.3 L91.0 147.1 L91.0 94.6 Z" fill="#7f4f23"/>
+  <path d="M172.4 151.3 L172.4 98.8 L165.0 94.6 L165.0 147.1 Z" fill="#892f23"/>
+  <path d="M157.6 142.7 L128.0 159.5 L128.0 151.1 L150.2 138.5 Z" fill="#bb4030"/>
+  <path d="M128.0 159.5 L98.4 142.7 L105.8 138.5 L128.0 151.1 Z" fill="#dc893c"/>
+  <path d="M157.6 107.2 L157.6 142.7 L150.2 138.5 L150.2 103.0 Z" fill="#892f23"/>
+  <path d="M98.4 142.7 L98.4 107.2 L105.8 103.0 L105.8 138.5 Z" fill="#7f4f23"/>
+  <path d="M172.4 98.8 L157.6 107.2 L150.2 103.0 L165.0 94.6 Z" fill="#4c1a14"/>
+  <path d="M98.4 107.2 L83.6 98.8 L91.0 94.6 L105.8 103.0 Z" fill="#71461f"/>
+  </g>
+
+</svg>

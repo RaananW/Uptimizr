@@ -1,0 +1,17 @@
+# @uptimizr/replay
+
+> Re-drives a captured session in the user's own 3D scene. Framework-agnostic core with engine
+> drivers behind subpaths; a driver only reads/writes the scene and never emits analytics.
+
+## Docs
+
+- [Package reference](./README.md): usage, the `ReplayPlayer` / `ReplayDriver` design, Babylon driver.
+- [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): the replay event stream and endpoints.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): replay on the user's own infra (0006), NDJSON streaming (0015).
+
+## Key exports
+
+- `ReplayPlayer` — `play` / `pause` / `seek(ms)` / `stop`, driven by a pure `update(elapsedMs)`.
+- `fetchSessionEvents(options)` — load an ordered session stream from the collector.
+- `createBabylonReplayDriver(options)` (subpath `./babylon`) — the Babylon engine driver.

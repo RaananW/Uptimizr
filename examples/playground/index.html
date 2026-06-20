@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Uptimizr — Playground</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body,
+      #engineRoot {
+        margin: 0;
+        height: 100%;
+        background: #0b0e14;
+        color: #e2e8f0;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+      }
+      #renderCanvas,
+      #engineRoot {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        display: block;
+        touch-action: none;
+        outline: none;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      #panel {
+        position: fixed;
+        top: 64px;
+        left: 16px;
+        max-width: 320px;
+        max-height: calc(100vh - 80px);
+        overflow-y: auto;
+        padding: 14px 16px;
+        border: 1px solid #222a3a;
+        border-radius: 12px;
+        background: rgba(20, 25, 37, 0.92);
+        backdrop-filter: blur(6px);
+        font-size: 13px;
+        line-height: 1.45;
+        z-index: 10;
+      }
+      #panel h1 {
+        margin: 0 0 6px;
+        font-size: 15px;
+      }
+      #panel p {
+        margin: 0 0 10px;
+        color: #94a3b8;
+      }
+      #panel label {
+        display: block;
+        margin-bottom: 6px;
+        color: #94a3b8;
+      }
+      #panel input,
+      #panel select {
+        width: 100%;
+        margin-top: 4px;
+        padding: 6px 8px;
+        border: 1px solid #222a3a;
+        border-radius: 8px;
+        background: #0b0e14;
+        color: #e2e8f0;
+      }
+      #panel button {
+        margin-top: 8px;
+        padding: 7px 12px;
+        border: 0;
+        border-radius: 8px;
+        background: #0284c7;
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      #panel button:hover {
+        background: #0ea5e9;
+      }
+      #panel button.secondary {
+        background: #1e293b;
+      }
+      #panel button.secondary:hover {
+        background: #334155;
+      }
+      #panel button.secondary.active {
+        background: #0284c7;
+      }
+      #panel code.muted {
+        color: #64748b;
+      }
+      #status {
+        margin-top: 10px;
+        color: #64748b;
+        font-size: 12px;
+        word-break: break-all;
+      }
+      #conn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 8px;
+        font-size: 12px;
+      }
+      #connDot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #64748b;
+        flex: 0 0 auto;
+      }
+      #connDot.ok {
+        background: #22c55e;
+        box-shadow: 0 0 6px #22c55e;
+      }
+      #connDot.bad {
+        background: #ef4444;
+        box-shadow: 0 0 6px #ef4444;
+      }
+      #engineLine {
+        margin-bottom: 8px;
+      }
+
+      /* Top bar: the primary navigation — Scene + Engine selectors — kept out of
+         the (smaller) details panel so the two dropdowns are always one click away. */
+      #topbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 16px;
+        padding: 10px 16px;
+        background: rgba(20, 25, 37, 0.94);
+        backdrop-filter: blur(6px);
+        border-bottom: 1px solid #222a3a;
+        z-index: 20;
+        font-size: 13px;
+      }
+      #topbarTitle {
+        font-weight: 700;
+        font-size: 14px;
+        margin-right: auto;
+      }
+      #topbar label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        color: #94a3b8;
+      }
+      #topbar select {
+        margin: 0;
+        padding: 6px 8px;
+        border: 1px solid #222a3a;
+        border-radius: 8px;
+        background: #0b0e14;
+        color: #e2e8f0;
+        min-width: 150px;
+      }
+
+      /* Collapsible panel sections (native <details>) keep the panel compact:
+         metadata is open by default, capture is collapsed until needed. */
+      #panel details {
+        margin: 6px 0;
+        border: 1px solid #222a3a;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      #panel details > summary {
+        cursor: pointer;
+        list-style: none;
+        padding: 7px 10px;
+        color: #cbd5e1;
+        font-weight: 600;
+        font-size: 12px;
+        background: #141925;
+        user-select: none;
+      }
+      #panel details > summary::-webkit-details-marker {
+        display: none;
+      }
+      #panel details > summary::before {
+        content: "▸";
+        display: inline-block;
+        margin-right: 6px;
+        color: #64748b;
+        transition: transform 0.12s ease;
+      }
+      #panel details[open] > summary::before {
+        transform: rotate(90deg);
+      }
+      #panel details > .details-body {
+        padding: 8px 10px 10px;
+      }
+      #cameraModeLine {
+        margin: 6px 0;
+      }
+
+      /* Capture-configuration grid — one checkbox per signal the SDK can record.
+         Capture is an init-time decision, so toggling persists to localStorage and
+         reloads the page to re-initialize the session. It lives inside the
+         collapsible "Capture" <details>, which provides the border + padding. */
+      #panel fieldset.capture-config {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 3px 10px;
+      }
+      #panel label.capture-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        color: #cbd5e1;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      #panel label.capture-toggle input {
+        width: auto;
+        margin: 0;
+        flex: 0 0 auto;
+      }
+
+      /* On-canvas cursor overlay — mirrors the tracked pointer position.
+         Color-coded: cyan = moving, amber = button down, with a ring pulse on
+         release. `live` vs `replay` get different hues so you can tell a
+         recorded session apart from your own pointer. */
+      #cursor {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 18px;
+        height: 18px;
+        margin: -9px 0 0 -9px;
+        border-radius: 50%;
+        border: 2px solid #22d3ee;
+        background: rgba(34, 211, 238, 0.18);
+        box-shadow: 0 0 8px rgba(34, 211, 238, 0.6);
+        pointer-events: none;
+        opacity: 0;
+        transition:
+          opacity 0.12s ease,
+          width 0.08s ease,
+          height 0.08s ease,
+          border-color 0.08s ease,
+          background 0.08s ease;
+        z-index: 50;
+      }
+      #cursor.visible {
+        opacity: 1;
+      }
+      #cursor.down {
+        width: 26px;
+        height: 26px;
+        margin: -13px 0 0 -13px;
+        border-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.28);
+        box-shadow: 0 0 12px rgba(245, 158, 11, 0.7);
+      }
+      #cursor.replay {
+        border-color: #a855f7;
+        background: rgba(168, 85, 247, 0.18);
+        box-shadow: 0 0 8px rgba(168, 85, 247, 0.6);
+      }
+      #cursor.replay.down {
+        border-color: #f43f5e;
+        background: rgba(244, 63, 94, 0.3);
+        box-shadow: 0 0 12px rgba(244, 63, 94, 0.7);
+      }
+      #cursorPulse {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 18px;
+        height: 18px;
+        margin: -9px 0 0 -9px;
+        border-radius: 50%;
+        border: 2px solid #f59e0b;
+        pointer-events: none;
+        opacity: 0;
+        z-index: 49;
+      }
+      #cursorPulse.pulse {
+        animation: cursor-pulse 0.45s ease-out;
+      }
+      @keyframes cursor-pulse {
+        from {
+          opacity: 0.8;
+          transform: scale(0.6);
+        }
+        to {
+          opacity: 0;
+          transform: scale(2.6);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Shared canvas for the WebGL connectors (Babylon / three / PlayCanvas). -->
+    <canvas id="renderCanvas"></canvas>
+    <!-- Container for engines that own their own DOM (react-three-fiber, A-Frame). -->
+    <div id="engineRoot" hidden></div>
+    <div id="cursorPulse" hidden></div>
+    <div id="cursor" hidden></div>
+
+    <!-- Primary navigation: scene + engine selectors, always visible. -->
+    <div id="topbar">
+      <span id="topbarTitle">Uptimizr Playground</span>
+      <label id="sceneSelectLine">
+        Scene
+        <select id="sceneSelect"></select>
+      </label>
+      <label id="engineLine">
+        Engine
+        <select id="engineSelect"></select>
+      </label>
+    </div>
+
+    <div id="panel">
+      <p id="sceneDescription" class="muted"></p>
+
+      <div id="conn"><span id="connDot"></span><span id="connText">Collector: checking…</span></div>
+
+      <details id="metaDetails" open>
+        <summary>Session &amp; scene</summary>
+        <div class="details-body">
+          <div id="sessionSection">
+            <div id="projectLine">Project: <code id="projectId" class="muted">…</code></div>
+            <div id="session">Session: <code id="sessionId">…</code></div>
+            <div id="clicksLine">Clicks (local): <code id="clicks">0</code></div>
+            <div id="deliveredLine">Events delivered to DB: <code id="delivered">0</code></div>
+          </div>
+
+          <div id="cameraModeLine">
+            Camera mode (ADR 0026): <code id="cameraMode" class="muted">viewer</code>
+          </div>
+
+          <div id="sceneSection">
+            <div id="sceneLine">
+              Scene/area (ADR 0010): <code id="currentScene" class="muted">…</code>
+            </div>
+            <div id="sceneSwitcher">
+              <button id="sceneLobby" type="button" class="secondary" data-scene="lobby">
+                Lobby
+              </button>
+              <button id="sceneGallery" type="button" class="secondary" data-scene="gallery">
+                Gallery
+              </button>
+            </div>
+          </div>
+
+          <div id="samplingLine">
+            Sampling (ADR 0012): <code class="muted">camera 10Hz · pointer 30Hz</code>
+          </div>
+
+          <div id="sourceSection">
+            Last input source (ADR 0011): <code id="lastSource" class="muted">—</code>
+          </div>
+        </div>
+      </details>
+
+      <details id="captureDetails">
+        <summary>Capture (toggle &amp; reload)</summary>
+        <div class="details-body">
+          <fieldset id="captureConfig" class="capture-config"></fieldset>
+          <div id="captureConfigNote" class="muted"></div>
+        </div>
+      </details>
+
+      <div id="heatmapSection">
+        <button id="heatmapButton" type="button">Show 3D heatmap overlay</button>
+      </div>
+      <div id="proxySection">
+        <button id="registerProxyButton" type="button" class="secondary">
+          Register scene proxy
+        </button>
+      </div>
+      <div id="heatmapStatus" class="muted"></div>
+
+      <div id="replaySection">
+        <button id="replayCurrentButton" type="button">Replay current session</button>
+        <label>
+          Replay a session id
+          <input id="replayInput" placeholder="paste a sessionId" autocomplete="off" />
+        </label>
+        <button id="replayButton" type="button" class="secondary">Replay session</button>
+      </div>
+
+      <div id="status"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
