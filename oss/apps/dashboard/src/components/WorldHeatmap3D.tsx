@@ -197,13 +197,20 @@ export function WorldHeatmap3D({
           // Per-instance base scale (intensity-driven) kept so the render loop
           // can re-apply it on top of the zoom factor without losing it.
           const baseScales = new Float32Array(n);
+          // Size each marker relative to the SCENE, not the fixed voxel size, so
+          // its on-screen footprint is consistent whether the scene is a small
+          // viewer model or a large walkable level. Target ~2% of the scene
+          // radius, floored to a quarter voxel so tiny scenes still show a clear
+          // marker. `fitScale` converts that world size into an instance scale
+          // of the `cellSize * 0.9` base mesh.
+          const markerUnit = Math.max(radius * 0.02, cellSize * 0.25);
+          const fitScale = markerUnit / (cellSize * 0.9);
           for (let i = 0; i < n; i++) {
             const v = voxels[i]!;
             const t = v.count / maxCount;
-            // Scale each marker by intensity (min 35%) so hotspots read as larger.
-            // The 0.5 factor keeps markers from dominating small (viewer) scenes;
-            // the zoom multiplier below grows them back on large/walkable scenes.
-            const s = 0.5 * (0.35 + 0.65 * t);
+            // Intensity modulates each marker between 50% and 100% of its size
+            // so hotspots read as larger without low cells vanishing.
+            const s = fitScale * (0.5 + 0.5 * t);
             baseScales[i] = s;
             const m = Matrix.Scaling(s, s, s).multiply(
               Matrix.Translation(
@@ -229,9 +236,9 @@ export function WorldHeatmap3D({
           const baseRadius = camera.radius;
           let lastZoom = 0;
           const applyZoomScale = () => {
-            // Wide range: small scenes stay subtle (0.6x), far-out walkable
-            // scenes grow markers up to 16x so they stay meaningful when zoomed out.
-            const zoom = Math.min(16, Math.max(0.6, camera.radius / baseRadius));
+            // The base size is already scene-aware; this only keeps markers
+            // legible as the camera dollies in/out from the default framing.
+            const zoom = Math.min(8, Math.max(0.6, camera.radius / baseRadius));
             if (Math.abs(zoom - lastZoom) < 0.01) return;
             lastZoom = zoom;
             for (let i = 0; i < n; i++) {
