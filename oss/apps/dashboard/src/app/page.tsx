@@ -257,7 +257,12 @@ export default function Page() {
         setSelectedId(match.id);
         setApiKey(match.apiKey);
         // A valid deep link to this project should load it without a manual click.
-        if (target && match.id === target) wantLoadRef.current = true;
+        // A lone plain project (no scene card to choose from — e.g. the live demo
+        // or a single self-hosted project) also loads straight into its analytics
+        // instead of stranding the visitor on an empty scene-selector.
+        if ((target && match.id === target) || (options.length === 1 && !match.scene)) {
+          wantLoadRef.current = true;
+        }
       })
       .catch(() => {});
     return () => {
