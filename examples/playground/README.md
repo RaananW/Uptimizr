@@ -15,10 +15,27 @@ engines (and is hidden when a scene is bound to a single engine).
 
 Built-in scenes:
 
-| Scene  | id       | Camera mode    | Engines                                               |
-| ------ | -------- | -------------- | ----------------------------------------------------- |
-| Lobby  | `lobby`  | viewer (orbit) | babylon, babylon-lite, three, playcanvas, r3f, aframe |
-| Atrium | `atrium` | first-person   | babylon, three, playcanvas                            |
+| Scene    | id         | Camera mode    | Engines                                               |
+| -------- | ---------- | -------------- | ----------------------------------------------------- |
+| Lobby    | `lobby`    | viewer (orbit) | babylon, babylon-lite, three, playcanvas, r3f, aframe |
+| Atrium   | `atrium`   | first-person   | babylon, three, playcanvas                            |
+| Showcase | `showcase` | viewer (orbit) | babylon, three, playcanvas                            |
+| Gallery  | `gallery`  | first-person   | babylon, three, playcanvas                            |
+
+`lobby` and `atrium` are synthetic demo scenes (procedural boxes / a room).
+**`showcase` and `gallery` load real glTF models** to exercise the connectors
+against production-like assets:
+
+- **Showcase** — an orbit/viewer camera framing a single real glTF model (Khronos
+  `ToyCar`), for inspecting a detailed PBR asset.
+- **Gallery** — a first-person walkable room with three real glTF models (Khronos
+  `ToyCar`, `Fox`, `GlamVelvetSofa`) on pedestals; walk up and pick the exhibits.
+
+Both reuse the same shared connector wiring as the demo scenes via each engine's
+`create<Engine>EngineModule` factory — only the model loading/placement is custom
+(under `src/scenes/<id>/<engine>.ts`). The models are vendored under
+[`public/models/`](./public/models) with sources and licenses recorded in
+[`public/models/ATTRIBUTION.md`](./public/models/ATTRIBUTION.md).
 
 A scene fixes its camera mode and is bound to **one collector project** (so each
 scene's analytics stay separate). For back-compat, `?camera=viewer|first-person`
@@ -73,11 +90,11 @@ The camera/navigation model is **fixed by the scene**, not separately selectable
 you switch it by choosing a different scene. The panel shows the active mode as a
 read-only indicator:
 
-- **Viewer (orbit)** — the `lobby` scene: an arc-rotate camera framing a model
-  (`cameraType: "arc-rotate"`).
-- **First-person (walk)** — the `atrium` scene: a larger **walkable** space (room,
-  walls, item pedestals, an ambient NPC) traversed with **WASD** (Babylon) or
-  pointer-lock + WASD (three / PlayCanvas), using a free camera (`cameraType: "free"`).
+- **Viewer (orbit)** — the `lobby` / `showcase` scenes: an arc-rotate camera framing
+  a model (`cameraType: "arc-rotate"`).
+- **First-person (walk)** — the `atrium` / `gallery` scenes: a larger **walkable**
+  space (room, walls, item pedestals, an ambient NPC) traversed with **WASD** (Babylon)
+  or pointer-lock + WASD (three / PlayCanvas), using a free camera (`cameraType: "free"`).
 
 For back-compat, `?camera=viewer|first-person` (with no `?scene=`) still selects the
 matching built-in scene. First-person scenes drive the dashboard's floor-plan

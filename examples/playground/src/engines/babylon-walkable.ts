@@ -4,12 +4,13 @@
 // `@uptimizr/babylon` connector auto-classifies as `cameraType: "free"` — the
 // first-person navigation model the dashboard segments on (see ADR 0026).
 
+import "@babylonjs/loaders/glTF";
 import {
   Color3,
   CreateBox,
   CreateGround,
-  CreateSphere,
   HemisphericLight,
+  LoadAssetContainerAsync,
   StandardMaterial,
   TransformNode,
   UniversalCamera,
@@ -56,11 +57,16 @@ function addWall(
  * Build the walkable first-person scene. The NPC patrol is driven by a
  * `scene.onBeforeRenderObservable` hook registered here, so the caller only needs
  * to render the scene each frame.
+ *
+ * Pass `skipDefaultItems` to omit the coloured demo boxes (but keep the pedestals)
+ * — the `gallery` scene uses this to place real glTF models on the same spots. The
+ * returned `itemSpots` are the pedestal `[x, z]` positions in placement order.
  */
 export function buildWalkableScene(
   engine: Engine,
   canvas: HTMLCanvasElement,
-): { scene: BabylonScene; camera: Camera } {
+  options?: { skipDefaultItems?: boolean },
+): { scene: BabylonScene; camera: Camera; itemSpots: Array<[number, number]> } {
   const scene = new Scene(engine);
   scene.collisionsEnabled = true;
   scene.gravity = new Vector3(0, -0.45, 0);
@@ -111,27 +117,47 @@ export function buildWalkableScene(
     [2, 0],
   ];
   itemSpots.forEach(([x, z], i) => {
-    const rgb = BOX_COLORS[i % BOX_COLORS.length] ?? [0.8, 0.8, 0.8];
     const pedestal = CreateBox(`pedestal-${i}`, { width: 2, height: 1, depth: 2 }, scene);
     pedestal.position.set(x, 0.5, z);
     pedestal.material = makeMaterial(scene, `pedestalMat-${i}`, [0.16, 0.18, 0.24]);
     pedestal.checkCollisions = true;
-    const item = CreateBox(`item-${i}`, { size: 1.4 }, scene);
-    item.position.set(x, 1.7, z);
-    item.material = makeMaterial(scene, `itemMat-${i}`, rgb);
+    if (!options?.skipDefaultItems) {
+      const rgb = BOX_COLORS[i % BOX_COLORS.length] ?? [0.8, 0.8, 0.8];
+      const item = CreateBox(`item-${i}`, { size: 1.4 }, scene);
+      item.position.set(x, 1.7, z);
+      item.material = makeMaterial(scene, `itemMat-${i}`, rgb);
+    }
   });
 
-  // Ambient NPC: a capsule-ish figure (body + head) parented to a node that walks a
-  // rectangular patrol loop, easing toward each waypoint and facing its heading.
+  // Ambient NPC: a rigged, animated humanoid (Khronos `RiggedFigure`, CC BY 4.0)
+  // parented to a patrol node named `npc` so the connector resolves it as a
+  // `node_transform` actor (ADR 0027). The glTF loads asynchronously and its baked
+  // walk animation groups loop via the scene render loop; until it arrives the
+  // (empty) patrol node still walks the loop.
   const npc = new TransformNode("npc", scene);
-  const body = CreateBox("npc-body", { width: 0.8, height: 1.6, depth: 0.5 }, scene);
-  body.position.y = 0.8;
-  body.material = makeMaterial(scene, "npcBodyMat", [0.85, 0.55, 0.2]);
-  body.parent = npc;
-  const head = CreateSphere("npc-head", { diameter: 0.6 }, scene);
-  head.position.y = 1.9;
-  head.material = makeMaterial(scene, "npcHeadMat", [0.95, 0.8, 0.65]);
-  head.parent = npc;
+  void LoadAssetContainerAsync("/models/RiggedFigure.glb", scene)
+    .then((container) => {
+      container.addAllToScene();
+      let min = new Vector3(Infinity, Infinity, Infinity);
+      let max = new Vector3(-Infinity, -Infinity, -Infinity);
+      for (const mesh of container.meshes) {
+        if (mesh.getTotalVertices() === 0) continue;
+        mesh.computeWorldMatrix(true);
+        const box = mesh.getBoundingInfo().boundingBox;
+        min = Vector3.Minimize(min, box.minimumWorld);
+        max = Vector3.Maximize(max, box.maximumWorld);
+      }
+      const scale = 2 / (max.y - min.y || 1); // normalize to ~2 units tall
+      const figure = new TransformNode("npc-figure", scene);
+      for (const node of container.rootNodes) node.parent = figure;
+      figure.scaling.setAll(scale);
+      figure.position.y = -min.y * scale; // sit feet on the patrol node
+      figure.parent = npc;
+      for (const group of container.animationGroups) group.play(true);
+    })
+    .catch(() => {
+      /* demo asset is optional — patrol still runs without a visible mesh */
+    });
 
   const waypoints = [
     new Vector3(-14, 0, -14),
@@ -156,5 +182,5 @@ export function buildWalkableScene(
     }
   });
 
-  return { scene, camera };
+  return { scene, camera, itemSpots };
 }

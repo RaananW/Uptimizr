@@ -5,6 +5,8 @@
 // `cameraType: "free"` on the session (ADR 0026).
 
 import {
+  AnimationMixer,
+  Box3,
   BoxGeometry,
   Color,
   DirectionalLight,
@@ -15,10 +17,11 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
-  SphereGeometry,
   Vector3,
   WebGLRenderer,
 } from "three";
+import type { Object3D } from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 
 import { BOX_COLORS } from "../engine.js";
@@ -33,8 +36,10 @@ export interface WalkableScene {
   camera: PerspectiveCamera;
   renderer: WebGLRenderer;
   controls: PointerLockControls;
-  /** Meshes the demo raycasts against for the box flash + custom event. */
-  pickTargets: Mesh[];
+  /** Objects the demo raycasts against (recursively) for the flash + custom event. */
+  pickTargets: Object3D[];
+  /** Pedestal `[x, z]` positions in placement order (for the gallery's models). */
+  itemSpots: Array<[number, number]>;
   /** Per-frame update: integrate WASD movement and advance the NPC. */
   update(dt: number): void;
   /** Tear down listeners + controls. */
@@ -51,7 +56,10 @@ function addWall(scene: Scene, x: number, z: number, w: number, d: number): void
   scene.add(wall);
 }
 
-export function buildWalkableScene(canvas: HTMLCanvasElement): WalkableScene {
+export function buildWalkableScene(
+  canvas: HTMLCanvasElement,
+  options?: { skipDefaultItems?: boolean },
+): WalkableScene {
   const renderer = new WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -92,32 +100,50 @@ export function buildWalkableScene(canvas: HTMLCanvasElement): WalkableScene {
     [18, -14],
     [2, 0],
   ];
-  const pickTargets: Mesh[] = [];
+  const pickTargets: Object3D[] = [];
   itemSpots.forEach(([x, z], i) => {
-    const rgb = BOX_COLORS[i % BOX_COLORS.length] ?? [0.8, 0.8, 0.8];
     const pedestal = new Mesh(new BoxGeometry(2, 1, 2), mat([0.16, 0.18, 0.24]));
     pedestal.position.set(x, 0.5, z);
     scene.add(pedestal);
-    const item = new Mesh(new BoxGeometry(1.4, 1.4, 1.4), mat(rgb));
-    item.name = `item-${i}`;
-    item.position.set(x, 1.7, z);
-    scene.add(item);
-    pickTargets.push(item);
+    if (!options?.skipDefaultItems) {
+      const rgb = BOX_COLORS[i % BOX_COLORS.length] ?? [0.8, 0.8, 0.8];
+      const item = new Mesh(new BoxGeometry(1.4, 1.4, 1.4), mat(rgb));
+      item.name = `item-${i}`;
+      item.position.set(x, 1.7, z);
+      scene.add(item);
+      pickTargets.push(item);
+    }
   });
 
-  // Ambient NPC: body + head group patrolling a rectangular loop. The parts are
-  // named so the connector can resolve them as `node_transform` actors (ADR 0027).
+  // Ambient NPC: a rigged, animated humanoid (Khronos `RiggedFigure`, CC BY 4.0)
+  // parented to a patrol node. The node is named `npc` so the connector resolves it
+  // as a `node_transform` actor (ADR 0027); the figure's baked walk cycle plays via
+  // an AnimationMixer advanced in `update`. The glTF loads asynchronously, so the
+  // patrol runs (moving an empty node) until the mesh pops in.
   const npc = new Group();
   npc.name = "npc";
-  const body = new Mesh(new BoxGeometry(0.8, 1.6, 0.5), mat([0.85, 0.55, 0.2]));
-  body.name = "npc-body";
-  body.position.y = 0.8;
-  npc.add(body);
-  const head = new Mesh(new SphereGeometry(0.3, 16, 16), mat([0.95, 0.8, 0.65]));
-  head.name = "npc-head";
-  head.position.y = 1.9;
-  npc.add(head);
   scene.add(npc);
+  let npcMixer: AnimationMixer | null = null;
+  void new GLTFLoader()
+    .loadAsync("/models/RiggedFigure.glb")
+    .then((gltf) => {
+      const figure = gltf.scene;
+      figure.name = "npc-figure";
+      const box = new Box3().setFromObject(figure);
+      const size = box.getSize(new Vector3());
+      const scale = 2 / (size.y || 1); // normalize to ~2 units tall
+      figure.scale.setScalar(scale);
+      figure.position.y = -box.min.y * scale; // sit feet on the patrol node
+      npc.add(figure);
+      const clip = gltf.animations[0];
+      if (clip) {
+        npcMixer = new AnimationMixer(figure);
+        npcMixer.clipAction(clip).play();
+      }
+    })
+    .catch(() => {
+      /* demo asset is optional — patrol still runs without a visible mesh */
+    });
 
   const waypoints = [
     new Vector3(-14, 0, -14),
@@ -159,7 +185,8 @@ export function buildWalkableScene(canvas: HTMLCanvasElement): WalkableScene {
       camera.position.z = Math.max(-bound, Math.min(bound, camera.position.z));
       camera.position.y = EYE_HEIGHT;
     }
-    // Advance the NPC along its patrol loop.
+    // Advance the NPC along its patrol loop and tick its walk animation.
+    npcMixer?.update(dt);
     const dest = waypoints[target] as Vector3;
     const toDest = dest.clone().sub(npc.position);
     const d = toDest.length();
@@ -177,5 +204,5 @@ export function buildWalkableScene(canvas: HTMLCanvasElement): WalkableScene {
     controls.dispose();
   }
 
-  return { scene, camera, renderer, controls, pickTargets, update, dispose };
+  return { scene, camera, renderer, controls, pickTargets, itemSpots, update, dispose };
 }

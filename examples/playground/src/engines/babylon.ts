@@ -23,6 +23,8 @@ import {
   BOX_COLORS,
   COMMON_CAPTURE_FEATURES,
   type CaptureFeature,
+  type EngineCapabilities,
+  type EngineId,
   type EngineInstance,
   type EngineModule,
   type EngineMountContext,
@@ -64,14 +66,56 @@ function buildScene(engine: Engine): { scene: BabylonScene; camera: Camera } {
   return { scene, camera };
 }
 
-async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
-  const engine = new Engine(ctx.canvas, true, { preserveDrawingBuffer: true, stencil: true });
-  const { scene, camera } =
-    ctx.cameraMode === "first-person" ? buildWalkableScene(engine, ctx.canvas) : buildScene(engine);
-  engine.runRenderLoop(() => scene.render());
-  const onResize = (): void => engine.resize();
-  window.addEventListener("resize", onResize);
+/**
+ * What a Babylon scene builder hands back to the shared `mount`: the built scene
+ * + camera, which meshes are pickable/flashable, the developer-defined custom
+ * event a pick emits, plus any actor/node sampling the scene needs (ADR 0027/0033).
+ * This is the only engine-specific surface a custom scene (e.g. a real glTF model
+ * under `src/scenes/<id>/babylon.ts`) has to provide — the connector wiring,
+ * picking, replay, heatmap and proxy glue below are shared.
+ */
+export interface BabylonSceneSetup {
+  readonly scene: BabylonScene;
+  readonly camera: Camera;
+  /** True for meshes that should flash + emit a pick (default: box-/item- demo meshes). */
+  isPickable(meshName: string): boolean;
+  /** The custom event name emitted on a pick (default `box_picked`). */
+  readonly pickEvent?: string;
+  /** Extra per-node sampling merged into `sampling` (e.g. the walkable NPC). */
+  readonly nodeSampling?: Record<string, { hz: number; include?: string[] | "*" }>;
+  /** Actor name→node bindings (ADR 0033) for self-moving actors. */
+  readonly actors?: Record<string, string>;
+}
 
+/** Builds the Babylon scene for a mount; may load assets asynchronously. */
+export type BabylonSceneBuilder = (
+  engine: Engine,
+  ctx: EngineMountContext,
+) => BabylonSceneSetup | Promise<BabylonSceneSetup>;
+
+/** Options for {@link createBabylonEngineModule}. Only `build` is required. */
+export interface BabylonEngineOptions {
+  readonly build: BabylonSceneBuilder;
+  readonly id?: EngineId;
+  readonly label?: string;
+  readonly captureFeatures?: CaptureFeature[];
+  readonly capabilities?: EngineCapabilities;
+}
+
+const DEFAULT_CAPABILITIES: EngineCapabilities = {
+  sharedCanvas: true,
+  capturePanel: true,
+  sceneSwitch: true,
+  walkable: true,
+  cursorOverlay: true,
+  inputSource: true,
+  replay: true,
+  heatmap: true,
+  sceneProxy: true,
+};
+
+/** The built-in demo scene builder: orbit boxes (viewer) or the walkable room. */
+function buildDemoScene(engine: Engine, ctx: EngineMountContext): BabylonSceneSetup {
   // The walkable scene ships an ambient NPC (a `TransformNode` named "npc") whose
   // body + head meshes are parented to it and patrol on their own — exactly the
   // "self-moving actor" replay can't capture from visitor input (ADR 0027). Track
@@ -79,138 +123,164 @@ async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
   // connector walks its children and emits each part with a `childPath`
   // ("npc-body", "npc-head"), so the whole figure is recorded from one declaration.
   // The orbital viewer scene has no such actor.
-  const isWalkable = ctx.cameraMode === "first-person";
-
-  const sceneId = ctx.sceneId;
-  const cap = ctx.capture;
-  const client = trackScene(scene, {
-    projectId: ctx.projectId,
-    endpoint: ctx.collectorUrl,
-    flushIntervalMs: 3000,
-    transport: ctx.transport,
-    sampling: {
-      camera: 10,
-      pointerMove: 30,
-      // Sample the NPC subtree at 10 Hz in the walkable scene (capture.nodes gates it).
-      ...(isWalkable ? { nodes: { npc: { hz: 10, include: "*" } } } : {}),
-    },
-    // Resolve the NPC root by name (getTransformNodeByName); its children are
-    // walked automatically and emitted with childPath (ADR 0033).
-    ...(isWalkable ? { actors: { npc: "npc" } } : {}),
-    capture: {
-      camera: cap.camera,
-      gaze: cap.gaze,
-      pointerMove: cap.pointerMove,
-      clicks: cap.clicks,
-      buttons: cap.buttons,
-      meshPicks: cap.meshPicks,
-      perf: cap.perf,
-      contextLoss: cap.contextLoss,
-      compileStall: cap.compileStall,
-      meshVisibility: cap.meshVisibility,
-      hoverDwell: cap.hoverDwell,
-      resourceSample: cap.resourceSample,
-      keyboard: cap.keyboard,
-      nodes: cap.nodes,
-    },
-    ...(ctx.keyBindings ? { keyBindings: ctx.keyBindings } : {}),
-    sceneDescription: `playground (babylon, ${ctx.cameraMode})`,
-    meta: { sceneId },
-    user: { id: "anon-playground-user", traits: { demo: true } },
-    debug: true,
-  });
-
-  function flashMesh(name: string): void {
-    const mat = scene.getMeshByName(name)?.material;
-    if (!(mat instanceof StandardMaterial)) return;
-    mat.emissiveColor = new Color3(0.5, 0.5, 0.55);
-    setTimeout(() => {
-      mat.emissiveColor = Color3.Black();
-    }, 220);
+  if (ctx.cameraMode === "first-person") {
+    const { scene, camera } = buildWalkableScene(engine, ctx.canvas);
+    return {
+      scene,
+      camera,
+      isPickable: (name) => name.startsWith("box-") || name.startsWith("item-"),
+      nodeSampling: { npc: { hz: 10, include: "*" } },
+      actors: { npc: "npc" },
+    };
   }
-
-  // Live click feedback + a developer-defined `custom` event per box pick.
-  let clickCount = 0;
-  scene.onPointerObservable.add((info) => {
-    const mesh = info.pickInfo?.pickedMesh;
-    const pickable = mesh?.name.startsWith("box-") || mesh?.name.startsWith("item-");
-    if (info.type === PointerEventTypes.POINTERPICK && mesh && pickable) {
-      flashMesh(mesh.name);
-      clickCount += 1;
-      ctx.onBoxPick(mesh.name);
-      client.track("box_picked", { box: mesh.name, totalPicks: clickCount });
-    }
-  });
-
-  // The Babylon replay driver is imported lazily so it only ships when replay runs.
-  const { createBabylonReplayDriver } = await import("@uptimizr/replay/babylon");
-
+  const { scene, camera } = buildScene(engine);
   return {
-    client,
-    flashMesh,
-    createReplayDriver(hooks) {
-      return createBabylonReplayDriver({
-        scene,
-        camera,
-        onPointer: (screen, _hitPoint, hitMesh, type) => {
-          if (screen) hooks.showCursor(screen, type);
-          if (type === "pointer_click" && hitMesh) flashMesh(hitMesh);
-        },
-        onMeshInteraction: (mesh, kind) => {
-          flashMesh(mesh);
-          hooks.setStatus(`replay: ${kind} → ${mesh}`);
-        },
-        onCustom: (name, props) => {
-          const box = props?.box;
-          if (typeof box === "string") flashMesh(box);
-          hooks.setStatus(`replay: custom "${name}" ${props ? JSON.stringify(props) : ""}`);
-        },
-      });
-    },
-    async showHeatmap(sceneId) {
-      return showWorldHeatmap({
-        scene,
-        endpoint: ctx.collectorUrl,
-        apiKey: ctx.apiKey,
-        sceneId,
-        cellSize: 0.5,
-      });
-    },
-    async registerSceneProxy(sceneId) {
-      const proxy = scanSceneProxy(scene, { sceneId });
-      const res = await fetch(
-        `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(sceneId)}/representation`,
-        {
-          method: "PUT",
-          headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
-          body: JSON.stringify({ proxy, label: sceneId }),
-        },
-      );
-      if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
-      return proxy.meshCount;
-    },
-    dispose() {
-      window.removeEventListener("resize", onResize);
-      void client.stop("manual");
-      engine.dispose();
-    },
+    scene,
+    camera,
+    isPickable: (name) => name.startsWith("box-") || name.startsWith("item-"),
   };
 }
 
-export const engine: EngineModule = {
-  id: "babylon",
-  label: "Babylon.js",
-  captureFeatures: CAPTURE_FEATURES,
-  capabilities: {
-    sharedCanvas: true,
-    capturePanel: true,
-    sceneSwitch: true,
-    walkable: true,
-    cursorOverlay: true,
-    inputSource: true,
-    replay: true,
-    heatmap: true,
-    sceneProxy: true,
-  },
-  mount,
-};
+/**
+ * Build a Babylon `EngineModule` around a scene builder. The default export wraps
+ * {@link buildDemoScene}; custom scenes (e.g. a real glTF model) pass their own
+ * `build` and reuse all of the connector/picking/replay/heatmap/proxy wiring.
+ */
+export function createBabylonEngineModule(options: BabylonEngineOptions): EngineModule {
+  async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
+    const engine = new Engine(ctx.canvas, true, { preserveDrawingBuffer: true, stencil: true });
+    const setup = await options.build(engine, ctx);
+    const { scene, camera } = setup;
+    engine.runRenderLoop(() => scene.render());
+    const onResize = (): void => engine.resize();
+    window.addEventListener("resize", onResize);
+
+    const sceneId = ctx.sceneId;
+    const cap = ctx.capture;
+    const pickEvent = setup.pickEvent ?? "box_picked";
+    const client = trackScene(scene, {
+      projectId: ctx.projectId,
+      endpoint: ctx.collectorUrl,
+      flushIntervalMs: 3000,
+      transport: ctx.transport,
+      sampling: {
+        camera: 10,
+        pointerMove: 30,
+        // Per-node sampling the scene declares (e.g. the walkable NPC); `capture.nodes` gates it.
+        ...(setup.nodeSampling ? { nodes: setup.nodeSampling } : {}),
+      },
+      // Resolve actor roots by name (getTransformNodeByName); children are walked
+      // automatically and emitted with childPath (ADR 0033).
+      ...(setup.actors ? { actors: setup.actors } : {}),
+      capture: {
+        camera: cap.camera,
+        gaze: cap.gaze,
+        pointerMove: cap.pointerMove,
+        clicks: cap.clicks,
+        buttons: cap.buttons,
+        meshPicks: cap.meshPicks,
+        perf: cap.perf,
+        contextLoss: cap.contextLoss,
+        compileStall: cap.compileStall,
+        meshVisibility: cap.meshVisibility,
+        hoverDwell: cap.hoverDwell,
+        resourceSample: cap.resourceSample,
+        keyboard: cap.keyboard,
+        nodes: cap.nodes,
+      },
+      ...(ctx.keyBindings ? { keyBindings: ctx.keyBindings } : {}),
+      sceneDescription: `playground (babylon, ${ctx.cameraMode})`,
+      meta: { sceneId },
+      user: { id: "anon-playground-user", traits: { demo: true } },
+      debug: true,
+    });
+
+    // Flash a mesh by briefly raising its emissive, then restoring the original.
+    // Works for both `StandardMaterial` (demo boxes) and `PBRMaterial` (glTF models).
+    function flashMesh(name: string): void {
+      const mat = scene.getMeshByName(name)?.material as { emissiveColor?: Color3 } | null | undefined;
+      if (!mat || !(mat.emissiveColor instanceof Color3)) return;
+      const previous = mat.emissiveColor.clone();
+      mat.emissiveColor = new Color3(0.5, 0.5, 0.55);
+      setTimeout(() => {
+        mat.emissiveColor = previous;
+      }, 220);
+    }
+
+    // Live click feedback + a developer-defined `custom` event per pick.
+    let clickCount = 0;
+    scene.onPointerObservable.add((info) => {
+      const mesh = info.pickInfo?.pickedMesh;
+      if (info.type === PointerEventTypes.POINTERPICK && mesh && setup.isPickable(mesh.name)) {
+        flashMesh(mesh.name);
+        clickCount += 1;
+        ctx.onBoxPick(mesh.name);
+        client.track(pickEvent, { box: mesh.name, totalPicks: clickCount });
+      }
+    });
+
+    // The Babylon replay driver is imported lazily so it only ships when replay runs.
+    const { createBabylonReplayDriver } = await import("@uptimizr/replay/babylon");
+
+    return {
+      client,
+      flashMesh,
+      createReplayDriver(hooks) {
+        return createBabylonReplayDriver({
+          scene,
+          camera,
+          onPointer: (screen, _hitPoint, hitMesh, type) => {
+            if (screen) hooks.showCursor(screen, type);
+            if (type === "pointer_click" && hitMesh) flashMesh(hitMesh);
+          },
+          onMeshInteraction: (mesh, kind) => {
+            flashMesh(mesh);
+            hooks.setStatus(`replay: ${kind} → ${mesh}`);
+          },
+          onCustom: (name, props) => {
+            const box = props?.box;
+            if (typeof box === "string") flashMesh(box);
+            hooks.setStatus(`replay: custom "${name}" ${props ? JSON.stringify(props) : ""}`);
+          },
+        });
+      },
+      async showHeatmap(sceneId) {
+        return showWorldHeatmap({
+          scene,
+          endpoint: ctx.collectorUrl,
+          apiKey: ctx.apiKey,
+          sceneId,
+          cellSize: 0.5,
+        });
+      },
+      async registerSceneProxy(sceneId) {
+        const proxy = scanSceneProxy(scene, { sceneId });
+        const res = await fetch(
+          `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(sceneId)}/representation`,
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
+            body: JSON.stringify({ proxy, label: sceneId }),
+          },
+        );
+        if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
+        return proxy.meshCount;
+      },
+      dispose() {
+        window.removeEventListener("resize", onResize);
+        void client.stop("manual");
+        engine.dispose();
+      },
+    };
+  }
+
+  return {
+    id: options.id ?? "babylon",
+    label: options.label ?? "Babylon.js",
+    captureFeatures: options.captureFeatures ?? CAPTURE_FEATURES,
+    capabilities: options.capabilities ?? DEFAULT_CAPABILITIES,
+    mount,
+  };
+}
+
+export const engine: EngineModule = createBabylonEngineModule({ build: buildDemoScene });

@@ -16,5 +16,23 @@
     "engines": ["babylon", "three", "playcanvas"],
     "defaultEngine": "babylon",
     "builtin": true
+  },
+  {
+    "id": "showcase",
+    "label": "Showcase (real glTF viewer)",
+    "description": "An orbit camera framing a real glTF model (Khronos ToyCar) — inspecting a detailed PBR asset.",
+    "cameraMode": "viewer",
+    "engines": ["babylon", "three", "playcanvas"],
+    "defaultEngine": "babylon",
+    "builtin": false
+  },
+  {
+    "id": "gallery",
+    "label": "Gallery (walkable real models)",
+    "description": "A first-person walkable room with real glTF models (Khronos ToyCar, Fox, GlamVelvetSofa) on pedestals — walk up and inspect or pick the exhibits.",
+    "cameraMode": "first-person",
+    "engines": ["babylon", "three", "playcanvas"],
+    "defaultEngine": "babylon",
+    "builtin": false
   }
 ]

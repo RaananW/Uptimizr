@@ -19,6 +19,8 @@ export interface WalkablePlayCanvasScene {
   camera: pc.Entity;
   /** Item materials keyed by entity name, for the click flash. */
   materials: Map<string, pc.StandardMaterial>;
+  /** Pedestal `[x, z]` positions in placement order (for the gallery's models). */
+  itemSpots: Array<[number, number]>;
   dispose(): void;
 }
 
@@ -37,7 +39,10 @@ function addWall(app: pc.Application, x: number, z: number, w: number, d: number
   app.root.addChild(wall);
 }
 
-export function buildWalkableScene(canvas: HTMLCanvasElement): WalkablePlayCanvasScene {
+export function buildWalkableScene(
+  canvas: HTMLCanvasElement,
+  options?: { skipDefaultItems?: boolean },
+): WalkablePlayCanvasScene {
   const app = new pc.Application(canvas, {
     mouse: new pc.Mouse(canvas),
     touch: new pc.TouchDevice(canvas),
@@ -90,35 +95,68 @@ export function buildWalkableScene(canvas: HTMLCanvasElement): WalkablePlayCanva
     [2, 0],
   ];
   itemSpots.forEach(([x, z], i) => {
-    const rgb = BOX_COLORS[i % BOX_COLORS.length] ?? [0.8, 0.8, 0.8];
     const pedestal = new pc.Entity(`pedestal-${i}`);
     pedestal.addComponent("render", { type: "box", material: solidMaterial([0.16, 0.18, 0.24]) });
     pedestal.setLocalScale(2, 1, 2);
     pedestal.setPosition(x, 0.5, z);
     app.root.addChild(pedestal);
-    const itemMat = solidMaterial(rgb);
-    const name = `item-${i}`;
-    const item = new pc.Entity(name);
-    item.addComponent("render", { type: "box", material: itemMat });
-    item.setLocalScale(1.4, 1.4, 1.4);
-    item.setPosition(x, 1.7, z);
-    app.root.addChild(item);
-    materials.set(name, itemMat);
+    if (!options?.skipDefaultItems) {
+      const rgb = BOX_COLORS[i % BOX_COLORS.length] ?? [0.8, 0.8, 0.8];
+      const itemMat = solidMaterial(rgb);
+      const name = `item-${i}`;
+      const item = new pc.Entity(name);
+      item.addComponent("render", { type: "box", material: itemMat });
+      item.setLocalScale(1.4, 1.4, 1.4);
+      item.setPosition(x, 1.7, z);
+      app.root.addChild(item);
+      materials.set(name, itemMat);
+    }
   });
 
-  // Ambient NPC: body + head patrolling a rectangular loop.
+  // Ambient NPC: a rigged, animated humanoid (Khronos `RiggedFigure`, CC BY 4.0)
+  // parented to a patrol node named `npc` so the connector resolves it as a
+  // `node_transform` actor (ADR 0027). The glTF container loads asynchronously and
+  // its baked walk animation loops via an `anim` component; until it arrives the
+  // (empty) patrol node still walks the loop.
   const npc = new pc.Entity("npc");
-  const body = new pc.Entity("npc-body");
-  body.addComponent("render", { type: "box", material: solidMaterial([0.85, 0.55, 0.2]) });
-  body.setLocalScale(0.8, 1.6, 0.5);
-  body.setLocalPosition(0, 0.8, 0);
-  npc.addChild(body);
-  const head = new pc.Entity("npc-head");
-  head.addComponent("render", { type: "sphere", material: solidMaterial([0.95, 0.8, 0.65]) });
-  head.setLocalScale(0.6, 0.6, 0.6);
-  head.setLocalPosition(0, 1.9, 0);
-  npc.addChild(head);
   app.root.addChild(npc);
+  const figureAsset = new pc.Asset("npc-figure", "container", { url: "/models/RiggedFigure.glb" });
+  app.assets.add(figureAsset);
+  figureAsset.once("load", () => {
+    const container = figureAsset.resource as pc.ContainerResource;
+    const figure = container.instantiateRenderEntity();
+    figure.name = "npc-figure";
+    npc.addChild(figure);
+    app.root.syncHierarchy();
+    const meshInstances = (figure.findComponents("render") as pc.RenderComponent[]).flatMap(
+      (r) => r.meshInstances,
+    );
+    const aabb = new pc.BoundingBox();
+    const first = meshInstances[0];
+    if (first) {
+      aabb.copy(first.aabb);
+      for (let i = 1; i < meshInstances.length; i++) {
+        const mi = meshInstances[i];
+        if (mi) aabb.add(mi.aabb);
+      }
+    }
+    const scale = 2 / (aabb.halfExtents.y * 2 || 1); // normalize to ~2 units tall
+    figure.setLocalScale(scale, scale, scale);
+    const minY = aabb.center.y - aabb.halfExtents.y;
+    figure.setLocalPosition(0, -minY * scale, 0); // sit feet on the patrol node
+    // glTF containers expose their animation assets at runtime, but the type omits
+    // `animations`; assign the first track to a default single-state graph (loops).
+    const animations = (container as unknown as { animations?: pc.Asset[] }).animations;
+    const track = animations?.[0]?.resource as unknown as pc.AnimTrack | undefined;
+    if (track) {
+      figure.addComponent("anim", { activate: true });
+      figure.anim?.assignAnimation("Walk", track);
+    }
+  });
+  figureAsset.once("error", () => {
+    /* demo asset is optional — patrol still runs without a visible mesh */
+  });
+  app.assets.load(figureAsset);
 
   const waypoints: Array<[number, number]> = [
     [-14, -14],
@@ -188,5 +226,5 @@ export function buildWalkableScene(canvas: HTMLCanvasElement): WalkablePlayCanva
     app.off("update", onUpdate);
   }
 
-  return { app, camera, materials, dispose };
+  return { app, camera, materials, itemSpots, dispose };
 }

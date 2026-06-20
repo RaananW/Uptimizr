@@ -9,11 +9,14 @@ import { createSceneRaycaster, scanSceneProxy, trackScene } from "@uptimizr/play
 import {
   BOX_COLORS,
   COMMON_CAPTURE_FEATURES,
+  type CaptureFeature,
+  type EngineCapabilities,
+  type EngineId,
   type EngineInstance,
   type EngineModule,
   type EngineMountContext,
 } from "../engine.js";
-import { buildWalkableScene, type WalkablePlayCanvasScene } from "./playcanvas-walkable.js";
+import { buildWalkableScene } from "./playcanvas-walkable.js";
 
 const ORBIT_TARGET = new pc.Vec3(0, 1, 0);
 
@@ -125,159 +128,244 @@ function attachOrbit(canvas: HTMLCanvasElement, camera: pc.Entity): void {
   );
 }
 
-async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
-  const canvas = ctx.canvas;
-  const firstPerson = ctx.cameraMode === "first-person";
+/**
+ * What a PlayCanvas scene builder hands back to the shared `mount`: the app +
+ * camera, optional name→material map for flashing demo meshes, which mesh names
+ * are pickable, the custom pick event, camera type, and any actor/node sampling.
+ * Custom scenes (e.g. a real glTF model under `src/scenes/<id>/playcanvas.ts`)
+ * provide this; the connector/picking/replay/proxy wiring below is shared.
+ */
+export interface PlayCanvasSceneSetup {
+  readonly app: pc.Application;
+  readonly camera: pc.Entity;
+  /** name→material for flashing demo meshes (boxes/items). glTF scenes omit it. */
+  readonly flashMaterials?: Map<string, pc.StandardMaterial>;
+  /** True for mesh names that should flash + emit a pick. */
+  isPickable(meshName: string): boolean;
+  readonly pickEvent?: string;
+  readonly cameraType?: "free" | "arc-rotate";
+  readonly nodeSampling?: Record<string, { hz: number; include?: string[] | "*" }>;
+  readonly actors?: Record<string, string>;
+  /** Scene-specific teardown (walkable). */
+  disposeScene?(): void;
+}
 
-  let app: pc.Application;
-  let camera: pc.Entity;
-  let flashMaterials: Map<string, pc.StandardMaterial>;
-  let walkable: WalkablePlayCanvasScene | null = null;
-  if (firstPerson) {
-    walkable = buildWalkableScene(canvas);
-    app = walkable.app;
-    camera = walkable.camera;
-    flashMaterials = walkable.materials;
-  } else {
-    const built = buildScene(canvas);
-    app = built.app;
-    camera = built.camera;
-    flashMaterials = built.boxMaterials;
-    attachOrbit(canvas, camera);
+/** Builds the PlayCanvas scene for a mount; may load assets asynchronously. */
+export type PlayCanvasSceneBuilder = (
+  canvas: HTMLCanvasElement,
+  ctx: EngineMountContext,
+) => PlayCanvasSceneSetup | Promise<PlayCanvasSceneSetup>;
+
+/** Options for {@link createPlayCanvasEngineModule}. Only `build` is required. */
+export interface PlayCanvasEngineOptions {
+  readonly build: PlayCanvasSceneBuilder;
+  readonly id?: EngineId;
+  readonly label?: string;
+  readonly captureFeatures?: CaptureFeature[];
+  readonly capabilities?: EngineCapabilities;
+}
+
+const DEFAULT_CAPABILITIES: EngineCapabilities = {
+  sharedCanvas: true,
+  capturePanel: true,
+  sceneSwitch: true,
+  walkable: true,
+  cursorOverlay: true,
+  inputSource: true,
+  replay: true,
+  heatmap: false,
+  sceneProxy: true,
+};
+
+const DEFAULT_CAPTURE_FEATURES: CaptureFeature[] = [
+  ...COMMON_CAPTURE_FEATURES,
+  { key: "nodes", label: "Scene actors (NPC)", default: true },
+];
+
+/** The built-in demo scene builder: orbit boxes (viewer) or the walkable room. */
+function buildDemoScene(canvas: HTMLCanvasElement, ctx: EngineMountContext): PlayCanvasSceneSetup {
+  const isDemoPickable = (name: string): boolean =>
+    name.startsWith("box-") || name.startsWith("item-");
+  if (ctx.cameraMode === "first-person") {
+    const walkable = buildWalkableScene(canvas);
+    return {
+      app: walkable.app,
+      camera: walkable.camera,
+      flashMaterials: walkable.materials,
+      isPickable: isDemoPickable,
+      cameraType: "free",
+      nodeSampling: { npc: { hz: 10, include: "*" } },
+      actors: { npc: "npc" },
+      disposeScene: () => walkable.dispose(),
+    };
   }
-
-  function flashMesh(name: string): void {
-    const mat = flashMaterials.get(name);
-    if (!mat) return;
-    mat.emissive = new pc.Color(0.5, 0.5, 0.55);
-    mat.update();
-    setTimeout(() => {
-      mat.emissive = new pc.Color(0, 0, 0);
-      mat.update();
-    }, 220);
-  }
-
-  // PlayCanvas has no built-in picking observable, so the demo reuses the
-  // connector's `createSceneRaycaster` to detect box clicks for the flash + event.
-  const probe = createSceneRaycaster(app, camera);
-  function pickBoxAt(clientX: number, clientY: number): string | undefined {
-    const rect = canvas.getBoundingClientRect();
-    const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
-    const ndcY = 1 - ((clientY - rect.top) / rect.height) * 2;
-    const hit = probe(ndcX, ndcY);
-    const name = hit?.name;
-    return name && (name.startsWith("box-") || name.startsWith("item-")) ? name : undefined;
-  }
-
-  let clickCount = 0;
-  canvas.addEventListener("click", (e) => {
-    const name = pickBoxAt(e.clientX, e.clientY);
-    if (!name) return;
-    flashMesh(name);
-    clickCount += 1;
-    ctx.onBoxPick(name);
-    client.track("box_picked", { box: name, totalPicks: clickCount });
-  });
-
-  const cap = ctx.capture;
-  const client = trackScene(app, camera, {
-    projectId: ctx.projectId,
-    endpoint: ctx.collectorUrl,
-    flushIntervalMs: 3000,
-    transport: ctx.transport,
-    sampling: {
-      camera: 10,
-      pointerMove: 30,
-      // Sample the NPC subtree at 10 Hz in the walkable scene (capture.nodes gates it).
-      ...(firstPerson ? { nodes: { npc: { hz: 10, include: "*" } } } : {}),
-    },
-    // Resolve the NPC root by name (findByName); its children are walked
-    // automatically and emitted with childPath (ADR 0033).
-    ...(firstPerson ? { actors: { npc: "npc" } } : {}),
-    capture: {
-      camera: cap.camera,
-      gaze: cap.gaze,
-      pointerMove: cap.pointerMove,
-      clicks: cap.clicks,
-      buttons: cap.buttons,
-      meshPicks: cap.meshPicks,
-      perf: cap.perf,
-      contextLoss: cap.contextLoss,
-      meshVisibility: cap.meshVisibility,
-      hoverDwell: cap.hoverDwell,
-      resourceSample: cap.resourceSample,
-      nodes: cap.nodes,
-    },
-    sceneDescription: `playground (playcanvas, ${ctx.cameraMode})`,
-    meta: { sceneId: ctx.sceneId },
-    cameraType: firstPerson ? "free" : "arc-rotate",
-    user: { id: "anon-playground-user", traits: { demo: true } },
-    debug: true,
-  });
-
-  const { createPlayCanvasReplayDriver } = await import("@uptimizr/replay/playcanvas");
-
+  const built = buildScene(canvas);
+  attachOrbit(canvas, built.camera);
   return {
-    client,
-    flashMesh,
-    createReplayDriver(hooks) {
-      return createPlayCanvasReplayDriver({
-        camera,
-        onPointer: (screen, _hitPoint, hitMesh, type) => {
-          if (screen) hooks.showCursor(screen, type);
-          if (type === "pointer_click" && hitMesh) flashMesh(hitMesh);
-        },
-        onMeshInteraction: (mesh, kind) => {
-          flashMesh(mesh);
-          hooks.setStatus(`replay: ${kind} → ${mesh}`);
-        },
-        onCustom: (name, props) => {
-          const box = props?.box;
-          if (typeof box === "string") flashMesh(box);
-          hooks.setStatus(`replay: custom "${name}" ${props ? JSON.stringify(props) : ""}`);
-        },
-      });
-    },
-    async registerSceneProxy(sceneId) {
-      const proxy = scanSceneProxy(app, { sceneId });
-      const res = await fetch(
-        `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(sceneId)}/representation`,
-        {
-          method: "PUT",
-          headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
-          body: JSON.stringify({ proxy, label: sceneId }),
-        },
-      );
-      if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
-      return proxy.meshCount;
-    },
-    dispose() {
-      walkable?.dispose();
-      void client.stop("manual");
-      app.destroy();
-    },
+    app: built.app,
+    camera: built.camera,
+    flashMaterials: built.boxMaterials,
+    isPickable: isDemoPickable,
+    cameraType: "arc-rotate",
   };
 }
 
-export const engine: EngineModule = {
-  id: "playcanvas",
-  label: "PlayCanvas",
-  // Append the scene-actor (NPC) toggle to the shared set (walkable scene only;
-  // inert in the viewer scene where no actors are declared) — ADR 0027.
-  captureFeatures: [
-    ...COMMON_CAPTURE_FEATURES,
-    { key: "nodes", label: "Scene actors (NPC)", default: true },
-  ],
-  capabilities: {
-    sharedCanvas: true,
-    capturePanel: true,
-    sceneSwitch: true,
-    walkable: true,
-    cursorOverlay: true,
-    inputSource: true,
-    replay: true,
-    heatmap: false,
-    sceneProxy: true,
-  },
-  mount,
-};
+/**
+ * Build a PlayCanvas `EngineModule` around a scene builder. The default export
+ * wraps {@link buildDemoScene}; custom scenes (e.g. a real glTF model) pass their
+ * own `build` and reuse all of the connector/picking/replay/proxy wiring.
+ */
+export function createPlayCanvasEngineModule(options: PlayCanvasEngineOptions): EngineModule {
+  async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
+    const canvas = ctx.canvas;
+    const setup = await options.build(canvas, ctx);
+    const { app, camera } = setup;
+
+    // Flash a mesh by briefly raising its emissive, then restoring it. Demo scenes
+    // pass a name→material map; glTF scenes resolve the entity + its mesh materials.
+    function flashMesh(name: string): void {
+      const flashOne = (mat: pc.StandardMaterial): void => {
+        const prev = mat.emissive.clone();
+        mat.emissive = new pc.Color(0.5, 0.5, 0.55);
+        mat.update();
+        setTimeout(() => {
+          mat.emissive = prev;
+          mat.update();
+        }, 220);
+      };
+      const mapped = setup.flashMaterials?.get(name);
+      if (mapped) {
+        flashOne(mapped);
+        return;
+      }
+      const entity = app.root.findByName(name);
+      if (!(entity instanceof pc.Entity)) return;
+      for (const render of entity.findComponents("render") as pc.RenderComponent[]) {
+        for (const mi of render.meshInstances) {
+          if (mi.material instanceof pc.StandardMaterial) flashOne(mi.material);
+        }
+      }
+    }
+
+    // PlayCanvas has no built-in picking observable, so the demo reuses the
+    // connector's `createSceneRaycaster` to detect clicks for the flash + event.
+    const probe = createSceneRaycaster(app, camera);
+    function pickAt(clientX: number, clientY: number): string | undefined {
+      // Pointer Lock (ADR 0034): the cursor is frozen and the crosshair is screen
+      // centre, so pick from NDC (0,0) instead of the stale clientX/Y.
+      let ndcX: number;
+      let ndcY: number;
+      if (typeof document !== "undefined" && document.pointerLockElement === canvas) {
+        ndcX = 0;
+        ndcY = 0;
+      } else {
+        const rect = canvas.getBoundingClientRect();
+        ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+        ndcY = 1 - ((clientY - rect.top) / rect.height) * 2;
+      }
+      const name = probe(ndcX, ndcY)?.name;
+      return name && setup.isPickable(name) ? name : undefined;
+    }
+
+    const cap = ctx.capture;
+    const client = trackScene(app, camera, {
+      projectId: ctx.projectId,
+      endpoint: ctx.collectorUrl,
+      flushIntervalMs: 3000,
+      transport: ctx.transport,
+      sampling: {
+        camera: 10,
+        pointerMove: 30,
+        // Per-node sampling the scene declares (e.g. the walkable NPC); `capture.nodes` gates it.
+        ...(setup.nodeSampling ? { nodes: setup.nodeSampling } : {}),
+      },
+      // Resolve actor roots by name (findByName); children are walked automatically
+      // and emitted with childPath (ADR 0033).
+      ...(setup.actors ? { actors: setup.actors } : {}),
+      capture: {
+        camera: cap.camera,
+        gaze: cap.gaze,
+        pointerMove: cap.pointerMove,
+        clicks: cap.clicks,
+        buttons: cap.buttons,
+        meshPicks: cap.meshPicks,
+        perf: cap.perf,
+        contextLoss: cap.contextLoss,
+        meshVisibility: cap.meshVisibility,
+        hoverDwell: cap.hoverDwell,
+        resourceSample: cap.resourceSample,
+        nodes: cap.nodes,
+      },
+      sceneDescription: `playground (playcanvas, ${ctx.cameraMode})`,
+      meta: { sceneId: ctx.sceneId },
+      cameraType: setup.cameraType ?? "arc-rotate",
+      user: { id: "anon-playground-user", traits: { demo: true } },
+      debug: true,
+    });
+
+    let clickCount = 0;
+    canvas.addEventListener("click", (e) => {
+      const name = pickAt(e.clientX, e.clientY);
+      if (!name) return;
+      flashMesh(name);
+      clickCount += 1;
+      ctx.onBoxPick(name);
+      client.track(setup.pickEvent ?? "box_picked", { box: name, totalPicks: clickCount });
+    });
+
+    const { createPlayCanvasReplayDriver } = await import("@uptimizr/replay/playcanvas");
+
+    return {
+      client,
+      flashMesh,
+      createReplayDriver(hooks) {
+        return createPlayCanvasReplayDriver({
+          camera,
+          onPointer: (screen, _hitPoint, hitMesh, type) => {
+            if (screen) hooks.showCursor(screen, type);
+            if (type === "pointer_click" && hitMesh) flashMesh(hitMesh);
+          },
+          onMeshInteraction: (mesh, kind) => {
+            flashMesh(mesh);
+            hooks.setStatus(`replay: ${kind} → ${mesh}`);
+          },
+          onCustom: (name, props) => {
+            const box = props?.box;
+            if (typeof box === "string") flashMesh(box);
+            hooks.setStatus(`replay: custom "${name}" ${props ? JSON.stringify(props) : ""}`);
+          },
+        });
+      },
+      async registerSceneProxy(sceneId) {
+        const proxy = scanSceneProxy(app, { sceneId });
+        const res = await fetch(
+          `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(sceneId)}/representation`,
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
+            body: JSON.stringify({ proxy, label: sceneId }),
+          },
+        );
+        if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
+        return proxy.meshCount;
+      },
+      dispose() {
+        setup.disposeScene?.();
+        void client.stop("manual");
+        app.destroy();
+      },
+    };
+  }
+
+  return {
+    id: options.id ?? "playcanvas",
+    label: options.label ?? "PlayCanvas",
+    // Append the scene-actor (NPC) toggle to the shared set (walkable scene only;
+    // inert in the viewer scene where no actors are declared) — ADR 0027.
+    captureFeatures: options.captureFeatures ?? DEFAULT_CAPTURE_FEATURES,
+    capabilities: options.capabilities ?? DEFAULT_CAPABILITIES,
+    mount,
+  };
+}
+
+export const engine: EngineModule = createPlayCanvasEngineModule({ build: buildDemoScene });
