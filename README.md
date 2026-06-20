@@ -2,6 +2,14 @@
 
 > 3D scene analytics — like Google Analytics, but for 3D applications.
 
+[![npm @uptimizr/babylon](https://img.shields.io/npm/v/@uptimizr/babylon?label=%40uptimizr%2Fbabylon&logo=npm&color=cb3837)](https://www.npmjs.com/package/@uptimizr/babylon)
+[![npm @uptimizr/sdk-core](https://img.shields.io/npm/v/@uptimizr/sdk-core?label=%40uptimizr%2Fsdk-core&logo=npm&color=cb3837)](https://www.npmjs.com/package/@uptimizr/sdk-core)
+[![CI](https://github.com/RaananW/Uptimizr/actions/workflows/main.yml/badge.svg)](https://github.com/RaananW/Uptimizr/actions/workflows/main.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
+[![Docs](https://img.shields.io/badge/docs-uptimizr.com-2563eb)](https://uptimizr.com/docs/)
+
+**[Documentation](https://uptimizr.com/docs/) · [Quickstart](https://uptimizr.com/docs/quickstart/) · [Run the collector](https://uptimizr.com/docs/deploy/collector/)**
+
 Uptimizr captures and visualizes how people actually use 3D scenes: where they
 **look** (view-direction heatmaps), where they **point and click** (2D + 3D raycast
 heatmaps), which **meshes** they interact with, how the scene **performs** (FPS, device/GPU,
