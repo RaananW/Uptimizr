@@ -201,7 +201,9 @@ export function WorldHeatmap3D({
             const v = voxels[i]!;
             const t = v.count / maxCount;
             // Scale each marker by intensity (min 35%) so hotspots read as larger.
-            const s = 0.35 + 0.65 * t;
+            // The 0.5 factor keeps markers from dominating small (viewer) scenes;
+            // the zoom multiplier below grows them back on large/walkable scenes.
+            const s = 0.5 * (0.35 + 0.65 * t);
             baseScales[i] = s;
             const m = Matrix.Scaling(s, s, s).multiply(
               Matrix.Translation(
@@ -227,7 +229,9 @@ export function WorldHeatmap3D({
           const baseRadius = camera.radius;
           let lastZoom = 0;
           const applyZoomScale = () => {
-            const zoom = Math.min(8, Math.max(0.6, camera.radius / baseRadius));
+            // Wide range: small scenes stay subtle (0.6x), far-out walkable
+            // scenes grow markers up to 16x so they stay meaningful when zoomed out.
+            const zoom = Math.min(16, Math.max(0.6, camera.radius / baseRadius));
             if (Math.abs(zoom - lastZoom) < 0.01) return;
             lastZoom = zoom;
             for (let i = 0; i < n; i++) {
