@@ -35,6 +35,7 @@ import {
   resolveRange,
   toQueryParams,
   type FilterState,
+  type TimeWindow,
 } from "@/lib/filters";
 import { parseTimestamp } from "@/lib/format";
 import { useLivePresence, useLiveStream, type LiveEvent } from "@/lib/live";
@@ -192,7 +193,8 @@ export default function Page() {
   // be invoked from the debounced auto-refetch effect without being re-created.
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
-
+  // The time preset to restore when a volume-chart zoom (custom window) is reset.
+  const prevWindowRef = useRef<TimeWindow>(DEFAULT_FILTERS.window);
   // URL ⇄ state plumbing. The dashboard is one client page; we mirror the
   // selected project/session into the path (`/projects/:id`,
   // `/projects/:id/session/:sid`) so links are shareable and the back button
@@ -564,7 +566,16 @@ export default function Page() {
   }, []);
 
   const brushRange = useCallback((since: number, until: number) => {
-    setFilters((f) => ({ ...f, window: "custom", since, until }));
+    setFilters((f) => {
+      // Remember the preset that was active before zooming so resetting the
+      // brush restores it rather than snapping back to the default window.
+      if (f.window !== "custom") prevWindowRef.current = f.window;
+      return { ...f, window: "custom", since, until };
+    });
+  }, []);
+
+  const clearBrush = useCallback(() => {
+    setFilters((f) => ({ ...f, window: prevWindowRef.current }));
   }, []);
 
   // Auto-load a deep-linked project once its API key has been selected. Keyed on
@@ -805,7 +816,7 @@ export default function Page() {
               intervalMs={data.intervalMs}
               onBrush={brushRange}
               brushed={filters.window === "custom"}
-              onClear={() => setFilters((f) => ({ ...f, window: "24h" }))}
+              onClear={clearBrush}
             />
           </div>
           <div className="lg:col-span-2">
