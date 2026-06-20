@@ -64,6 +64,11 @@ The OSS collector uses an embedded **DuckDB** file — there is nothing to spin 
 The file is created by the migrate/seed step below at `DUCKDB_PATH` (default
 `./data/uptimizr.duckdb`). DuckDB is **single-writer**: run one collector per file.
 
+> **Leave `DUCKDB_PATH` unset in the monorepo.** Unset, it resolves to
+> `<repo-root>/data/uptimizr.duckdb` for every tool. A *relative* value is resolved against each
+> tool's own cwd, so the seed and the collector would use different files and you'd hit
+> `401 invalid api key`. Override only with an **absolute** path.
+
 > Only the optional scale tier needs Docker (`pnpm stack:up`) for its
 > ClickHouse + Postgres scale engines.
 
