@@ -15,7 +15,7 @@ function evt(partial: Partial<AnyEvent> & { type: string }): AnyEvent {
 describe("memory store", () => {
   it("resolves only the seeded api key", async () => {
     const store = createMemoryStore({ projectId: "p1", apiKey: "k1" });
-    expect(await store.resolveApiKey("k1")).toBe("p1");
+    expect(await store.resolveApiKey("k1")).toEqual({ projectId: "p1", capability: "query" });
     expect(await store.resolveApiKey("nope")).toBeNull();
   });
 

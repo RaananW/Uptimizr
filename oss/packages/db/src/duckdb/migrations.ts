@@ -299,6 +299,16 @@ export const DUCKDB_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
         ON node_samples (project_id, session_id, node_id, child_path, ts);
     `,
   },
+  // API-key capability scope (`ingest` | `query`). Public ingestion is keyless,
+  // so issued keys are for reads — existing keys are grandfathered to `query`
+  // and the column default is `query`. Enforced at the read boundaries
+  // (query + live token exchange).
+  {
+    id: "0027_api_keys_capability",
+    sql: /* sql */ `
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS capability VARCHAR DEFAULT 'query';
+    `,
+  },
 ];
 
 /**

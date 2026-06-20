@@ -115,8 +115,12 @@ export const liveRoutes: FastifyPluginAsync<Options> = async (app, { store, conf
     if (!projectId) {
       return reply.code(401).send({ error: "invalid api key" });
     }
+    // The live feed is a read surface — require a `query`-capable key.
+    if (projectId.capability !== "query") {
+      return reply.code(403).send({ error: "api key not permitted to read" });
+    }
     const { token, expiresAt } = mintLiveToken(
-      projectId,
+      projectId.projectId,
       config.liveTokenSecret,
       config.liveTokenTtlMs,
     );

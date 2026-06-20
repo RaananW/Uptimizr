@@ -3,8 +3,10 @@ import {
   apiKeyPrefix,
   generateApiKey,
   hashApiKey,
+  type ApiKeyCapability,
   type ApiKeyRecord,
   type Project,
+  type ResolvedApiKey,
 } from "../metadata.js";
 import type { DuckdbClient } from "./client.js";
 
@@ -57,13 +59,14 @@ export async function getProject(client: DuckdbClient, id: string): Promise<Proj
 export async function createApiKey(
   client: DuckdbClient,
   projectId: string,
+  capability: ApiKeyCapability = "query",
 ): Promise<{ key: string; record: ApiKeyRecord }> {
   const key = generateApiKey();
   const id = randomUUID();
   await client.run(
-    `INSERT INTO api_keys (id, project_id, key_hash, key_prefix)
-     VALUES ($id, $projectId, $keyHash, $keyPrefix)`,
-    { id, projectId, keyHash: hashApiKey(key), keyPrefix: apiKeyPrefix(key) },
+    `INSERT INTO api_keys (id, project_id, key_hash, key_prefix, capability)
+     VALUES ($id, $projectId, $keyHash, $keyPrefix, $capability)`,
+    { id, projectId, keyHash: hashApiKey(key), keyPrefix: apiKeyPrefix(key), capability },
   );
   const rows = await client.all<{
     id: string;
@@ -71,9 +74,10 @@ export async function createApiKey(
     key_prefix: string;
     created_at_ms: number;
     revoked_at_ms: number | null;
+    capability: string;
   }>(
     `SELECT id, project_id, key_prefix, epoch_ms(created_at) AS created_at_ms,
-            epoch_ms(revoked_at) AS revoked_at_ms
+            epoch_ms(revoked_at) AS revoked_at_ms, capability
      FROM api_keys WHERE id = $id`,
     { id },
   );
@@ -86,21 +90,24 @@ export async function createApiKey(
       keyPrefix: row.key_prefix,
       createdAt: new Date(row.created_at_ms),
       revokedAt: row.revoked_at_ms === null ? null : new Date(row.revoked_at_ms),
+      capability: row.capability as ApiKeyCapability,
     },
   };
 }
 
 /**
- * Resolve a plaintext API key to its (non-revoked) project id, or `null` when the
- * key is unknown or revoked. The collector uses this to authenticate ingestion.
+ * Resolve a plaintext API key to its (non-revoked) project id and capability, or
+ * `null` when the key is unknown or revoked. The collector uses this to
+ * authenticate and scope read requests at the boundary.
  */
 export async function resolveApiKey(
   client: DuckdbClient,
   plaintext: string,
-): Promise<string | null> {
-  const rows = await client.all<{ project_id: string }>(
-    `SELECT project_id FROM api_keys WHERE key_hash = $keyHash AND revoked_at IS NULL`,
+): Promise<ResolvedApiKey | null> {
+  const rows = await client.all<{ project_id: string; capability: string }>(
+    `SELECT project_id, capability FROM api_keys WHERE key_hash = $keyHash AND revoked_at IS NULL`,
     { keyHash: hashApiKey(plaintext) },
   );
-  return rows[0]?.project_id ?? null;
+  const row = rows[0];
+  return row ? { projectId: row.project_id, capability: row.capability as ApiKeyCapability } : null;
 }

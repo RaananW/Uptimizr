@@ -31,7 +31,12 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
   const inserted: AnyEvent[] = [];
   return {
     inserted,
-    resolveApiKey: async (key) => (key === "valid-key" ? "p1" : null),
+    resolveApiKey: async (key) =>
+      key === "valid-key"
+        ? { projectId: "p1", capability: "query" }
+        : key === "ingest-key"
+          ? { projectId: "p1", capability: "ingest" }
+          : null,
     projectExists: async (id) => id === "p1",
     insertEvents: async (events) => {
       inserted.push(...events);
@@ -297,6 +302,17 @@ describe("collector app", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toHaveLength(1);
+    await app.close();
+  });
+
+  it("forbids an ingest-only key from reading the query API", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/sessions",
+      headers: { "x-api-key": "ingest-key" },
+    });
+    expect(res.statusCode).toBe(403);
     await app.close();
   });
 

@@ -31,6 +31,7 @@ import type {
   PerfByDeviceRow,
   PerfBySceneRow,
   ResourcePercentileRow,
+  ResolvedApiKey,
   StabilityCountRow,
   RangeOptions,
   SceneOptions,
@@ -53,8 +54,12 @@ import type {
  * live ClickHouse/Postgres (the framework and the DB stay swappable — ADR 0005).
  */
 export interface CollectorStore {
-  /** Resolve a plaintext API key to its project id, or `null` if invalid/revoked. */
-  resolveApiKey(key: string): Promise<string | null>;
+  /**
+   * Resolve a plaintext API key to its project id and capability, or `null` if
+   * invalid/revoked. The capability scopes what the key may do at the read
+   * boundaries (query + live token exchange).
+   */
+  resolveApiKey(key: string): Promise<ResolvedApiKey | null>;
   /**
    * Whether a project with this id exists. The ingest route uses it to reject
    * events for unknown projects — the public `projectId` is the ingest credential,

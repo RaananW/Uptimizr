@@ -257,7 +257,12 @@ async function authProject(
     await reply.code(401).send({ error: "invalid api key" });
     return null;
   }
-  return projectId;
+  // Read endpoints require a `query`-capable key (ingest-only keys cannot read).
+  if (projectId.capability !== "query") {
+    await reply.code(403).send({ error: "api key not permitted to read" });
+    return null;
+  }
+  return projectId.projectId;
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
-import type { SceneRepresentation, SessionMeta } from "@uptimizr/db";
+import type { ApiKeyCapability, SceneRepresentation, SessionMeta } from "@uptimizr/db";
 import type { CollectorStore } from "./store.js";
 
 /** A `session_start` event narrowed to the descriptor fields we surface as meta. */
@@ -21,6 +21,8 @@ export interface MemoryStoreOptions {
   projectId: string;
   /** The plaintext API key that resolves to {@link projectId}. */
   apiKey: string;
+  /** Capability the {@link apiKey} resolves with. Defaults to `query` (reads). */
+  capability?: ApiKeyCapability;
 }
 
 /**
@@ -33,7 +35,11 @@ export interface MemoryStoreOptions {
  * implemented here and return empty results; use the ClickHouse-backed store for
  * those. Never use this in production.
  */
-export function createMemoryStore({ projectId, apiKey }: MemoryStoreOptions): CollectorStore {
+export function createMemoryStore({
+  projectId,
+  apiKey,
+  capability = "query",
+}: MemoryStoreOptions): CollectorStore {
   const events: AnyEvent[] = [];
   const representations = new Map<string, SceneRepresentation>();
 
@@ -51,7 +57,7 @@ export function createMemoryStore({ projectId, apiKey }: MemoryStoreOptions): Co
     (opts.since == null || e.ts >= opts.since) && (opts.until == null || e.ts < opts.until);
 
   return {
-    resolveApiKey: async (key) => (key === apiKey ? projectId : null),
+    resolveApiKey: async (key) => (key === apiKey ? { projectId, capability } : null),
     projectExists: async (id) => id === projectId,
     insertEvents: async (incoming) => {
       events.push(...incoming);

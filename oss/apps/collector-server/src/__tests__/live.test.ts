@@ -29,7 +29,12 @@ const baseConfig: CollectorConfig = {
 
 function makeStore(): CollectorStore {
   return {
-    resolveApiKey: async (key) => (key === "valid-key" ? "p1" : null),
+    resolveApiKey: async (key) =>
+      key === "valid-key"
+        ? { projectId: "p1", capability: "query" }
+        : key === "ingest-key"
+          ? { projectId: "p1", capability: "ingest" }
+          : null,
     projectExists: async (id) => id === "p1",
     insertEvents: async () => {},
   } as unknown as CollectorStore;
@@ -124,6 +129,17 @@ describe("live token endpoint", () => {
       headers: { "x-api-key": "nope" },
     });
     expect(bad.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("forbids an ingest-only key from minting a live token", async () => {
+    const app = await buildApp({ store: makeStore(), config: baseConfig });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/live/token",
+      headers: { "x-api-key": "ingest-key" },
+    });
+    expect(res.statusCode).toBe(403);
     await app.close();
   });
 

@@ -100,10 +100,24 @@ describe("duckdb store", () => {
 
   it("issues and resolves API keys (hashed, never plaintext)", async () => {
     const project = await createProject(db, "Demo");
-    const { key } = await createApiKey(db, project.id);
+    const { key, record } = await createApiKey(db, project.id);
     expect(key).toMatch(/^utk_/);
-    expect(await resolveApiKey(db, key)).toBe(project.id);
+    // Keys default to the `query` read capability.
+    expect(record.capability).toBe("query");
+    expect(await resolveApiKey(db, key)).toEqual({
+      projectId: project.id,
+      capability: "query",
+    });
     expect(await resolveApiKey(db, "utk_unknown")).toBeNull();
+  });
+
+  it("issues an ingest-capability key when requested", async () => {
+    const project = await createProject(db, "Demo");
+    const { key } = await createApiKey(db, project.id, "ingest");
+    expect(await resolveApiKey(db, key)).toEqual({
+      projectId: project.id,
+      capability: "ingest",
+    });
   });
 
   it("ingests events and lists sessions", async () => {

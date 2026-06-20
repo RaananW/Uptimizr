@@ -26,6 +26,8 @@ export { hashApiKey, apiKeyPrefix, generateApiKey } from "./metadata.js";
 export type {
   Project,
   ApiKeyRecord,
+  ApiKeyCapability,
+  ResolvedApiKey,
   SceneRepresentation,
   SceneRepresentationKind,
   SceneRepresentationSummary,

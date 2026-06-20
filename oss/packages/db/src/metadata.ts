@@ -37,12 +37,30 @@ export interface Project {
   createdAt: Date;
 }
 
+/**
+ * What a project API key is allowed to do. `query` keys may read the analytics
+ * API (the default — public ingestion is keyless, so issued keys are for
+ * reads); `ingest` keys are reserved for server-side write paths.
+ */
+export type ApiKeyCapability = "ingest" | "query";
+
 export interface ApiKeyRecord {
   id: string;
   projectId: string;
   keyPrefix: string;
   createdAt: Date;
   revokedAt: Date | null;
+  /** What this key is allowed to do. Defaults to `query`. */
+  capability: ApiKeyCapability;
+}
+
+/**
+ * The result of resolving a plaintext API key: the project it authenticates and
+ * the capability that scopes what it may do at the request boundary.
+ */
+export interface ResolvedApiKey {
+  projectId: string;
+  capability: ApiKeyCapability;
 }
 
 // --- Scene registry (ADR 0010 / 0014) ---
