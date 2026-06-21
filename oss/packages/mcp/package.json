@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Read-only Model Context Protocol (MCP) server over an Uptimizr collector's query API — let an agent ask questions of your own 3D analytics, on your own infrastructure.",
   "keywords": [
     "uptimizr",
