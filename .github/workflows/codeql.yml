@@ -1,16 +1,13 @@
 name: CodeQL
 
 on:
-  # Auto-triggers are disabled while the repo is private (CodeQL code scanning
-  # only surfaces results under Security for public repos on the Free plan).
-  # Re-enable when going public by uncommenting the pull_request / push / schedule triggers.
   workflow_dispatch:
-  # pull_request:
-  #   branches: [main]
-  # push:
-  #   branches: [main]
-  # schedule:
-  #   - cron: "27 4 * * 1" # weekly, Monday 04:27 UTC
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "27 4 * * 1" # weekly, Monday 04:27 UTC
 
 concurrency:
   group: codeql-${{ github.ref }}

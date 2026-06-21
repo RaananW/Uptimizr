@@ -1,12 +1,10 @@
 name: PR
 
 on:
-  # Auto-triggers are disabled while the repo is private (conserve Actions minutes).
-  # Re-enable when going public by uncommenting the pull_request / merge_group triggers.
   workflow_dispatch:
-  # pull_request:
-  #   branches: [main]
-  # merge_group:
+  pull_request:
+    branches: [main]
+  merge_group:
 
 concurrency:
   group: pr-${{ github.ref }}
