@@ -99,7 +99,7 @@ async function buildGalleryScene(
     // Pick any mesh that belongs to one of the loaded models.
     isPickable: (name) => pickable.has(name),
     pickEvent: "model_part_picked",
-    nodeSampling: { npc: { hz: 10, include: "*" } },
+    nodeSampling: { npc: { hz: 5, include: "*" } },
     actors: { npc: "npc" },
   };
 }

@@ -113,7 +113,7 @@ async function buildGalleryScene(
     isPickable: (name) => pickable.has(name),
     pickEvent: "model_part_picked",
     cameraType: "free",
-    nodeSampling: { npc: { hz: 10, include: "*" } },
+    nodeSampling: { npc: { hz: 5, include: "*" } },
     actors: { npc: "npc" },
     disposeScene: () => walkable.dispose(),
   };

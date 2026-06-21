@@ -92,7 +92,7 @@ async function buildGalleryScene(
     update: (dt) => walkable.update(dt),
     disposeScene: () => walkable.dispose(),
     cameraType: "free",
-    nodeSampling: { npc: { hz: 10, include: "*" } },
+    nodeSampling: { npc: { hz: 5, include: "*" } },
     actors: { npc: "npc" },
   };
 }
