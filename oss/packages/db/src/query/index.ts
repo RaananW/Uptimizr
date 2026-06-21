@@ -26,7 +26,12 @@ export * from "./duckdbDialect.js";
 export * from "./aggregations.js";
 
 // Engine-neutral event → row mapping (isomorphic; imports only @uptimizr/schema).
-export { toEventRow, formatUtcTimestamp, toNodeSampleRow, nodeSampleRowToEvent } from "../events.js";
+export {
+  toEventRow,
+  formatUtcTimestamp,
+  toNodeSampleRow,
+  nodeSampleRowToEvent,
+} from "../events.js";
 export type { EventRow, NodeSampleRow, SessionMeta } from "../events.js";
 
 // The DuckDB schema DDL. `migrations.ts` only imports the `DuckdbClient` *type*

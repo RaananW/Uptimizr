@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/db",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "OSS storage contracts (dialect-agnostic query layer, neutral event/metadata types) and the single-file DuckDB store for Uptimizr.",
   "keywords": [
     "uptimizr",

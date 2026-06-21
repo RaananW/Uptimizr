@@ -9,8 +9,8 @@ export function DemoLimitations() {
       <summary>What this demo can and can&apos;t do</summary>
       <ul className="limitations__list">
         <li>
-          <strong>Ephemeral.</strong> Data lives only in this tab&apos;s memory. Reloading or closing
-          the page clears everything — nothing is persisted to disk.
+          <strong>Ephemeral.</strong> Data lives only in this tab&apos;s memory. Reloading or
+          closing the page clears everything — nothing is persisted to disk.
         </li>
         <li>
           <strong>Single visitor.</strong> You are the only person generating events. A real

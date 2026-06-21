@@ -1237,7 +1237,13 @@ export function SessionReplay({
               el.style.opacity = "0";
               continue;
             }
-            cands.push({ el, x: p.x, y: p.y, liftPct: 140, highlighted: matchesHi(centers[i]!.name) });
+            cands.push({
+              el,
+              x: p.x,
+              y: p.y,
+              liftPct: 140,
+              highlighted: matchesHi(centers[i]!.name),
+            });
           }
           // Actor labels track their marker's live position (the marker moves).
           const actorEls = actorLabelElsRef.current;
@@ -1254,7 +1260,13 @@ export function SessionReplay({
               el.style.opacity = "0";
               continue;
             }
-            cands.push({ el, x: p.x, y: p.y, liftPct: 180, highlighted: matchesHi(actorMarkers[i]!.key) });
+            cands.push({
+              el,
+              x: p.x,
+              y: p.y,
+              liftPct: 180,
+              highlighted: matchesHi(actorMarkers[i]!.key),
+            });
           }
 
           // Declutter: place labels top-to-bottom, nudging each below any already

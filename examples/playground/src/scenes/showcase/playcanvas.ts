@@ -5,7 +5,10 @@
 
 import * as pc from "playcanvas";
 
-import { createPlayCanvasEngineModule, type PlayCanvasSceneSetup } from "../../engines/playcanvas.js";
+import {
+  createPlayCanvasEngineModule,
+  type PlayCanvasSceneSetup,
+} from "../../engines/playcanvas.js";
 import type { EngineMountContext } from "../../engine.js";
 import { assetUrl } from "../../assets.js";
 
@@ -56,7 +59,10 @@ function attachOrbit(
   canvas.addEventListener(
     "wheel",
     (e) => {
-      radius = Math.max(startRadius * 0.5, Math.min(startRadius * 4, radius + Math.sign(e.deltaY) * 0.4));
+      radius = Math.max(
+        startRadius * 0.5,
+        Math.min(startRadius * 4, radius + Math.sign(e.deltaY) * 0.4),
+      );
       applyPose();
       e.preventDefault();
     },

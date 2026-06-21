@@ -93,7 +93,10 @@ function formatNaiveUtc(d: Date): string {
  * the in-browser results stay byte-for-byte comparable with the native store.
  */
 export function tableToRows<T>(table: ArrowTableLike): T[] {
-  const fields = table.schema.fields.map((f) => ({ name: f.name, temporal: isTemporalField(f.type) }));
+  const fields = table.schema.fields.map((f) => ({
+    name: f.name,
+    temporal: isTemporalField(f.type),
+  }));
   const rows: T[] = [];
   for (let i = 0; i < table.numRows; i++) {
     const row = table.get(i);

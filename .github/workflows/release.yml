@@ -64,9 +64,13 @@ jobs:
       - name: Apply version bumps
         run: pnpm changeset version
 
-      - name: Publish (dry run)
+      - name: Publish set (dry run)
         if: ${{ inputs.dry-run }}
-        run: pnpm changeset publish --dry-run
+        # Changesets' `publish` has no `--dry-run` flag. Preview the exact set
+        # the real publish would push using pnpm's dry run: it skips private
+        # packages, and we exclude `create-uptimizr` (published manually,
+        # matching the changeset `ignore`). No registry writes happen.
+        run: pnpm --recursive --filter='!create-uptimizr' publish --dry-run --no-git-checks
 
       - name: Commit version bump
         if: ${{ !inputs.dry-run }}

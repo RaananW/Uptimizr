@@ -65,7 +65,7 @@ The file is created by the migrate/seed step below at `DUCKDB_PATH` (default
 `./data/uptimizr.duckdb`). DuckDB is **single-writer**: run one collector per file.
 
 > **Leave `DUCKDB_PATH` unset in the monorepo.** Unset, it resolves to
-> `<repo-root>/data/uptimizr.duckdb` for every tool. A *relative* value is resolved against each
+> `<repo-root>/data/uptimizr.duckdb` for every tool. A _relative_ value is resolved against each
 > tool's own cwd, so the seed and the collector would use different files and you'd hit
 > `401 invalid api key`. Override only with an **absolute** path.
 

@@ -7,3 +7,6 @@ out/
 coverage/
 pnpm-lock.yaml
 LICENSE
+
+# Pre-built dashboard + playground bundled as static assets for the in-browser demo (generated output).
+oss/apps/demo/public/

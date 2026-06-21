@@ -35,7 +35,7 @@ PlayCanvas), but it is a connector-level capture bug, independent of the playgro
 
 ### Forces
 
-- **The crosshair *is* the pointer in a locked view.** A locked first-person camera aims at the
+- **The crosshair _is_ the pointer in a locked view.** A locked first-person camera aims at the
   fixed **viewport centre**; that is the only honest 2D position for a click while locked.
 - **Don't reinvent the spatial story.** First-person attention is already answered by the
   **world-space gaze heatmap** ([ADR 0030](./0030-world-space-gaze-heatmap.md), a camera-forward
@@ -43,7 +43,7 @@ PlayCanvas), but it is a connector-level capture bug, independent of the playgro
   `camera_sample` positions). All three are cursor-independent and keep working while locked. The
   2D pointer heatmap is a secondary lens here; it just must not lie.
 - **No new event, no schema change.** `pointer_move` / `pointer_click` already carry `screen` +
-  optional `hitPoint` / `hitMesh`. The fix is *what value* the connector puts in `screen` while
+  optional `hitPoint` / `hitMesh`. The fix is _what value_ the connector puts in `screen` while
   locked, not a new shape — honouring "events live once" ([AGENTS.md](../../AGENTS.md)).
 - **Detection must be environment-safe.** The check reads `document.pointerLockElement`; it has to
   no-op in headless / SSR (no `document`) and never touch engine canvas APIs unless a lock is
@@ -98,7 +98,7 @@ tests are unaffected.
   in the move stream and still needs the centre fix for clicks, so it is strictly more behaviour for
   less data.
 - **Integrate `movementX/Y` deltas into a virtual cursor** — rejected: a locked camera has no
-  meaningful 2D cursor; the deltas are *camera rotation*, already captured as `camera_sample` /
+  meaningful 2D cursor; the deltas are _camera rotation_, already captured as `camera_sample` /
   gaze. Reconstructing a fake cursor would invent a signal.
 - **Fix only the playground gallery's `pickAt`** — rejected: the stale-coordinate bug is in the
   published connectors' capture path, so every locked first-person integration would hit it.

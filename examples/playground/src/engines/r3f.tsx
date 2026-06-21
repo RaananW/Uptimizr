@@ -191,7 +191,10 @@ async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
 export const engine: EngineModule = {
   id: "r3f",
   label: "react-three-fiber",
-  captureFeatures: [...COMMON_CAPTURE_FEATURES, { key: "keyboard", label: "Keyboard", default: true }],
+  captureFeatures: [
+    ...COMMON_CAPTURE_FEATURES,
+    { key: "keyboard", label: "Keyboard", default: true },
+  ],
   capabilities: {
     sharedCanvas: false,
     capturePanel: true,

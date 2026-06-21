@@ -30,7 +30,7 @@ automatically (no `source .env`). The playground reads `VITE_*` from the same ro
      and seeds a demo project + API key. Paste the printed `PROJECT_ID` / `utk_...` key into `.env`
      (`VITE_PROJECT_ID`, `VITE_API_KEY`, optionally `NEXT_PUBLIC_API_KEY`).
    - **Leave `DUCKDB_PATH` unset in the monorepo.** When unset it resolves to
-     `<repo-root>/data/uptimizr.duckdb` for every tool. A *relative* `DUCKDB_PATH` is resolved
+     `<repo-root>/data/uptimizr.duckdb` for every tool. A _relative_ `DUCKDB_PATH` is resolved
      against each tool's own cwd, so the seed (run in `oss/packages/db`) and the collector (run in
      `oss/apps/collector-server`) would write/read different files — the dashboard then sends keys
      the collector never saw and you get `401 invalid api key`. If you must set it, use an

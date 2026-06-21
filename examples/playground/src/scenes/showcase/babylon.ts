@@ -30,7 +30,14 @@ async function buildShowcaseScene(
   const scene = new Scene(engine);
   scene.clearColor = new Color3(0.05, 0.06, 0.09).toColor4(1);
 
-  const camera = new ArcRotateCamera("camera", Math.PI / 3, Math.PI / 2.6, 0.6, Vector3.Zero(), scene);
+  const camera = new ArcRotateCamera(
+    "camera",
+    Math.PI / 3,
+    Math.PI / 2.6,
+    0.6,
+    Vector3.Zero(),
+    scene,
+  );
   camera.attachControl(true);
   camera.wheelDeltaPercentage = 0.02;
   camera.lowerRadiusLimit = 0.15;

@@ -6,7 +6,10 @@
 
 import * as pc from "playcanvas";
 
-import { createPlayCanvasEngineModule, type PlayCanvasSceneSetup } from "../../engines/playcanvas.js";
+import {
+  createPlayCanvasEngineModule,
+  type PlayCanvasSceneSetup,
+} from "../../engines/playcanvas.js";
 import { buildWalkableScene } from "../../engines/playcanvas-walkable.js";
 import type { EngineMountContext } from "../../engine.js";
 import { assetUrl } from "../../assets.js";

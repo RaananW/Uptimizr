@@ -7,12 +7,12 @@ All models are sourced from the
 repository and are commercial-use-clean (CC0 or CC BY 4.0). Models under
 non-commercial (CC BY-NC) or non-CC licenses are intentionally **not** used.
 
-| File | Source model | License | Attribution |
-| ---- | ------------ | ------- | ----------- |
-| `ToyCar.glb` | [ToyCar](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | © 2020, Public domain |
-| `Fox.glb` | [Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Model © 2014, tomkranis. Rigging/glTF conversion © 2017, @AsoboStudio and @scurest. Base © 2014, Public (CC0 1.0). |
-| `GlamVelvetSofa.glb` | [GlamVelvetSofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | © 2021, Wayfair, LLC |
-| `RiggedFigure.glb` | [RiggedFigure](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/RiggedFigure) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | © 2017, Cesium |
+| File                 | Source model                                                                                         | License                                                       | Attribution                                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `ToyCar.glb`         | [ToyCar](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar)                 | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | © 2020, Public domain                                                                                              |
+| `Fox.glb`            | [Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)                       | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)     | Model © 2014, tomkranis. Rigging/glTF conversion © 2017, @AsoboStudio and @scurest. Base © 2014, Public (CC0 1.0). |
+| `GlamVelvetSofa.glb` | [GlamVelvetSofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)     | © 2021, Wayfair, LLC                                                                                               |
+| `RiggedFigure.glb`   | [RiggedFigure](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/RiggedFigure)     | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)     | © 2017, Cesium                                                                                                     |
 
 ## CC BY 4.0 notice
 
