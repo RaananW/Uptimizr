@@ -38,6 +38,7 @@
     "scene:new": "node scripts/scene-new.mjs",
     "test:e2e": "pnpm --filter @uptimizr/example-playground test:e2e",
     "scrub-gate": "bash scripts/scrub-gate.sh",
+    "license-check": "node scripts/license-check.mjs",
     "changeset": "changeset",
     "version:packages": "changeset version",
     "release": "changeset publish"
