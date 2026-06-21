@@ -46,6 +46,8 @@ const connectors = [
 </section>
 
 <script>
+  import { trackEvent } from "../scripts/track";
+
   const buttons = Array.from(
     document.querySelectorAll<HTMLButtonElement>("#connectors .conn"),
   );
@@ -67,6 +69,9 @@ const connectors = [
       void codecard.offsetWidth; // restart the highlight animation
       codecard.classList.add("codecard--flash");
     }
+
+    // Which engine the audience cares about — the strongest product signal here.
+    trackEvent("connector_select", { engine: engine || pkg });
   }
 
   for (const btn of buttons) {

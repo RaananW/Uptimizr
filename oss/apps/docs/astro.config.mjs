@@ -17,6 +17,10 @@ export default defineConfig({
       },
       favicon: "/favicon.svg",
       customCss: ["./src/styles/theme.css"],
+      components: {
+        // Inject Vercel Web Analytics into every page's <head>.
+        Head: "./src/components/Head.astro",
+      },
       social: [
         {
           icon: "github",

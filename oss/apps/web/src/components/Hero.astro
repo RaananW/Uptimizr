@@ -17,10 +17,10 @@ const liveDemo = "https://demo.uptimizr.com";
         and miss.
       </p>
       <div class="hero__cta">
-        <a class="btn btn--primary" href={liveDemo}>Try the live demo</a>
-        <a class="btn btn--ghost" href={repo} target="_blank" rel="noopener">Star on GitHub</a>
-        <a class="btn btn--ghost" href={docs}>Read the docs</a>
-        <a class="btn btn--ghost" href="#quickstart">Quickstart</a>
+        <a class="btn btn--primary" href={liveDemo} data-track="cta_click" data-track-location="hero" data-track-target="demo">Try the live demo</a>
+        <a class="btn btn--ghost" href={repo} target="_blank" rel="noopener" data-track="cta_click" data-track-location="hero" data-track-target="github">Star on GitHub</a>
+        <a class="btn btn--ghost" href={docs} data-track="cta_click" data-track-location="hero" data-track-target="docs">Read the docs</a>
+        <a class="btn btn--ghost" href="#quickstart" data-track="cta_click" data-track-location="hero" data-track-target="quickstart">Quickstart</a>
       </div>
     </div>
 
@@ -54,6 +54,8 @@ const liveDemo = "https://demo.uptimizr.com";
 </section>
 
 <script>
+  import { trackEvent } from "../scripts/track";
+
   const frame = document.querySelector<HTMLElement>(".hero__demo-frame");
   const canvas = frame?.querySelector<HTMLCanvasElement>("[data-demo-canvas]") ?? null;
   const badge = frame?.querySelector<HTMLElement>("[data-demo-badge]") ?? null;
@@ -61,6 +63,14 @@ const liveDemo = "https://demo.uptimizr.com";
   const tabButtons = frame
     ? Array.from(frame.querySelectorAll<HTMLButtonElement>("[role='tab']"))
     : [];
+
+  // Which hero-demo visualization visitors explore (gaze dome / clicks / flow / world).
+  for (const tab of tabButtons) {
+    tab.addEventListener("click", () => {
+      const mode = tab.dataset.mode;
+      if (mode) trackEvent("demo_tab", { mode });
+    });
+  }
 
   if (canvas && badge && hint && tabButtons.length) {
     let started = false;
