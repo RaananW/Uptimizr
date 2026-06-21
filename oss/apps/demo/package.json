@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/demo",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "description": "Backend-less, fully in-browser demo of Uptimizr (demo.uptimizr.com): the playground feeds an in-browser DuckDB-Wasm store that the dashboard reads via a service-worker collector shim. No hosted database, nothing leaves the browser.",
