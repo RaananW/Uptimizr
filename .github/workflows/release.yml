@@ -1,13 +1,23 @@
 name: Release
 
-# Manual, semver-oriented publish (Changesets). Never auto-publishes on push.
-# Defaults to a dry run so the publish set can be validated before the first
-# real release. Set `dry-run` to false to actually publish to npm.
+# Automated publish, driven by Changesets and decoupled from versioning:
+#
+#   1. version-pr.yml keeps a "Version Packages" PR open while changesets pend.
+#   2. Merging that PR lands the version bumps + CHANGELOGs on main.
+#   3. This workflow runs on that push, notices a publishable version that isn't
+#      on npm yet, and (after the npm-production approval) publishes + tags.
+#
+# Ordinary feature merges leave every version already-published, so the gated
+# `publish` job is skipped and no approval is requested. A manual run
+# (workflow_dispatch) offers a dry run to preview the publish set without
+# touching npm.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       dry-run:
-        description: "Validate the publish set without publishing (changeset publish --dry-run)"
+        description: "Preview the publish set without publishing to npm"
         type: boolean
         default: true
 
@@ -16,17 +26,86 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # push the version-bump commit + git tags
+  contents: write # push the pkg@version git tags (never commits to main)
   id-token: write # npm provenance (OIDC)
 
 jobs:
-  release:
-    name: Version & publish (Changesets)
+  # Cheap, ungated gatekeeper: should the protected publish job run at all?
+  decide:
+    name: Decide whether to publish
     runs-on: ubuntu-latest
-    # Real publishes (dry-run = false) must pass through the protected
-    # "npm-production" environment (required reviewer + environment-scoped
-    # secrets). Dry runs evaluate to an empty name and skip the gate.
-    environment: ${{ !inputs.dry-run && 'npm-production' || '' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry-run) }}
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Determine if a release is pending
+        id: check
+        run: |
+          # Never publish while changesets still pend — main isn't versioned yet.
+          pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md')
+          if [ -n "$pending" ]; then
+            echo "Pending changesets present — not a release commit."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Publish only when a local version isn't on npm yet (Version PR merged).
+          to_publish=$(node scripts/unpublished-packages.mjs)
+          if [ -n "$to_publish" ]; then
+            echo "Unpublished versions:"; echo "$to_publish"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Everything is already published."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Manual preview only (workflow_dispatch with dry-run). Ungated, never writes.
+  dry-run:
+    name: Publish (dry run)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Preview publish set
+        # Changesets' `publish` has no `--dry-run`; pnpm's does. It skips private
+        # packages, and we exclude the manually-released `create-uptimizr`. No
+        # registry writes happen.
+        run: pnpm --recursive --filter='!create-uptimizr' publish --dry-run --no-git-checks
+
+  publish:
+    name: Publish (Changesets)
+    needs: decide
+    if: ${{ needs.decide.outputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    # Real publishes pass through the protected npm-production environment
+    # (required reviewer + environment-scoped NPM_TOKEN). The `decide` gate
+    # ensures this job — and therefore the approval prompt — only runs for an
+    # actual release, not on every push to main.
+    environment: npm-production
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -61,40 +140,24 @@ jobs:
       - name: Scrub gate
         run: bash scripts/scrub-gate.sh
 
-      - name: Apply version bumps
-        run: pnpm changeset version
+      - name: Publish to npm
+        env:
+          # NPM_TOKEN is scoped to the npm-production environment, so it is only
+          # injected after the required reviewer approves this run.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
+        # pnpm (not `changeset publish`) so we can exclude the unscoped
+        # `create-uptimizr` — including it crashes the batch when the scoped
+        # NPM_TOKEN can't publish it. pnpm skips packages whose version is already
+        # on the registry, so this is safe to re-run after a partial publish.
+        run: pnpm --recursive --filter='!create-uptimizr' publish --no-git-checks
 
-      - name: Publish set (dry run)
-        if: ${{ inputs.dry-run }}
-        # Changesets' `publish` has no `--dry-run` flag. Preview the exact set
-        # the real publish would push using pnpm's dry run: it skips private
-        # packages, and we exclude `create-uptimizr` (published manually,
-        # matching the changeset `ignore`). No registry writes happen.
-        run: pnpm --recursive --filter='!create-uptimizr' publish --dry-run --no-git-checks
-
-      - name: Commit version bump
-        if: ${{ !inputs.dry-run }}
+      - name: Tag the release
+        # `changeset tag` creates the annotated `pkg@version` git tags. We push
+        # only tags (not main) to stay clear of branch protection and the Actions
+        # token's workflow-ref push restriction.
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --staged --quiet || git commit -m "chore(release): version packages"
-
-      - name: Publish to npm
-        if: ${{ !inputs.dry-run }}
-        env:
-          # NPM_TOKEN is an environment-scoped secret on `npm-production`, so it
-          # is only injected after the required reviewer approves this run. It is
-          # never available to dry runs or any other workflow.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
-        # We publish with pnpm (not `changeset publish`) so we can exclude the
-        # unscoped `create-uptimizr` — it lives outside the `@uptimizr` scope, is
-        # released manually, and including it crashes the whole batch when the
-        # scoped NPM_TOKEN can't publish it. pnpm skips packages whose version is
-        # already on the registry, so this is safe to re-run after a partial
-        # publish. `changeset tag` then creates the `pkg@version` git tags.
-        run: |
-          pnpm --recursive --filter='!create-uptimizr' publish --no-git-checks
           pnpm changeset tag
-          git push --follow-tags
+          git push origin --tags

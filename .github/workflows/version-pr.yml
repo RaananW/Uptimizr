@@ -1,0 +1,55 @@
+name: Version PR
+
+# Keeps a "Version Packages" PR open whenever there are pending changesets on
+# main. The PR contains the version bumps, regenerated CHANGELOGs, and consumed
+# changeset files. Merging it lands those on main; the Release workflow then
+# publishes. This job never publishes and never commits to main directly.
+#
+# It uses RELEASE_GH_TOKEN (a fine-grained PAT) instead of the default
+# GITHUB_TOKEN so the opened PR triggers the normal PR CI — PRs created with the
+# built-in token are deliberately not allowed to trigger workflows.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: version-pr
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the changeset-release/main branch
+  pull-requests: write # open/update the Version Packages PR
+
+jobs:
+  version-pr:
+    name: Maintain Version Packages PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_GH_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create or update the Version Packages PR
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset version
+          title: "chore(release): version packages"
+          commit: "chore(release): version packages"
+          # No `publish` input: this workflow only maintains the version PR.
+          # Publishing happens in release.yml after the PR is merged.
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_GH_TOKEN }}
