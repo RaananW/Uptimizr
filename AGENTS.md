@@ -91,6 +91,7 @@ paths. Reusable workflows live as skills under [`.github/skills`](./.github/skil
 - `query-analytics` — query collected analytics via the collector read API (auth, params, gotchas).
 - `run-local-stack` — bring up ClickHouse + Postgres + services locally.
 - `work-on-issue` — take a GitHub issue from assigned to closed (plan, code, review, test, close).
+- `create-pr` — open a PR that passes CI on the first run (reproduce every gate locally first).
 
 Focused **custom agents** live under [`.github/agents`](./.github/agents). Use them as subagents
 (or pick them in chat) when a task matches their role; a parent agent may delegate based on the
