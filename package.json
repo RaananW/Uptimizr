@@ -49,9 +49,12 @@
     "@types/node": "^22.19.21",
     "dotenv-cli": "^11.0.0",
     "eslint": "^10.5.0",
+    "fontkit": "^2.0.4",
     "prettier": "^3.8.4",
+    "sharp": "^0.35.2",
     "turbo": "^2.9.18",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.1"
+    "typescript-eslint": "^8.61.1",
+    "wawoff2": "^2.0.1"
   }
 }
