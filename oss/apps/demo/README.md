@@ -56,15 +56,15 @@ SKIP_EMBEDS=1 pnpm --filter @uptimizr/demo dev
 
 ## Scripts
 
-| Script           | What it does                                                              |
-| ---------------- | ------------------------------------------------------------------------ |
-| `dev`            | Vite dev server (port 4320); `predev` stages the embeds first            |
-| `build`          | `prebuild` stages embeds, then Vite production build → `dist/`           |
-| `prepare-embeds` | Builds the playground + dashboard with collector URL `/` into `public/`  |
-| `typecheck`      | `tsc --noEmit`                                                           |
-| `lint`           | ESLint                                                                    |
-| `test`           | Vitest unit tests                                                         |
-| `clean`          | Remove `dist/` and the staged embeds                                      |
+| Script           | What it does                                                            |
+| ---------------- | ----------------------------------------------------------------------- |
+| `dev`            | Vite dev server (port 4320); `predev` stages the embeds first           |
+| `build`          | `prebuild` stages embeds, then Vite production build → `dist/`          |
+| `prepare-embeds` | Builds the playground + dashboard with collector URL `/` into `public/` |
+| `typecheck`      | `tsc --noEmit`                                                          |
+| `lint`           | ESLint                                                                  |
+| `test`           | Vitest unit tests                                                       |
+| `clean`          | Remove `dist/` and the staged embeds                                    |
 
 `SKIP_EMBEDS=1` makes `predev`/`prebuild` reuse already-staged embeds (or placeholders) instead of
 rebuilding them — much faster for iterating on the shell or store.

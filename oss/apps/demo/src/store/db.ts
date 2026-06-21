@@ -52,43 +52,117 @@ function sqlTimestamp(value: string): string {
 
 /** Ordered `events` columns (explicit so we never rely on physical column order). */
 const EVENT_COLUMNS = [
-  "project_id", "session_id", "visitor_id", "event_type", "ts", "sdk_version", "url",
-  "scene_id", "source", "handedness", "source_id", "ray_origin", "ray_direction", "position",
-  "direction", "hit_point", "screen", "mesh", "fps", "name", "payload", "inserted_at",
-  "visible_ms", "centered_ms", "screen_fraction", "texture_bytes", "geometry_bytes", "triangles",
-  "vertices", "js_heap_bytes", "cap_from", "cap_to", "frame_time_ms", "frame_time_p95_ms",
-  "long_frames", "dpr", "render_scale",
+  "project_id",
+  "session_id",
+  "visitor_id",
+  "event_type",
+  "ts",
+  "sdk_version",
+  "url",
+  "scene_id",
+  "source",
+  "handedness",
+  "source_id",
+  "ray_origin",
+  "ray_direction",
+  "position",
+  "direction",
+  "hit_point",
+  "screen",
+  "mesh",
+  "fps",
+  "name",
+  "payload",
+  "inserted_at",
+  "visible_ms",
+  "centered_ms",
+  "screen_fraction",
+  "texture_bytes",
+  "geometry_bytes",
+  "triangles",
+  "vertices",
+  "js_heap_bytes",
+  "cap_from",
+  "cap_to",
+  "frame_time_ms",
+  "frame_time_p95_ms",
+  "long_frames",
+  "dpr",
+  "render_scale",
 ] as const;
 
 /** Ordered `node_samples` columns. */
 const NODE_COLUMNS = [
-  "project_id", "session_id", "ts", "sdk_version", "scene_id", "node_id", "bone_id",
-  "position", "rotation", "scale", "inserted_at", "child_path",
+  "project_id",
+  "session_id",
+  "ts",
+  "sdk_version",
+  "scene_id",
+  "node_id",
+  "bone_id",
+  "position",
+  "rotation",
+  "scale",
+  "inserted_at",
+  "child_path",
 ] as const;
 
 function eventValues(row: EventRow, insertedAt: string): string {
   return [
-    sqlString(row.project_id), sqlString(row.session_id), sqlString(row.visitor_id),
-    sqlString(row.event_type), sqlTimestamp(row.ts), sqlString(row.sdk_version), sqlString(row.url),
-    sqlString(row.scene_id), sqlString(row.source), sqlString(row.handedness), sqlString(row.source_id),
-    sqlDoubleArray(row.ray_origin), sqlDoubleArray(row.ray_direction), sqlDoubleArray(row.position),
-    sqlDoubleArray(row.direction), sqlDoubleArray(row.hit_point), sqlDoubleArray(row.screen),
-    sqlString(row.mesh), sqlNumber(row.fps), sqlString(row.name), sqlString(row.payload),
-    sqlTimestamp(insertedAt), sqlNumber(row.visible_ms), sqlNumber(row.centered_ms),
-    sqlNumber(row.screen_fraction), sqlNumber(row.texture_bytes), sqlNumber(row.geometry_bytes),
-    sqlNumber(row.triangles), sqlNumber(row.vertices), sqlNumber(row.js_heap_bytes),
-    sqlString(row.cap_from), sqlString(row.cap_to), sqlNumber(row.frame_time_ms),
-    sqlNumber(row.frame_time_p95_ms), sqlNumber(row.long_frames), sqlNumber(row.dpr),
+    sqlString(row.project_id),
+    sqlString(row.session_id),
+    sqlString(row.visitor_id),
+    sqlString(row.event_type),
+    sqlTimestamp(row.ts),
+    sqlString(row.sdk_version),
+    sqlString(row.url),
+    sqlString(row.scene_id),
+    sqlString(row.source),
+    sqlString(row.handedness),
+    sqlString(row.source_id),
+    sqlDoubleArray(row.ray_origin),
+    sqlDoubleArray(row.ray_direction),
+    sqlDoubleArray(row.position),
+    sqlDoubleArray(row.direction),
+    sqlDoubleArray(row.hit_point),
+    sqlDoubleArray(row.screen),
+    sqlString(row.mesh),
+    sqlNumber(row.fps),
+    sqlString(row.name),
+    sqlString(row.payload),
+    sqlTimestamp(insertedAt),
+    sqlNumber(row.visible_ms),
+    sqlNumber(row.centered_ms),
+    sqlNumber(row.screen_fraction),
+    sqlNumber(row.texture_bytes),
+    sqlNumber(row.geometry_bytes),
+    sqlNumber(row.triangles),
+    sqlNumber(row.vertices),
+    sqlNumber(row.js_heap_bytes),
+    sqlString(row.cap_from),
+    sqlString(row.cap_to),
+    sqlNumber(row.frame_time_ms),
+    sqlNumber(row.frame_time_p95_ms),
+    sqlNumber(row.long_frames),
+    sqlNumber(row.dpr),
     sqlNumber(row.render_scale),
   ].join(",");
 }
 
 function nodeValues(row: NodeSampleRow, insertedAt: string): string {
   return [
-    sqlString(row.project_id), sqlString(row.session_id), sqlTimestamp(row.ts),
-    sqlString(row.sdk_version), sqlString(row.scene_id), sqlString(row.node_id),
-    sqlString(row.bone_id), sqlDoubleArray(row.position), sqlDoubleArray(row.rotation),
-    sqlDoubleArray(row.scale), sqlTimestamp(insertedAt), sqlString(row.child_path),
+    sqlString(row.project_id),
+    sqlString(row.session_id),
+    sqlTimestamp(row.ts),
+    sqlString(row.sdk_version),
+    sqlString(row.scene_id),
+    sqlString(row.node_id),
+    sqlString(row.bone_id),
+    sqlDoubleArray(row.position),
+    sqlDoubleArray(row.rotation),
+    sqlDoubleArray(row.scale),
+    sqlTimestamp(insertedAt),
+    sqlString(row.child_path),
   ].join(",");
 }
 
@@ -247,7 +321,9 @@ export class WasmDb {
     }
     for (const group of chunk(nodes, INSERT_CHUNK)) {
       const tuples = group.map((e) => `(${nodeValues(toNodeSampleRow(e), insertedAt)})`).join(",");
-      await this.#conn.query(`INSERT INTO node_samples (${NODE_COLUMNS.join(",")}) VALUES ${tuples}`);
+      await this.#conn.query(
+        `INSERT INTO node_samples (${NODE_COLUMNS.join(",")}) VALUES ${tuples}`,
+      );
     }
     await this.#trim("events", MAX_RETAINED_EVENTS);
     await this.#trim("node_samples", MAX_RETAINED_NODE_SAMPLES);
@@ -255,10 +331,12 @@ export class WasmDb {
 
   /** Drop the oldest rows of `table` beyond `max`, keeping memory bounded. */
   async #trim(table: "events" | "node_samples", max: number): Promise<void> {
-    const counted = (await this.all<{ n: number }>({
-      query: `SELECT count(*) AS n FROM ${table}`,
-      query_params: {},
-    }))[0];
+    const counted = (
+      await this.all<{ n: number }>({
+        query: `SELECT count(*) AS n FROM ${table}`,
+        query_params: {},
+      })
+    )[0];
     const n = counted?.n ?? 0;
     if (n <= max) return;
     await this.#conn.query(

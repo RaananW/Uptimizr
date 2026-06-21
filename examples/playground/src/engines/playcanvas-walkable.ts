@@ -122,7 +122,9 @@ export function buildWalkableScene(
   // (empty) patrol node still walks the loop.
   const npc = new pc.Entity("npc");
   app.root.addChild(npc);
-  const figureAsset = new pc.Asset("npc-figure", "container", { url: assetUrl("models/RiggedFigure.glb") });
+  const figureAsset = new pc.Asset("npc-figure", "container", {
+    url: assetUrl("models/RiggedFigure.glb"),
+  });
   app.assets.add(figureAsset);
   figureAsset.once("load", () => {
     const container = figureAsset.resource as pc.ContainerResource;

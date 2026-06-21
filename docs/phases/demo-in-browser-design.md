@@ -107,7 +107,7 @@ adapter calls it exactly like the real store.
 > ✅ **Verified (2026-06):** the reused pieces are import-pure. `events.ts` (→ `toEventRow`) imports
 > only `@uptimizr/schema`; `query/dialect.ts`, `query/aggregations.ts`, and `query/duckdbDialect.ts`
 > import only `@uptimizr/schema` and each other — **no `node:`/`crypto`/`fs`/`process`/`Buffer`**. The
-> *only* Node dependency in the package is `metadata.ts` (`hashApiKey` → `node:crypto`). The catch:
+> _only_ Node dependency in the package is `metadata.ts` (`hashApiKey` → `node:crypto`). The catch:
 > the package's single `index.ts` barrel re-exports `metadata.ts`, so importing from the **root**
 > would drag Node code into the browser bundle. **Action:** add a browser-safe **subpath export**
 > (e.g. `@uptimizr/db/query`) that exposes the builders + `duckdbDialect` + `toEventRow` + types
@@ -174,8 +174,8 @@ welcome screen makes it an explicit, **one-time** step.
 **Flow**
 
 1. Welcome screen renders with a primary **“Prepare demo”** button and a one-line explanation:
-   *“First time here? We’ll download the demo engine (~N MB) once and cache it on this device — after
-   that the demo opens instantly, even offline.”*
+   _“First time here? We’ll download the demo engine (~N MB) once and cache it on this device — after
+   that the demo opens instantly, even offline.”_
 2. On click: register the Service Worker, then **precache** the known asset manifest into a
    **versioned Cache Storage** bucket, and **instantiate DuckDB-Wasm once** to warm the WASM compile
    cache and confirm it works.
@@ -185,9 +185,9 @@ welcome screen makes it an explicit, **one-time** step.
 4. **Return visits detect the cache** (assets present + version match) and skip straight to
    **“Enter demo”** — no re-download. If the browser evicted the cache, prepare runs again.
 
-**Ties to disposal:** this precache is *exactly* the one thing the [Disposal](#disposal--never-burden-the-device)
+**Ties to disposal:** this precache is _exactly_ the one thing the [Disposal](#disposal--never-burden-the-device)
 section says legitimately persists — versioned, capped, **no visitor data**. Clearing site data (or a
-“Forget demo” link) drops it and returns the visitor to the un-prepared state. Visitor *analytics*
+“Forget demo” link) drops it and returns the visitor to the un-prepared state. Visitor _analytics_
 data is never part of this cache; it lives only in memory and is disposed as described above.
 
 **Component draft** (framework-light React; lives in the new demo shell, not in the dashboard/playground):
@@ -195,9 +195,9 @@ data is never part of this cache; it lives only in memory and is disposed as des
 ```tsx
 type PrepareState =
   | { phase: "checking" }
-  | { phase: "idle" }                              // not prepared yet
+  | { phase: "idle" } // not prepared yet
   | { phase: "preparing"; done: number; total: number }
-  | { phase: "ready" }                             // cached + DuckDB warm
+  | { phase: "ready" } // cached + DuckDB warm
   | { phase: "error"; message: string };
 
 export function WelcomeScreen({ onEnter }: { onEnter: () => void }) {
@@ -205,9 +205,7 @@ export function WelcomeScreen({ onEnter }: { onEnter: () => void }) {
 
   // On mount, detect a prior preparation (cache present + version match).
   useEffect(() => {
-    void isDemoPrepared().then((ready) =>
-      setState(ready ? { phase: "ready" } : { phase: "idle" }),
-    );
+    void isDemoPrepared().then((ready) => setState(ready ? { phase: "ready" } : { phase: "idle" }));
   }, []);
 
   async function prepare() {
@@ -240,7 +238,9 @@ export function WelcomeScreen({ onEnter }: { onEnter: () => void }) {
       {state.phase === "idle" && (
         <button className="cta" onClick={prepare}>
           Prepare demo
-          <small>One-time ~{DEMO_DOWNLOAD_MB} MB download · cached locally · works offline after</small>
+          <small>
+            One-time ~{DEMO_DOWNLOAD_MB} MB download · cached locally · works offline after
+          </small>
         </button>
       )}
 
@@ -251,11 +251,15 @@ export function WelcomeScreen({ onEnter }: { onEnter: () => void }) {
       )}
 
       {state.phase === "ready" && (
-        <button className="cta" onClick={onEnter}>Enter demo</button>
+        <button className="cta" onClick={onEnter}>
+          Enter demo
+        </button>
       )}
 
       {state.phase === "error" && (
-        <p role="alert">Couldn’t prepare the demo: {state.message}. <button onClick={prepare}>Retry</button></p>
+        <p role="alert">
+          Couldn’t prepare the demo: {state.message}. <button onClick={prepare}>Retry</button>
+        </p>
       )}
     </section>
   );
@@ -278,7 +282,7 @@ Set expectations before they interact. Group the limits:
   RAM); the demo deliberately holds a small volume. Production uses a server-side store that scales
   far beyond this.
 - **Illustrative, not production** — server-side aggregation (percentile rollups, retention,
-  materialized views, multi-region) isn't running; performance reflects *your device*, and first
+  materialized views, multi-region) isn't running; performance reflects _your device_, and first
   load downloads a multi-MB WASM bundle.
 - **Some features off** — anything that exists because there's a server (live presence/SSE,
   API-key auth, durable retry) is simulated or disabled.
@@ -287,7 +291,7 @@ Set expectations before they interact. Group the limits:
 
 Suggested framing turns the constraint into the privacy pitch:
 
-> "This is a **100% in-browser demo**. The analytics database runs *on your device* with
+> "This is a **100% in-browser demo**. The analytics database runs _on your device_ with
 > DuckDB-Wasm — no account, no server, nothing uploaded. Interact with the scene on the left and
 > watch the dashboard on the right update live. **It's a sandbox: everything resets when you close
 > the tab**, and it runs at a small, local scale. Production uses a scalable server-side store —
@@ -298,15 +302,15 @@ first screen stays uncluttered.
 
 ## Build cost (honest summary)
 
-| Piece | Effort |
-| --- | --- |
-| Welcome + split-view shell (new tiny app, one origin) | Low |
-| “Prepare demo” precache flow (SW register, asset manifest, progress, warm DuckDB) | Low–Medium |
-| Deploy built playground + dashboard under one origin, env → `/` | Low (config) |
+| Piece                                                                               | Effort          |
+| ----------------------------------------------------------------------------------- | --------------- |
+| Welcome + split-view shell (new tiny app, one origin)                               | Low             |
+| “Prepare demo” precache flow (SW register, asset manifest, progress, warm DuckDB)   | Low–Medium      |
+| Deploy built playground + dashboard under one origin, env → `/`                     | Low (config)    |
 | DuckDB-Wasm store binding (reuse query builders + `duckdbDialect`, new Wasm client) | **Medium–High** |
-| Service Worker adapter mapping `/api/v1/*` → store methods | Medium |
-| Disposal: memory-only, rolling window, teardown triggers, reset UI | Low–Medium |
-| Live/SSE: disabled in v1 | None |
+| Service Worker adapter mapping `/api/v1/*` → store methods                          | Medium          |
+| Disposal: memory-only, rolling window, teardown triggers, reset UI                  | Low–Medium      |
+| Live/SSE: disabled in v1                                                            | None            |
 
 The single biggest item is the **DuckDB-Wasm store binding**; everything else is composition,
 configuration, and lifecycle wiring.

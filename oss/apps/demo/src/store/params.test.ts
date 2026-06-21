@@ -14,7 +14,11 @@ describe("toPositionalQuery", () => {
   it("assigns indices in first-appearance order across distinct names", () => {
     const { sql, values } = toPositionalQuery({
       query: "WHERE project_id = $projectId AND ts >= $since::TIMESTAMP AND ts < $until::TIMESTAMP",
-      query_params: { projectId: "demo", since: "2024-01-01 00:00:00.000", until: "2024-01-02 00:00:00.000" },
+      query_params: {
+        projectId: "demo",
+        since: "2024-01-01 00:00:00.000",
+        until: "2024-01-02 00:00:00.000",
+      },
     });
     expect(sql).toBe("WHERE project_id = $1 AND ts >= $2::TIMESTAMP AND ts < $3::TIMESTAMP");
     expect(values).toEqual(["demo", "2024-01-01 00:00:00.000", "2024-01-02 00:00:00.000"]);

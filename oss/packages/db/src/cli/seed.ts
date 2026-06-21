@@ -146,7 +146,9 @@ function writeRegistry(root: string, entries: RegistryEntry[]): void {
     entries.map((e) => e.scene?.id).filter((s): s is string => typeof s === "string"),
   );
   const next = [
-    ...list.filter((p) => p && !ids.has(p.id) && !(p.scene?.id != null && sceneIds.has(p.scene.id))),
+    ...list.filter(
+      (p) => p && !ids.has(p.id) && !(p.scene?.id != null && sceneIds.has(p.scene.id)),
+    ),
     ...entries,
   ];
   writeFileSync(registryPath, `${JSON.stringify(next, null, 2)}\n`);
