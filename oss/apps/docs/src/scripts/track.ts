@@ -5,7 +5,7 @@ function classify(url: URL): string {
   const host = url.hostname;
   if (host === "github.com" || host.endsWith(".github.com")) return "github";
   if (host === "demo.uptimizr.com") return "demo";
-  if (host.endsWith("npmjs.com")) return "npm";
+  if (host === "npmjs.com" || host.endsWith(".npmjs.com")) return "npm";
   return "external";
 }
 
