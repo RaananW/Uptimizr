@@ -6,3 +6,9 @@ import Analytics from "@vercel/analytics/astro";
 <Default><slot /></Default>
 <!-- Vercel Web Analytics: cookieless, no client persistent IDs, no consent banner needed. -->
 <Analytics />
+<script>
+  import { initOutboundTracking } from "../scripts/track";
+
+  // Track clicks that leave the docs (GitHub, live demo, npm, …) as custom events.
+  initOutboundTracking();
+</script>

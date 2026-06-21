@@ -75,6 +75,12 @@ const jsonLd = {
     <a class="skip-link" href="#main">Skip to content</a>
     <slot />
     <script>
+      import { initClickTracking } from "../scripts/track";
+
+      // Wire delegated Vercel custom-event tracking for any [data-track] element.
+      initClickTracking();
+    </script>
+    <script>
       // Lightweight scroll-reveal: add `.is-visible` to `.reveal` elements as
       // they enter the viewport. Pure DOM, no dependency.
       const els = document.querySelectorAll<HTMLElement>(".reveal");
