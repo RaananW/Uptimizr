@@ -32,6 +32,7 @@ generators live alongside the assets:
 - [gen-logo-ubreak.mjs](gen-logo-ubreak.mjs) — the cube + U groove (promoted to `logo.svg`).
 - [gen-lockup.mjs](gen-lockup.mjs) — the horizontal lockup.
 - [gen-brand-assets.mjs](gen-brand-assets.mjs) — the transparent and monochrome marks.
+- [gen-og.mjs](gen-og.mjs) — the social-sharing card (`oss/apps/web/public/og.png`).
 
 Regenerate everything with:
 
@@ -40,7 +41,15 @@ cd docs/design
 node gen-logo-ubreak.mjs > logo-ubreak.svg   # optional: refresh the source mark
 node gen-lockup.mjs                            # logo-lockup*.svg
 node gen-brand-assets.mjs                      # logo-transparent.svg, logo-mono.svg
+node gen-og.mjs                                # oss/apps/web/public/og.png
 ```
+
+The Open Graph card (`gen-og.mjs`) sets the headline in Space Grotesk Bold and
+the eyebrow/footer in JetBrains Mono, outlines all copy to vector paths with
+`fontkit` (so it renders without the fonts installed), embeds the cube mark
+top-right, and rasterises to a 2x (2400x1260) palette PNG with `sharp`. It needs
+the `fontkit`, `wawoff2`, and `sharp` devDependencies plus the `@fontsource`
+fonts shipped with `@uptimizr/web`.
 
 ### Clear space & minimum size
 
