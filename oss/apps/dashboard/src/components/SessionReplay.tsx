@@ -23,6 +23,8 @@ interface CameraSample {
   at: number;
   position: [number, number, number];
   direction: [number, number, number];
+  /** Vertical field of view in radians, when captured — sizes the gaze cone. */
+  fov?: number;
 }
 
 interface InteractionRay {
@@ -31,6 +33,8 @@ interface InteractionRay {
   type: string;
   origin: [number, number, number];
   hit: [number, number, number];
+  /** Name of the mesh the ray hit, when known — drives the HTML label highlight. */
+  mesh?: string;
 }
 
 /** A timestamped world-space position of a tracked scene actor (`node_transform`). */
@@ -285,6 +289,13 @@ export function SessionReplay({
   // are projected from each marker's live position every frame.
   const actorLabelElsRef = useRef<(HTMLDivElement | null)[]>([]);
   const showLabelsRef = useRef(true);
+  // Camera view mode: "birdview" orbits the scene; "follow" sees through the
+  // recorded user's camera (ADR 0035). Mirrored into a ref for the render loop.
+  const viewRef = useRef<"birdview" | "follow">("birdview");
+  // Name of the mesh hit by the most-recent active interaction ray; its HTML label
+  // highlights in sync with the on-canvas ray pulse. Ref-mirrored so the per-frame
+  // render loop only pushes state on an actual change.
+  const highlightedMeshRef = useRef<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
@@ -296,6 +307,10 @@ export function SessionReplay({
   const [showLabels, setShowLabels] = useState(true);
   // True while the playhead is pinned to the growing live edge (ADR 0035).
   const [following, setFollowing] = useState(false);
+  // Camera view mode toggle (birdview orbit vs. first-person follow).
+  const [view, setView] = useState<"birdview" | "follow">("birdview");
+  // Mesh hit by the most-recent active interaction ray (drives the label highlight).
+  const [highlightedMesh, setHighlightedMesh] = useState<string | null>(null);
 
   // Mirror the labels-visible flag into a ref for the render loop.
   useEffect(() => {
@@ -309,6 +324,12 @@ export function SessionReplay({
   useEffect(() => {
     followingRef.current = following;
   }, [following]);
+  // Mirror the view mode into a ref and flag a redraw so a toggle while paused
+  // applies immediately (the render loop reads the ref).
+  useEffect(() => {
+    viewRef.current = view;
+    dirtyRef.current = true;
+  }, [view]);
 
   // Keep the overlay filter in a ref so toggling a type re-renders the 3D view
   // (via `dirtyRef`) without tearing down and rebuilding the whole Babylon scene.
@@ -331,6 +352,8 @@ export function SessionReplay({
     setTimeline([]);
     setProxyLabels([]);
     setActorLabels([]);
+    setHighlightedMesh(null);
+    highlightedMeshRef.current = null;
     labelCentersRef.current = [];
     labelElsRef.current = [];
     actorLabelElsRef.current = [];
@@ -342,6 +365,7 @@ export function SessionReplay({
           { Engine },
           { Scene },
           { ArcRotateCamera },
+          { UniversalCamera },
           { HemisphericLight },
           { Vector3, Color3, Color4, Matrix },
           { MeshBuilder },
@@ -351,6 +375,7 @@ export function SessionReplay({
           import("@babylonjs/core/Engines/engine.js"),
           import("@babylonjs/core/scene.js"),
           import("@babylonjs/core/Cameras/arcRotateCamera.js"),
+          import("@babylonjs/core/Cameras/universalCamera.js"),
           import("@babylonjs/core/Lights/hemisphericLight.js"),
           import("@babylonjs/core/Maths/math.js"),
           import("@babylonjs/core/Meshes/meshBuilder.js"),
@@ -407,6 +432,7 @@ export function SessionReplay({
               at,
               position: latestCamera,
               direction: [e.direction[0], e.direction[1], e.direction[2]],
+              ...(typeof e.fov === "number" ? { fov: e.fov } : {}),
             });
             continue;
           }
@@ -436,6 +462,7 @@ export function SessionReplay({
               type: "pointer_click",
               origin: [origin[0], origin[1], origin[2]],
               hit: [e.hitPoint[0], e.hitPoint[1], e.hitPoint[2]],
+              ...(e.hitMesh ? { mesh: e.hitMesh } : {}),
             });
             continue;
           }
@@ -447,6 +474,7 @@ export function SessionReplay({
               type: "mesh_interaction",
               origin: [latestCamera[0], latestCamera[1], latestCamera[2]],
               hit: [e.point[0], e.point[1], e.point[2]],
+              ...(e.mesh ? { mesh: e.mesh } : {}),
             });
           }
         }
@@ -472,6 +500,27 @@ export function SessionReplay({
         disableWheelZoom(camera);
         cameraRef.current = camera;
         new HemisphericLight("replay-light", new Vector3(0, 1, 0), scene);
+
+        // First-person "follow" camera (ADR 0035): driven entirely from the
+        // recorded `camera_sample` pose so the dashboard user can see through the
+        // tracked visitor's eyes. No input is attached — the playhead drives it.
+        // The orbit camera stays the default; `applyView` switches between them.
+        const followCam = new UniversalCamera("replay-follow-cam", Vector3.Zero(), scene);
+        followCam.minZ = 0.05;
+        followCam.fov = Math.PI / 3;
+        scene.activeCamera = camera;
+        let appliedView: "birdview" | "follow" = "birdview";
+        const applyView = (next: "birdview" | "follow") => {
+          if (next === appliedView) return;
+          appliedView = next;
+          if (next === "follow") {
+            camera.detachControl();
+            scene.activeCamera = followCam;
+          } else {
+            scene.activeCamera = camera;
+            camera.attachControl(canvas, true);
+          }
+        };
 
         // Neutral reference frame: a ground grid so camera motion reads clearly.
         const ground = MeshBuilder.CreateGround(
@@ -671,9 +720,14 @@ export function SessionReplay({
           ];
         };
 
+        // Camera marker size + gaze-cone length, scaled to the scene below once
+        // its bounds are known (a fixed 0.35 sphere disappeared in large scenes).
+        let markerScale = 1;
+        let coneReach = 1.4;
+
         const currentCam = MeshBuilder.CreateSphere(
           "replay-camera-origin",
-          { diameter: 0.35, segments: 8 },
+          { diameter: 0.35, segments: 12 },
           scene,
         );
         const currentCamMat = new StandardMaterial("replay-camera-origin-mat", scene);
@@ -688,6 +742,28 @@ export function SessionReplay({
         );
         frustumLine.color = new Color3(0.7, 0.95, 1);
         frustumLine.isPickable = false;
+
+        // Translucent field-of-view cone: apex at the camera marker, opening along
+        // the gaze direction with a half-angle of fov/2. Baked so the mesh's local
+        // +Z is the cone axis (apex at local origin, base one unit forward, base
+        // radius 0.5); each frame it is aimed with `lookAt` and sized by scaling
+        // (radius from the captured fov, length from the scene scale).
+        const fovCone = MeshBuilder.CreateCylinder(
+          "replay-camera-cone",
+          { height: 1, diameterTop: 0, diameterBottom: 1, tessellation: 24 },
+          scene,
+        );
+        fovCone.bakeTransformIntoVertices(
+          Matrix.RotationX(-Math.PI / 2).multiply(Matrix.Translation(0, 0, 0.5)),
+        );
+        const fovConeMat = new StandardMaterial("replay-camera-cone-mat", scene);
+        fovConeMat.disableLighting = true;
+        fovConeMat.emissiveColor = new Color3(0.4, 0.78, 1);
+        fovConeMat.alpha = 0.16;
+        fovConeMat.backFaceCulling = false;
+        fovCone.material = fovConeMat;
+        fovCone.isPickable = false;
+        fovCone.isVisible = false;
 
         // `CreateLineSystem` warns ("Setting vertex data kind 'position' with an
         // empty array") when handed zero lines, which happens both at init and on
@@ -802,6 +878,22 @@ export function SessionReplay({
         }
         frameCamera();
 
+        // Now bounds are known: size the camera marker + gaze cone to the scene so
+        // they stay legible in large worlds (and don't dwarf small ones).
+        {
+          const dx = maxX - minX;
+          const dy = maxY - minY;
+          const dz = maxZ - minZ;
+          const span = Number.isFinite(dx) ? Math.sqrt(dx * dx + dy * dy + dz * dz) : 0;
+          const markerDiameter = Math.min(
+            Math.max(span * 0.035, 0.45),
+            Math.max(0.45, span * 0.18),
+          );
+          markerScale = markerDiameter / 0.35;
+          coneReach = Math.max(span * 0.16, markerDiameter * 3.2, 1.4);
+          currentCam.scaling.setAll(markerScale);
+        }
+
         const findCameraAt = (elapsed: number): CameraSample | null => {
           if (cameraSamples.length === 0) return null;
           let lo = 0;
@@ -830,27 +922,51 @@ export function SessionReplay({
           if (dirty) buildPersistentMarks();
           const hidden = hiddenRef.current;
 
+          // Apply any pending view-mode switch (birdview orbit vs first-person).
+          applyView(viewRef.current);
+          const follow = viewRef.current === "follow";
+
           const sample = hidden.has("camera_sample") ? null : findCameraAt(elapsed);
           if (sample) {
-            currentCam.isVisible = true;
-            frustumLine.isVisible = true;
             currentCam.position.set(sample.position[0], sample.position[1], sample.position[2]);
             const d = sample.direction;
             const len = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) || 1;
-            const reach = 1.4;
+            const reach = coneReach;
             const tip = new Vector3(
               sample.position[0] + (d[0] / len) * reach,
               sample.position[1] + (d[1] / len) * reach,
               sample.position[2] + (d[2] / len) * reach,
             );
-            frustumLine = MeshBuilder.CreateLines(
-              "replay-camera-frustum",
-              { points: [currentCam.position.clone(), tip], instance: frustumLine },
-              scene,
-            );
+            if (follow) {
+              // First-person: the viewer *is* the camera, so hide the marker,
+              // frustum line, and gaze cone and drive the follow camera instead.
+              currentCam.isVisible = false;
+              frustumLine.isVisible = false;
+              fovCone.isVisible = false;
+              followCam.position.set(sample.position[0], sample.position[1], sample.position[2]);
+              followCam.setTarget(tip);
+              if (sample.fov && sample.fov > 0) followCam.fov = sample.fov;
+            } else {
+              currentCam.isVisible = true;
+              frustumLine.isVisible = true;
+              frustumLine = MeshBuilder.CreateLines(
+                "replay-camera-frustum",
+                { points: [currentCam.position.clone(), tip], instance: frustumLine },
+                scene,
+              );
+              // Aim the gaze cone down the view direction and size it: apex at the
+              // marker, base radius from the (vertical) fov half-angle, length = reach.
+              const halfFov = (sample.fov && sample.fov > 0 ? sample.fov : Math.PI / 3) / 2;
+              const radius = reach * Math.tan(halfFov);
+              fovCone.isVisible = true;
+              fovCone.position.copyFrom(currentCam.position);
+              fovCone.lookAt(tip);
+              fovCone.scaling.set(radius * 2, radius * 2, reach);
+            }
           } else {
             currentCam.isVisible = false;
             frustumLine.isVisible = false;
+            fovCone.isVisible = false;
           }
 
           // Re-place each tracked actor at its interpolated position (or hide it
@@ -916,6 +1032,22 @@ export function SessionReplay({
             glowOrb.isVisible = false;
           }
 
+          // Surface the mesh of the most-recent active interaction ray so its HTML
+          // label highlights in sync with the on-canvas ray pulse. Only push React
+          // state when it actually changes (this runs every frame).
+          let activeMesh: string | null = null;
+          let activeMeshAt = -Infinity;
+          for (const r of active) {
+            if (r.mesh && r.at > activeMeshAt) {
+              activeMeshAt = r.at;
+              activeMesh = r.mesh;
+            }
+          }
+          if (activeMesh !== highlightedMeshRef.current) {
+            highlightedMeshRef.current = activeMesh;
+            if (!disposed) setHighlightedMesh(activeMesh);
+          }
+
           trailLines = rebuildLines(trailLines, "replay-trail-lines", rayLines, rayColors);
           trailHits = rebuildLines(trailHits, "replay-trail-hits", hitCrosses, hitColors);
         };
@@ -952,7 +1084,13 @@ export function SessionReplay({
             if (pos && dir) {
               const position: [number, number, number] = [pos[0]!, pos[1]!, pos[2]!];
               latestCamera = position;
-              cameraSamples.push({ at, position, direction: [dir[0]!, dir[1]!, dir[2]!] });
+              const fov = typeof ev.fov === "number" ? ev.fov : undefined;
+              cameraSamples.push({
+                at,
+                position,
+                direction: [dir[0]!, dir[1]!, dir[2]!],
+                ...(fov !== undefined ? { fov } : {}),
+              });
               grow(position);
               frameCamera();
             }
@@ -961,11 +1099,13 @@ export function SessionReplay({
             const ray = ev.ray as { origin?: number[] } | undefined;
             const origin = ray?.origin ?? latestCamera;
             if (hit && origin) {
+              const hitMesh = typeof ev.hitMesh === "string" ? ev.hitMesh : undefined;
               rays.push({
                 at,
                 type: "pointer_click",
                 origin: [origin[0]!, origin[1]!, origin[2]!],
                 hit: [hit[0]!, hit[1]!, hit[2]!],
+                ...(hitMesh ? { mesh: hitMesh } : {}),
               });
               grow(hit);
               dirtyRef.current = true;
@@ -973,11 +1113,13 @@ export function SessionReplay({
           } else if (ev.type === "mesh_interaction") {
             const point = ev.point as number[] | undefined;
             if (point && latestCamera) {
+              const mesh = typeof ev.mesh === "string" ? ev.mesh : undefined;
               rays.push({
                 at,
                 type: "mesh_interaction",
                 origin: [latestCamera[0], latestCamera[1], latestCamera[2]],
                 hit: [point[0]!, point[1]!, point[2]!],
+                ...(mesh ? { mesh } : {}),
               });
               grow(point);
               dirtyRef.current = true;
@@ -1048,14 +1190,45 @@ export function SessionReplay({
         // top-center into client pixels every frame. Drives the DOM directly
         // (no React state per frame); hidden when behind the camera or toggled off.
         const identity = Matrix.Identity();
+        // Cache each label's pixel size (text + font are static) so the per-frame
+        // declutter pass below doesn't force a layout reflow every frame.
+        const labelSizes = new Map<HTMLElement, { w: number; h: number }>();
+        const measureLabel = (el: HTMLElement): { w: number; h: number } => {
+          const cached = labelSizes.get(el);
+          if (cached) return cached;
+          const size = { w: el.offsetWidth || 60, h: el.offsetHeight || 16 };
+          if (el.offsetWidth > 0) labelSizes.set(el, size);
+          return size;
+        };
         const positionLabels = () => {
-          const centers = labelCentersRef.current;
-          const els = labelElsRef.current;
           if (!showLabelsRef.current) return;
           const w = canvas.clientWidth || engine.getRenderWidth();
           const h = canvas.clientHeight || engine.getRenderHeight();
           const viewport = camera.viewport.toGlobal(w, h);
           const transform = scene.getTransformMatrix();
+
+          // Gather every on-screen label (proxy + actor) into one list so the
+          // declutter pass can resolve collisions across both kinds. `liftPct` is
+          // the upward offset baked into each label's transform (proxy 140%,
+          // actor 180%), needed to compute its real screen box. `highlighted`
+          // marks the mesh hit by the most-recent interaction ray.
+          const hi = highlightedMeshRef.current;
+          const leaf = (s: string) => s.slice(s.lastIndexOf("/") + 1);
+          const matchesHi = (name: string): boolean => {
+            if (!hi) return false;
+            if (hi === name) return true;
+            return leaf(hi) === leaf(name) || name.endsWith(`/${hi}`) || hi.endsWith(`/${name}`);
+          };
+          type LabelCand = {
+            el: HTMLElement;
+            x: number;
+            y: number;
+            liftPct: number;
+            highlighted: boolean;
+          };
+          const cands: LabelCand[] = [];
+          const centers = labelCentersRef.current;
+          const els = labelElsRef.current;
           for (let i = 0; i < centers.length; i++) {
             const el = els[i];
             if (!el) continue;
@@ -1064,8 +1237,7 @@ export function SessionReplay({
               el.style.opacity = "0";
               continue;
             }
-            el.style.opacity = "1";
-            el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -140%)`;
+            cands.push({ el, x: p.x, y: p.y, liftPct: 140, highlighted: matchesHi(centers[i]!.name) });
           }
           // Actor labels track their marker's live position (the marker moves).
           const actorEls = actorLabelElsRef.current;
@@ -1082,8 +1254,43 @@ export function SessionReplay({
               el.style.opacity = "0";
               continue;
             }
-            el.style.opacity = "1";
-            el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -180%)`;
+            cands.push({ el, x: p.x, y: p.y, liftPct: 180, highlighted: matchesHi(actorMarkers[i]!.key) });
+          }
+
+          // Declutter: place labels top-to-bottom, nudging each below any already
+          // placed label whose horizontal span overlaps. Co-located meshes (e.g. a
+          // glTF car's many sub-meshes sharing a base position) then form a
+          // readable vertical stack instead of one illegible pile. O(n²) over a
+          // small label set — negligible per frame. Highlighted labels (the clicked
+          // mesh) are placed first so they keep their anchor and sit on top instead
+          // of being buried when the click lands on a background mesh.
+          cands.sort((a, b) =>
+            a.highlighted !== b.highlighted ? (a.highlighted ? -1 : 1) : a.y - b.y || a.x - b.x,
+          );
+          const placed: { left: number; right: number; top: number; bottom: number }[] = [];
+          const GAP = 1;
+          for (const c of cands) {
+            const { w: lw, h: lh } = measureLabel(c.el);
+            const left = c.x - lw / 2;
+            const right = c.x + lw / 2;
+            const naturalTop = c.y - (c.liftPct / 100) * lh;
+            let top = naturalTop;
+            let bumped = true;
+            let guard = 0;
+            while (bumped && guard++ < 256) {
+              bumped = false;
+              for (const q of placed) {
+                if (left < q.right && right > q.left && top < q.bottom && top + lh > q.top) {
+                  top = q.bottom + GAP;
+                  bumped = true;
+                }
+              }
+            }
+            placed.push({ left, right, top, bottom: top + lh });
+            const dy = top - naturalTop;
+            c.el.style.opacity = "1";
+            c.el.style.zIndex = c.highlighted ? "10" : "";
+            c.el.style.transform = `translate(${c.x}px, ${c.y + dy}px) translate(-50%, -${c.liftPct}%)`;
           }
         };
 
@@ -1125,6 +1332,7 @@ export function SessionReplay({
           liveIngestRef.current = null;
           playerRef.current?.pause();
           frustumLine.dispose();
+          fovCone.dispose();
           trailLines?.dispose();
           trailHits?.dispose();
           persistentMarks?.dispose();
@@ -1214,6 +1422,19 @@ export function SessionReplay({
     },
   );
 
+  // A proxy/actor label matches the highlighted mesh on exact name, leaf name, or
+  // a path/leaf suffix (event mesh names and proxy names may differ in pathing).
+  const meshMatches = useCallback(
+    (name: string) => {
+      const h = highlightedMesh;
+      if (!h) return false;
+      if (h === name) return true;
+      const leaf = (s: string) => s.slice(s.lastIndexOf("/") + 1);
+      return leaf(h) === leaf(name) || name.endsWith(`/${h}`) || h.endsWith(`/${name}`);
+    },
+    [highlightedMesh],
+  );
+
   return (
     <Panel
       title={isLive ? "Session replay · live" : "Session replay (birdview timeline)"}
@@ -1241,7 +1462,11 @@ export function SessionReplay({
               ref={(el) => {
                 if (el) labelElsRef.current[i] = el;
               }}
-              className="absolute left-0 top-0 whitespace-nowrap rounded bg-ink/80 px-1.5 py-0.5 text-[10px] font-medium text-saffron opacity-0 ring-1 ring-amber/30"
+              className={`absolute left-0 top-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium opacity-0 transition-colors ${
+                meshMatches(name)
+                  ? "bg-amber/30 text-white ring-2 ring-amber shadow-lg shadow-amber/30"
+                  : "bg-ink/80 text-saffron ring-1 ring-amber/30"
+              }`}
             >
               {shortLabel(name)}
             </div>
@@ -1253,7 +1478,11 @@ export function SessionReplay({
               ref={(el) => {
                 if (el) actorLabelElsRef.current[i] = el;
               }}
-              className="absolute left-0 top-0 whitespace-nowrap rounded bg-ink/80 px-1.5 py-0.5 text-[10px] font-medium text-fuchsia-300 opacity-0 ring-1 ring-fuchsia-400/30"
+              className={`absolute left-0 top-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium opacity-0 transition-colors ${
+                meshMatches(name)
+                  ? "bg-fuchsia-400/30 text-white ring-2 ring-fuchsia-300 shadow-lg shadow-fuchsia-500/30"
+                  : "bg-ink/80 text-fuchsia-300 ring-1 ring-fuchsia-400/30"
+              }`}
             >
               {shortLabel(name)}
             </div>
@@ -1269,7 +1498,7 @@ export function SessionReplay({
             {showLabels ? "Hide labels" : "Show labels"}
           </button>
         ) : null}
-        {phase === "ready" ? (
+        {phase === "ready" && view === "birdview" ? (
           <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
         ) : null}
         {phase !== "ready" ? (
@@ -1314,6 +1543,34 @@ export function SessionReplay({
             {following ? "LIVE" : "Resume live"}
           </button>
         ) : null}
+        <div
+          role="group"
+          aria-label="Camera view"
+          className="flex items-center rounded-md border border-edge p-0.5 text-xs font-medium"
+        >
+          <button
+            type="button"
+            onClick={() => setView("birdview")}
+            disabled={phase !== "ready"}
+            aria-pressed={view === "birdview" ? "true" : "false"}
+            className={`rounded px-2 py-1 transition disabled:opacity-40 ${
+              view === "birdview" ? "bg-amber text-ink" : "text-fg hover:text-white"
+            }`}
+          >
+            Birdview
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("follow")}
+            disabled={phase !== "ready"}
+            aria-pressed={view === "follow" ? "true" : "false"}
+            className={`rounded px-2 py-1 transition disabled:opacity-40 ${
+              view === "follow" ? "bg-amber text-ink" : "text-fg hover:text-white"
+            }`}
+          >
+            Follow camera
+          </button>
+        </div>
         <span className="w-12 text-right font-mono text-xs tabular-nums text-fg-muted">
           {formatClock(progress)}
         </span>
