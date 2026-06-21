@@ -45,6 +45,12 @@ Every PR **must** add a changeset, or the `changeset` gate fails. (The only exce
 - Change needs no release note (docs, CI, examples, private apps) → `pnpm changeset --empty`,
   then write the summary line into the generated file (an empty `--empty` changeset has frontmatter
   `---\n---` and a body line; match the existing files in `.changeset/`).
+- **Format the changeset before committing.** `.changeset/*.md` is markdown and is checked by the
+  `format:check` gate, but `pnpm changeset` output — and any summary line you hand-edit in — is
+  frequently **not** Prettier-clean (trailing space, missing final newline, wrong wrapping). This
+  is a common cause of a red `Format, audit, license` job on an otherwise-good PR. Run
+  `pnpm exec prettier --write ".changeset/*.md"` (or `pnpm format`) right after creating/editing
+  the changeset, then re-check with `pnpm exec prettier --check ".changeset/*.md"`.
 - Commit the changeset file with the change. Verify one exists:
   `ls .changeset/*.md | grep -v README` shows a new file.
 
@@ -83,7 +89,9 @@ pnpm exec turbo run build --ui=stream
 pnpm exec turbo run test --ui=stream
 ```
 
-- `format:check` red → run `pnpm format` and re-commit.
+- `format:check` red → run `pnpm format` and re-commit. The most common offender is a freshly
+  created `.changeset/*.md`; new/edited docs and JSON are next. `format:check` covers **every**
+  tracked `**/*.{ts,tsx,js,jsx,json,md,yml,yaml}`, including the changeset you just added.
 - `audit` red → a production dependency has a high+ advisory; bump/replace it or, if it's a
   documented false positive, follow the repo's audit handling (see `npm-audit-notes`). Do not
   weaken the audit level.
@@ -137,7 +145,7 @@ the table above, reproduce it locally, fix it, and push again — don't leave a 
 ## Pre-push checklist
 
 - [ ] Focused branch off up-to-date `main`; diff reviewed and in scope
-- [ ] Changeset added (`pnpm changeset` or `--empty`) and committed
+- [ ] Changeset added (`pnpm changeset` or `--empty`), **Prettier-formatted**, and committed
 - [ ] `pnpm scrub-gate` passes
 - [ ] No secrets anywhere in branch history (gitleaks-clean)
 - [ ] `format:check`, `audit --prod --audit-level=high`, `license-check` all pass
