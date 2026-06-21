@@ -88,6 +88,13 @@ jobs:
           # never available to dry runs or any other workflow.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
+        # We publish with pnpm (not `changeset publish`) so we can exclude the
+        # unscoped `create-uptimizr` — it lives outside the `@uptimizr` scope, is
+        # released manually, and including it crashes the whole batch when the
+        # scoped NPM_TOKEN can't publish it. pnpm skips packages whose version is
+        # already on the registry, so this is safe to re-run after a partial
+        # publish. `changeset tag` then creates the `pkg@version` git tags.
         run: |
-          pnpm changeset publish
+          pnpm --recursive --filter='!create-uptimizr' publish --no-git-checks
+          pnpm changeset tag
           git push --follow-tags
