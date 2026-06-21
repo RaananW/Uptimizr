@@ -89,7 +89,7 @@ Need more projects/keys later? `npx -p @uptimizr/collector-server uptimizr new-p
 DuckDB is an embedded, single-writer store: only **one process** may open the file read-write at a
 time. Run a single collector instance against a given file, and stop it before inspecting with
 another writer. Concurrent readers are fine in read-only mode. For multi-writer / horizontal scale,
-use the optional ClickHouse + Postgres scale tier.
+use the [`clickhouse` store](#scale-path-clickhouse).
 :::
 
 ## Serve the dashboard too
@@ -98,12 +98,57 @@ The collector can optionally serve the dashboard static assets at `/`, so a sing
 the ingestion API, query API, UI, and the DuckDB file. See [Serve the
 dashboard](/docs/deploy/dashboard/) for the all-in-one and standalone options.
 
-## Scale path (Docker)
+## Scale path: ClickHouse
 
-When you outgrow a single file, the ClickHouse (events) + Postgres (metadata) engines back the
-larger deployment. Set `COLLECTOR_STORE` to the scale store and point the collector at those
-engines. This path lives in the monorepo's `infra/docker` and is documented for contributors in
+When you outgrow DuckDB's single-writer model — concurrent collector instances, high-volume
+ingestion, or large historical ranges — switch the store to **ClickHouse** without changing any
+application code or queries:
+
+```bash
+export COLLECTOR_STORE=clickhouse
+export CLICKHOUSE_URL=http://localhost:8123
+export CLICKHOUSE_DATABASE=uptimizr
+export CLICKHOUSE_USER=default
+export CLICKHOUSE_PASSWORD=
+npx -p @uptimizr/collector-server uptimizr serve
+```
+
+This is a **single-tenant ClickHouse store**: events **and** metadata (projects, API keys, scene
+representations) live in one ClickHouse database, so there is no separate metadata service to run.
+The collector creates the database and tables on first boot. Every aggregation is authored once
+against the dialect-agnostic query layer, so the full analytics surface — heatmaps, sessions,
+performance percentiles, mesh dwell, daily rollups — returns **identical results** to DuckDB
+(verified by a cross-engine parity suite).
+
+Choose ClickHouse when you need:
+
+- **Concurrent writers / horizontal scale** — multiple collector instances against one store.
+- **High-volume ingestion** and large time-range queries.
+- A shared analytics database your team already operates.
+
+Keep **DuckDB** (the default) for single-instance self-hosting with no service to run. Spin up a
+local ClickHouse with the monorepo's `infra/docker` (`pnpm stack:up`); see
 [Contributing](/docs/contributing/).
+
+### Hosted / managed ClickHouse
+
+A managed ClickHouse (ClickHouse Cloud, Aiven, or your own TLS-terminated server) works the same
+way — point `CLICKHOUSE_URL` at the **HTTPS** endpoint and pass the credentials. The client infers
+TLS from the `https://` scheme, so no extra configuration is needed for publicly-trusted
+certificates:
+
+```bash
+export COLLECTOR_STORE=clickhouse
+export CLICKHOUSE_URL=https://your-instance.clickhouse.cloud:8443
+export CLICKHOUSE_USER=default
+export CLICKHOUSE_PASSWORD="$YOUR_PASSWORD"
+export CLICKHOUSE_DATABASE=uptimizr
+```
+
+The collector creates the `CLICKHOUSE_DATABASE` on first boot, so the connecting user needs the
+`CREATE DATABASE` privilege (the default ClickHouse Cloud user has it) — or pre-create the database
+and grant the user access to it. Custom CA bundles and mutual-TLS client certificates are not
+currently exposed through env vars.
 
 ## Configuration
 
@@ -112,8 +157,11 @@ full list):
 
 | Variable                       | Purpose                                                            |
 | ------------------------------ | ----------------------------------------------------------------- |
-| `COLLECTOR_STORE`              | `duckdb` (default) or the scale store.                            |
+| `COLLECTOR_STORE`              | `duckdb` (default), `clickhouse` (scale tier), or `memory` (dev/E2E). |
 | `DUCKDB_PATH`                  | Path to the DuckDB file (default `./data/uptimizr.duckdb`).       |
+| `CLICKHOUSE_URL`               | ClickHouse HTTP endpoint when `COLLECTOR_STORE=clickhouse` (default `http://localhost:8123`). |
+| `CLICKHOUSE_DATABASE`          | ClickHouse database name (default `uptimizr`; created on first boot). |
+| `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD` | ClickHouse credentials (default `default` / empty).   |
 | `COLLECTOR_PORT`               | Port the collector listens on (default `4318`).                  |
 | `VISITOR_HASH_SECRET`          | Secret for the daily-rotating, server-side visitor hash.          |
 | `COLLECTOR_CORS_ORIGINS`       | Allowed browser origins for ingestion/query (comma-separated).    |

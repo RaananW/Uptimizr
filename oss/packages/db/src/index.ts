@@ -11,7 +11,7 @@
  */
 
 export { readDbSettings } from "./env.js";
-export type { DbSettings, DuckdbSettings } from "./env.js";
+export type { DbSettings, DuckdbSettings, ClickhouseSettings } from "./env.js";
 
 // --- Engine-neutral event-row mapping (ADR 0020) ---
 export { toEventRow, formatUtcTimestamp } from "./events.js";
@@ -39,6 +39,7 @@ export type {
 // dialect it is given.
 export type { Dialect, ParamType } from "./query/dialect.js";
 export { duckdbDialect, toDuckdbTimestamp } from "./query/duckdbDialect.js";
+export { clickhouseDialect, toClickhouseTimestamp } from "./query/clickhouseDialect.js";
 export {
   buildListSessions,
   buildPointerHeatmap,

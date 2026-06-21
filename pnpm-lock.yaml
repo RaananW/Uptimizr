@@ -154,6 +154,9 @@ importers:
       '@uptimizr/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@uptimizr/db-clickhouse':
+        specifier: workspace:*
+        version: link:../../packages/db-clickhouse
       '@uptimizr/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -321,6 +324,28 @@ importers:
       '@duckdb/node-api':
         specifier: ^1.5.4-r.1
         version: 1.5.4-r.1
+      '@uptimizr/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@types/node':
+        specifier: ^22.19.21
+        version: 22.19.21
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@22.19.21)(happy-dom@20.10.6)(jsdom@29.1.1(canvas@3.2.3))(vite@8.0.16(@types/node@22.19.21)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  oss/packages/db-clickhouse:
+    dependencies:
+      '@clickhouse/client':
+        specifier: ^1.21.0
+        version: 1.21.0
+      '@uptimizr/db':
+        specifier: workspace:*
+        version: link:../db
       '@uptimizr/schema':
         specifier: workspace:*
         version: link:../schema
@@ -779,6 +804,13 @@ packages:
   '@clack/prompts@1.5.1':
     resolution: {integrity: sha512-zccHj2z2oCCO4yrDiRSlFOxWerGqRiysP7a5jPK6uoI9URKAquwY42Dd/iUP8JWHxEzdRe4TlbvZCo8z1/mhrw==}
     engines: {node: '>= 20.12.0'}
+
+  '@clickhouse/client-common@1.21.0':
+    resolution: {integrity: sha512-UjvA32aaLKbQ5U735qAGdzohrOrfU8zFoOWIOWorWQk+7UzHZxq6pf4Uh/wQ08zAMb9cmkd9h9N1FV8zP8UCOg==}
+
+  '@clickhouse/client@1.21.0':
+    resolution: {integrity: sha512-HJLHX60clPFV4ZYjhd9Radgfqkl0MX6T4GDaS6CK4K2cpMWW4uIDPzXjueIVJh+LRVt1pi7kJKn8BWjmbGAlEA==}
+    engines: {node: '>=16'}
 
   '@csstools/color-helpers@6.0.2':
     resolution: {integrity: sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q==}
@@ -5653,6 +5685,12 @@ snapshots:
       fast-string-width: 3.0.2
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
+
+  '@clickhouse/client-common@1.21.0': {}
+
+  '@clickhouse/client@1.21.0':
+    dependencies:
+      '@clickhouse/client-common': 1.21.0
 
   '@csstools/color-helpers@6.0.2': {}
 

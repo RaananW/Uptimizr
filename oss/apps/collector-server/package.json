@@ -51,6 +51,7 @@
     "@fastify/rate-limit": "^11.0.0",
     "@fastify/static": "^9.1.1",
     "@uptimizr/db": "workspace:*",
+    "@uptimizr/db-clickhouse": "workspace:*",
     "@uptimizr/schema": "workspace:*",
     "fastify": "^5.8.5",
     "fastify-type-provider-zod": "^6.1.0",

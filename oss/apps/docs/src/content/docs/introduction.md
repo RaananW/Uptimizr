@@ -24,7 +24,7 @@ and custom events from a 3D scene, and can **replay** a recorded session inside 
 
 ```text
  3D scene ──connector──▶ sdk-core ──beacon──▶ collector ──▶ store
-   (Babylon/three/…)     (batch/flush)     POST /api/v1/collect   (DuckDB or ClickHouse+Postgres)
+   (Babylon/three/…)     (batch/flush)     POST /api/v1/collect   (DuckDB or ClickHouse)
                                                        │
                                               query API (x-api-key)
                                                        │

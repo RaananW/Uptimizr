@@ -15,8 +15,26 @@ export interface DuckdbSettings {
   path: string;
 }
 
+/**
+ * ClickHouse (optional single-tenant scale store, ADR 0020) connection settings.
+ * Read from the environment but unused by the default DuckDB store, so the OSS
+ * install needs neither a ClickHouse server nor the client until opted into via
+ * `COLLECTOR_STORE=clickhouse`. Mirrors the `CLICKHOUSE_*` names in `.env.example`.
+ */
+export interface ClickhouseSettings {
+  /** HTTP endpoint of the ClickHouse server (used by `@clickhouse/client`). */
+  url: string;
+  /** Target database. */
+  database: string;
+  /** Username. */
+  username: string;
+  /** Password (empty by default for a local dev server). */
+  password: string;
+}
+
 export interface DbSettings {
   duckdb: DuckdbSettings;
+  clickhouse: ClickhouseSettings;
   /** Opt-in raw per-session retention for replay (ADR 0003). */
   enableRawSessionRetention: boolean;
 }
@@ -64,6 +82,12 @@ export function readDbSettings(env: Env = process.env): DbSettings {
   return {
     duckdb: {
       path: env.DUCKDB_PATH ?? defaultDuckdbPath(),
+    },
+    clickhouse: {
+      url: env.CLICKHOUSE_URL ?? "http://localhost:8123",
+      database: env.CLICKHOUSE_DATABASE ?? "uptimizr",
+      username: env.CLICKHOUSE_USER ?? "default",
+      password: env.CLICKHOUSE_PASSWORD ?? "",
     },
     enableRawSessionRetention: bool(env.ENABLE_RAW_SESSION_RETENTION, false),
   };
