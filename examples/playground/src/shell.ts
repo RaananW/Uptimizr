@@ -335,7 +335,9 @@ function makeCursorOverlay(canvas: HTMLCanvasElement): {
     cursorEl.classList.remove("visible", "down");
   });
   document.addEventListener("pointerlockchange", () => {
-    pointerLocked = document.pointerLockElement === canvas;
+    // three.js locks the canvas, PlayCanvas locks document.body — treat any
+    // active pointer lock as "locked" so the playground cursor hides for both.
+    pointerLocked = document.pointerLockElement != null;
     if (pointerLocked) {
       cursorEl.classList.remove("visible", "down");
       cursorPulseEl.classList.remove("pulse");
@@ -371,10 +373,11 @@ function makeCursorOverlay(canvas: HTMLCanvasElement): {
 // and flashes amber when a pick registers — the visible confirmation that
 // locked clicks are being captured (the lock-engaging click itself is suppressed
 // by the walkable demos' overlay).
-function makeCrosshair(canvas: HTMLCanvasElement): { pulse(): void } {
+function makeCrosshair(): { pulse(): void } {
   const crosshairEl = requireElement("crosshair", HTMLElement);
   const onLockChange = (): void => {
-    crosshairEl.hidden = document.pointerLockElement !== canvas;
+    // Engine-agnostic: three.js locks the canvas, PlayCanvas locks document.body.
+    crosshairEl.hidden = document.pointerLockElement == null;
   };
   document.addEventListener("pointerlockchange", onLockChange);
   onLockChange();
@@ -456,7 +459,7 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   const cursor = caps.cursorOverlay ? makeCursorOverlay(canvas) : null;
   // Walkable scenes run under pointer lock: show a center crosshair that flashes
   // on each registered pick.
-  const crosshair = caps.walkable ? makeCrosshair(canvas) : null;
+  const crosshair = caps.walkable ? makeCrosshair() : null;
 
   const captureState = readCaptureState(engine);
   // Keyboard capture is allowlist-only (ADR 0023, ADR 0003): only the keys mapped

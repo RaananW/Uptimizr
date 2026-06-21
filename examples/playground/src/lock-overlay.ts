@@ -17,7 +17,9 @@ export interface LockOverlay {
  * Mount a "click to explore" overlay that engages pointer lock for a walkable
  * scene without the engaging click reaching (and being recorded on) the canvas.
  *
- * @param canvas  The tracked canvas that will receive the pointer lock.
+ * @param canvas  The tracked canvas (used to anchor the overlay in the DOM).
+ *                Note: three.js locks the canvas itself, while PlayCanvas locks
+ *                `document.body` — so we detect lock engine-agnostically below.
  * @param engage  Engine-specific call that requests pointer lock (e.g.
  *                `controls.lock()` / `app.mouse.enablePointerLock()`).
  */
@@ -43,7 +45,10 @@ export function mountLockOverlay(canvas: HTMLElement, engage: () => void): LockO
   overlay.addEventListener("click", onEngage);
 
   const onLockChange = (): void => {
-    const locked = document.pointerLockElement === canvas;
+    // Any active pointer lock means we're in walk mode: three.js locks the
+    // canvas, PlayCanvas locks document.body. The overlay is the only thing
+    // that engages lock for this scene, so a non-null lock element is enough.
+    const locked = document.pointerLockElement != null;
     overlay.classList.toggle("lock-overlay--hidden", locked);
   };
   document.addEventListener("pointerlockchange", onLockChange);
