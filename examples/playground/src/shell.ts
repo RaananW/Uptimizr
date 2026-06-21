@@ -309,21 +309,37 @@ function makeCursorOverlay(canvas: HTMLCanvasElement): {
   }
 
   // Live pointer: drive the overlay straight from the DOM events on the canvas.
+  // While the canvas holds a pointer lock (FPS / walkable scenes) the OS hides the
+  // real cursor and `pointermove` reports relative deltas, not page coordinates —
+  // so the overlay would freeze in place and look stuck (three.js, unlike
+  // PlayCanvas, doesn't drop a `pointerleave`). Suppress the overlay while locked
+  // and let it reappear on the next move after the lock is released.
+  let pointerLocked = false;
   canvas.addEventListener("pointermove", (e) => {
+    if (pointerLocked) return;
     cursorEl.classList.remove("replay");
     moveCursorTo(e.clientX, e.clientY);
   });
   canvas.addEventListener("pointerdown", (e) => {
+    if (pointerLocked) return;
     cursorEl.classList.remove("replay");
     moveCursorTo(e.clientX, e.clientY);
     cursorEl.classList.add("down");
   });
   canvas.addEventListener("pointerup", () => {
+    if (pointerLocked) return;
     cursorEl.classList.remove("down");
     pulseCursor();
   });
   canvas.addEventListener("pointerleave", () => {
     cursorEl.classList.remove("visible", "down");
+  });
+  document.addEventListener("pointerlockchange", () => {
+    pointerLocked = document.pointerLockElement === canvas;
+    if (pointerLocked) {
+      cursorEl.classList.remove("visible", "down");
+      cursorPulseEl.classList.remove("pulse");
+    }
   });
 
   let replayClickReset: ReturnType<typeof setTimeout> | undefined;
@@ -347,6 +363,29 @@ function makeCursorOverlay(canvas: HTMLCanvasElement): {
     }
   }
   return { showReplayCursor };
+}
+
+// --- Pointer-lock crosshair (walkable scenes) --------------------------------
+// Under pointer lock the OS cursor is hidden and clicks pick whatever the camera
+// looks at (center of the viewport). A center reticle shows where you're aiming
+// and flashes amber when a pick registers — the visible confirmation that
+// locked clicks are being captured (the lock-engaging click itself is suppressed
+// by the walkable demos' overlay).
+function makeCrosshair(canvas: HTMLCanvasElement): { pulse(): void } {
+  const crosshairEl = requireElement("crosshair", HTMLElement);
+  const onLockChange = (): void => {
+    crosshairEl.hidden = document.pointerLockElement !== canvas;
+  };
+  document.addEventListener("pointerlockchange", onLockChange);
+  onLockChange();
+  return {
+    pulse(): void {
+      if (crosshairEl.hidden) return;
+      crosshairEl.classList.remove("hit");
+      void crosshairEl.offsetWidth; // force reflow so rapid repeats re-animate
+      crosshairEl.classList.add("hit");
+    },
+  };
 }
 
 // --- Capture configuration (checkbox side panel) -----------------------------
@@ -415,6 +454,9 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   container.hidden = caps.sharedCanvas;
 
   const cursor = caps.cursorOverlay ? makeCursorOverlay(canvas) : null;
+  // Walkable scenes run under pointer lock: show a center crosshair that flashes
+  // on each registered pick.
+  const crosshair = caps.walkable ? makeCrosshair(canvas) : null;
 
   const captureState = readCaptureState(engine);
   // Keyboard capture is allowlist-only (ADR 0023, ADR 0003): only the keys mapped
@@ -476,6 +518,7 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
       onBoxPick: () => {
         clickCount += 1;
         clicksEl.textContent = String(clickCount);
+        crosshair?.pulse();
       },
       onStatus: (text) => {
         status.textContent = text;

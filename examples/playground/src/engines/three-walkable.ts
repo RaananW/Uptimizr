@@ -26,6 +26,7 @@ import { PointerLockControls } from "three/examples/jsm/controls/PointerLockCont
 
 import { BOX_COLORS } from "../engine.js";
 import { assetUrl } from "../assets.js";
+import { mountLockOverlay } from "../lock-overlay.js";
 
 const ROOM = 28;
 const WALL_HEIGHT = 6;
@@ -72,8 +73,10 @@ export function buildWalkableScene(
   camera.position.set(0, EYE_HEIGHT, -ROOM + 4);
 
   const controls = new PointerLockControls(camera, renderer.domElement);
-  // Click the canvas to capture the pointer and start looking around.
-  renderer.domElement.addEventListener("click", () => controls.lock());
+  // Engage pointer lock from an overlay prompt rather than the canvas itself, so
+  // the mode-entry click is NOT recorded as an in-scene `pointer_click` (the
+  // analytics connector listens on the canvas).
+  const lockOverlay = mountLockOverlay(renderer.domElement, () => controls.lock());
 
   scene.add(new HemisphereLight(0xffffff, 0x303a4a, 1.05));
   const sun = new DirectionalLight(0xffffff, 0.6);
@@ -202,6 +205,7 @@ export function buildWalkableScene(
   function dispose(): void {
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
+    lockOverlay.dispose();
     controls.dispose();
   }
 

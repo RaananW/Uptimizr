@@ -365,6 +365,97 @@
           transform: scale(2.6);
         }
       }
+      /* "Click to explore" prompt for walkable (pointer-lock) scenes. It covers
+         the canvas while unlocked so the lock-engaging click lands here — never
+         on the tracked canvas — and steps aside once the lock is granted. Sits
+         below the topbar (z 20) / panel (z 10) so those stay interactive. */
+      .lock-overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(11, 14, 20, 0.35);
+        cursor: pointer;
+        z-index: 8;
+      }
+      .lock-overlay--hidden {
+        display: none;
+      }
+      .lock-overlay__card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 18px 26px;
+        border: 1px solid #2b3346;
+        border-radius: 12px;
+        background: rgba(20, 25, 37, 0.92);
+        backdrop-filter: blur(6px);
+        text-align: center;
+      }
+      .lock-overlay__title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #e2e8f0;
+      }
+      .lock-overlay__hint {
+        font-size: 12px;
+        color: #94a3b8;
+      }
+      /* Center crosshair reticle, shown only while pointer-locked. Brief amber
+         flash (`.hit`) confirms a pick registered under lock. */
+      #crosshair {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 18px;
+        height: 18px;
+        margin: -9px 0 0 -9px;
+        pointer-events: none;
+        opacity: 0.85;
+        z-index: 48;
+      }
+      #crosshair::before,
+      #crosshair::after {
+        content: "";
+        position: absolute;
+        background: #22d3ee;
+        box-shadow: 0 0 4px rgba(34, 211, 238, 0.7);
+      }
+      #crosshair::before {
+        top: 50%;
+        left: 0;
+        width: 100%;
+        height: 2px;
+        margin-top: -1px;
+      }
+      #crosshair::after {
+        left: 50%;
+        top: 0;
+        height: 100%;
+        width: 2px;
+        margin-left: -1px;
+      }
+      #crosshair.hit {
+        animation: crosshair-hit 0.4s ease-out;
+      }
+      @keyframes crosshair-hit {
+        0% {
+          transform: scale(1.6);
+        }
+        50% {
+          transform: scale(1.1);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+      #crosshair.hit::before,
+      #crosshair.hit::after {
+        background: #f59e0b;
+        box-shadow: 0 0 8px rgba(245, 158, 11, 0.9);
+      }
     </style>
   </head>
   <body>
@@ -374,6 +465,7 @@
     <div id="engineRoot" hidden></div>
     <div id="cursorPulse" hidden></div>
     <div id="cursor" hidden></div>
+    <div id="crosshair" hidden></div>
 
     <!-- Primary navigation: scene + engine selectors, always visible. -->
     <div id="topbar">

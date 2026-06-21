@@ -8,6 +8,7 @@ import * as pc from "playcanvas";
 
 import { BOX_COLORS } from "../engine.js";
 import { assetUrl } from "../assets.js";
+import { mountLockOverlay } from "../lock-overlay.js";
 
 const ROOM = 28;
 const WALL_HEIGHT = 6;
@@ -178,8 +179,12 @@ export function buildWalkableScene(
     pitch = Math.max(-89, Math.min(89, pitch - e.dy * LOOK_SENS));
   };
   app.mouse?.on(pc.EVENT_MOUSEMOVE, onMouseMove);
-  const onClick = (): void => app.mouse?.enablePointerLock();
-  canvas.addEventListener("click", onClick);
+  // Engage pointer lock from an overlay prompt rather than the canvas itself, so
+  // the mode-entry click is NOT recorded as an in-scene `pointer_click` (the
+  // analytics connector listens on the canvas).
+  const lockOverlay = mountLockOverlay(canvas, () => {
+    app.mouse?.enablePointerLock();
+  });
 
   const bound = ROOM - 1.2;
   const onUpdate = (dt: number): void => {
@@ -222,7 +227,7 @@ export function buildWalkableScene(
 
   function dispose(): void {
     window.removeEventListener("resize", onResize);
-    canvas.removeEventListener("click", onClick);
+    lockOverlay.dispose();
     app.mouse?.off(pc.EVENT_MOUSEMOVE, onMouseMove);
     app.off("update", onUpdate);
   }
