@@ -271,6 +271,9 @@ importers:
       '@astrojs/starlight':
         specifier: ^0.40.0
         version: 0.40.0(astro@6.4.8(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.62.0)(tsx@4.22.4)(yaml@2.9.0))(typescript@6.0.3)
+      '@vercel/analytics':
+        specifier: ^2.0.1
+        version: 2.0.1(next@16.2.9(@playwright/test@1.61.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)
       astro:
         specifier: ^6.4.5
         version: 6.4.8(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.62.0)(tsx@4.22.4)(yaml@2.9.0)

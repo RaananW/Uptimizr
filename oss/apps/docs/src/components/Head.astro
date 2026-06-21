@@ -1,0 +1,8 @@
+---
+import Default from "@astrojs/starlight/components/Head.astro";
+import Analytics from "@vercel/analytics/astro";
+---
+
+<Default><slot /></Default>
+<!-- Vercel Web Analytics: cookieless, no client persistent IDs, no consent banner needed. -->
+<Analytics />
