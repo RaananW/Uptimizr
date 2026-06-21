@@ -1025,6 +1025,7 @@ curl -H "x-api-key: $KEY" \
   "https://collect.example.com/api/v1/perf?session=<session-id>"
 ```
 
-> Aggregate columns come back as JSON strings from ClickHouse (`count()` etc.);
-> coerce them to numbers on the client. The dashboard's `CollectorApi` does this
-> for you.
+> Aggregate columns (`count()`, percentiles, sums) come back as JSON numbers from
+> every store, including ClickHouse — the `clickhouse` store disables 64-bit
+> integer quoting so results match the DuckDB store byte-for-byte. The dashboard's
+> `CollectorApi` still coerces defensively.

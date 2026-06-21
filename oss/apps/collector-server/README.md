@@ -148,8 +148,14 @@ The storage backend is chosen with `COLLECTOR_STORE`:
   instance per file; back up by copying the file.
 - `memory` — a dependency-free in-memory store for local dev / E2E only (seed its
   project/key via `COLLECTOR_MEMORY_PROJECT_ID` / `COLLECTOR_MEMORY_API_KEY`).
+- `clickhouse` — a **single-tenant ClickHouse store** for the scale tier: events **and**
+  metadata (projects, API keys, scene representations) live in one ClickHouse database
+  (`CLICKHOUSE_URL` / `CLICKHOUSE_DATABASE` / `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD`), created
+  on first boot. Use it for concurrent writers / horizontal scale and high-volume ingestion. The
+  full analytics surface returns results identical to DuckDB (cross-engine parity suite).
 
-The two-store ClickHouse + Postgres path is an optional scale tier and is not required to self-host the OSS collector.
+For multi-writer / horizontal scale, choose the `clickhouse` store; spin up a local ClickHouse
+with `infra/docker` (`pnpm stack:up`). The default DuckDB store needs no external service.
 
 ## Develop
 
@@ -161,8 +167,8 @@ pnpm --filter @uptimizr/collector-server build
 
 The data layer is abstracted by `CollectorStore`, so tests run against a fake store
 with `app.inject()` — no live database required. Local end-to-end runs use the
-default DuckDB store (a single file, no service to start); the ClickHouse + Postgres
-stack in `infra/docker` backs the optional scale tier only.
+default DuckDB store (a single file, no service to start); the `clickhouse` store in
+`infra/docker` backs the optional scale tier.
 
 ## License
 
