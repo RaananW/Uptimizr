@@ -14,9 +14,12 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Lint, typecheck, build, test
+  checks:
+    name: Format, audit, license
     runs-on: ubuntu-latest
+    # These checks don't need the build graph (Turbo's lint/typecheck/test all
+    # `dependsOn: ["^build"]`, but format/audit/license-check don't), so they run
+    # as a fast, fail-first job alongside the heavier build job.
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -36,6 +39,34 @@ jobs:
       - name: Format check
         run: pnpm format:check
 
+      - name: Audit (production deps, high+)
+        run: pnpm audit --prod --audit-level=high
+
+      - name: License compliance
+        run: pnpm license-check
+
+  build:
+    name: Lint, typecheck, build, test
+    runs-on: ubuntu-latest
+    # Lint, typecheck, and test all `dependsOn: ["^build"]`, so keeping them in a
+    # single job lets Turbo build the dependency graph once and reuse its cache
+    # across all four tasks. Splitting them would rebuild the graph per runner.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Lint
         run: pnpm lint
 
@@ -47,12 +78,6 @@ jobs:
 
       - name: Test
         run: pnpm test
-
-      - name: Audit (production deps, high+)
-        run: pnpm audit --prod --audit-level=high
-
-      - name: License compliance
-        run: pnpm license-check
 
   scrub-gate:
     name: Scrub gate
