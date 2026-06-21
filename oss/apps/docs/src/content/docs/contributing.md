@@ -32,6 +32,18 @@ pnpm dev:collector   # Fastify ingestion + query API (COLLECTOR_STORE=duckdb)
 pnpm dev:dashboard   # optional: the analytics dashboard
 ```
 
+To work on the **ClickHouse scale store** (`COLLECTOR_STORE=clickhouse`), start a local ClickHouse
+and point the collector at it:
+
+```bash
+pnpm stack:up        # ClickHouse on :8123 (infra/docker)
+COLLECTOR_STORE=clickhouse pnpm dev:collector
+```
+
+The store creates its database and tables on first boot. A live ClickHouse also unlocks the
+cross-engine parity tests in `@uptimizr/db-clickhouse` (they skip gracefully when it is unreachable,
+so the default `pnpm test` stays Docker-free).
+
 For the full end-to-end loop (collector, dashboard, a playground scene, replay), see the repo's
 manual testing guide and the `run-local-stack` workflow.
 

@@ -1,5 +1,6 @@
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
+import { createClickhouseStore } from "./clickhouseStore.js";
 import { createDuckdbStore } from "./duckdbStore.js";
 import { createMemoryStore } from "./memoryStore.js";
 import type { CollectorStore } from "./store.js";
@@ -9,6 +10,9 @@ import type { CollectorStore } from "./store.js";
  * - `duckdb` (default) — the OSS single-file DuckDB store (events + metadata in
  *   one file, full analytics, zero external services; ADR 0020). Path from
  *   `DUCKDB_PATH`.
+ * - `clickhouse` — the optional single-tenant ClickHouse store for scale
+ *   (concurrent, high-volume ingestion; ADR 0020). Connection from the
+ *   `CLICKHOUSE_*` env vars. Requires a reachable ClickHouse server.
  * - `memory` — a dependency-free in-memory store for local dev / E2E tests
  *   (seed its project/key via `COLLECTOR_MEMORY_PROJECT_ID` /
  *   `COLLECTOR_MEMORY_API_KEY`).
@@ -22,6 +26,8 @@ export function createStore(env: NodeJS.ProcessEnv = process.env): Promise<Colle
           apiKey: env.COLLECTOR_MEMORY_API_KEY ?? "utk_memory_dev",
         }),
       );
+    case "clickhouse":
+      return createClickhouseStore();
     case "duckdb":
     default:
       return createDuckdbStore();

@@ -561,7 +561,7 @@ export function buildMeshDwell(
       FROM events
       WHERE project_id = ${pid} AND event_type = 'mesh_visibility' AND mesh != ''${range}${scene}${session}
       GROUP BY mesh
-      ORDER BY visible_ms DESC
+      ORDER BY sum(visible_ms) DESC
       LIMIT ${limit}
     `,
     query_params: bag.values,
@@ -1242,7 +1242,7 @@ export function buildEventsDaily(
       FROM events_daily
       WHERE project_id = ${pid}${range}
       GROUP BY day, event_type
-      ORDER BY day DESC, events DESC
+      ORDER BY day DESC, sum(events) DESC
       LIMIT ${limit}
     `,
     query_params: bag.values,
