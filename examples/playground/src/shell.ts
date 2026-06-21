@@ -417,9 +417,24 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   const cursor = caps.cursorOverlay ? makeCursorOverlay(canvas) : null;
 
   const captureState = readCaptureState(engine);
+  // Keyboard capture is allowlist-only (ADR 0023, ADR 0003): only the keys mapped
+  // here are ever recorded, each as a semantic `input_action`. Defaults cover the
+  // movement keys every walkable demo uses — WASD + arrows — plus the demo's own
+  // camera-cycle / jump bindings. Hosts override `keyBindings` to track their own.
   const keyBindings =
     captureState.keyboard != null && captureState.keyboard
-      ? { KeyN: "next-camera", Space: "jump" }
+      ? {
+          KeyW: "move-forward",
+          ArrowUp: "move-forward",
+          KeyS: "move-back",
+          ArrowDown: "move-back",
+          KeyA: "move-left",
+          ArrowLeft: "move-left",
+          KeyD: "move-right",
+          ArrowRight: "move-right",
+          Space: "jump",
+          KeyN: "next-camera",
+        }
       : undefined;
 
   // Camera/navigation model (ADR 0026) is fixed by the scene. Engines without the

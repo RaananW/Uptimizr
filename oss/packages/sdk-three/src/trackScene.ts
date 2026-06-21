@@ -62,6 +62,13 @@ export interface TrackSceneOptions {
    * world transform so replay can reproduce its motion. Cameras are refused.
    */
   actors?: Record<string, ThreeActor>;
+  /**
+   * Keyboard bindings to capture as `input_action` events (ADR 0023): a map from
+   * `KeyboardEvent.code` (e.g. `"KeyW"`, `"ArrowLeft"`) to a semantic app action
+   * (e.g. `"move-forward"`). **Only bound keys are recorded** — unbound keys are
+   * never seen, so arbitrary typing is never captured (privacy, ADR 0003).
+   */
+  keyBindings?: Record<string, string>;
   /** Flush at least this often, in ms. Default 5000. Set 0 to disable the timer. */
   flushIntervalMs?: number;
   /** Provide a custom transport (e.g. to observe delivery). Defaults to beacon/fetch. */
@@ -167,6 +174,7 @@ export function trackScene(
       capture: options.capture,
       ...(options.gaze ? { gaze: options.gaze } : {}),
       ...(options.actors ? { actors: options.actors } : {}),
+      ...(options.keyBindings ? { keyBindings: options.keyBindings } : {}),
       ...(options.sampling ? { sampling: options.sampling } : {}),
     }),
   );

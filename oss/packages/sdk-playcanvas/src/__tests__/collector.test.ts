@@ -130,6 +130,18 @@ function makeCtx(now = { value: 1000 }) {
     sessionId: "s1",
     emit: (e: EventInput) => events.push(e),
     track: () => {},
+    trackInput: (
+      action: string,
+      opts: { source?: string; code?: string; button?: number; pressed?: boolean } = {},
+    ) =>
+      events.push({
+        type: "input_action",
+        action,
+        source: opts.source ?? "keyboard",
+        ...(opts.code ? { code: opts.code } : {}),
+        ...(typeof opts.button === "number" ? { button: opts.button } : {}),
+        ...(typeof opts.pressed === "boolean" ? { pressed: opts.pressed } : {}),
+      } as EventInput),
     setScene: () => {},
     now: () => now.value,
   } satisfies CollectorContext;
@@ -1228,5 +1240,89 @@ describe("playcanvasCollector — skeleton bones / node_transform (ADR 0027 Tier
     vi.advanceTimersByTime(5000);
     expect(events.some((e) => e.type === "node_transform")).toBe(false);
     handle.stop();
+  });
+
+  it("captures only allowlisted keys as input_action, mapping code to the bound action (ADR 0023)", () => {
+    // Stub a window with a listener registry — the connector binds keyboard on
+    // `window` (the canvas rarely holds focus in pointer-lock / FPS scenes).
+    const keyListeners: Record<string, Array<(e: unknown) => void>> = {};
+    const win = {
+      addEventListener: (type: string, h: (e: unknown) => void) => {
+        (keyListeners[type] ??= []).push(h);
+      },
+      removeEventListener: (type: string, h: (e: unknown) => void) => {
+        keyListeners[type] = (keyListeners[type] ?? []).filter((cb) => cb !== h);
+      },
+      dispatch: (type: string, ev: unknown) => {
+        for (const cb of [...(keyListeners[type] ?? [])]) cb(ev);
+      },
+    };
+    const prevWin = (globalThis as { window?: unknown }).window;
+    (globalThis as { window?: unknown }).window = win;
+    try {
+      const { ctx, events } = makeCtx();
+      const handle = playcanvasCollector({
+        app: makeApp(makeCanvas()),
+        camera: makeCamera(),
+        capture: { camera: false, perf: false },
+        keyBindings: { KeyN: "next-camera" },
+        raycast: () => undefined,
+      }).start(ctx)!;
+
+      win.dispatch("keydown", { code: "KeyN", repeat: false });
+      win.dispatch("keyup", { code: "KeyN", repeat: false });
+      win.dispatch("keydown", { code: "KeyN", repeat: true }); // auto-repeat → dropped
+      win.dispatch("keydown", { code: "KeyZ", repeat: false }); // unbound → ignored
+
+      const inputs = events.filter((e) => e.type === "input_action");
+      expect(inputs).toHaveLength(2);
+      expect(inputs[0]).toMatchObject({
+        type: "input_action",
+        action: "next-camera",
+        source: "keyboard",
+        code: "KeyN",
+        pressed: true,
+      });
+      expect(inputs[1]).toMatchObject({ action: "next-camera", pressed: false });
+
+      handle.stop();
+      expect((keyListeners.keydown ?? []).length).toBe(0);
+      expect((keyListeners.keyup ?? []).length).toBe(0);
+    } finally {
+      if (prevWin === undefined) delete (globalThis as { window?: unknown }).window;
+      else (globalThis as { window?: unknown }).window = prevWin;
+    }
+  });
+
+  it("captures no keyboard input when no keyBindings are provided", () => {
+    const keyListeners: Record<string, Array<(e: unknown) => void>> = {};
+    const win = {
+      addEventListener: (type: string, h: (e: unknown) => void) => {
+        (keyListeners[type] ??= []).push(h);
+      },
+      removeEventListener: () => {},
+      dispatch: (type: string, ev: unknown) => {
+        for (const cb of [...(keyListeners[type] ?? [])]) cb(ev);
+      },
+    };
+    const prevWin = (globalThis as { window?: unknown }).window;
+    (globalThis as { window?: unknown }).window = win;
+    try {
+      const { ctx, events } = makeCtx();
+      const handle = playcanvasCollector({
+        app: makeApp(makeCanvas()),
+        camera: makeCamera(),
+        capture: { camera: false, perf: false },
+        raycast: () => undefined,
+      }).start(ctx)!;
+
+      expect((keyListeners.keydown ?? []).length).toBe(0);
+      win.dispatch("keydown", { code: "KeyN", repeat: false });
+      expect(events.some((e) => e.type === "input_action")).toBe(false);
+      handle.stop();
+    } finally {
+      if (prevWin === undefined) delete (globalThis as { window?: unknown }).window;
+      else (globalThis as { window?: unknown }).window = prevWin;
+    }
   });
 });

@@ -99,18 +99,24 @@ client.trackInput("jump", { source: "gamepad", button: 0 });
 `source` defaults to `"keyboard"`. `input_action` events are discrete and always
 captured at 100%.
 
-The Babylon connector can capture bound keys for you via an **allowlist** — pass
-`keyBindings` mapping a physical `KeyboardEvent.code` to an action label. Only the
-listed keys are recorded (privacy-first, ADR 0003); arbitrary typing is never
-captured, and auto-repeat is suppressed:
+The Babylon, three.js, and PlayCanvas connectors can capture bound keys for you via
+an **allowlist** — pass `keyBindings` mapping a physical `KeyboardEvent.code` to an
+action label. Only the listed keys are recorded (privacy-first, ADR 0003); arbitrary
+typing is never captured, and auto-repeat is suppressed:
 
 ```ts
 trackScene(scene, {
   projectId: "your-project-id",
   endpoint: "https://collect.example.com",
-  keyBindings: { KeyN: "next-camera", Space: "jump" },
+  keyBindings: { KeyW: "move-forward", KeyS: "move-back", Space: "jump" },
 });
 ```
+
+> three.js / PlayCanvas (and react-three-fiber via `@uptimizr/r3f`) pass the same
+> `keyBindings` option. three has no keyboard observable, so those connectors listen
+> on `window` — handy for pointer-lock / FPS scenes where the canvas rarely holds
+> focus. The default playground bindings cover **WASD + arrow keys** plus the demo's
+> own camera-cycle / jump keys.
 
 ### Capability changes (fallbacks & recovery)
 

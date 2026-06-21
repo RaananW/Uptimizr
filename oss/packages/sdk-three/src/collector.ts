@@ -715,9 +715,14 @@ export interface ThreeCaptureOptions {
    * bone sampling is configured.
    */
   bones?: boolean;
+  /**
+   * Keyboard `input_action` capture (ADR 0023). **Off unless `keyBindings` is
+   * provided** — only explicitly bound keys are recorded, never arbitrary typing
+   * (privacy, ADR 0003). On by default once bindings exist; set `false` to
+   * disable even when bindings are present.
+   */
+  keyboard?: boolean;
 }
-
-/** Per-object dwell capture options (`mesh_visibility`, #37) — mirrors Babylon. */
 export interface MeshVisibilityOptions {
   /** Summary window length in ms — one event per object per window. Default 5000. */
   windowMs?: number;
@@ -869,6 +874,15 @@ export interface ThreeCollectorOptions {
    * camera is already `camera_sample` — "events live once").
    */
   actors?: Record<string, ThreeActor>;
+  /**
+   * Keyboard bindings to capture as `input_action` events (ADR 0023): a map from
+   * `KeyboardEvent.code` (e.g. `"KeyW"`, `"ArrowLeft"`) to a semantic app action
+   * (e.g. `"move-forward"`). **Only bound keys are recorded** — unbound keys are
+   * never seen, so arbitrary typing is never captured (privacy, ADR 0003).
+   * Auto-repeat (held keys) is suppressed; each press and release emits once.
+   * three has no keyboard observable, so the connector listens on `window`.
+   */
+  keyBindings?: Record<string, string>;
 }
 
 /** A three.js node that exposes a world transform (a `node_transform` actor, ADR 0027). */
@@ -926,6 +940,10 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
   const perfCadence = resolveCadence(sampling.perf, samplePerfMs);
   const pointerMoveCadence = resolveCadence(sampling.pointerMove, pointerMoveThrottleMs);
 
+  // Keyboard `input_action` allowlist (ADR 0023): only bound keys are recorded.
+  const keyBindings = options.keyBindings ?? {};
+  const hasKeyBindings = Object.keys(keyBindings).length > 0;
+
   const want = {
     camera: (capture.camera ?? true) && cameraCadence.mode !== "off",
     pointerMove: (capture.pointerMove ?? true) && pointerMoveCadence.mode !== "off",
@@ -947,6 +965,8 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
     // Scene-actor capture is opt-in (ADR 0027): off unless actors are declared.
     nodes: capture.nodes ?? true,
     bones: capture.bones ?? true,
+    // Keyboard is opt-in: it requires an explicit binding allowlist (ADR 0023).
+    keyboard: (capture.keyboard ?? true) && hasKeyBindings,
   };
 
   // Scene-actor (`node_transform`, ADR 0027 Tier 1) configuration. Only ids that
@@ -1668,6 +1688,30 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
           ctx.emit({ type: "resource_sample", ...sample });
         };
         timers.push(setInterval(sampleResources, resourceIntervalMs));
+      }
+
+      // Keyboard `input_action` capture (ADR 0023). three has no keyboard
+      // observable, so listen on `window` (the canvas rarely holds focus in
+      // pointer-lock / FPS scenes). Only allowlisted keys are recorded: the
+      // physical `code` is looked up and the mapped semantic action emitted.
+      // Auto-repeat keydowns are dropped so a held key fires once; unbound keys
+      // are ignored, so arbitrary typing is never seen.
+      if (want.keyboard && typeof window !== "undefined") {
+        const target = window as unknown as EventTargetView;
+        const onKey = (pressed: boolean) => (raw: unknown) => {
+          const ev = raw as { code?: string; repeat?: boolean };
+          const code = ev.code;
+          if (!code || (pressed && ev.repeat)) return;
+          const action = keyBindings[code];
+          if (!action) return;
+          ctx.trackInput(action, { source: "keyboard", code, pressed });
+        };
+        const downHandler = onKey(true);
+        const upHandler = onKey(false);
+        target.addEventListener("keydown", downHandler);
+        target.addEventListener("keyup", upHandler);
+        domListeners.push({ target, type: "keydown", handler: downHandler });
+        domListeners.push({ target, type: "keyup", handler: upHandler });
       }
 
       return {

@@ -179,6 +179,7 @@ const DEFAULT_CAPABILITIES: EngineCapabilities = {
 
 const DEFAULT_CAPTURE_FEATURES: CaptureFeature[] = [
   ...COMMON_CAPTURE_FEATURES,
+  { key: "keyboard", label: "Keyboard", default: true },
   { key: "nodes", label: "Scene actors (NPC)", default: true },
 ];
 
@@ -294,8 +295,10 @@ export function createPlayCanvasEngineModule(options: PlayCanvasEngineOptions): 
         meshVisibility: cap.meshVisibility,
         hoverDwell: cap.hoverDwell,
         resourceSample: cap.resourceSample,
+        keyboard: cap.keyboard,
         nodes: cap.nodes,
       },
+      ...(ctx.keyBindings ? { keyBindings: ctx.keyBindings } : {}),
       sceneDescription: `playground (playcanvas, ${ctx.cameraMode})`,
       meta: { sceneId: ctx.sceneId },
       cameraType: setup.cameraType ?? "arc-rotate",

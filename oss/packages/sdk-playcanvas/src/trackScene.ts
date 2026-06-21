@@ -60,6 +60,13 @@ export interface TrackSceneOptions {
    * reproduce them. Pair each id with a rate in `sampling.nodes` to enable it.
    */
   actors?: Record<string, PlayCanvasActor>;
+  /**
+   * Keyboard bindings to capture as `input_action` events (ADR 0023): a map from
+   * `KeyboardEvent.code` (e.g. `"KeyW"`, `"ArrowLeft"`) to a semantic app action
+   * (e.g. `"move-forward"`). **Only bound keys are recorded** — unbound keys are
+   * never seen, so arbitrary typing is never captured (privacy, ADR 0003).
+   */
+  keyBindings?: Record<string, string>;
   /** Flush at least this often, in ms. Default 5000. Set 0 to disable the timer. */
   flushIntervalMs?: number;
   /** Provide a custom transport (e.g. to observe delivery). Defaults to beacon/fetch. */
@@ -144,6 +151,7 @@ export function trackScene(
       ...(options.gaze ? { gaze: options.gaze } : {}),
       ...(options.sampling ? { sampling: options.sampling } : {}),
       ...(options.actors ? { actors: options.actors } : {}),
+      ...(options.keyBindings ? { keyBindings: options.keyBindings } : {}),
     }),
   );
 

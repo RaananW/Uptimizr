@@ -34,6 +34,7 @@ function Telemetry({
     transport: ctx.transport,
     sampling: { camera: 10, pointerMove: 30 },
     capture: toThreeCapture(ctx.capture),
+    ...(ctx.keyBindings ? { keyBindings: ctx.keyBindings } : {}),
     sceneDescription: "playground (r3f)",
     meta: { sceneId: ctx.sceneId },
     user: { id: "anon-playground-user", traits: { demo: true } },
@@ -59,6 +60,7 @@ function toThreeCapture(cap: Record<string, boolean>): Record<string, boolean> {
     meshVisibility: cap.meshVisibility ?? false,
     hoverDwell: cap.hoverDwell ?? false,
     resourceSample: cap.resourceSample ?? false,
+    keyboard: cap.keyboard ?? false,
   };
 }
 
@@ -189,7 +191,7 @@ async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
 export const engine: EngineModule = {
   id: "r3f",
   label: "react-three-fiber",
-  captureFeatures: COMMON_CAPTURE_FEATURES,
+  captureFeatures: [...COMMON_CAPTURE_FEATURES, { key: "keyboard", label: "Keyboard", default: true }],
   capabilities: {
     sharedCanvas: false,
     capturePanel: true,
