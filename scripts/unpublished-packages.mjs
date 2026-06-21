@@ -19,6 +19,11 @@ const ROOTS = ["oss/packages", "oss/apps"];
 const SKIP = new Set(["create-uptimizr"]);
 
 async function isPublished(name, version) {
+  // Only ever query our own scoped packages from the public registry. This
+  // allowlist documents intent, bounds the file-derived name to a safe shape,
+  // and clears CodeQL js/file-access-to-http (CWE-200): a name that isn't a
+  // plain `@uptimizr/<pkg>` is treated as published and never sent outbound.
+  if (!/^@uptimizr\/[a-z0-9][a-z0-9._-]*$/.test(name)) return true;
   try {
     const res = await fetch(`https://registry.npmjs.org/${name}`, {
       headers: { accept: "application/json" },
