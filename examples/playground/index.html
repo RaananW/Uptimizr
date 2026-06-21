@@ -46,10 +46,10 @@
       }
       #panel {
         position: fixed;
-        top: 64px;
+        top: 90px;
         left: 16px;
         max-width: 320px;
-        max-height: calc(100vh - 80px);
+        max-height: calc(100vh - 106px);
         overflow-y: auto;
         padding: 14px 16px;
         border: 1px solid #222a3a;
@@ -194,6 +194,27 @@
         background: #0b0e14;
         color: #e2e8f0;
         min-width: 150px;
+      }
+      /* Slim status bar under the nav row: collector connection + a running count
+         of events stored. It sits on its own full-width line within the
+         (flex-wrap) topbar, so it reads as a thin sub-bar directly below the
+         Scene/Engine selectors. */
+      #statusbar {
+        flex-basis: 100%;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        margin-top: 4px;
+        padding-top: 8px;
+        border-top: 1px solid #222a3a;
+        font-size: 12px;
+        color: #94a3b8;
+      }
+      #statusbar #conn {
+        margin: 0;
+      }
+      #statusbar code {
+        color: #e2e8f0;
       }
       /* "Controls" button: toggles the side panel. Mirrors the secondary button
          look and turns accent when the panel is open (aria-expanded="true"). */
@@ -481,12 +502,15 @@
       <button id="panelToggle" type="button" aria-controls="panel" aria-expanded="false">
         <span aria-hidden="true">☰</span> Controls
       </button>
+      <!-- Slim status row: collector connection + running count of events stored. -->
+      <div id="statusbar">
+        <span id="conn"><span id="connDot"></span><span id="connText">Collector: checking…</span></span>
+        <span id="deliveredLine">Events&nbsp;&rarr;&nbsp;DB: <code id="delivered">0</code></span>
+      </div>
     </div>
 
     <div id="panel">
       <p id="sceneDescription" class="muted"></p>
-
-      <div id="conn"><span id="connDot"></span><span id="connText">Collector: checking…</span></div>
 
       <details id="metaDetails" open>
         <summary>Session &amp; scene</summary>
@@ -495,7 +519,6 @@
             <div id="projectLine">Project: <code id="projectId" class="muted">…</code></div>
             <div id="session">Session: <code id="sessionId">…</code></div>
             <div id="clicksLine">Clicks (local): <code id="clicks">0</code></div>
-            <div id="deliveredLine">Events delivered to DB: <code id="delivered">0</code></div>
           </div>
 
           <div id="cameraModeLine">
