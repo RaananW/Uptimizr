@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/r3f",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "react-three-fiber connector for Uptimizr — a thin React layer over @uptimizr/three that wires capture into the R3F render store.",
   "keywords": [
     "uptimizr",
