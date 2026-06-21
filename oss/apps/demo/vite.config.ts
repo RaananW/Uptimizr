@@ -28,7 +28,14 @@ function stripDuckdbWorkerSourcemaps(): Plugin {
     // under `vite dev`). Intercept the request and serve a stripped copy.
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const path = (req.url ?? "").split("?")[0] ?? "";
+        const [path = "", query = ""] = (req.url ?? "").split("?");
+        // The `?url` import is resolved by Vite itself — it returns a *module*
+        // whose default export is the asset URL. Intercepting that request and
+        // returning the raw worker source breaks `import … from "…?url"` with
+        // "does not provide an export named 'default'". Only intercept the bare
+        // worker fetch (the request the browser makes to instantiate the
+        // Worker) so the dangling sourcemap comment can be stripped from it.
+        if (query.split("&").includes("url")) return next();
         if (!DUCKDB_WORKER_RE.test(path)) return next();
         const name = path.slice(path.lastIndexOf("/") + 1);
         let filePath: string;
