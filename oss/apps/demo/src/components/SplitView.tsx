@@ -70,7 +70,7 @@ export function SplitView({ onReset }: SplitViewProps) {
             className="split__frame"
             src="/playground/index.html"
             title="Uptimizr playground"
-            allow="xr-spatial-tracking; fullscreen; gamepad"
+            allow="xr-spatial-tracking; fullscreen; gamepad; pointer-lock"
           />
         </section>
         <section className="split__pane" aria-label="Analytics dashboard">

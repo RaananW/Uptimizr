@@ -182,8 +182,17 @@ export function buildWalkableScene(
   // Engage pointer lock from an overlay prompt rather than the canvas itself, so
   // the mode-entry click is NOT recorded as an in-scene `pointer_click` (the
   // analytics connector listens on the canvas).
+  //
+  // Lock the canvas directly (as three.js does) instead of PlayCanvas's built-in
+  // `app.mouse.enablePointerLock()`, which locks `document.body`. Body-locking is
+  // rejected by the browser when the demo runs the scene inside an iframe ("the
+  // root document of this element is not valid for pointer lock"), so mouse-look
+  // never engaged. PlayCanvas's mouse handler only checks `isPointerLocked()`, so
+  // it still reads movement deltas once the canvas holds the lock.
   const lockOverlay = mountLockOverlay(canvas, () => {
-    app.mouse?.enablePointerLock();
+    Promise.resolve(canvas.requestPointerLock()).catch(() => {
+      /* lock can be refused (e.g. user gesture lost); the overlay stays up */
+    });
   });
 
   const bound = ROOM - 1.2;
