@@ -1,13 +1,21 @@
 name: Release
 
-# Manual, semver-oriented publish (Changesets). Never auto-publishes on push.
-# Defaults to a dry run so the publish set can be validated before the first
-# real release. Set `dry-run` to false to actually publish to npm.
+# Manual, publish-only release. Never auto-publishes on push.
+#
+# Versioning is decoupled: a maintainer runs `pnpm changeset version` and merges
+# the resulting version PR FIRST, so `main` already carries the bumped versions
+# and consumed changesets before this workflow runs. This job only publishes to
+# npm and pushes the `pkg@version` tags onto the existing `main` HEAD — it never
+# commits to or pushes `main`. That sidesteps branch protection and the Actions
+# token's inability to push refs that touch `.github/workflows/`.
+#
+# Defaults to a dry run so the publish set can be validated before a real
+# release. Set `dry-run` to false to actually publish to npm.
 on:
   workflow_dispatch:
     inputs:
       dry-run:
-        description: "Validate the publish set without publishing (changeset publish --dry-run)"
+        description: "Validate the publish set without publishing to npm"
         type: boolean
         default: true
 
@@ -16,12 +24,12 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # push the version-bump commit + git tags
+  contents: write # push the pkg@version git tags (no commit to main)
   id-token: write # npm provenance (OIDC)
 
 jobs:
   release:
-    name: Version & publish (Changesets)
+    name: Publish (Changesets)
     runs-on: ubuntu-latest
     # Real publishes (dry-run = false) must pass through the protected
     # "npm-production" environment (required reviewer + environment-scoped
@@ -61,24 +69,24 @@ jobs:
       - name: Scrub gate
         run: bash scripts/scrub-gate.sh
 
-      - name: Apply version bumps
-        run: pnpm changeset version
+      - name: Ensure main is already versioned
+        # Versioning happens in a separate, merged version PR. If any changeset
+        # is still pending, `main` hasn't been bumped — fail fast instead of
+        # publishing stale versions.
+        run: |
+          pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md')
+          if [ -n "$pending" ]; then
+            echo "::error::Pending changeset(s) found — merge the version PR (pnpm changeset version) before releasing:"
+            echo "$pending"
+            exit 1
+          fi
 
       - name: Publish set (dry run)
         if: ${{ inputs.dry-run }}
-        # Changesets' `publish` has no `--dry-run` flag. Preview the exact set
-        # the real publish would push using pnpm's dry run: it skips private
-        # packages, and we exclude `create-uptimizr` (published manually,
-        # matching the changeset `ignore`). No registry writes happen.
+        # Preview the exact set the real publish would push: pnpm's dry run skips
+        # private packages and already-published versions, and we exclude the
+        # unscoped `create-uptimizr` (published manually). No registry writes.
         run: pnpm --recursive --filter='!create-uptimizr' publish --dry-run --no-git-checks
-
-      - name: Commit version bump
-        if: ${{ !inputs.dry-run }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --staged --quiet || git commit -m "chore(release): version packages"
 
       - name: Publish to npm
         if: ${{ !inputs.dry-run }}
@@ -88,13 +96,21 @@ jobs:
           # never available to dry runs or any other workflow.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
-        # We publish with pnpm (not `changeset publish`) so we can exclude the
-        # unscoped `create-uptimizr` — it lives outside the `@uptimizr` scope, is
-        # released manually, and including it crashes the whole batch when the
-        # scoped NPM_TOKEN can't publish it. pnpm skips packages whose version is
-        # already on the registry, so this is safe to re-run after a partial
-        # publish. `changeset tag` then creates the `pkg@version` git tags.
+        # Publish with pnpm (not `changeset publish`) so we can exclude the
+        # unscoped `create-uptimizr`: it lives outside the `@uptimizr` scope, is
+        # released manually, and including it crashes the batch when the scoped
+        # NPM_TOKEN can't publish it. pnpm skips versions already on the
+        # registry, so this is safe to re-run after a partial publish.
+        run: pnpm --recursive --filter='!create-uptimizr' publish --no-git-checks
+
+      - name: Tag the release
+        if: ${{ !inputs.dry-run }}
+        # `main` is already versioned and pushed, so the tags point at an
+        # existing commit. Pushing tag refs only (never `main`) introduces no
+        # new commits, so it doesn't trip branch protection or the Actions
+        # token's `.github/workflows/` restriction.
         run: |
-          pnpm --recursive --filter='!create-uptimizr' publish --no-git-checks
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           pnpm changeset tag
-          git push --follow-tags
+          git push origin --tags
