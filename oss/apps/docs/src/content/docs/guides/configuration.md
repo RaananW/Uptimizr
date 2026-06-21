@@ -98,10 +98,18 @@ them — documented on the [mesh tracking](/docs/guides/mesh-tracking/) and
 | `resizeDebounceMs` | `250`          | Debounce window for `viewport_resize`.                                   |
 | `captureErrors`    | `false`        | Opt-in `runtime_error` capture; **not** auto-redacted.                   |
 | `jankFrameMs`      | `50`           | A rendered frame slower than this counts toward `frame_perf.longFrames`. |
+| `batchSize`        | `20`           | Events buffered before an early network flush.                           |
 | `flushIntervalMs`  | `5000`         | Max time between network flushes. `0` disables the timer.                |
 | `transport`        | beacon → fetch | Custom delivery function (e.g. to observe sends).                        |
 | `disabled`         | `false`        | Collect nothing — e.g. to honor Do-Not-Track.                            |
 | `debug`            | `false`        | Console debug logs.                                                      |
+
+**How often events are sent.** Every connector batches all event types into one request and
+flushes on whichever comes first: the queue reaching `batchSize`, or `flushIntervalMs` elapsing
+(plus an immediate flush on page unload). Raise `flushIntervalMs` (or `batchSize`) to send fewer,
+larger requests; lower it for fresher data (e.g. live dashboards). These are forwarded to
+`@uptimizr/sdk-core` by `trackScene`, so they work identically across the Babylon, three.js, and
+PlayCanvas connectors.
 
 ## Advanced: custom client & `beforeSend`
 
