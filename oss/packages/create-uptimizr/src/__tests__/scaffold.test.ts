@@ -88,4 +88,48 @@ describe("scaffold", () => {
     writeFileSync(join(dir, "extra.txt"), "x");
     expect(() => scaffold({ targetDir: dir, engine: "babylon" })).toThrow(/not empty/);
   });
+
+  it("omits dashboard and demo by default (collector only)", () => {
+    const { dir, withDashboard, withDemo } = scaffold({
+      targetDir: join(root, "minimal"),
+      engine: "babylon",
+    });
+    expect(withDashboard).toBe(false);
+    expect(withDemo).toBe(false);
+    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+    expect(pkg.dependencies["@uptimizr/dashboard"]).toBeUndefined();
+    expect(pkg.scripts.dashboard).toBeUndefined();
+    expect(pkg.scripts.demo).toBeUndefined();
+    expect(readdirSync(dir)).not.toContain("demo");
+  });
+
+  it("adds the dashboard dependency, script, and CORS origin when requested", () => {
+    const { dir, withDashboard } = scaffold({
+      targetDir: join(root, "dash"),
+      engine: "babylon",
+      withDashboard: true,
+    });
+    expect(withDashboard).toBe(true);
+    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+    expect(pkg.dependencies["@uptimizr/dashboard"]).toBeDefined();
+    expect(pkg.scripts.dashboard).toContain("uptimizr-dashboard");
+    expect(readFileSync(join(dir, ".env"), "utf8")).toContain("http://localhost:3000");
+  });
+
+  it("writes a runnable demo scene and script when requested", () => {
+    const { dir, withDemo } = scaffold({
+      targetDir: join(root, "demo"),
+      engine: "babylon",
+      withDemo: true,
+    });
+    expect(withDemo).toBe(true);
+    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+    expect(pkg.scripts.demo).toBe("node demo/serve.mjs");
+    const html = readFileSync(join(dir, "demo", "index.html"), "utf8");
+    expect(html).toContain("@uptimizr/babylon");
+    expect(html).toContain("trackScene(scene");
+    expect(html).toContain("http://localhost:4318");
+    const server = readFileSync(join(dir, "demo", "serve.mjs"), "utf8");
+    expect(server).toContain("createServer");
+  });
 });

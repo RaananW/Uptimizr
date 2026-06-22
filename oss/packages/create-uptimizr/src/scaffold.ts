@@ -1,9 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   type Engine,
+  type ScaffoldExtras,
   renderClientSnippet,
+  renderDemoHtml,
+  renderDemoServer,
   renderEnv,
   renderGitignore,
   renderPackageJson,
@@ -21,6 +24,10 @@ export interface ScaffoldOptions {
   port?: number;
   /** Pre-supplied secret (tests); a strong one is generated when omitted. */
   secret?: string;
+  /** Include the analytics dashboard (`@uptimizr/dashboard`). */
+  withDashboard?: boolean;
+  /** Include a runnable Babylon demo scene that generates events end-to-end. */
+  withDemo?: boolean;
 }
 
 export interface ScaffoldResult {
@@ -28,6 +35,8 @@ export interface ScaffoldResult {
   folderName: string;
   projectName: string;
   files: string[];
+  withDashboard: boolean;
+  withDemo: boolean;
 }
 
 /** npm package-name rules, applied to the folder name for the generated `package.json`. */
@@ -56,22 +65,40 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
   const projectName = options.projectName?.trim() || folderName;
   const port = options.port ?? 4318;
   const secret = options.secret ?? randomBytes(32).toString("hex");
+  const extras: ScaffoldExtras = {
+    ...(options.withDashboard ? { withDashboard: true } : {}),
+    ...(options.withDemo ? { withDemo: true } : {}),
+  };
 
   mkdirSync(join(dir, "data"), { recursive: true });
 
   const files: Array<[string, string]> = [
-    ["package.json", renderPackageJson(folderName, projectName)],
-    [".env", renderEnv(secret, port)],
+    ["package.json", renderPackageJson(folderName, projectName, extras)],
+    [".env", renderEnv(secret, port, extras)],
     [".gitignore", renderGitignore()],
-    ["README.md", renderReadme(folderName, projectName, options.engine, port)],
+    ["README.md", renderReadme(folderName, projectName, options.engine, port, extras)],
     [`client-snippet.${options.engine}.ts`, renderClientSnippet(options.engine, port)],
     // Keep the (git-ignored) data dir in the tree so the store path exists.
     ["data/.gitkeep", ""],
   ];
 
-  for (const [rel, content] of files) {
-    writeFileSync(join(dir, rel), content);
+  if (options.withDemo) {
+    files.push(["demo/index.html", renderDemoHtml(port)]);
+    files.push(["demo/serve.mjs", renderDemoServer()]);
   }
 
-  return { dir, folderName, projectName, files: files.map(([rel]) => rel) };
+  for (const [rel, content] of files) {
+    const abs = join(dir, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, content);
+  }
+
+  return {
+    dir,
+    folderName,
+    projectName,
+    files: files.map(([rel]) => rel),
+    withDashboard: Boolean(options.withDashboard),
+    withDemo: Boolean(options.withDemo),
+  };
 }
