@@ -130,17 +130,17 @@ export function renderDemoHtml(port: number = DEFAULT_PORT): string {
     <title>Uptimizr demo scene</title>
     <style>
       :root { color-scheme: dark; }
-      html, body { margin: 0; height: 100%; background: #0b0b10; color: #e7e7ea;
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0b10; color: #e7e7ea;
         font: 14px/1.5 system-ui, sans-serif; }
-      #app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+      #app { display: flex; flex-direction: column; height: 100vh; }
       header { padding: 10px 14px; border-bottom: 1px solid #23232b;
-        display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex: 0 0 auto; }
       header strong { color: #8b8bff; }
       header input { background: #14141c; border: 1px solid #2c2c38; color: inherit;
         border-radius: 6px; padding: 6px 8px; min-width: 280px; }
       header .hint { color: #9a9aa6; }
-      canvas { width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
-      #banner { display: none; padding: 8px 14px; background: #3a2a12; color: #ffd9a0;
+      canvas { flex: 1 1 auto; min-height: 0; width: 100%; display: block; outline: none; touch-action: none; }
+      #banner { display: none; flex: 0 0 auto; padding: 8px 14px; background: #3a2a12; color: #ffd9a0;
         border-bottom: 1px solid #5a4422; }
     </style>
     <script type="importmap">
