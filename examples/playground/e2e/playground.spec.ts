@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { API_KEY, COLLECTOR_URL, FULL_FLOW_ENGINES } from "./constants.js";
+import { openControls } from "./helpers/capture.js";
 
 /** The envelope fields this spec asserts on (a loose view of `AnyEvent`). */
 interface CapturedEvent {
@@ -38,6 +39,8 @@ for (const engineId of FULL_FLOW_ENGINES) {
     await page.mouse.click(x, y);
 
     // 2) Switch scene/area (ADR 0010) → subsequent events carry sceneId "gallery".
+    // The scene buttons live in the controls panel, which boots collapsed.
+    await openControls(page);
     await page.locator("#sceneGallery").click();
     await expect(page.locator("#currentScene")).toHaveText("gallery");
 
@@ -146,6 +149,8 @@ test("[babylon] captures a first-person walkable session", async ({ page, reques
       res.request().method() === "POST" &&
       res.status() === 200,
   );
+  // The replay button lives in the controls panel, which boots collapsed.
+  await openControls(page);
   await page.locator("#replayCurrentButton").click();
   await flushed;
 

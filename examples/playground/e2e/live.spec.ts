@@ -92,7 +92,9 @@ test("live presence, feed, and follow surface a running session in the dashboard
   //    reaches the LIVE state. Keep events flowing so the follow stream stays at
   //    the live edge while the dashboard's Babylon viewer spins up.
   await rosterEntry.click();
-  await expect(dash.getByRole("heading", { name: "Live replay" })).toBeVisible({ timeout: 20_000 });
+  await expect(dash.getByRole("heading", { name: /Session replay · live/ })).toBeVisible({
+    timeout: 20_000,
+  });
 
   await page.bringToFront();
   await driveInteractions(page);

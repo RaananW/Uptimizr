@@ -74,11 +74,22 @@ jobs:
           key: turbo-${{ runner.os }}-${{ github.sha }}
           restore-keys: turbo-${{ runner.os }}-
 
-      # One Turbo invocation lets the scheduler interleave lint/typecheck/build/
-      # test across the package graph (respecting `dependsOn: ["^build"]`) instead
-      # of finishing every package's lint before any typecheck starts.
-      - name: Lint, typecheck, build, test
-        run: pnpm turbo run lint typecheck build test
+      # Kept as separate, ordered steps. A single `turbo run lint typecheck build
+      # test` raises concurrency enough to race the demo's nested playground build
+      # against its connector builds (and collides two Next builds); the staged
+      # order keeps Turbo's topological build deterministic. The Turbo cache above
+      # still skips unchanged packages, which is where the real speedup comes from.
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
 
   e2e:
     name: E2E (Playwright)
