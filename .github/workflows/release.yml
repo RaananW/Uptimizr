@@ -102,9 +102,9 @@ jobs:
     if: ${{ needs.decide.outputs.publish == 'true' }}
     runs-on: ubuntu-latest
     # Real publishes pass through the protected npm-production environment
-    # (required reviewer + environment-scoped NPM_TOKEN). The `decide` gate
-    # ensures this job — and therefore the approval prompt — only runs for an
-    # actual release, not on every push to main.
+    # (required reviewer). Auth is npm Trusted Publishing (OIDC) — no long-lived
+    # token. The `decide` gate ensures this job — and therefore the approval
+    # prompt — only runs for an actual release, not on every push to main.
     environment: npm-production
     steps:
       - name: Checkout
@@ -142,14 +142,18 @@ jobs:
 
       - name: Publish to npm
         env:
-          # NPM_TOKEN is scoped to the npm-production environment, so it is only
-          # injected after the required reviewer approves this run.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # No NPM_TOKEN: publishing authenticates via npm Trusted Publishing
+          # (OIDC). pnpm exchanges the GitHub `id-token` for a short-lived npm
+          # token, so there is no long-lived secret to rotate or leak. Each
+          # `@uptimizr/*` package must have a trusted publisher configured on
+          # npmjs.com pointing at this repo + workflow + `npm-production`
+          # environment. A brand-new package can't be created by OIDC — publish
+          # its first version manually, then add its trusted publisher (see
+          # CONTRIBUTING.md "Releasing").
           NPM_CONFIG_PROVENANCE: "true"
         # pnpm (not `changeset publish`) so we can exclude the unscoped
-        # `create-uptimizr` — including it crashes the batch when the scoped
-        # NPM_TOKEN can't publish it. pnpm skips packages whose version is already
-        # on the registry, so this is safe to re-run after a partial publish.
+        # `create-uptimizr`. pnpm skips packages whose version is already on the
+        # registry, so this is safe to re-run after a partial publish.
         run: pnpm --recursive --filter='!create-uptimizr' publish --no-git-checks
 
       - name: Tag the release
