@@ -12,6 +12,8 @@ interface CliArgs {
   projectName?: string;
   engine?: Engine;
   port?: number;
+  withDashboard?: boolean;
+  withDemo?: boolean;
   help: boolean;
 }
 
@@ -24,7 +26,17 @@ function parseArgs(argv: string[]): CliArgs {
     else if (a === "--engine") args.engine = argv[++i] as Engine;
     else if (a === "--name") args.projectName = argv[++i];
     else if (a === "--port") args.port = Number(argv[++i]);
-    else if (!a.startsWith("-") && args.targetDir === undefined) args.targetDir = a;
+    else if (a === "--dashboard") args.withDashboard = true;
+    else if (a === "--no-dashboard") args.withDashboard = false;
+    else if (a === "--demo") args.withDemo = true;
+    else if (a === "--no-demo") args.withDemo = false;
+    else if (a === "--full") {
+      args.withDashboard = true;
+      args.withDemo = true;
+    } else if (a === "--minimal") {
+      args.withDashboard = false;
+      args.withDemo = false;
+    } else if (!a.startsWith("-") && args.targetDir === undefined) args.targetDir = a;
   }
   return args;
 }
@@ -34,13 +46,23 @@ function usage(): string {
     "create-uptimizr — scaffold a Docker-free self-host of the Uptimizr collector.",
     "",
     "Usage:",
-    "  npm create uptimizr@latest [dir] -- [--engine <e>] [--name <name>] [--port <n>]",
+    "  npm create uptimizr@latest [dir] -- [options]",
+    "",
+    "Options:",
+    "  --engine <e>     Client connector to emit a snippet for.",
+    "  --name <name>    Human-readable project name.",
+    "  --port <n>       Collector port (default 4318).",
+    "  --dashboard      Include the analytics dashboard (@uptimizr/dashboard).",
+    "  --demo           Include a runnable Babylon demo scene.",
+    "  --full           Full suite: collector + dashboard + demo.",
+    "  --minimal        Collector only (skip the prompts).",
     "",
     `Engines: ${ENGINES.join(", ")}`,
     "",
     "Examples:",
     "  npm create uptimizr@latest my-analytics",
     '  npm create uptimizr@latest my-analytics -- --engine three --name "My Game"',
+    "  npm create uptimizr@latest my-analytics -- --full",
   ].join("\n");
 }
 
@@ -57,9 +79,14 @@ async function main(): Promise<void> {
 
   let targetDir = args.targetDir;
   let engine = args.engine;
+  let withDashboard = args.withDashboard;
+  let withDemo = args.withDemo;
   const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
 
-  if ((!targetDir || !isEngine(engine)) && interactive) {
+  if (
+    (!targetDir || !isEngine(engine) || withDashboard === undefined || withDemo === undefined) &&
+    interactive
+  ) {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     try {
       if (!targetDir) {
@@ -69,6 +96,18 @@ async function main(): Promise<void> {
       if (!isEngine(engine)) {
         const answer = (await rl.question(`Engine (${ENGINES.join(" / ")}) [babylon]: `)).trim();
         engine = isEngine(answer) ? answer : "babylon";
+      }
+      if (withDashboard === undefined) {
+        const answer = (
+          await rl.question("Include the analytics dashboard (full suite)? (y/N): ")
+        ).trim();
+        withDashboard = /^y(es)?$/i.test(answer);
+      }
+      if (withDemo === undefined) {
+        const answer = (
+          await rl.question("Include a runnable demo scene to test end-to-end? (y/N): ")
+        ).trim();
+        withDemo = /^y(es)?$/i.test(answer);
       }
     } finally {
       rl.close();
@@ -91,18 +130,31 @@ async function main(): Promise<void> {
       engine,
       ...(args.projectName ? { projectName: args.projectName } : {}),
       ...(args.port ? { port: args.port } : {}),
+      ...(withDashboard ? { withDashboard: true } : {}),
+      ...(withDemo ? { withDemo: true } : {}),
     });
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
 
-  console.log(`\n✓ Scaffolded ${result.folderName} (${engine}) in ${result.dir}`);
+  const extras = [result.withDashboard ? "dashboard" : "", result.withDemo ? "demo" : ""].filter(
+    Boolean,
+  );
+  const suffix = extras.length > 0 ? ` + ${extras.join(" + ")}` : "";
+  console.log(`\n✓ Scaffolded ${result.folderName} (${engine}${suffix}) in ${result.dir}`);
   console.log("\nNext steps:");
   console.log(`  cd ${targetDir}`);
   console.log("  npm install");
   console.log("  npm run setup     # mints your first project + API key");
-  console.log("  npm start         # ingestion + query API\n");
+  console.log("  npm start         # ingestion + query API");
+  if (result.withDemo) {
+    console.log("  npm run demo      # demo scene — paste the projectId, then interact");
+  }
+  if (result.withDashboard) {
+    console.log("  npm run dashboard # analytics UI — point it at the collector");
+  }
+  console.log("");
 }
 
 main().catch((err) => {

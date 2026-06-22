@@ -68,7 +68,7 @@ straight from npm:
 
 ```bash
 npm i @uptimizr/babylon                              # or @uptimizr/three, @uptimizr/r3f, …
-npm create uptimizr@latest                           # scaffold a Docker-free, single-file self-host
+npm create uptimizr@latest                           # scaffold a self-host (prompts to add the dashboard + a demo)
 # …or run the collector CLI directly:
 npx -p @uptimizr/collector-server uptimizr init      # create the DuckDB store + a project + API key
 npx -p @uptimizr/collector-server uptimizr serve     # ingestion + query API on http://localhost:4318

@@ -87,6 +87,15 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     // breaks the browser preflight for scene-proxy registration
     // (PUT /api/v1/scenes/:id/representation). List the verbs the HTTP API uses.
     methods: ["GET", "HEAD", "POST", "PUT"],
+    // The SDK ingests via `navigator.sendBeacon`, which always sends in
+    // credentials mode `include`. With a non-safelisted `application/json` body
+    // that triggers a credentialed CORS preflight, so the response must echo
+    // `Access-Control-Allow-Credentials: true` or the browser drops the beacon —
+    // breaking cross-origin ingestion (the common self-host layout: app and
+    // collector on different origins). Safe here because `origin` is an explicit
+    // allow-list, never `*`. Anonymous ingestion needs no cookies; this only
+    // satisfies the preflight that sendBeacon forces.
+    credentials: true,
   });
   await app.register(rateLimit, {
     max: config.rateLimitMax,
