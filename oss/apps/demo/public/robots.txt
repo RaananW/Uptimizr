@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# The /playground/ and /dashboard/ trees are internal iframe embeds, not
+# standalone pages — keep them out of the index so they don't compete with the
+# demo's canonical URL.
+Disallow: /playground/
+Disallow: /dashboard/
+
+Sitemap: https://demo.uptimizr.com/sitemap.xml

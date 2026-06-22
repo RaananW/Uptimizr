@@ -36,7 +36,12 @@ export default tseslint.config(
   },
   {
     // Node-run scripts and standalone server bins (not bundled for the browser).
-    files: ["**/server/**/*.{js,cjs,mjs}", "**/scripts/**/*.{js,cjs,mjs}"],
+    files: [
+      "**/server/**/*.{js,cjs,mjs}",
+      "**/scripts/**/*.{js,cjs,mjs}",
+      // Brand/asset generators (run with plain `node`, never bundled).
+      "docs/design/**/*.{js,cjs,mjs}",
+    ],
     languageOptions: {
       globals: {
         process: "readonly",

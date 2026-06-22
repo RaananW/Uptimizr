@@ -28,7 +28,7 @@ export function DemoLimitations() {
       <p className="limitations__cta">
         Ready for the real thing?{" "}
         <a
-          href="https://uptimizr.com/docs/deploy/collector/"
+          href="https://www.uptimizr.com/docs/deploy/collector/"
           target="_blank"
           rel="noreferrer noopener"
         >

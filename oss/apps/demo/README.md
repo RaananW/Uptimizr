@@ -85,6 +85,27 @@ rebuilding them — much faster for iterating on the shell or store.
 - Dashboard sections that need manual 3D interaction (mesh/pointer/first-person/resources) stay empty
   until the visitor interacts.
 
+## SEO & social sharing
+
+The shell ([`index.html`](./index.html)) ships the full discoverability surface so links preview
+well and the page is indexable:
+
+- **Canonical** `https://demo.uptimizr.com/`, `robots` `index, follow`, `theme-color`.
+- **Open Graph + Twitter Card** meta with a dedicated **1200×630 `og.png`** so pasted links render
+  a rich card on Slack, Discord, X, LinkedIn, iMessage, etc.
+- **JSON-LD** `WebApplication` structured data (free, web-based developer tool, part of Uptimizr).
+- **Apple/PWA icons** (`apple-touch-icon.png`, `icon-192.png`, `icon-512.png`) + `site.webmanifest`.
+- **`robots.txt`** (the `/playground/` and `/dashboard/` iframe embeds are disallowed so they don't
+  compete with the canonical page) and a one-URL **`sitemap.xml`**.
+- A **`<noscript>`** fallback and visible links pointing to **[www.uptimizr.com](https://www.uptimizr.com)**
+  as the project's home for docs and downloads.
+
+The share image and icons are generated from the brand assets — re-run after a brand change:
+
+```bash
+node docs/design/gen-og-demo.mjs   # → oss/apps/demo/public/{og.png,apple-touch-icon.png,icon-*.png}
+```
+
 ## Deployment
 
 `demo.uptimizr.com` is its **own Vercel project** pointed at this repo (Vercel's `vercel.json` is

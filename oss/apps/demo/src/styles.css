@@ -9,7 +9,12 @@
   --accent: #f4c84b;
   --border: #232838;
   font-family:
-    "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    "Space Grotesk",
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 
 * {
@@ -37,8 +42,7 @@ body {
   padding: 2rem 1rem;
   background:
     radial-gradient(1100px 560px at 78% -10%, rgba(244, 200, 75, 0.12), transparent 68%),
-    radial-gradient(1200px 600px at 32% -10%, rgba(59, 130, 246, 0.2), transparent 70%),
-    var(--bg);
+    radial-gradient(1200px 600px at 32% -10%, rgba(59, 130, 246, 0.2), transparent 70%), var(--bg);
 }
 
 .welcome__card {
@@ -140,6 +144,20 @@ body {
 .limitations__cta a,
 .welcome__error button {
   color: var(--brand);
+}
+
+.welcome__footer {
+  margin: 1.5rem 0 0;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.welcome__footer a {
+  color: var(--brand);
+  font-weight: 600;
 }
 
 /* --- Split view ----------------------------------------------------------- */
