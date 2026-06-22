@@ -70,6 +70,20 @@ function viewportPoint(page: Page, fx: number, fy: number): { x: number; y: numb
 }
 
 /**
+ * Expand the controls side panel if it is collapsed. The scene-switch buttons
+ * (`#sceneLobby` / `#sceneGallery`) live inside `#panel`, which boots collapsed
+ * (every signal is captured automatically), so a test that drives a scene change
+ * must open it first — exactly as a user would via the topbar "Controls" button.
+ */
+export async function openControls(page: Page): Promise<void> {
+  const panel = page.locator("#panel");
+  if (await panel.evaluate((el) => el.classList.contains("collapsed"))) {
+    await page.locator("#panelToggle").click();
+  }
+  await expect(panel).not.toHaveClass(/\bcollapsed\b/);
+}
+
+/**
  * Drive the full interaction set against the 3D canvas:
  * pointer move, a center mesh pick (mesh_interaction + custom), discrete
  * down/up/click, an orbit drag (camera_gesture), a wheel, a scene switch
@@ -112,6 +126,8 @@ export async function driveInteractions(
   await mouse.wheel(0, 180);
 
   // 6) Scene/area switch (ADR 0010) → scene_change; later events carry "gallery".
+  // The scene buttons live in the controls panel, which boots collapsed.
+  await openControls(page);
   await page.locator("#sceneGallery").click();
   await expect(page.locator("#currentScene")).toHaveText("gallery");
 
