@@ -164,22 +164,47 @@ Publishing runs through the **Release** workflow
    builds, tests, runs the scrub gate, applies the pending version bumps, and runs
    `changeset publish --dry-run` so you can review the exact publish set. No approval, no token.
 2. **Real publish.** Re-trigger with `dry-run: false`. The job now requests the protected
-   **`npm-production`** environment and **waits for a required reviewer to approve**. Only after
-   approval is the environment-scoped `NPM_TOKEN` injected; the job then commits the version bump,
-   runs `changeset publish`, and pushes the git tags.
+   **`npm-production`** environment and **waits for a required reviewer to approve**. After
+   approval the job publishes via **npm Trusted Publishing (OIDC)** — pnpm exchanges the GitHub
+   `id-token` for a short-lived npm token, so there is no long-lived secret — then pushes the git
+   tags.
 
 Protections in effect:
 
 - **Manual dispatch + dry-run default** — no accidental releases.
-- **`npm-production` environment** — required reviewer approval and an environment-scoped
-  `NPM_TOKEN` that no other job or workflow (including dry runs) can read.
-- **npm provenance (OIDC)** — `id-token: write` + `NPM_CONFIG_PROVENANCE` sign each artifact and
-  link it to the exact commit and workflow run.
+- **`npm-production` environment** — required reviewer approval gates the OIDC publish so no other
+  job or workflow (including dry runs) can publish.
+- **npm Trusted Publishing + provenance (OIDC)** — `id-token: write` + `NPM_CONFIG_PROVENANCE`
+  authenticate the publish and sign each artifact, linking it to the exact commit and workflow run.
+  No `NPM_TOKEN` secret is stored or rotated.
 - **Conventional Commits** still apply to commit messages (`feat:`, `fix:`, `docs:` …); they keep
   history readable, but the **changeset files**, not the commit history, drive the published
   versions and changelogs.
 
 Tagged GitHub releases summarize user-facing changes and link the relevant ADRs.
+
+### New packages: one-time bootstrap before automated releases
+
+Automated releases authenticate with **npm Trusted Publishing (OIDC)**, which can only publish to a
+package that **already exists** and has a trusted publisher configured. A brand-new `@uptimizr/*`
+package therefore needs a one-time bootstrap **before** its first automated release:
+
+1. **Publish the first version manually**, from an account with publish rights to the `@uptimizr`
+   scope:
+   ```bash
+   pnpm --filter @uptimizr/<new-pkg> build
+   pnpm --filter @uptimizr/<new-pkg> publish --no-git-checks
+   ```
+2. **Configure its trusted publisher** on npmjs.com so CI can take over every release after this:
+   - Open `https://www.npmjs.com/package/@uptimizr/<new-pkg>/access` → **Settings → Trusted
+     Publisher** (the admin page lives at `/access`; requires an owner session with 2FA completed).
+   - Provider **GitHub Actions**, Organization or user **RaananW**, Repository **Uptimizr**,
+     Workflow filename **`release.yml`**, Environment **`npm-production`**, Allowed actions
+     **`npm publish`**. Save.
+
+Until both steps are done, the automated release will 404 on that package (OIDC can't create it) and
+abort the whole batch. Existing packages already have trusted publishers configured, so version
+bumps need no manual step.
 
 ### `create-uptimizr` is published manually (not via Changesets)
 
@@ -187,10 +212,10 @@ Tagged GitHub releases summarize user-facing changes and link the relevant ADRs.
 It's listed under `ignore` in [`.changeset/config.json`](./.changeset/config.json), so
 `changeset publish` never versions or publishes it. There are two reasons:
 
-- It is **unscoped** (`create-uptimizr`, not `@uptimizr/create-uptimizr`), so the CI `NPM_TOKEN` —
-  which is restricted to the `@uptimizr` scope for least privilege — cannot publish it.
-- npm won't let a granular token publish a **brand-new unscoped** package, so the name has to be
-  claimed by a human first anyway.
+- It is **unscoped** (`create-uptimizr`, not `@uptimizr/create-uptimizr`), so it falls outside the
+  `@uptimizr` scope that the automated OIDC release publishes.
+- npm won't let automation publish a **brand-new unscoped** package, so the name has to be claimed
+  by a human first anyway.
 
 To release it (initial publish and every subsequent change), do it manually from an account with
 publish rights, bumping the version in its `package.json` yourself:
@@ -202,8 +227,7 @@ npm publish   # interactive login / 2FA; --access public is taken from publishCo
 ```
 
 Because Changesets ignores it, bumping the other `@uptimizr/*` packages never touches
-`create-uptimizr`, and the automated release will simply skip it. Do **not** widen the CI token to
-cover it — keep the manual step.
+`create-uptimizr`, and the automated release will simply skip it. Keep the manual step.
 
 ## License
 
