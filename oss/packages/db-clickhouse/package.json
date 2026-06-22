@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/db-clickhouse",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Optional single-tenant ClickHouse store for Uptimizr — composes the @uptimizr/db dialect-agnostic query layer and CollectorStore contract for high-volume, concurrent self-hosting.",
   "keywords": [
     "uptimizr",
