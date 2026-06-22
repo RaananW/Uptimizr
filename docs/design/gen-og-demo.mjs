@@ -62,18 +62,18 @@ function textPath(font, str, size, { tracking = 0 } = {}) {
   return { d: d.trim(), width: x - tracking };
 }
 
-// --- brand mark: logo.svg minus the app-icon plate, ready to embed -----------
-const logoInner = readFileSync(join(HERE, "logo.svg"), "utf8")
+// --- brand mark: the demo's own azure cube (favicon.svg minus the icon plate) -
+const logoInner = readFileSync(join(DEMO_PUBLIC, "favicon.svg"), "utf8")
   .replace(/^[\s\S]*?<svg[^>]*>/, "") // drop the opening <svg ...>
   .replace(/<\/svg>\s*$/, "") // drop the closing </svg>
   .replace(/\s*<!--[^>]*App-icon plate[\s\S]*?-->\s*/i, "\n  ") // drop plate comment
-  .replace(/\s*<rect[^>]*fill="#161210"[^>]*\/>\s*/i, "\n  ") // drop plate rect
+  .replace(/\s*<rect[^>]*rx="56"[^>]*\/>\s*/i, "\n  ") // drop the rounded plate rect
   .trim();
 
-// --- palette (brand-guidelines §2) ------------------------------------------
-const INK = "#161210"; // app background
-const TEXT_HI = "#F4EADF"; // primary text on dark
-const MUTED = "#A8917C"; // captions / eyebrow
+// --- palette (demo app brand: cool near-black + azure→gold ramp) -------------
+const INK = "#0b0d12"; // demo app background (--bg)
+const TEXT_HI = "#E8EAF0"; // primary text on dark (--ink)
+const MUTED = "#9AA3B2"; // captions / eyebrow (--muted)
 
 // --- canvas ------------------------------------------------------------------
 const W = 1200;
@@ -111,25 +111,30 @@ const haloR = 175;
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W * SCALE}" height="${H * SCALE}" viewBox="0 0 ${W} ${H}">
   <defs>
     <radialGradient id="glow" cx="78%" cy="30%" r="62%">
-      <stop offset="0%" stop-color="#7a3d1e" stop-opacity="0.55"/>
-      <stop offset="45%" stop-color="#3a2113" stop-opacity="0.45"/>
+      <stop offset="0%" stop-color="#1D4ED8" stop-opacity="0.55"/>
+      <stop offset="45%" stop-color="#15306E" stop-opacity="0.42"/>
+      <stop offset="100%" stop-color="${INK}" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="18%" cy="118%" r="58%">
+      <stop offset="0%" stop-color="#F4C84B" stop-opacity="0.12"/>
       <stop offset="100%" stop-color="${INK}" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="hot" x1="0" y1="0" x2="1" y2="0.15">
-      <stop offset="0%" stop-color="#F4C84B"/>
-      <stop offset="28%" stop-color="#EDA63E"/>
-      <stop offset="62%" stop-color="#E07B39"/>
-      <stop offset="100%" stop-color="#C13A2B"/>
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="42%" stop-color="#60A5FA"/>
+      <stop offset="78%" stop-color="#F8D260"/>
+      <stop offset="100%" stop-color="#F4C84B"/>
     </linearGradient>
     <radialGradient id="halo" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#E8853F" stop-opacity="0.30"/>
-      <stop offset="55%" stop-color="#E8853F" stop-opacity="0.12"/>
-      <stop offset="100%" stop-color="#E8853F" stop-opacity="0"/>
+      <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.32"/>
+      <stop offset="55%" stop-color="#3B82F6" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#3B82F6" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
   <rect width="${W}" height="${H}" fill="${INK}"/>
   <rect width="${W}" height="${H}" fill="url(#glow)"/>
+  <rect width="${W}" height="${H}" fill="url(#glow2)"/>
 
   <!-- brand mark -->
   <circle cx="${haloCx}" cy="${haloCy}" r="${haloR}" fill="url(#halo)"/>
