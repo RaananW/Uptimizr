@@ -22,7 +22,8 @@
   "bugs": {
     "url": "https://github.com/RaananW/Uptimizr/issues"
   },
-  "homepage": "https://github.com/RaananW/Uptimizr/tree/main/oss/packages/sdk-babylon-lite#readme",
+  "homepage": "https://uptimizr.com/docs/connectors/babylon-lite/",
+  "author": "Raanan Weber (https://github.com/RaananW)",
   "publishConfig": {
     "access": "public"
   },

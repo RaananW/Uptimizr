@@ -20,7 +20,8 @@
   "bugs": {
     "url": "https://github.com/RaananW/Uptimizr/issues"
   },
-  "homepage": "https://github.com/RaananW/Uptimizr/tree/main/oss/apps/dashboard#readme",
+  "homepage": "https://uptimizr.com/docs/deploy/dashboard/",
+  "author": "Raanan Weber (https://github.com/RaananW)",
   "publishConfig": {
     "access": "public"
   },
