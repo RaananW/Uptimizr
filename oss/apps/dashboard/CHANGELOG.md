@@ -1,5 +1,15 @@
 # @uptimizr/dashboard
 
+## 0.1.1
+
+### Patch Changes
+
+- df5b66b: chore: point each package's npm `homepage` at its specific docs page (instead of the GitHub tree URL) and add an `author` field across the public manifests.
+- Updated dependencies [df5b66b]
+  - @uptimizr/replay@0.1.1
+  - @uptimizr/heatmap@0.1.1
+  - @uptimizr/react@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes
