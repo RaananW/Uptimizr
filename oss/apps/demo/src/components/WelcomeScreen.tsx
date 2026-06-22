@@ -70,6 +70,15 @@ export function WelcomeScreen({ state, progress, error, onPrepare }: WelcomeScre
         </div>
 
         <DemoLimitations />
+
+        <p className="welcome__footer">
+          Part of{" "}
+          <a href="https://www.uptimizr.com" target="_blank" rel="noreferrer noopener">
+            uptimizr.com
+          </a>{" "}
+          — open-source, privacy-first analytics for 3D scenes. Read the docs, see every connector,
+          and self-host the collector.
+        </p>
       </div>
     </div>
   );
