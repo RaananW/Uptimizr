@@ -40,7 +40,7 @@ export function renderPackageJson(folderName: string, projectName: string): stri
       migrate: "uptimizr migrate",
     },
     dependencies: {
-      "@uptimizr/collector-server": "^0.1.0",
+      "@uptimizr/collector-server": "^0.2.1",
     },
   };
   return `${JSON.stringify(pkg, null, 2)}\n`;

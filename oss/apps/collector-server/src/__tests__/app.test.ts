@@ -1337,6 +1337,31 @@ describe("scene registry routes", () => {
     await app.close();
   });
 
+  it("allows credentials in the ingestion CORS preflight (sendBeacon sends credentialed)", async () => {
+    // The SDK ingests via `navigator.sendBeacon`, which always runs in
+    // credentials mode `include`. The `application/json` body forces a preflight,
+    // and the browser drops the beacon unless the response echoes
+    // `Access-Control-Allow-Credentials: true` — which would break cross-origin
+    // ingestion (app and collector on different origins).
+    const app = await buildApp({
+      store: makeStore(),
+      config: { ...config, corsOrigins: ["http://localhost:5173"] },
+    });
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/api/v1/collect",
+      headers: {
+        origin: "http://localhost:5173",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type",
+      },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    expect(res.headers["access-control-allow-credentials"]).toBe("true");
+    await app.close();
+  });
+
   it("rejects a PUT whose path scene id mismatches the proxy", async () => {
     const app = await buildApp({ store: makeStore(), config });
     const res = await app.inject({
