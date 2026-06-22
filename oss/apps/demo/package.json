@@ -27,6 +27,8 @@
     "@types/node": "^22.19.21",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@uptimizr/dashboard": "workspace:*",
+    "@uptimizr/example-playground": "workspace:*",
     "@vitejs/plugin-react": "^6.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.16",
