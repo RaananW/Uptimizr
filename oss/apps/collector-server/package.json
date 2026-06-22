@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/collector-server",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Uptimizr ingestion + query API (Fastify). Self-hostable collector for the OSS data-collector.",
   "keywords": [
     "uptimizr",

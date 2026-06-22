@@ -1,5 +1,16 @@
 # @uptimizr/collector-server
 
+## 0.2.1
+
+### Patch Changes
+
+- a9308ea: fix(collector): allow credentials in the CORS preflight so cross-origin ingestion works. The SDK ingests via `navigator.sendBeacon`, which always sends in credentials mode `include`; without `Access-Control-Allow-Credentials: true` the browser dropped the beacon, breaking the common self-host layout where the app and collector run on different origins.
+- df5b66b: chore: point each package's npm `homepage` at its specific docs page (instead of the GitHub tree URL) and add an `author` field across the public manifests.
+- Updated dependencies [df5b66b]
+  - @uptimizr/schema@0.1.1
+  - @uptimizr/db@0.2.1
+  - @uptimizr/db-clickhouse@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
