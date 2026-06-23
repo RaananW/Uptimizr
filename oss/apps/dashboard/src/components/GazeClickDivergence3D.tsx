@@ -206,7 +206,9 @@ export function GazeClickDivergence3DView({
           const mat = new StandardMaterial(`${name}-mat`, scene);
           mat.diffuseColor = new Color3(1, 1, 1);
           mat.specularColor = new Color3(0, 0, 0);
-          mat.disableLighting = true;
+          // Keep lighting ON: the per-instance `color` buffer modulates the
+          // diffuse term, so disabling lighting would drop the voxel colors and
+          // render every marker uncolored (matches WorldHeatmap3D).
           marker.material = mat;
           marker.metadata = { hoverLabel: label };
 
