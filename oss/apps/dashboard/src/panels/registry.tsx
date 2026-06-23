@@ -1,7 +1,15 @@
 "use client";
 
 import { definePanel, type PanelContext, type PanelDefinition } from "@uptimizr/react";
-import type { DirectionBin, HeatmapBin, MeshCount, PositionBin, QueryParams } from "@/lib/api";
+import type {
+  DirectionBin,
+  HeatmapBin,
+  MeshCount,
+  PositionBin,
+  QueryParams,
+  SceneProxyMesh,
+  WorldHeatmapBin,
+} from "@/lib/api";
 import {
   CameraDome3DView,
   CAMERA_DOME_TITLE,
@@ -19,18 +27,42 @@ import {
   POINTER_HEATMAP_SUBTITLE,
 } from "@/components/PointerHeatmap";
 import { TopMeshesView, TOP_MESHES_TITLE, TOP_MESHES_SUBTITLE } from "@/components/TopMeshes";
+import {
+  WorldHeatmap3DView,
+  WORLD_HEATMAP_TITLE,
+  WORLD_HEATMAP_SUBTITLE,
+} from "@/components/WorldHeatmap3D";
 
 /** Grid resolutions, kept in sync with the legacy page.tsx constants. */
 const POINTER_BINS = 50;
 const CAMERA_BINS = 36;
 /** Ground-plane bin size (world units) for the floor-plan heatmap. */
 const FLOOR_CELL_SIZE = 1;
+/** Voxel size (world units) for the 3D world (click) heatmap. */
+const WORLD_CELL_SIZE = 0.5;
 
 /** On the session surface, scope a panel's query to the inspected session. */
 function scoped(ctx: PanelContext): QueryParams {
   return ctx.surface === "session" && ctx.sessionId
     ? { ...ctx.params, session: ctx.sessionId }
     : ctx.params;
+}
+
+/**
+ * Resolve the scene-proxy backdrop (ADR 0014) for the 3D world heatmap: use the
+ * selected scene, or fall back to the sole scene when the project has exactly
+ * one (mirrors the legacy dashboard so rays/voxels read against geometry instead
+ * of floating in empty space). Returns [] when no scene anchors it.
+ */
+async function resolveProxyMeshes(ctx: PanelContext): Promise<SceneProxyMesh[]> {
+  let sceneId = ctx.params.scene;
+  if (!sceneId) {
+    const scenes = await ctx.api.scenes(ctx.params).catch(() => []);
+    if (scenes.length === 1) sceneId = scenes[0]?.scene_id;
+  }
+  if (!sceneId) return [];
+  const rep = await ctx.api.sceneRepresentation(sceneId).catch(() => null);
+  return rep?.proxy?.meshes ?? [];
 }
 
 /** Top meshes — React/HTML list, half width. */
@@ -87,6 +119,41 @@ const floorPlanPanel = definePanel<PositionBin[]>({
   render: ({ data }) => <FloorPlanHeatmapView bins={data ?? []} cellSize={FLOOR_CELL_SIZE} />,
 });
 
+/** World (click) heatmap data: voxels + the scene-proxy backdrop. */
+interface WorldHeatmapData {
+  voxels: WorldHeatmapBin[];
+  proxyMeshes: SceneProxyMesh[];
+}
+
+/**
+ * World-space (3D) click heatmap — Babylon scene, full width. Voxel-binned
+ * pointer hits in world space, drawn against the registered scene proxy as a
+ * faint backdrop (ADR 0014). Client-only (Babylon loads in the browser). The
+ * proxy is resolved alongside the voxels so the backdrop tracks the scene filter.
+ */
+const worldHeatmapPanel = definePanel<WorldHeatmapData>({
+  id: "world-heatmap-3d",
+  title: WORLD_HEATMAP_TITLE,
+  subtitle: WORLD_HEATMAP_SUBTITLE,
+  span: 2,
+  surfaces: ["overview", "session"],
+  clientOnly: true,
+  load: async (ctx) => {
+    const [voxels, proxyMeshes] = await Promise.all([
+      ctx.api.worldHeatmap({ ...scoped(ctx), cellSize: WORLD_CELL_SIZE }),
+      resolveProxyMeshes(ctx),
+    ]);
+    return { voxels, proxyMeshes };
+  },
+  render: ({ data }) => (
+    <WorldHeatmap3DView
+      voxels={data.voxels}
+      cellSize={WORLD_CELL_SIZE}
+      proxyMeshes={data.proxyMeshes}
+    />
+  ),
+});
+
 /**
  * Built-in panels migrated to the ADR 0036 contract. Self-hosters append their
  * own `PanelDefinition`s to this array (build-time registration).
@@ -96,4 +163,5 @@ export const builtinPanels: PanelDefinition<unknown>[] = [
   pointerHeatmapPanel,
   cameraDomePanel,
   floorPlanPanel,
+  worldHeatmapPanel,
 ] as PanelDefinition<unknown>[];

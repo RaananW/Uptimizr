@@ -86,7 +86,6 @@ interface Dashboard {
   sessions: SessionSummary[];
   camera: DirectionBin[];
   perf: PerfSummary | null;
-  world: WorldHeatmapBin[];
   gaze: WorldHeatmapBin[];
   clickRays: ClickRay[];
   flowLinks: FlowLink[];
@@ -121,7 +120,6 @@ const EMPTY: Dashboard = {
   sessions: [],
   camera: [],
   perf: null,
-  world: [],
   gaze: [],
   clickRays: [],
   flowLinks: [],
@@ -294,7 +292,6 @@ export default function Page() {
         const [
           camera,
           perf,
-          world,
           gaze,
           clickRays,
           flowLinks,
@@ -310,7 +307,6 @@ export default function Page() {
         ] = await Promise.all([
           api.cameraHeatmap({ ...params, source: undefined, bins: CAMERA_BINS }),
           api.perf({ ...params, source: undefined }),
-          api.worldHeatmap({ ...params, cellSize: WORLD_CELL_SIZE }),
           api.gazeHeatmap({ ...params, source: undefined, cellSize: WORLD_CELL_SIZE }),
           api.clickRays({ ...params, cellSize: WORLD_CELL_SIZE }),
           // Position-aware flow (§7.8): group links by standpoint (camera-position)
@@ -390,7 +386,6 @@ export default function Page() {
           sessions,
           camera,
           perf,
-          world,
           gaze,
           clickRays,
           flowLinks,
@@ -920,13 +915,6 @@ export default function Page() {
           </div>
           <InputSourceBreakdown rows={data.sources} />
           <CameraDirectionHeatmap bins={data.camera} gridSize={CAMERA_BINS} />
-          <div className="lg:col-span-2">
-            <WorldHeatmap3D
-              voxels={data.world}
-              cellSize={WORLD_CELL_SIZE}
-              proxyMeshes={data.proxyMeshes}
-            />
-          </div>
           <div className="lg:col-span-2">
             <WorldHeatmap3D
               voxels={data.gaze}
