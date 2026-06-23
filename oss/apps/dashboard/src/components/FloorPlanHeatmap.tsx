@@ -8,14 +8,29 @@ import { Panel } from "./Panel";
 const SIZE = 360;
 const PAD = 8;
 
+export const FLOOR_PLAN_TITLE = "Floor-plan heatmap";
+export const FLOOR_PLAN_SUBTITLE = "Where visitors stand (top-down, first-person)";
+export const FLOOR_PLAN_HELP =
+  "Camera positions binned on the ground plane — the first-person counterpart of the pointer heatmap. Filter to the first-person camera mode to isolate walkable sessions.";
+
 /**
  * Top-down "floor plan" camera-position heatmap (ADR 0026): the first-person
  * analog of the 2D pointer heatmap. Each cell is a `cellSize`-sized square on
  * the X/Z ground plane (`gx`, `gz` integer indices); intensity is the dwell
  * `count`. The bins' bounding box is auto-fit into the canvas so a walkable
  * scene of any extent reads at a glance — where visitors stand and linger.
+ *
+ * This is the panel BODY only (no chrome); the host supplies title/subtitle/help
+ * via the ADR 0036 panel contract. {@link FloorPlanHeatmap} wraps it in panel
+ * chrome for legacy call sites.
  */
-export function FloorPlanHeatmap({ bins, cellSize }: { bins: PositionBin[]; cellSize: number }) {
+export function FloorPlanHeatmapView({
+  bins,
+  cellSize,
+}: {
+  bins: PositionBin[];
+  cellSize: number;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -60,11 +75,7 @@ export function FloorPlanHeatmap({ bins, cellSize }: { bins: PositionBin[]; cell
   }, [bins, cellSize]);
 
   return (
-    <Panel
-      title="Floor-plan heatmap"
-      subtitle="Where visitors stand (top-down, first-person)"
-      help="Camera positions binned on the ground plane — the first-person counterpart of the pointer heatmap. Filter to the first-person camera mode to isolate walkable sessions."
-    >
+    <>
       <div className="flex justify-center">
         <canvas
           ref={ref}
@@ -79,6 +90,15 @@ export function FloorPlanHeatmap({ bins, cellSize }: { bins: PositionBin[]; cell
           No camera-position data in range. Capture a first-person session to populate the plan.
         </p>
       ) : null}
+    </>
+  );
+}
+
+/** Chrome-wrapped floor plan for legacy call sites (overview surface). */
+export function FloorPlanHeatmap({ bins, cellSize }: { bins: PositionBin[]; cellSize: number }) {
+  return (
+    <Panel title={FLOOR_PLAN_TITLE} subtitle={FLOOR_PLAN_SUBTITLE} help={FLOOR_PLAN_HELP}>
+      <FloorPlanHeatmapView bins={bins} cellSize={cellSize} />
     </Panel>
   );
 }

@@ -1,12 +1,18 @@
 "use client";
 
 import { definePanel, type PanelContext, type PanelDefinition } from "@uptimizr/react";
-import type { DirectionBin, HeatmapBin, MeshCount, QueryParams } from "@/lib/api";
+import type { DirectionBin, HeatmapBin, MeshCount, PositionBin, QueryParams } from "@/lib/api";
 import {
   CameraDome3DView,
   CAMERA_DOME_TITLE,
   CAMERA_DOME_SUBTITLE,
 } from "@/components/CameraDome3D";
+import {
+  FloorPlanHeatmapView,
+  FLOOR_PLAN_TITLE,
+  FLOOR_PLAN_SUBTITLE,
+  FLOOR_PLAN_HELP,
+} from "@/components/FloorPlanHeatmap";
 import {
   PointerHeatmapView,
   POINTER_HEATMAP_TITLE,
@@ -17,6 +23,8 @@ import { TopMeshesView, TOP_MESHES_TITLE, TOP_MESHES_SUBTITLE } from "@/componen
 /** Grid resolutions, kept in sync with the legacy page.tsx constants. */
 const POINTER_BINS = 50;
 const CAMERA_BINS = 36;
+/** Ground-plane bin size (world units) for the floor-plan heatmap. */
+const FLOOR_CELL_SIZE = 1;
 
 /** On the session surface, scope a panel's query to the inspected session. */
 function scoped(ctx: PanelContext): QueryParams {
@@ -62,6 +70,24 @@ const cameraDomePanel = definePanel<DirectionBin[]>({
 });
 
 /**
+ * Floor-plan dwell heatmap — 2D canvas, half width. Top-down X/Z heat of where
+ * visitors stood/lingered (ADR 0026). Hidden in the orbit/"viewer" camera mode,
+ * where a camera position orbits the model rather than tracking a walker.
+ */
+const floorPlanPanel = definePanel<PositionBin[]>({
+  id: "floor-plan",
+  title: FLOOR_PLAN_TITLE,
+  subtitle: FLOOR_PLAN_SUBTITLE,
+  help: FLOOR_PLAN_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  clientOnly: true,
+  enabled: (ctx) => ctx.filters.cameraMode !== "viewer",
+  load: (ctx) => ctx.api.cameraPositionHeatmap({ ...scoped(ctx), cellSize: FLOOR_CELL_SIZE }),
+  render: ({ data }) => <FloorPlanHeatmapView bins={data ?? []} cellSize={FLOOR_CELL_SIZE} />,
+});
+
+/**
  * Built-in panels migrated to the ADR 0036 contract. Self-hosters append their
  * own `PanelDefinition`s to this array (build-time registration).
  */
@@ -69,4 +95,5 @@ export const builtinPanels: PanelDefinition<unknown>[] = [
   topMeshesPanel,
   pointerHeatmapPanel,
   cameraDomePanel,
+  floorPlanPanel,
 ] as PanelDefinition<unknown>[];

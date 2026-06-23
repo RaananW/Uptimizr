@@ -41,7 +41,6 @@ import type { PanelContext } from "@uptimizr/react";
 import { PanelHost } from "@/panels/PanelHost";
 import { builtinPanels } from "@/panels/registry";
 import { CameraDirectionHeatmap } from "@/components/CameraDirectionHeatmap";
-import { FloorPlanHeatmap } from "@/components/FloorPlanHeatmap";
 import { GlobalFilters } from "@/components/GlobalFilters";
 import { InputSourceBreakdown } from "@/components/InputSourceBreakdown";
 import { PerfSummaryPanel } from "@/components/PerfSummaryPanel";
@@ -921,9 +920,6 @@ export default function Page() {
           </div>
           <InputSourceBreakdown rows={data.sources} />
           <CameraDirectionHeatmap bins={data.camera} gridSize={CAMERA_BINS} />
-          {filters.cameraMode !== "viewer" ? (
-            <FloorPlanHeatmap bins={data.floorPlan} cellSize={FLOOR_CELL_SIZE} />
-          ) : null}
           <div className="lg:col-span-2">
             <WorldHeatmap3D
               voxels={data.world}
