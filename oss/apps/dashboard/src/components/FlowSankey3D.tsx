@@ -49,8 +49,12 @@ function meshHash(name: string): number {
  * Draws top-N links from camera-direction bins (source on a direction dome)
  * toward meshes (target nodes), with tube radius/color scaled by link volume.
  * This is the no-timeline, de-cluttered counterpart to event-level rays.
+ *
+ * This is the panel BODY only (no chrome); {@link FlowSankey3D} wraps it in
+ * panel chrome for legacy call sites. The host supplies title/subtitle/help via
+ * the ADR 0036 panel contract.
  */
-export function FlowSankey3D({
+export function FlowSankey3DView({
   links,
   gridSize,
   proxyMeshes = [],
@@ -853,145 +857,154 @@ export function FlowSankey3D({
   }, [isTwoStage, twoStage, standpointFocus, sourceFocus, meshFocus]);
 
   return (
-    <Panel
-      title="Flow Sankey (3D)"
-      subtitle="Direction-bin → mesh links (aggregate), or standpoint → gaze → mesh (two-stage)"
-      help={
+    <div className="relative">
+      <canvas
+        ref={canvasRef}
+        className="aspect-video w-full rounded-lg border border-edge bg-ink"
+      />
+      {tip ? (
+        <div
+          className="pointer-events-none absolute z-10 max-w-[16rem] truncate rounded border border-edge bg-ink/90 px-1.5 py-0.5 text-xs text-white shadow backdrop-blur"
+          style={{ left: tip.x + 12, top: tip.y + 12 }}
+        >
+          {tip.label}
+        </div>
+      ) : null}
+      {phase === "ready" ? (
         <>
-          Each <strong>source</strong> is a camera <em>gaze-direction bin</em> — a cell on the
-          sphere of where viewers were looking (grouped by azimuth/elevation). Each{" "}
-          <strong>target</strong> is a <em>mesh that was clicked</em>. A ribbon&apos;s thickness is
-          how many clicks on that mesh happened while viewers looked from that direction, so you can
-          see which viewpoints drive interaction with which objects. When the scene reports{" "}
-          <em>standpoints</em> (where the viewer stood, §7.8), pick one to gate the flow to clicks
-          made from that vantage — a pin marks it in the scene. &quot;All standpoints&quot; is the
-          aggregate view. Switch to <strong>Two-stage</strong> for a three-column{" "}
-          <em>standpoint → gaze sector → mesh</em> flow with a birdview minimap; the busiest
-          standpoints/meshes are kept and the tail folds into an &quot;Other&quot; node.
-        </>
-      }
-    >
-      <div className="relative">
-        <canvas
-          ref={canvasRef}
-          className="aspect-video w-full rounded-lg border border-edge bg-ink"
-        />
-        {tip ? (
-          <div
-            className="pointer-events-none absolute z-10 max-w-[16rem] truncate rounded border border-edge bg-ink/90 px-1.5 py-0.5 text-xs text-white shadow backdrop-blur"
-            style={{ left: tip.x + 12, top: tip.y + 12 }}
-          >
-            {tip.label}
-          </div>
-        ) : null}
-        {phase === "ready" ? (
-          <>
-            <div className="absolute left-3 top-3 flex flex-wrap gap-2">
-              {hasStandpoints ? (
-                <div className="flex items-center gap-1 rounded-md border border-edge bg-ink/80 p-0.5 text-xs backdrop-blur">
-                  <ViewToggleButton active={!isTwoStage} onClick={() => setViewMode("aggregate")}>
-                    Aggregate
-                  </ViewToggleButton>
-                  <ViewToggleButton active={isTwoStage} onClick={() => setViewMode("twostage")}>
-                    Two-stage
-                  </ViewToggleButton>
-                </div>
-              ) : null}
-              {selfFetch ? (
-                <div className="flex items-center gap-1 rounded-md border border-edge bg-ink/80 p-0.5 text-xs backdrop-blur">
-                  <ViewToggleButton
-                    active={cameraMode === "first-person"}
-                    onClick={() => setCameraMode("first-person")}
-                  >
-                    Walk
-                  </ViewToggleButton>
-                  <ViewToggleButton
-                    active={cameraMode === "viewer"}
-                    onClick={() => setCameraMode("viewer")}
-                    disabled={hasFirstPerson}
-                    title={
-                      hasFirstPerson
-                        ? "Orbit (viewer) flow isn't available for walkable scenes"
-                        : undefined
-                    }
-                  >
-                    Orbit
-                  </ViewToggleButton>
-                  <ViewToggleButton
-                    active={cameraMode === "all"}
-                    onClick={() => setCameraMode("all")}
-                  >
-                    All
-                  </ViewToggleButton>
-                </div>
-              ) : null}
-              {hasStandpoints ? (
-                <FlowSelect
-                  label="Standpoint"
-                  value={standpointFocus}
-                  onChange={setStandpointFocus}
-                  allLabel="All standpoints"
-                  options={standpointOptions}
-                />
-              ) : null}
+          <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+            {hasStandpoints ? (
+              <div className="flex items-center gap-1 rounded-md border border-edge bg-ink/80 p-0.5 text-xs backdrop-blur">
+                <ViewToggleButton active={!isTwoStage} onClick={() => setViewMode("aggregate")}>
+                  Aggregate
+                </ViewToggleButton>
+                <ViewToggleButton active={isTwoStage} onClick={() => setViewMode("twostage")}>
+                  Two-stage
+                </ViewToggleButton>
+              </div>
+            ) : null}
+            {selfFetch ? (
+              <div className="flex items-center gap-1 rounded-md border border-edge bg-ink/80 p-0.5 text-xs backdrop-blur">
+                <ViewToggleButton
+                  active={cameraMode === "first-person"}
+                  onClick={() => setCameraMode("first-person")}
+                >
+                  Walk
+                </ViewToggleButton>
+                <ViewToggleButton
+                  active={cameraMode === "viewer"}
+                  onClick={() => setCameraMode("viewer")}
+                  disabled={hasFirstPerson}
+                  title={
+                    hasFirstPerson
+                      ? "Orbit (viewer) flow isn't available for walkable scenes"
+                      : undefined
+                  }
+                >
+                  Orbit
+                </ViewToggleButton>
+                <ViewToggleButton
+                  active={cameraMode === "all"}
+                  onClick={() => setCameraMode("all")}
+                >
+                  All
+                </ViewToggleButton>
+              </div>
+            ) : null}
+            {hasStandpoints ? (
               <FlowSelect
-                label={isTwoStage ? "Gaze" : "Source"}
-                value={sourceFocus}
-                onChange={setSourceFocus}
-                allLabel={isTwoStage ? "All gaze sectors" : "All sources"}
-                options={gazeOptions}
-              />
-              <FlowSelect
-                label="Mesh"
-                value={meshFocus}
-                onChange={setMeshFocus}
-                allLabel="All meshes"
-                options={meshOptions}
-              />
-            </div>
-            {isTwoStage ? (
-              <StandpointMinimap
-                standpoints={standpoints}
-                proxyMeshes={proxyMeshes}
-                selectedKey={standpointFocus}
-                onSelect={(key) => setStandpointFocus((cur) => (cur === key ? ALL : key))}
+                label="Standpoint"
+                value={standpointFocus}
+                onChange={setStandpointFocus}
+                allLabel="All standpoints"
+                options={standpointOptions}
               />
             ) : null}
-            <div className="pointer-events-none absolute bottom-3 right-3 flex max-w-[20rem] flex-col items-end gap-2">
-              {selfFetch && !hasFirstPerson ? (
-                <div className="rounded-md border border-edge bg-ink/80 px-2 py-1 text-xs text-fg-muted backdrop-blur">
-                  Orbit-dominated scene — viewer <em>position</em> adds little here. Use the{" "}
-                  <strong>View dome</strong> (§7.5) above for where viewers looked.
-                </div>
-              ) : null}
-              <div className="rounded-md border border-edge bg-ink/80 px-2 py-1 text-xs text-fg backdrop-blur">
-                Active links: {activeCount}/{totalCount}
-              </div>
-            </div>
-            <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
-            <HeatLegend
-              title="Flow volume"
-              lowLabel="fewer links"
-              highLabel="dominant links"
-              note={
-                isTwoStage
-                  ? "Three columns: standpoint → gaze sector → mesh. Top standpoints/meshes are kept; the tail folds into an “Other” node. Pick a standpoint (or click the minimap), gaze sector, or mesh to emphasize matching ribbons."
-                  : "Each arc aggregates clicks from one camera-direction bin to a mesh. Pick a source or mesh to emphasize matching links and dim the rest."
-              }
+            <FlowSelect
+              label={isTwoStage ? "Gaze" : "Source"}
+              value={sourceFocus}
+              onChange={setSourceFocus}
+              allLabel={isTwoStage ? "All gaze sectors" : "All sources"}
+              options={gazeOptions}
             />
-          </>
-        ) : (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-fg-muted">
-            {phase === "loading"
-              ? "Rendering…"
-              : phase === "empty"
-                ? "No aggregate flow links in range."
-                : phase === "error"
-                  ? (error ?? "Flow view unavailable.")
-                  : null}
+            <FlowSelect
+              label="Mesh"
+              value={meshFocus}
+              onChange={setMeshFocus}
+              allLabel="All meshes"
+              options={meshOptions}
+            />
           </div>
-        )}
-      </div>
+          {isTwoStage ? (
+            <StandpointMinimap
+              standpoints={standpoints}
+              proxyMeshes={proxyMeshes}
+              selectedKey={standpointFocus}
+              onSelect={(key) => setStandpointFocus((cur) => (cur === key ? ALL : key))}
+            />
+          ) : null}
+          <div className="pointer-events-none absolute bottom-3 right-3 flex max-w-[20rem] flex-col items-end gap-2">
+            {selfFetch && !hasFirstPerson ? (
+              <div className="rounded-md border border-edge bg-ink/80 px-2 py-1 text-xs text-fg-muted backdrop-blur">
+                Orbit-dominated scene — viewer <em>position</em> adds little here. Use the{" "}
+                <strong>View dome</strong> (§7.5) above for where viewers looked.
+              </div>
+            ) : null}
+            <div className="rounded-md border border-edge bg-ink/80 px-2 py-1 text-xs text-fg backdrop-blur">
+              Active links: {activeCount}/{totalCount}
+            </div>
+          </div>
+          <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
+          <HeatLegend
+            title="Flow volume"
+            lowLabel="fewer links"
+            highLabel="dominant links"
+            note={
+              isTwoStage
+                ? "Three columns: standpoint → gaze sector → mesh. Top standpoints/meshes are kept; the tail folds into an “Other” node. Pick a standpoint (or click the minimap), gaze sector, or mesh to emphasize matching ribbons."
+                : "Each arc aggregates clicks from one camera-direction bin to a mesh. Pick a source or mesh to emphasize matching links and dim the rest."
+            }
+          />
+        </>
+      ) : (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-fg-muted">
+          {phase === "loading"
+            ? "Rendering…"
+            : phase === "empty"
+              ? "No aggregate flow links in range."
+              : phase === "error"
+                ? (error ?? "Flow view unavailable.")
+                : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export const FLOW_SANKEY_TITLE = "Flow Sankey (3D)";
+export const FLOW_SANKEY_SUBTITLE =
+  "Direction-bin → mesh links (aggregate), or standpoint → gaze → mesh (two-stage)";
+
+/** "?" help content shared by the chrome wrapper and the registered panel. */
+export const FLOW_SANKEY_HELP = (
+  <>
+    Each <strong>source</strong> is a camera <em>gaze-direction bin</em> — a cell on the sphere of
+    where viewers were looking (grouped by azimuth/elevation). Each <strong>target</strong> is a{" "}
+    <em>mesh that was clicked</em>. A ribbon&apos;s thickness is how many clicks on that mesh
+    happened while viewers looked from that direction, so you can see which viewpoints drive
+    interaction with which objects. When the scene reports <em>standpoints</em> (where the viewer
+    stood, §7.8), pick one to gate the flow to clicks made from that vantage — a pin marks it in the
+    scene. &quot;All standpoints&quot; is the aggregate view. Switch to <strong>Two-stage</strong>{" "}
+    for a three-column <em>standpoint → gaze sector → mesh</em> flow with a birdview minimap; the
+    busiest standpoints/meshes are kept and the tail folds into an &quot;Other&quot; node.
+  </>
+);
+
+/** Chrome-wrapped flow Sankey for legacy call sites (overview surface). */
+export function FlowSankey3D(props: Parameters<typeof FlowSankey3DView>[0]) {
+  return (
+    <Panel title={FLOW_SANKEY_TITLE} subtitle={FLOW_SANKEY_SUBTITLE} help={FLOW_SANKEY_HELP}>
+      <FlowSankey3DView {...props} />
     </Panel>
   );
 }

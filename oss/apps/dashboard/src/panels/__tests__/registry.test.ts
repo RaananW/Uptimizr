@@ -94,3 +94,113 @@ describe("builtinPanels — world-heatmap panel", () => {
     expect(data.proxyMeshes).toEqual([]);
   });
 });
+
+/** Generic load-context stub: an api bag + params, for the remaining panels. */
+function makeCtx(opts: {
+  surface?: "overview" | "session";
+  sessionId?: string;
+  params?: Record<string, unknown>;
+  api: Record<string, unknown>;
+  capabilities?: { hasFirstPerson: boolean };
+}): PanelDataContext {
+  return {
+    surface: opts.surface ?? "overview",
+    sessionId: opts.sessionId,
+    params: opts.params ?? {},
+    api: opts.api,
+    capabilities: opts.capabilities ?? { hasFirstPerson: false },
+    baseUrl: "http://collector",
+    apiKey: "test-key",
+  } as unknown as PanelDataContext;
+}
+
+describe("builtinPanels — navigation-mix panel", () => {
+  const panel = builtinPanels.find((p) => p.id === "navigation-mix");
+
+  it("is registered as a half-width panel on both surfaces with no gate", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(1);
+    expect(panel?.clientOnly).toBeUndefined();
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+    expect(panel?.enabled).toBeUndefined();
+  });
+
+  it("loads per-kind gestures and drops the source filter", async () => {
+    const cameraGestures = vi
+      .fn()
+      .mockResolvedValue([{ kind: "orbit", gestures: 5, total_ms: 100, avg_ms: 20, max_ms: 40 }]);
+    const ctx = makeCtx({ params: { scene: "s", source: "mouse" }, api: { cameraGestures } });
+    const data = (await panel?.load?.(ctx)) as unknown[];
+    expect(data).toHaveLength(1);
+    expect(cameraGestures).toHaveBeenCalledWith(
+      expect.objectContaining({ scene: "s", source: undefined }),
+    );
+  });
+});
+
+describe("builtinPanels — flow-sankey panel", () => {
+  const panel = builtinPanels.find((p) => p.id === "flow-sankey-3d");
+
+  it("is registered as a full-width, client-only panel with help, on both surfaces", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(2);
+    expect(panel?.clientOnly).toBe(true);
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+    expect(panel?.help).toBeDefined();
+  });
+
+  it("loads position-aware links and strips the camera-mode filter (panel owns it)", async () => {
+    const flowHeatmap = vi
+      .fn()
+      .mockResolvedValue([{ azimuth_bin: 0, elevation_bin: 0, mesh: "M", count: 2 }]);
+    const scenes = vi.fn().mockResolvedValue([]);
+    const sceneRepresentation = vi
+      .fn()
+      .mockResolvedValue({ proxy: { meshes: [{ name: "Floor" }] } });
+    const ctx = makeCtx({
+      params: { scene: "scene-a", cameraMode: "first-person" },
+      api: { flowHeatmap, scenes, sceneRepresentation },
+    });
+    const data = (await panel?.load?.(ctx)) as {
+      links: unknown[];
+      proxyMeshes: unknown[];
+      flowQuery: Record<string, unknown>;
+    };
+    expect(data.links).toHaveLength(1);
+    expect(data.proxyMeshes).toEqual([{ name: "Floor" }]);
+    // The panel's own walk/orbit/all toggle owns camera mode, so the base query drops it.
+    expect(data.flowQuery.cameraMode).toBeUndefined();
+    expect(data.flowQuery.scene).toBe("scene-a");
+    expect(flowHeatmap).toHaveBeenCalledWith(
+      expect.objectContaining({ groupByOrigin: true, cameraMode: undefined, scene: "scene-a" }),
+    );
+  });
+});
+
+describe("builtinPanels — gaze-click divergence panel", () => {
+  const panel = builtinPanels.find((p) => p.id === "gaze-click-divergence-3d");
+
+  it("is registered as a full-width, client-only panel on both surfaces", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(2);
+    expect(panel?.clientOnly).toBe(true);
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+  });
+
+  it("loads gaze + click grids at the same cell size so the voxels align", async () => {
+    const gazeHeatmap = vi.fn().mockResolvedValue([{ vx: 0, vy: 0, vz: 0, count: 1 }]);
+    const worldHeatmap = vi.fn().mockResolvedValue([{ vx: 0, vy: 0, vz: 0, count: 2 }]);
+    const scenes = vi.fn().mockResolvedValue([]);
+    const sceneRepresentation = vi.fn().mockResolvedValue({ proxy: { meshes: [] } });
+    const ctx = makeCtx({
+      params: { scene: "scene-a" },
+      api: { gazeHeatmap, worldHeatmap, scenes, sceneRepresentation },
+    });
+    const data = (await panel?.load?.(ctx)) as { gaze: unknown[]; click: unknown[] };
+    expect(data.gaze).toHaveLength(1);
+    expect(data.click).toHaveLength(1);
+    const gazeCell = (gazeHeatmap.mock.calls[0]?.[0] as { cellSize: number }).cellSize;
+    const clickCell = (worldHeatmap.mock.calls[0]?.[0] as { cellSize: number }).cellSize;
+    expect(gazeCell).toBe(clickCell);
+  });
+});
