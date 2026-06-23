@@ -22,7 +22,7 @@ type DomeMode = "markers" | "skydome";
  * the way the audience actually looked around. Babylon loads dynamically
  * (browser-only).
  */
-export function CameraDome3D({ bins, gridSize }: { bins: DirectionBin[]; gridSize: number }) {
+export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gridSize: number }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraRef = useRef<OrbitZoomCamera | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
@@ -240,63 +240,71 @@ export function CameraDome3D({ bins, gridSize }: { bins: DirectionBin[]; gridSiz
   }, [bins, gridSize, mode]);
 
   return (
-    <Panel
-      title="View-direction dome (3D)"
-      subtitle="Where the audience looked, mapped onto a sphere — drag to orbit, +/- to zoom"
-    >
-      <div className="relative">
-        <canvas
-          ref={canvasRef}
-          className="aspect-video w-full rounded-lg border border-edge bg-ink"
-        />
-        {tip ? (
-          <div
-            className="pointer-events-none absolute z-10 max-w-[16rem] truncate rounded border border-edge bg-ink/90 px-1.5 py-0.5 text-xs text-white shadow backdrop-blur"
-            style={{ left: tip.x + 12, top: tip.y + 12 }}
-          >
-            {tip.label}
+    <div className="relative">
+      <canvas
+        ref={canvasRef}
+        className="aspect-video w-full rounded-lg border border-edge bg-ink"
+      />
+      {tip ? (
+        <div
+          className="pointer-events-none absolute z-10 max-w-[16rem] truncate rounded border border-edge bg-ink/90 px-1.5 py-0.5 text-xs text-white shadow backdrop-blur"
+          style={{ left: tip.x + 12, top: tip.y + 12 }}
+        >
+          {tip.label}
+        </div>
+      ) : null}
+      {phase === "ready" ? (
+        <>
+          <div className="absolute left-3 top-3 flex overflow-hidden rounded-md border border-edge bg-ink/80 text-xs backdrop-blur">
+            {(["markers", "skydome"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={`px-2.5 py-1 ${
+                  mode === m ? "bg-fg/15 font-medium text-white" : "text-fg-muted hover:text-fg"
+                }`}
+              >
+                {m === "markers" ? "Markers" : "Skydome"}
+              </button>
+            ))}
           </div>
-        ) : null}
-        {phase === "ready" ? (
-          <>
-            <div className="absolute left-3 top-3 flex overflow-hidden rounded-md border border-edge bg-ink/80 text-xs backdrop-blur">
-              {(["markers", "skydome"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMode(m)}
-                  className={`px-2.5 py-1 ${
-                    mode === m ? "bg-fg/15 font-medium text-white" : "text-fg-muted hover:text-fg"
-                  }`}
-                >
-                  {m === "markers" ? "Markers" : "Skydome"}
-                </button>
-              ))}
-            </div>
-            <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
-            <HeatLegend
-              title="Gaze density"
-              lowLabel="rarely"
-              highLabel="most-viewed"
-              note={
-                mode === "markers"
-                  ? "Each marker is a look-direction (camera forward). Blue line = forward, ring = horizon. Color & size scale with how often that direction was viewed."
-                  : "Continuous equirectangular heat field: the same gaze bins splatted into a smooth thermal texture wrapped on the dome. The in-scene SDK overlay (showGazeSkydome) renders this inward so you can stand inside it in WebXR."
-              }
-            />
-          </>
-        ) : (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-fg-muted">
-            {phase === "loading"
-              ? "Rendering…"
-              : phase === "empty"
-                ? "No camera samples in range."
-                : phase === "error"
-                  ? (error ?? "Dome unavailable.")
-                  : null}
-          </div>
-        )}
-      </div>
+          <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
+          <HeatLegend
+            title="Gaze density"
+            lowLabel="rarely"
+            highLabel="most-viewed"
+            note={
+              mode === "markers"
+                ? "Each marker is a look-direction (camera forward). Blue line = forward, ring = horizon. Color & size scale with how often that direction was viewed."
+                : "Continuous equirectangular heat field: the same gaze bins splatted into a smooth thermal texture wrapped on the dome. The in-scene SDK overlay (showGazeSkydome) renders this inward so you can stand inside it in WebXR."
+            }
+          />
+        </>
+      ) : (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-fg-muted">
+          {phase === "loading"
+            ? "Rendering…"
+            : phase === "empty"
+              ? "No camera samples in range."
+              : phase === "error"
+                ? (error ?? "Dome unavailable.")
+                : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export const CAMERA_DOME_TITLE = "View-direction dome (3D)";
+export const CAMERA_DOME_SUBTITLE =
+  "Where the audience looked, mapped onto a sphere — drag to orbit, +/- to zoom";
+
+/** Chrome-wrapped dome for legacy call sites (overview + session surfaces). */
+export function CameraDome3D(props: { bins: DirectionBin[]; gridSize: number }) {
+  return (
+    <Panel title={CAMERA_DOME_TITLE} subtitle={CAMERA_DOME_SUBTITLE}>
+      <CameraDome3DView {...props} />
     </Panel>
   );
 }

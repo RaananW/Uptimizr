@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   CollectorApi,
@@ -15,9 +15,7 @@ import {
   type DirectionBin,
   type EventTypeCount,
   type FlowLink,
-  type HeatmapBin,
   type InteractionSource,
-  type MeshCount,
   type NavigationStat,
   type PerfSummary,
   type PositionBin,
@@ -39,18 +37,19 @@ import {
 } from "@/lib/filters";
 import { parseTimestamp } from "@/lib/format";
 import { useLivePresence, useLiveStream, type LiveEvent } from "@/lib/live";
+import type { PanelContext } from "@uptimizr/react";
+import { PanelHost } from "@/panels/PanelHost";
+import { builtinPanels } from "@/panels/registry";
 import { CameraDirectionHeatmap } from "@/components/CameraDirectionHeatmap";
 import { FloorPlanHeatmap } from "@/components/FloorPlanHeatmap";
 import { GlobalFilters } from "@/components/GlobalFilters";
 import { InputSourceBreakdown } from "@/components/InputSourceBreakdown";
 import { PerfSummaryPanel } from "@/components/PerfSummaryPanel";
 import { PerformanceSection, type PerformanceData } from "@/components/PerformanceSection";
-import { PointerHeatmap } from "@/components/PointerHeatmap";
 import { SceneHealth } from "@/components/SceneHealth";
 import { SceneMetrics } from "@/components/SceneMetrics";
 import { SceneSelector, type SceneMeta } from "@/components/SceneSelector";
 import { SessionsTable } from "@/components/SessionsTable";
-import { TopMeshes } from "@/components/TopMeshes";
 import { TrajectoryView } from "@/components/TrajectoryView";
 import { VolumeTimeseries } from "@/components/VolumeTimeseries";
 import { SessionInspector } from "@/components/SessionInspector";
@@ -65,12 +64,6 @@ const WorldHeatmap3D = dynamic(
   () => import("@/components/WorldHeatmap3D").then((m) => m.WorldHeatmap3D),
   { ssr: false },
 );
-const CameraDome3D = dynamic(
-  () => import("@/components/CameraDome3D").then((m) => m.CameraDome3D),
-  {
-    ssr: false,
-  },
-);
 const ClickRays3D = dynamic(() => import("@/components/ClickRays3D").then((m) => m.ClickRays3D), {
   ssr: false,
 });
@@ -81,7 +74,6 @@ const FlowSankey3D = dynamic(
   },
 );
 
-const POINTER_BINS = 50;
 const CAMERA_BINS = 36;
 const WORLD_CELL_SIZE = 0.5;
 const COVERAGE_CELL_SIZE = 1;
@@ -93,9 +85,7 @@ const LIVE_FEED_MAX = 30;
 const LIVE_REFETCH_THROTTLE_MS = 5_000;
 interface Dashboard {
   sessions: SessionSummary[];
-  pointer: HeatmapBin[];
   camera: DirectionBin[];
-  meshes: MeshCount[];
   perf: PerfSummary | null;
   world: WorldHeatmapBin[];
   gaze: WorldHeatmapBin[];
@@ -130,9 +120,7 @@ const EMPTY_PERFORMANCE: PerformanceData = {
 
 const EMPTY: Dashboard = {
   sessions: [],
-  pointer: [],
   camera: [],
-  meshes: [],
   perf: null,
   world: [],
   gaze: [],
@@ -156,9 +144,7 @@ const EMPTY: Dashboard = {
 interface SessionDetail {
   id: string;
   meta: SessionMeta | null;
-  pointer: HeatmapBin[];
   camera: DirectionBin[];
-  meshes: MeshCount[];
   perf: PerfSummary | null;
 }
 
@@ -188,6 +174,11 @@ export default function Page() {
   // presence/feed relative times fresh without reopening the SSE connections.
   const [liveFeed, setLiveFeed] = useState<LiveEvent[]>([]);
   const [liveNow, setLiveNow] = useState(() => Date.now());
+  // Bumped on a throttled live refetch so registry panels (ADR 0036) refresh and
+  // relative time windows advance without a filter change.
+  const [liveRevision, setLiveRevision] = useState(0);
+  // Registry panels that opted into the live firehose (ADR 0036 PanelLive).
+  const liveSubscribersRef = useRef<Set<(event: LiveEvent) => void>>(new Set());
 
   // Keep the latest filters in a ref so `load`/`openSession` stay stable and can
   // be invoked from the debounced auto-refetch effect without being re-created.
@@ -302,9 +293,7 @@ export default function Page() {
         const intervalMs = intervalSec * 1000;
 
         const [
-          pointer,
           camera,
-          meshes,
           perf,
           world,
           gaze,
@@ -320,9 +309,7 @@ export default function Page() {
           floorPlan,
           performance,
         ] = await Promise.all([
-          api.pointerHeatmap({ ...params, bins: POINTER_BINS }),
           api.cameraHeatmap({ ...params, source: undefined, bins: CAMERA_BINS }),
-          api.topMeshes({ ...params, source: undefined, scene: undefined, limit: 25 }),
           api.perf({ ...params, source: undefined }),
           api.worldHeatmap({ ...params, cellSize: WORLD_CELL_SIZE }),
           api.gazeHeatmap({ ...params, source: undefined, cellSize: WORLD_CELL_SIZE }),
@@ -402,9 +389,7 @@ export default function Page() {
           : [];
         setData({
           sessions,
-          pointer,
           camera,
-          meshes,
           perf,
           world,
           gaze,
@@ -481,6 +466,8 @@ export default function Page() {
   const onLiveEvent = useCallback(
     (event: LiveEvent) => {
       setLiveFeed((prev) => [event, ...prev].slice(0, LIVE_FEED_MAX));
+      // Fan the event out to any registry panels that subscribed (ADR 0036).
+      liveSubscribersRef.current.forEach((handler) => handler(event));
       // Throttle the aggregate refetch and skip it while a session drill-down is
       // open (that view has its own scope and shouldn't be reset under the user).
       const nowTs = Date.now();
@@ -488,6 +475,7 @@ export default function Page() {
       if (nowTs - lastRefetchRef.current < LIVE_REFETCH_THROTTLE_MS) return;
       lastRefetchRef.current = nowTs;
       void load();
+      setLiveRevision((r) => r + 1);
     },
     [load],
   );
@@ -512,14 +500,12 @@ export default function Page() {
     async (id: string): Promise<SessionDetail> => {
       const params = toQueryParams(filtersRef.current);
       const api = new CollectorApi(baseUrl, apiKey);
-      const [pointer, camera, meshes, perf, meta] = await Promise.all([
-        api.pointerHeatmap({ ...params, bins: POINTER_BINS, session: id }),
+      const [camera, perf, meta] = await Promise.all([
         api.cameraHeatmap({ ...params, source: undefined, bins: CAMERA_BINS, session: id }),
-        api.topMeshes({ ...params, source: undefined, scene: undefined, limit: 25, session: id }),
         api.perf({ ...params, source: undefined, session: id }),
         api.sessionMeta(id).catch(() => null),
       ]);
-      return { id, meta, pointer, camera, meshes, perf };
+      return { id, meta, camera, perf };
     },
     [baseUrl, apiKey],
   );
@@ -529,7 +515,7 @@ export default function Page() {
       const pid = selectedIdRef.current;
       if (pid) pushPath(projectPath(pid, id));
       if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
-      setDetail({ id, meta: null, pointer: [], camera: [], meshes: [], perf: null });
+      setDetail({ id, meta: null, camera: [], perf: null });
       setDetailStatus("loading");
       setHiddenTypes(new Set());
       try {
@@ -637,6 +623,43 @@ export default function Page() {
   }, [openSession, closeSession]);
 
   const busy = status === "loading";
+
+  // Registry-driven panels (ADR 0036): one CollectorApi + the resolved filter
+  // params + the shared host context the overview and session PanelHosts pass to
+  // each panel. `panelParams` recomputes on a live refetch so relative windows
+  // advance; it is otherwise stable across renders so panels don't refetch on
+  // every render.
+  const panelApi = useMemo(() => new CollectorApi(baseUrl, apiKey), [baseUrl, apiKey]);
+  const panelParams = useMemo(() => toQueryParams(filters), [filters, liveRevision]);
+  const subscribeLive = useCallback((handler: (event: LiveEvent) => void) => {
+    const set = liveSubscribersRef.current;
+    set.add(handler);
+    return () => {
+      set.delete(handler);
+    };
+  }, []);
+  const panelActions = useMemo(
+    () => ({
+      selectSession: (id: string) => void openSession(id),
+      setTimeRange: (since: number, until: number) => brushRange(since, until),
+      setFilters: (patch: Partial<FilterState>) => setFilters((f) => ({ ...f, ...patch })),
+    }),
+    [openSession, brushRange],
+  );
+  const panelBase = {
+    api: panelApi,
+    baseUrl,
+    apiKey,
+    params: panelParams,
+    filters,
+    capabilities: { hasFirstPerson: data.hasFirstPerson },
+    actions: panelActions,
+    live: { presence: livePresence, enabled: liveEnabled, subscribe: subscribeLive },
+  };
+  const overviewCtx: PanelContext = { ...panelBase, surface: "overview" };
+  const sessionCtx: PanelContext | null = detail
+    ? { ...panelBase, surface: "session", sessionId: detail.id }
+    : null;
 
   // Surface the live-follow replay only when the open session is currently live
   // (present in the presence roster), so historical sessions aren't cluttered
@@ -833,8 +856,14 @@ export default function Page() {
             />
           </div>
           <PerfSummaryPanel perf={detail.perf} />
-          <TopMeshes meshes={detail.meshes} />
-          <PointerHeatmap bins={detail.pointer} gridSize={POINTER_BINS} />
+          {sessionCtx ? (
+            <PanelHost
+              panels={builtinPanels}
+              ctx={sessionCtx}
+              surface="session"
+              revision={liveRevision}
+            />
+          ) : null}
           <CameraDirectionHeatmap bins={detail.camera} gridSize={CAMERA_BINS} />
           {detail.meta?.scene?.cameraType === "free" ? (
             <TrajectoryView
@@ -844,9 +873,6 @@ export default function Page() {
               scene={detail.meta?.scene?.sceneId ?? filters.scene}
             />
           ) : null}
-          <div className="lg:col-span-2">
-            <CameraDome3D bins={detail.camera} gridSize={CAMERA_BINS} />
-          </div>
           <div className="lg:col-span-2">
             <SessionsTable sessions={data.sessions} selectedId={detail.id} onSelect={openSession} />
           </div>
@@ -884,19 +910,20 @@ export default function Page() {
             />
           </div>
           <PerfSummaryPanel perf={data.perf} />
-          <TopMeshes meshes={data.meshes} />
+          <PanelHost
+            panels={builtinPanels}
+            ctx={overviewCtx}
+            surface="overview"
+            revision={liveRevision}
+          />
           <div className="lg:col-span-2">
             <PerformanceSection data={data.performance} />
           </div>
           <InputSourceBreakdown rows={data.sources} />
-          <PointerHeatmap bins={data.pointer} gridSize={POINTER_BINS} />
           <CameraDirectionHeatmap bins={data.camera} gridSize={CAMERA_BINS} />
           {filters.cameraMode !== "viewer" ? (
             <FloorPlanHeatmap bins={data.floorPlan} cellSize={FLOOR_CELL_SIZE} />
           ) : null}
-          <div className="lg:col-span-2">
-            <CameraDome3D bins={data.camera} gridSize={CAMERA_BINS} />
-          </div>
           <div className="lg:col-span-2">
             <WorldHeatmap3D
               voxels={data.world}
