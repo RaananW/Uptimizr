@@ -14,12 +14,10 @@ import {
   type CoverageVoxel,
   type DirectionBin,
   type EventTypeCount,
-  type FlowLink,
   type InteractionSource,
   type NavigationStat,
   type PerfSummary,
   type PositionBin,
-  type QueryParams,
   type SceneInfo,
   type SceneProxyMesh,
   type SessionMeta,
@@ -66,12 +64,6 @@ const WorldHeatmap3D = dynamic(
 const ClickRays3D = dynamic(() => import("@/components/ClickRays3D").then((m) => m.ClickRays3D), {
   ssr: false,
 });
-const FlowSankey3D = dynamic(
-  () => import("@/components/FlowSankey3D").then((m) => m.FlowSankey3D),
-  {
-    ssr: false,
-  },
-);
 
 const CAMERA_BINS = 36;
 const WORLD_CELL_SIZE = 0.5;
@@ -88,9 +80,6 @@ interface Dashboard {
   perf: PerfSummary | null;
   gaze: WorldHeatmapBin[];
   clickRays: ClickRay[];
-  flowLinks: FlowLink[];
-  /** Resolved base query the Flow panel re-issues per camera mode (§7.8 slice 4). */
-  flowQuery: QueryParams;
   /** Whether the active range has first-person camera-position samples. */
   hasFirstPerson: boolean;
   proxyMeshes: SceneProxyMesh[];
@@ -122,8 +111,6 @@ const EMPTY: Dashboard = {
   perf: null,
   gaze: [],
   clickRays: [],
-  flowLinks: [],
-  flowQuery: {},
   hasFirstPerson: false,
   proxyMeshes: [],
   timeseries: [],
@@ -294,7 +281,6 @@ export default function Page() {
           perf,
           gaze,
           clickRays,
-          flowLinks,
           sceneList,
           timeseries,
           counts,
@@ -309,11 +295,6 @@ export default function Page() {
           api.perf({ ...params, source: undefined }),
           api.gazeHeatmap({ ...params, source: undefined, cellSize: WORLD_CELL_SIZE }),
           api.clickRays({ ...params, cellSize: WORLD_CELL_SIZE }),
-          // Position-aware flow (§7.8): group links by standpoint (camera-position)
-          // voxel so the panel can gate/break-down by where the viewer stood. A
-          // higher limit keeps enough (origin × direction × mesh) rows to populate
-          // the standpoint selector; the panel still caps what it draws.
-          api.flowHeatmap({ ...params, bins: CAMERA_BINS, limit: 400, groupByOrigin: true }),
           api.scenes({ since: range.since, until: range.until, limit: 200 }),
           api.timeseries({
             since: range.since,
@@ -388,17 +369,9 @@ export default function Page() {
           perf,
           gaze,
           clickRays,
-          flowLinks,
-          // The Flow panel owns the camera-mode dimension (§7.8 slice 4): give it
-          // the resolved base query (no camera mode) to re-issue per walk/orbit/all,
-          // and a data-driven first-person signal so it can default to walk. The
-          // first-person floor-plan having any bins means walkable samples exist.
-          flowQuery: {
-            since: range.since,
-            until: range.until,
-            scene: params.scene,
-            source: params.source,
-          },
+          // A data-driven first-person signal (the first-person floor-plan having
+          // any bins means walkable samples exist) drives the panel capability so
+          // walk-only panels (floor-plan, flow) can default sensibly (ADR 0026).
           hasFirstPerson: floorPlan.length > 0,
           proxyMeshes,
           timeseries,
@@ -934,18 +907,6 @@ export default function Page() {
               rays={data.clickRays}
               cellSize={WORLD_CELL_SIZE}
               proxyMeshes={data.proxyMeshes}
-            />
-          </div>
-          <div className="lg:col-span-2">
-            <FlowSankey3D
-              links={data.flowLinks}
-              gridSize={CAMERA_BINS}
-              proxyMeshes={data.proxyMeshes}
-              maxLinks={80}
-              baseUrl={baseUrl}
-              apiKey={apiKey}
-              flowQuery={data.flowQuery}
-              hasFirstPerson={data.hasFirstPerson}
             />
           </div>
           <div className="lg:col-span-2">

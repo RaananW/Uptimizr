@@ -2,7 +2,9 @@
 
 import { definePanel, type PanelContext, type PanelDefinition } from "@uptimizr/react";
 import type {
+  CameraGestureStat,
   DirectionBin,
+  FlowLink,
   HeatmapBin,
   MeshCount,
   PositionBin,
@@ -22,6 +24,22 @@ import {
   FLOOR_PLAN_HELP,
 } from "@/components/FloorPlanHeatmap";
 import {
+  FlowSankey3DView,
+  FLOW_SANKEY_TITLE,
+  FLOW_SANKEY_SUBTITLE,
+  FLOW_SANKEY_HELP,
+} from "@/components/FlowSankey3D";
+import {
+  GazeClickDivergence3DView,
+  GAZE_CLICK_TITLE,
+  GAZE_CLICK_SUBTITLE,
+} from "@/components/GazeClickDivergence3D";
+import {
+  NavigationMixView,
+  NAVIGATION_MIX_TITLE,
+  NAVIGATION_MIX_SUBTITLE,
+} from "@/components/NavigationMix";
+import {
   PointerHeatmapView,
   POINTER_HEATMAP_TITLE,
   POINTER_HEATMAP_SUBTITLE,
@@ -40,6 +58,8 @@ const CAMERA_BINS = 36;
 const FLOOR_CELL_SIZE = 1;
 /** Voxel size (world units) for the 3D world (click) heatmap. */
 const WORLD_CELL_SIZE = 0.5;
+/** Max aggregate flow links drawn before the panel caps for legibility. */
+const FLOW_MAX_LINKS = 80;
 
 /** On the session surface, scope a panel's query to the inspected session. */
 function scoped(ctx: PanelContext): QueryParams {
@@ -155,6 +175,108 @@ const worldHeatmapPanel = definePanel<WorldHeatmapData>({
 });
 
 /**
+ * Navigation-style mix — React/HTML breakdown, half width. Orbit vs. pan vs.
+ * dolly vs. zoom vs. roll vs. fly share of deliberate camera navigation, plus
+ * average gesture duration, from `camera_gesture` (ADR 0025). Gesture magnitude
+ * isn't aggregated today, so v1 reports counts + duration only (#69).
+ */
+const navigationMixPanel = definePanel<CameraGestureStat[]>({
+  id: "navigation-mix",
+  title: NAVIGATION_MIX_TITLE,
+  subtitle: NAVIGATION_MIX_SUBTITLE,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.cameraGestures({ ...scoped(ctx), source: undefined }),
+  render: ({ data }) => <NavigationMixView stats={data ?? []} />,
+});
+
+/** Aggregate gaze→mesh flow data: position-aware links + the scene-proxy backdrop. */
+interface FlowData {
+  links: FlowLink[];
+  proxyMeshes: SceneProxyMesh[];
+  /** Resolved base query (no camera mode) the panel re-issues per walk/orbit/all. */
+  flowQuery: QueryParams;
+}
+
+/**
+ * Click → part flow (Flow Sankey, 3D) — Babylon scene, full width. Aggregate
+ * gaze-direction → clicked-mesh links (no timeline), with a position-aware
+ * standpoint mode (§7.8). The panel owns the camera-mode dimension: it re-issues
+ * the flow query scoped to walk/orbit/all from `ctx.baseUrl`/`ctx.apiKey`, so
+ * `load` only seeds the initial rows + proxy backdrop. Client-only (Babylon).
+ */
+const flowPanel = definePanel<FlowData>({
+  id: "flow-sankey-3d",
+  title: FLOW_SANKEY_TITLE,
+  subtitle: FLOW_SANKEY_SUBTITLE,
+  help: FLOW_SANKEY_HELP,
+  span: 2,
+  surfaces: ["overview", "session"],
+  clientOnly: true,
+  load: async (ctx) => {
+    // The panel re-issues the flow query per camera mode, so the base query
+    // strips the global camera-mode filter (the panel's own toggle owns it).
+    const flowQuery: QueryParams = { ...scoped(ctx), cameraMode: undefined };
+    const [links, proxyMeshes] = await Promise.all([
+      ctx.api.flowHeatmap({ ...flowQuery, bins: CAMERA_BINS, limit: 400, groupByOrigin: true }),
+      resolveProxyMeshes(ctx),
+    ]);
+    return { links, proxyMeshes, flowQuery };
+  },
+  render: ({ data, ctx }) => (
+    <FlowSankey3DView
+      links={data.links}
+      gridSize={CAMERA_BINS}
+      proxyMeshes={data.proxyMeshes}
+      maxLinks={FLOW_MAX_LINKS}
+      baseUrl={ctx.baseUrl}
+      apiKey={ctx.apiKey}
+      flowQuery={data.flowQuery}
+      hasFirstPerson={ctx.capabilities.hasFirstPerson}
+    />
+  ),
+});
+
+/** Gaze-vs-click divergence data: both voxel grids (equal cellSize) + backdrop. */
+interface DivergenceData {
+  gaze: WorldHeatmapBin[];
+  click: WorldHeatmapBin[];
+  proxyMeshes: SceneProxyMesh[];
+}
+
+/**
+ * Gaze vs. click divergence overlay — Babylon scene, full width. Overlays where
+ * viewers *look* (gaze heat) against where they *act* (pointer world heat) over
+ * the scene proxy (ADR 0014), to reveal attention that doesn't convert to
+ * interaction (ADR 0030). Both grids load at the same `WORLD_CELL_SIZE` so the
+ * voxels align and the client-side divergence field is meaningful. Client-only.
+ */
+const divergencePanel = definePanel<DivergenceData>({
+  id: "gaze-click-divergence-3d",
+  title: GAZE_CLICK_TITLE,
+  subtitle: GAZE_CLICK_SUBTITLE,
+  span: 2,
+  surfaces: ["overview", "session"],
+  clientOnly: true,
+  load: async (ctx) => {
+    const [gaze, click, proxyMeshes] = await Promise.all([
+      ctx.api.gazeHeatmap({ ...scoped(ctx), source: undefined, cellSize: WORLD_CELL_SIZE }),
+      ctx.api.worldHeatmap({ ...scoped(ctx), cellSize: WORLD_CELL_SIZE }),
+      resolveProxyMeshes(ctx),
+    ]);
+    return { gaze, click, proxyMeshes };
+  },
+  render: ({ data }) => (
+    <GazeClickDivergence3DView
+      gazeVoxels={data.gaze}
+      clickVoxels={data.click}
+      cellSize={WORLD_CELL_SIZE}
+      proxyMeshes={data.proxyMeshes}
+    />
+  ),
+});
+
+/**
  * Built-in panels migrated to the ADR 0036 contract. Self-hosters append their
  * own `PanelDefinition`s to this array (build-time registration).
  */
@@ -164,4 +286,7 @@ export const builtinPanels: PanelDefinition<unknown>[] = [
   cameraDomePanel,
   floorPlanPanel,
   worldHeatmapPanel,
+  navigationMixPanel,
+  flowPanel,
+  divergencePanel,
 ] as PanelDefinition<unknown>[];
