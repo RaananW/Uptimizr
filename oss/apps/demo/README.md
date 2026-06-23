@@ -77,6 +77,25 @@ rebuilding them — much faster for iterating on the shell or store.
   (app + WASM bundles) — it holds **no visitor data** and is cleared like any site cache.
 - No accounts, no API keys, no PII. Consistent with [ADR 0003](../../../docs/adr/0003-privacy-model.md).
 
+## Usage analytics (Vercel)
+
+To understand how visitors use the demo, the **shell only** is instrumented with
+[Vercel Web Analytics](https://vercel.com/docs/analytics) (`<Analytics />` in
+[src/main.tsx](src/main.tsx)) plus a few custom events ([src/analytics.ts](src/analytics.ts)):
+
+| Event                  | When                                      |
+| ---------------------- | ----------------------------------------- |
+| `demo_prepare_started` | Visitor clicks **Prepare demo**           |
+| `demo_prepare_ready`   | In-browser store finished bootstrapping   |
+| `demo_prepare_error`   | Bootstrap failed (truncated message)      |
+| `demo_reset`           | Visitor clears the collected data         |
+| `demo_scene_changed`   | Embedded playground switches scene/engine |
+
+This runs in the **top frame only** — the embedded playground and dashboard iframes are
+**unchanged**, so no Uptimizr/Babylon internals are sent to Vercel. Web Analytics is cookieless and
+collects no PII, and `track()` is a no-op outside a Vercel deployment (local dev and tests are
+unaffected). Custom events only report on a Vercel Pro/Team plan.
+
 ## Known v1 limitations
 
 - **No live presence / SSE** — the request/response Service-Worker bridge can't stream SSE, so the

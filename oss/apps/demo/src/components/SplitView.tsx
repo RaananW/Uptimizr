@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { trackReset, trackSceneChanged } from "../analytics.js";
 
 interface SplitViewProps {
   /** Clear all collected analytics and reload both panes. */
@@ -32,6 +33,7 @@ export function SplitView({ onReset }: SplitViewProps) {
       const prev = lastContextRef.current;
       lastContextRef.current = key;
       if (prev === null || prev === key) return; // first announce, or unchanged
+      trackSceneChanged(data.sceneId ?? "", data.engineId ?? "");
       void Promise.resolve(onReset()).then(() => setDashboardNonce((n) => n + 1));
     }
     window.addEventListener("message", onMessage);
@@ -40,6 +42,7 @@ export function SplitView({ onReset }: SplitViewProps) {
 
   async function handleReset() {
     setResetting(true);
+    trackReset();
     try {
       await onReset();
       setNonce((n) => n + 1);
