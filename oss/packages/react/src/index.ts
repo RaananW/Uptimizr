@@ -11,6 +11,33 @@ export { drawPointerHeatmap, drawDirectionHeatmap, HEATMAP_BACKGROUND } from "./
 export { UptimizrProvider, useUptimizr, useCollectorApi } from "./provider";
 export { useAsync } from "./useAsync";
 export type { AsyncState } from "./useAsync";
+
+// Global filter state + helpers (shared by the dashboard and the panel contract).
+export {
+  DEFAULT_FILTERS,
+  TIME_PRESETS,
+  INPUT_SOURCES,
+  resolveRange,
+  toQueryParams,
+  pickInterval,
+  formatSource,
+} from "./filters";
+export type { FilterState, TimeWindow } from "./filters";
+export type { LiveEvent } from "./live";
+
+// Extensible dashboard panel contract (ADR 0036).
+export { definePanel } from "./panels/contract";
+export type {
+  PanelDefinition,
+  PanelContext,
+  PanelDataContext,
+  PanelActions,
+  PanelLive,
+  PanelCapabilities,
+  PanelSurface,
+  PanelSpan,
+} from "./panels/contract";
+export { usePanelData } from "./panels/usePanelData";
 export { PanelCard, PanelMessage } from "./panels/PanelCard";
 export {
   SessionsTableView,

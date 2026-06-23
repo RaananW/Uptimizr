@@ -38,6 +38,7 @@ than editing history.
 | [0033](./0033-actor-subtree-and-proxy-reconstruction.md)           | Actor subtree capture + proxy-driven replay reconstruction             | Accepted   |
 | [0034](./0034-pointer-lock-aware-capture.md)                       | Pointer-lock-aware pointer capture (crosshair = viewport centre)       | Accepted   |
 | [0035](./0035-unified-live-follow-replay-window.md)                | Unified live-follow replay window (single birdview, internal playhead) | Accepted   |
+| [0036](./0036-extensible-dashboard-panels.md)                      | Extensible dashboard panel contract (build-time registry)              | Accepted   |
 
 ## Template
 

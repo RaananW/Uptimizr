@@ -10,14 +10,8 @@
 import { useEffect, useRef, useState } from "react";
 import { CollectorApi, type PresenceSnapshot } from "@/lib/api";
 
-/** Minimal shape of a live event as delivered over the firehose. */
-export interface LiveEvent {
-  type: string;
-  sessionId: string;
-  ts: number;
-  sceneId?: string;
-  [key: string]: unknown;
-}
+export type { LiveEvent } from "@uptimizr/react";
+import type { LiveEvent } from "@uptimizr/react";
 
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 15_000;

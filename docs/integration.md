@@ -1029,3 +1029,57 @@ curl -H "x-api-key: $KEY" \
 > every store, including ClickHouse — the `clickhouse` store disables 64-bit
 > integer quoting so results match the DuckDB store byte-for-byte. The dashboard's
 > `CollectorApi` still coerces defensively.
+
+---
+
+## 5. Extending the dashboard (custom panels)
+
+The dashboard is assembled from **panels** — each built-in panel (pointer heatmap,
+top meshes, the 3D view-direction dome, …) is a plain `PanelDefinition` object from
+[`@uptimizr/react`](../oss/packages/react/README.md), and you register your own the
+same way (ADR 0036).
+
+A panel declares what data it needs and how to render its body; the dashboard host
+supplies the chrome, the grid slot, the query client, the active filters, and the
+live layer through a single `PanelContext`. The contract is powerful enough to
+express every built-in panel — a list, a 2D canvas heatmap, or a client-only
+Babylon 3D scene.
+
+```ts
+import { definePanel } from "@uptimizr/react";
+
+export const myPanel = definePanel<MyData>({
+  id: "my-panel",
+  title: "My panel",
+  subtitle: "What it shows", // string, or (ctx) => string
+  span: 1, // 1 = half width, 2 = full width
+  surfaces: ["overview", "session"], // default ["overview"]
+  clientOnly: false, // true to skip SSR (canvas / Babylon)
+  enabled: (ctx) => ctx.capabilities.hasFirstPerson, // optional gate
+  load: (ctx) => ctx.api.topMeshes({ ...ctx.params, limit: 25 }),
+  render: ({ data, ctx }) => <MyView rows={data} ctx={ctx} />,
+});
+```
+
+`load(ctx)` runs whenever the filters, surface, or inspected session change; the host
+cancels superseded requests via `ctx.signal` and tracks `loading` / `error`. Omit
+`load` for panels that self-fetch inside `render`. `render` returns the panel **body
+only** — the host wraps it in the card and grid cell.
+
+The `PanelContext` carries everything a panel needs: `api` (a shared `CollectorApi`),
+`baseUrl` / `apiKey`, the resolved `params`, raw `filters`, `surface` / `sessionId`,
+range-derived `capabilities`, host `actions` (`selectSession`, `setTimeRange`,
+`setFilters`), and the realtime `live` layer (`presence`, `enabled`,
+`subscribe(handler)`).
+
+Under live traffic, panels with a `load()` auto-refetch on the **overview** surface as events
+arrive. The **session** drill-down is a frozen snapshot; a panel that should keep updating while
+following an in-progress session subscribes via `ctx.live.subscribe(...)` and reacts to events
+where `event.sessionId === ctx.sessionId`.
+
+Panels are registered at **build time** by appending to the `builtinPanels` array in
+the dashboard's `src/panels/registry.tsx`; the `PanelHost` filters by surface and each
+panel's `enabled` gate and renders the bodies into the grid — no manual placement in
+`page.tsx`. Loading panels from a remote URL at runtime is tracked for a future
+release. See the [Custom dashboard panels guide](https://uptimizr.com/docs/guides/custom-panels/)
+for a full walkthrough.
