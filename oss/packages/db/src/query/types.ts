@@ -101,6 +101,46 @@ export interface TrajectoryPointRow {
   z: number;
 }
 
+/**
+ * One ordered, ground-binned point of an aggregate desire line (#73, ADR 0037):
+ * a `camera_sample` position binned onto the X/Z grid and keyed by `session_id`
+ * so the consumer can draw one poly-line per session and let overlaps build density.
+ */
+export interface AggregateTrajectoryPointRow {
+  session_id: string;
+  ts: string;
+  gx: number;
+  gz: number;
+}
+
+/**
+ * One (mesh, interaction-kind) tally (#72, ADR 0023): how many times each kind
+ * of interaction (hover / pick / click / drag / …) landed on a given mesh.
+ */
+export interface MeshInteractionKindRow {
+  mesh: string;
+  kind: string;
+  count: number;
+}
+
+/**
+ * Render-scale truth (#71, ADR 0021): the FPS headline paired with the
+ * resolution the engine actually rendered at. `downscaled_samples / scale_samples`
+ * gives the share of reported frames that rendered below native resolution.
+ */
+export interface RenderScaleTruthRow {
+  samples: number;
+  avg_fps: number;
+  p50_fps: number;
+  /** Mean of reported (`render_scale` > 0) values; null when nothing reported. */
+  avg_render_scale: number | null;
+  p50_render_scale: number | null;
+  /** Reported samples rendered below native resolution (0 < render_scale < 1). */
+  downscaled_samples: number;
+  /** Reported samples with a non-sentinel render scale (render_scale > 0). */
+  scale_samples: number;
+}
+
 export interface DirectionBinRow {
   azimuth_bin: number;
   elevation_bin: number;

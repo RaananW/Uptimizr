@@ -24,6 +24,7 @@ import {
   buildFlowHeatmap,
   buildListSessions,
   buildMeshDwell,
+  buildMeshInteractionKinds,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -38,6 +39,7 @@ import {
   buildInteractionsBySource,
   buildPerfDaily,
   buildPerfSummary,
+  buildRenderScaleTruth,
   buildPerfDistribution,
   buildFpsHistogram,
   buildFrameTimePercentiles,
@@ -49,6 +51,7 @@ import {
   buildPointerHeatmap,
   buildSceneCoverage,
   buildSessionTrajectory,
+  buildAggregateTrajectories,
   buildTimeseries,
   buildTopMeshes,
   buildWorldHeatmap,
@@ -156,6 +159,19 @@ export const PARITY_CASES: readonly ParityCase[] = [
     golden: [
       { x: 0, y: 0, z: 0 },
       { x: 10, y: 0, z: 0 },
+    ],
+  },
+  {
+    name: "aggregateTrajectories",
+    build: (d) => buildAggregateTrajectories(PID, { ...PARITY_RANGE, cellSize: 1 }, d),
+    sortKeys: ["session_id", "gx", "gz"],
+    ignoreColumns: ["ts"],
+    // All three camera samples binned on X/Z at cellSize 1, keyed by session:
+    // s1 walks [0,0,0]->(0,0) then [10,0,0]->(10,0); s2 stands at [0,0,0]->(0,0).
+    golden: [
+      { session_id: "s1", gx: 0, gz: 0 },
+      { session_id: "s1", gx: 10, gz: 0 },
+      { session_id: "s2", gx: 0, gz: 0 },
     ],
   },
   {
@@ -297,10 +313,38 @@ export const PARITY_CASES: readonly ParityCase[] = [
     ],
   },
   {
+    name: "meshInteractionKinds",
+    build: (d) => buildMeshInteractionKinds(PID, PARITY_RANGE, d),
+    sortKeys: ["mesh", "kind"],
+    // No `mesh_interaction` fixtures in the parity set, so the per-(mesh,kind)
+    // breakdown is empty. Validates the GROUP/ORDER renders identically (empty)
+    // on both engines (#72); real grouping is covered by the DuckDB unit suite.
+    golden: [],
+  },
+  {
     name: "perfSummary",
     build: (d) => buildPerfSummary(PID, PARITY_RANGE, d),
     sortKeys: ["samples"],
     golden: [{ samples: 3, avg_fps: 45, min_fps: 30, p50_fps: 45 }],
+  },
+  {
+    name: "renderScaleTruth",
+    build: (d) => buildRenderScaleTruth(PID, PARITY_RANGE, d),
+    sortKeys: ["samples"],
+    // Three frame_perf samples: fps (60,30,45), renderScale (1,0.8,1). avg_fps=45,
+    // p50_fps=45; render scale avg=2.8/3, p50(0.8,1,1)=1; one sample is downscaled
+    // (0.8<1) and all three report a scale.
+    golden: [
+      {
+        samples: 3,
+        avg_fps: 45,
+        p50_fps: 45,
+        avg_render_scale: 2.8 / 3,
+        p50_render_scale: 1,
+        downscaled_samples: 1,
+        scale_samples: 3,
+      },
+    ],
   },
   {
     name: "perfDistribution",

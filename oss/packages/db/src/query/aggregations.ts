@@ -292,6 +292,48 @@ export function buildSessionTrajectory(
 }
 
 /**
+ * Aggregate desire lines (#73): the *crowd* analog of a single session's
+ * trajectory. Every session's `camera_sample` path is binned onto the X/Z ground
+ * grid (`cellSize` world units) and returned as ordered points keyed by
+ * `session_id`, oldest first. Overlaying many low-opacity poly-lines lets the
+ * common routes self-reinforce into "desire lines" — the paths visitors actually
+ * walk, vs. the ones the level designer intended (ADR 0037).
+ *
+ * Binning in SQL caps cardinality and removes sub-cell jitter; the consumer
+ * dedupes consecutive identical cells and draws one poly-line per session. The
+ * row cap (`limit`) is a volume guard for busy projects.
+ */
+export function buildAggregateTrajectories(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & CameraModeOptions & { cellSize?: number; limit?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const cameraMode = cameraModeClause(bag, d, projectId, opts);
+  const cellSize = bag.add("cellSize", "f64", opts.cellSize ?? 1);
+  const limit = bag.add("limit", "u32", opts.limit ?? 20000);
+  return {
+    query: `
+      SELECT
+        session_id,
+        ${d.epochMs("ts")} AS ts,
+        floor(position[1] / ${cellSize}) AS gx,
+        floor(position[3] / ${cellSize}) AS gz
+      FROM events
+      WHERE project_id = ${pid}
+        AND event_type = 'camera_sample'
+        AND length(position) = 3${range}${scene}${cameraMode}
+      ORDER BY session_id ASC, ts ASC
+      LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * Click ↔ gaze correlation: aggregate each `pointer_click` into a ray from an
  * origin voxel to a hit voxel, where the voxel size matches the world heatmap so
  * origins and hits share the same grid.
@@ -562,6 +604,43 @@ export function buildMeshDwell(
       WHERE project_id = ${pid} AND event_type = 'mesh_visibility' AND mesh != ''${range}${scene}${session}
       GROUP BY mesh
       ORDER BY sum(visible_ms) DESC
+      LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Interaction-kind breakdown (#72): per-mesh counts of each interaction *kind*
+ * (hover / pick / click / drag / select / squeeze / grab / release / teleport)
+ * from `mesh_interaction` events (ADR 0023). The dwell ranking says *which*
+ * objects draw attention; this says *how* people act on them — separating a mesh
+ * that's merely hovered from one that's actually picked or dragged. The kind is
+ * carried in the engine-neutral `name` column (events.ts maps
+ * `mesh_interaction.kind` → `name`). Ranked by count, capped to `limit`.
+ */
+export function buildMeshInteractionKinds(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SourceOptions & SessionOptions & { limit?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const source = sourceClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const limit = bag.add("limit", "u32", opts.limit ?? 100);
+  return {
+    query: `
+      SELECT
+        mesh,
+        name AS kind,
+        count() AS count
+      FROM events
+      WHERE project_id = ${pid} AND event_type = 'mesh_interaction' AND mesh != ''${range}${scene}${source}${session}
+      GROUP BY mesh, name
+      ORDER BY count DESC
       LIMIT ${limit}
     `,
     query_params: bag.values,
@@ -922,6 +1001,45 @@ export function buildPerfSummary(
         avg(fps) AS avg_fps,
         min(fps) AS min_fps,
         ${d.quantile("fps", 0.5)} AS p50_fps
+      FROM events
+      WHERE project_id = ${pid} AND event_type = 'frame_perf'${range}${session}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Render-scale truth (#71): pairs the FPS headline with the **resolution** the
+ * engine actually rendered at. A scene can report a healthy frame rate only
+ * because an adaptive renderer quietly dropped `render_scale` below 1 — so a
+ * "good FPS" number is only honest alongside the render scale that bought it.
+ *
+ * From `frame_perf` samples (ADR 0021): average + median FPS, average + median
+ * `render_scale` (the 0 sentinel for "not reported" is excluded via NULLIF), and
+ * the counts needed to derive the *downscaled share* — the fraction of reported
+ * samples that rendered below native resolution. The share is derived consumer-
+ * side from `downscaled_samples / scale_samples` to keep it integer-exact across
+ * engines.
+ */
+export function buildRenderScaleTruth(
+  projectId: string,
+  opts: RangeOptions & SessionOptions,
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  return {
+    query: `
+      SELECT
+        count() AS samples,
+        avg(fps) AS avg_fps,
+        ${d.quantile("fps", 0.5)} AS p50_fps,
+        avg(NULLIF(render_scale, 0)) AS avg_render_scale,
+        ${d.quantile("nullIf(render_scale, 0)", 0.5)} AS p50_render_scale,
+        sum(CASE WHEN render_scale > 0 AND render_scale < 1 THEN 1 ELSE 0 END) AS downscaled_samples,
+        sum(CASE WHEN render_scale > 0 THEN 1 ELSE 0 END) AS scale_samples
       FROM events
       WHERE project_id = ${pid} AND event_type = 'frame_perf'${range}${session}
     `,

@@ -50,6 +50,49 @@ describe("CollectorApi", () => {
     const api = new CollectorApi("http://localhost:4318", "k");
     await expect(api.sceneRepresentation("scene-1")).resolves.toBeNull();
   });
+
+  it("derives the downscaled share from render-scale counts (#71)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch([
+        {
+          samples: "3",
+          avg_fps: "45",
+          p50_fps: "45",
+          avg_render_scale: "0.9333333333333333",
+          p50_render_scale: "1",
+          downscaled_samples: "1",
+          scale_samples: "4",
+        },
+      ]),
+    );
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const data = await api.renderScale();
+    expect(data.samples).toBe(3);
+    expect(data.p50_render_scale).toBe(1);
+    expect(data.downscaled_share).toBeCloseTo(0.25, 5);
+  });
+
+  it("returns a zero downscaled share when nothing reported a render scale", async () => {
+    vi.stubGlobal("fetch", mockFetch([{ samples: "0", scale_samples: "0" }]));
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const data = await api.renderScale();
+    expect(data.downscaled_share).toBe(0);
+  });
+
+  it("coerces the mesh interaction-kind breakdown to numbers (#72)", async () => {
+    vi.stubGlobal("fetch", mockFetch([{ mesh: "door", kind: "hover", count: "2" }]));
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.meshKinds();
+    expect(rows[0]).toEqual({ mesh: "door", kind: "hover", count: 2 });
+  });
+
+  it("coerces aggregate desire-line points to numbers (#73)", async () => {
+    vi.stubGlobal("fetch", mockFetch([{ session_id: "s1", ts: "1000", gx: "0", gz: "10" }]));
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const points = await api.aggregatePaths();
+    expect(points[0]).toEqual({ session_id: "s1", ts: 1000, gx: 0, gz: 10 });
+  });
 });
 
 describe("CollectorApi live (ADR 0032)", () => {

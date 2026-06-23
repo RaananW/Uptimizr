@@ -36,6 +36,16 @@ export interface MeshCount {
   count: number;
 }
 
+/**
+ * One (mesh, interaction-kind) tally (#72): how many times each interaction kind
+ * (hover / pick / click / drag / …) landed on a given mesh.
+ */
+export interface MeshInteractionKind {
+  mesh: string;
+  kind: string;
+  count: number;
+}
+
 /** A single voxel of the world-space (3D) pointer heatmap. */
 export interface WorldHeatmapBin {
   vx: number;
@@ -62,6 +72,18 @@ export interface TrajectoryPoint {
   x: number;
   y: number;
   z: number;
+}
+
+/**
+ * One ordered, ground-binned point of an aggregate desire line (#73, ADR 0037),
+ * keyed by `session_id` so the consumer can draw one poly-line per session and
+ * let overlaps build density.
+ */
+export interface AggregateTrajectoryPoint {
+  session_id: string;
+  ts: number;
+  gx: number;
+  gz: number;
 }
 
 /**
@@ -193,6 +215,22 @@ export interface PerfSummary {
   avg_fps: number;
   min_fps: number;
   p50_fps: number;
+}
+
+/**
+ * Render-scale truth (#71, ADR 0021): the FPS headline paired with the
+ * resolution the engine actually rendered at. `downscaled_share` is the fraction
+ * of reported frames that rendered below native resolution (0..1).
+ */
+export interface RenderScaleTruth {
+  samples: number;
+  avg_fps: number;
+  p50_fps: number;
+  avg_render_scale: number;
+  p50_render_scale: number;
+  downscaled_samples: number;
+  scale_samples: number;
+  downscaled_share: number;
 }
 
 /** Per-session-then-aggregate FPS percentiles (ADR 0028 §1). */
@@ -401,6 +439,17 @@ export class CollectorApi {
     );
   }
 
+  /** Per-mesh interaction-kind breakdown (#72): how people act on each object. */
+  meshKinds(params?: QueryParams): Promise<MeshInteractionKind[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/meshes/kinds", params).then((rows) =>
+      rows.map((r) => ({
+        mesh: String(r.mesh ?? ""),
+        kind: String(r.kind ?? ""),
+        count: Number(r.count ?? 0),
+      })),
+    );
+  }
+
   perf(params?: QueryParams): Promise<PerfSummary> {
     // ClickHouse returns count()/aggregate columns as JSON strings (and NULL for
     // the fps stats when there are no samples). Coerce to numbers so the empty
@@ -411,6 +460,29 @@ export class CollectorApi {
       min_fps: Number(raw.min_fps ?? 0),
       p50_fps: Number(raw.p50_fps ?? 0),
     }));
+  }
+
+  /**
+   * Render-scale truth (#71): FPS paired with the resolution the engine actually
+   * rendered at. Derives `downscaled_share` from the two counts so the ratio is
+   * exact regardless of how each engine returns its aggregates.
+   */
+  renderScale(params?: QueryParams): Promise<RenderScaleTruth> {
+    return this.get<Record<string, unknown>[]>("api/v1/perf/render-scale", params).then((rows) => {
+      const r = rows[0] ?? {};
+      const downscaled = Number(r.downscaled_samples ?? 0);
+      const scaled = Number(r.scale_samples ?? 0);
+      return {
+        samples: Number(r.samples ?? 0),
+        avg_fps: Number(r.avg_fps ?? 0),
+        p50_fps: Number(r.p50_fps ?? 0),
+        avg_render_scale: Number(r.avg_render_scale ?? 0),
+        p50_render_scale: Number(r.p50_render_scale ?? 0),
+        downscaled_samples: downscaled,
+        scale_samples: scaled,
+        downscaled_share: scaled > 0 ? downscaled / scaled : 0,
+      };
+    });
   }
 
   /** Per-session FPS distribution: p05/p50/p95 summarized across sessions (#81). */
@@ -564,6 +636,22 @@ export class CollectorApi {
         x: Number(r.x),
         y: Number(r.y),
         z: Number(r.z),
+      })),
+    );
+  }
+
+  /**
+   * Aggregate desire lines (#73, ADR 0037): every session's camera path, binned
+   * onto the ground grid and ordered, keyed by session. Overlay one low-opacity
+   * poly-line per session so the common routes self-reinforce into desire lines.
+   */
+  aggregatePaths(params?: QueryParams): Promise<AggregateTrajectoryPoint[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/paths", params).then((rows) =>
+      rows.map((r) => ({
+        session_id: String(r.session_id ?? ""),
+        ts: Number(r.ts),
+        gx: Number(r.gx),
+        gz: Number(r.gz),
       })),
     );
   }

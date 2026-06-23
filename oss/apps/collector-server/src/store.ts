@@ -16,6 +16,7 @@ import type {
   CameraGestureRow,
   MeshCountRow,
   MeshDwellRow,
+  MeshInteractionKindRow,
   PositionBinRow,
   RageClickRow,
   NavigationStatsRow,
@@ -31,6 +32,8 @@ import type {
   PerfByDeviceRow,
   PerfBySceneRow,
   ResourcePercentileRow,
+  RenderScaleTruthRow,
+  AggregateTrajectoryPointRow,
   ResolvedApiKey,
   StabilityCountRow,
   RangeOptions,
@@ -124,6 +127,16 @@ export interface CollectorStore {
     opts?: RangeOptions & SceneOptions & { limit?: number },
   ): Promise<TrajectoryPointRow[]>;
   /**
+   * Aggregate desire lines (#73, ADR 0037): every session's `camera_sample`
+   * path binned onto the X/Z ground grid and returned as ordered points keyed by
+   * session, so the consumer can overlay many low-opacity poly-lines into a
+   * crowd-level picture of the routes visitors actually walk.
+   */
+  aggregateTrajectories(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & CameraModeOptions & { cellSize?: number; limit?: number },
+  ): Promise<AggregateTrajectoryPointRow[]>;
+  /**
    * View-gated click rays (design §7.2/§7.3): each `pointer_click` correlated to
    * the nearest preceding `camera_sample`, aggregated into camera-origin → hit
    * rays grouped by voxel and clicked mesh.
@@ -165,6 +178,15 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
   ): Promise<MeshDwellRow[]>;
+  /**
+   * Interaction-kind breakdown (#72, ADR 0023): per-mesh counts of each
+   * interaction kind (hover / pick / click / drag / …) from `mesh_interaction`
+   * events — *how* people act on objects, not just which ones draw attention.
+   */
+  meshInteractionKinds(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SourceOptions & SessionOptions & { limit?: number },
+  ): Promise<MeshInteractionKindRow[]>;
   /**
    * Dead-click rate (#46): total clicks vs. clicks that hit empty space, from
    * `pointer_click` events. The consumer derives the rate.
@@ -230,6 +252,15 @@ export interface CollectorStore {
     opts?: RangeOptions & SceneOptions & SourceOptions & SessionOptions & { limit?: number },
   ): Promise<CameraGestureRow[]>;
   perfSummary(projectId: string, opts?: RangeOptions & SessionOptions): Promise<PerfSummaryRow[]>;
+  /**
+   * Render-scale truth (#71, ADR 0021): the FPS headline paired with the
+   * resolution the engine actually rendered at, so a "good FPS" reading can be
+   * read honestly against the `render_scale` an adaptive renderer bought it with.
+   */
+  renderScaleTruth(
+    projectId: string,
+    opts?: RangeOptions & SessionOptions,
+  ): Promise<RenderScaleTruthRow[]>;
   /**
    * FPS distribution (ADR 0028 §1): per-session p05/p50/p95 FPS summarized across
    * sessions (median-of-medians), so neither long sessions nor fast devices skew

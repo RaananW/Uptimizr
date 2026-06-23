@@ -20,6 +20,7 @@ import {
   buildXrAbandonment,
   buildInteractionsBySource,
   buildMeshDwell,
+  buildMeshInteractionKinds,
   buildPerfSummary,
   buildPerfDistribution,
   buildFpsHistogram,
@@ -32,6 +33,8 @@ import {
   buildPointerHeatmap,
   buildSceneCoverage,
   buildSessionTrajectory,
+  buildAggregateTrajectories,
+  buildRenderScaleTruth,
   buildTimeseries,
   buildTopMeshes,
   buildWorldHeatmap,
@@ -67,12 +70,15 @@ import {
   type HeatmapBinRow,
   type MeshCountRow,
   type MeshDwellRow,
+  type MeshInteractionKindRow,
   type NavigationStatsRow,
   type XrRotationRateRow,
   type XrSourceUsageRow,
   type XrAbandonmentRow,
   type InteractionSourceRow,
   type PerfSummaryRow,
+  type RenderScaleTruthRow,
+  type AggregateTrajectoryPointRow,
   type PerfDistributionRow,
   type FpsHistogramRow,
   type FrameTimePercentileRow,
@@ -133,6 +139,11 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
         db,
         buildSessionTrajectory(projectId, { ...opts, session: sessionId }, duckdbDialect),
       ),
+    aggregateTrajectories: (projectId, opts = {}) =>
+      runDuckdbQuery<AggregateTrajectoryPointRow>(
+        db,
+        buildAggregateTrajectories(projectId, opts, duckdbDialect),
+      ),
     clickGazeRays: (projectId, opts = {}) =>
       runDuckdbQuery<ClickGazeRayRow>(db, buildClickGazeRay(projectId, opts, duckdbDialect)),
     flowHeatmap: (projectId, opts = {}) =>
@@ -141,6 +152,11 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<MeshCountRow>(db, buildTopMeshes(projectId, opts, duckdbDialect)),
     meshDwell: (projectId, opts = {}) =>
       runDuckdbQuery<MeshDwellRow>(db, buildMeshDwell(projectId, opts, duckdbDialect)),
+    meshInteractionKinds: (projectId, opts = {}) =>
+      runDuckdbQuery<MeshInteractionKindRow>(
+        db,
+        buildMeshInteractionKinds(projectId, opts, duckdbDialect),
+      ),
     deadClicks: (projectId, opts = {}) =>
       runDuckdbQuery<DeadClickRow>(db, buildDeadClicks(projectId, opts, duckdbDialect)),
     rageClicks: (projectId, opts = {}) =>
@@ -160,6 +176,11 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<CameraGestureRow>(db, buildCameraGestures(projectId, opts, duckdbDialect)),
     perfSummary: (projectId, opts = {}) =>
       runDuckdbQuery<PerfSummaryRow>(db, buildPerfSummary(projectId, opts, duckdbDialect)),
+    renderScaleTruth: (projectId, opts = {}) =>
+      runDuckdbQuery<RenderScaleTruthRow>(
+        db,
+        buildRenderScaleTruth(projectId, opts, duckdbDialect),
+      ),
     perfDistribution: (projectId, opts = {}) =>
       runDuckdbQuery<PerfDistributionRow>(
         db,

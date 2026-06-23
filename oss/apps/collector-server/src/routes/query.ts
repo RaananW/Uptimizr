@@ -117,6 +117,20 @@ const cameraPositionQueryParams = z.object({
   cameraMode: cameraModeFilter,
 });
 
+/**
+ * Aggregate desire-line params (#73, ADR 0037): a ground-bin `cellSize` plus
+ * scene + camera-mode filters and a generous point cap (poly-lines for *every*
+ * session can run long). No single-session filter — this is the crowd view.
+ */
+const aggregatePathQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  cellSize: z.coerce.number().positive().max(1000).optional(),
+  limit: z.coerce.number().int().positive().max(50000).optional(),
+  scene: sceneFilter,
+  cameraMode: cameraModeFilter,
+});
+
 /** Session-trajectory params: a time range, scene filter, and point cap. */
 const trajectoryQueryParams = z.object({
   since: z.coerce.number().int().optional(),
@@ -359,6 +373,23 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     },
   );
 
+  // Aggregate desire lines (#73, ADR 0037) — every session's camera path binned
+  // onto the ground grid and returned as ordered, session-keyed points; the
+  // dashboard overlays many low-opacity poly-lines into a crowd-level route map.
+  r.get(
+    "/api/v1/paths",
+    { schema: { querystring: aggregatePathQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      const { cameraMode, ...rest } = req.query;
+      return store.aggregateTrajectories(projectId, {
+        ...rest,
+        cameraType: cameraTypeForMode(cameraMode),
+      });
+    },
+  );
+
   // View-gated click rays (design §7.2/§7.3) — camera-origin → hit rays per voxel/mesh.
   r.get(
     "/api/v1/heatmaps/click-rays",
@@ -409,6 +440,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.meshDwell(projectId, req.query);
+    },
+  );
+
+  // Interaction-kind breakdown (#72, ADR 0023) — per-mesh counts of each
+  // interaction kind (hover / pick / click / drag / …) from `mesh_interaction`
+  // events; how an audience acts on objects, not just which ones draw attention.
+  r.get(
+    "/api/v1/meshes/kinds",
+    { schema: { querystring: pointerHeatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.meshInteractionKinds(projectId, req.query);
     },
   );
 
@@ -467,6 +511,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.perfSummary(projectId, req.query);
+    },
+  );
+
+  // Render-scale truth (#71, ADR 0021) — the FPS headline paired with the
+  // resolution the engine actually rendered at, so "good FPS" can be read against
+  // the render scale an adaptive renderer bought it with.
+  r.get(
+    "/api/v1/perf/render-scale",
+    { schema: { querystring: sessionScopedRangeQuery } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.renderScaleTruth(projectId, req.query);
     },
   );
 

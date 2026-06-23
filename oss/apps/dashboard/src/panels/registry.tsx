@@ -2,11 +2,14 @@
 
 import { definePanel, type PanelContext, type PanelDefinition } from "@uptimizr/react";
 import type {
+  AggregateTrajectoryPoint,
   DirectionBin,
   HeatmapBin,
   MeshCount,
+  MeshInteractionKind,
   PositionBin,
   QueryParams,
+  RenderScaleTruth as RenderScaleTruthData,
   SceneProxyMesh,
   WorldHeatmapBin,
 } from "@/lib/api";
@@ -21,6 +24,24 @@ import {
   FLOOR_PLAN_SUBTITLE,
   FLOOR_PLAN_HELP,
 } from "@/components/FloorPlanHeatmap";
+import {
+  DesireLinesView,
+  DESIRE_LINES_TITLE,
+  DESIRE_LINES_SUBTITLE,
+  DESIRE_LINES_HELP,
+} from "@/components/DesireLines";
+import {
+  MeshInteractionKindsView,
+  MESH_KINDS_TITLE,
+  MESH_KINDS_SUBTITLE,
+  MESH_KINDS_HELP,
+} from "@/components/MeshInteractionKinds";
+import {
+  RenderScaleTruthView,
+  RENDER_SCALE_TITLE,
+  RENDER_SCALE_SUBTITLE,
+  RENDER_SCALE_HELP,
+} from "@/components/RenderScaleTruth";
 import {
   PointerHeatmapView,
   POINTER_HEATMAP_TITLE,
@@ -119,6 +140,56 @@ const floorPlanPanel = definePanel<PositionBin[]>({
   render: ({ data }) => <FloorPlanHeatmapView bins={data ?? []} cellSize={FLOOR_CELL_SIZE} />,
 });
 
+/**
+ * Aggregate desire lines (#73, ADR 0037) — 2D canvas, half width. Every
+ * session's binned camera path overlaid as a faint poly-line; common routes
+ * self-reinforce into bright desire lines. Overview-only (it's a crowd view) and
+ * hidden in the orbit/"viewer" camera mode, where there is no walked path.
+ */
+const desireLinesPanel = definePanel<AggregateTrajectoryPoint[]>({
+  id: "desire-lines",
+  title: DESIRE_LINES_TITLE,
+  subtitle: DESIRE_LINES_SUBTITLE,
+  help: DESIRE_LINES_HELP,
+  span: 1,
+  surfaces: ["overview"],
+  clientOnly: true,
+  enabled: (ctx) => ctx.filters.cameraMode !== "viewer",
+  load: (ctx) => ctx.api.aggregatePaths({ ...scoped(ctx), cellSize: FLOOR_CELL_SIZE }),
+  render: ({ data }) => <DesireLinesView points={data ?? []} />,
+});
+
+/**
+ * Interaction-kind breakdown (#72, ADR 0023) — React/HTML stacked bars, half
+ * width. Per-mesh split of how visitors act on objects (hover / pick / drag / …).
+ */
+const meshKindsPanel = definePanel<MeshInteractionKind[]>({
+  id: "mesh-interaction-kinds",
+  title: MESH_KINDS_TITLE,
+  subtitle: MESH_KINDS_SUBTITLE,
+  help: MESH_KINDS_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.meshKinds({ ...scoped(ctx), limit: 200 }),
+  render: ({ data }) => <MeshInteractionKindsView rows={data ?? []} />,
+});
+
+/**
+ * Render-scale truth (#71, ADR 0021) — React/HTML stat block, half width. FPS
+ * paired with the resolution the engine actually rendered at, flagging "good FPS
+ * at a low render scale". A single aggregate row, so no client-only Babylon.
+ */
+const renderScalePanel = definePanel<RenderScaleTruthData>({
+  id: "render-scale-truth",
+  title: RENDER_SCALE_TITLE,
+  subtitle: RENDER_SCALE_SUBTITLE,
+  help: RENDER_SCALE_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.renderScale(scoped(ctx)),
+  render: ({ data }) => <RenderScaleTruthView data={data} />,
+});
+
 /** World (click) heatmap data: voxels + the scene-proxy backdrop. */
 interface WorldHeatmapData {
   voxels: WorldHeatmapBin[];
@@ -163,5 +234,8 @@ export const builtinPanels: PanelDefinition<unknown>[] = [
   pointerHeatmapPanel,
   cameraDomePanel,
   floorPlanPanel,
+  desireLinesPanel,
+  meshKindsPanel,
+  renderScalePanel,
   worldHeatmapPanel,
 ] as PanelDefinition<unknown>[];
