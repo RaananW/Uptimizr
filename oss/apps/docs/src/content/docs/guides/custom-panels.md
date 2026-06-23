@@ -135,6 +135,8 @@ export const builtinPanels: PanelDefinition<unknown>[] = [
   topMeshesPanel,
   pointerHeatmapPanel,
   cameraDomePanel,
+  floorPlanPanel,
+  worldHeatmapPanel,
   myPanel, // ← your panel
 ] as PanelDefinition<unknown>[];
 ```

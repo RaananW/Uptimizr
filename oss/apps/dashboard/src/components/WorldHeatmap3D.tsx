@@ -14,38 +14,44 @@ type Phase = "loading" | "ready" | "empty" | "error";
 /** Base mesh used to draw each populated voxel. */
 type MarkerShape = "sphere" | "cube";
 
-/**
- * World-space (3D) pointer heatmap. Renders each populated voxel as a marker
- * (sphere by default, cube optional), colored and sized by hit density, using
- * thin instances so thousands of voxels stay a single draw call. When a
- * registered scene proxy is supplied, its
- * per-mesh AABBs are drawn as a faint wireframe backdrop so hotspots read
- * against the developer's actual scene (ADR 0014). Babylon loads dynamically
- * (browser-only).
- */
-export function WorldHeatmap3D({
-  voxels,
-  cellSize,
-  proxyMeshes = [],
-  title = "World heatmap (3D)",
-  subtitle = "Pointer hit-points voxel-binned in world space — drag to orbit, +/- to zoom",
-  legendTitle = "Pointer-hit density",
-  legendLow = "few hits",
-  legendHigh = "most hits",
-  legendNote = "Each marker is a voxel where the pointer hit your scene. Color & size scale with hits, normalized to the busiest cell.",
-  emptyLabel = "No 3D hit-points in range.",
-}: {
+/** Default panel chrome copy for the world (click) heatmap. */
+export const WORLD_HEATMAP_TITLE = "World heatmap (3D)";
+export const WORLD_HEATMAP_SUBTITLE =
+  "Pointer hit-points voxel-binned in world space — drag to orbit, +/- to zoom";
+
+/** Props shared by the body view and the chrome-wrapped legacy component. */
+interface WorldHeatmap3DViewProps {
   voxels: WorldHeatmapBin[];
   cellSize: number;
   proxyMeshes?: SceneProxyMesh[];
-  title?: string;
-  subtitle?: string;
   legendTitle?: string;
   legendLow?: string;
   legendHigh?: string;
   legendNote?: string;
   emptyLabel?: string;
-}) {
+}
+
+/**
+ * World-space (3D) pointer heatmap — the panel BODY only (no chrome). Renders
+ * each populated voxel as a marker (sphere by default, cube optional), colored
+ * and sized by hit density, using thin instances so thousands of voxels stay a
+ * single draw call. When a registered scene proxy is supplied, its per-mesh
+ * AABBs are drawn as a faint wireframe backdrop so hotspots read against the
+ * developer's actual scene (ADR 0014). Babylon loads dynamically (browser-only).
+ *
+ * The host supplies title/subtitle via the ADR 0036 panel contract;
+ * {@link WorldHeatmap3D} wraps this in panel chrome for legacy call sites.
+ */
+export function WorldHeatmap3DView({
+  voxels,
+  cellSize,
+  proxyMeshes = [],
+  legendTitle = "Pointer-hit density",
+  legendLow = "few hits",
+  legendHigh = "most hits",
+  legendNote = "Each marker is a voxel where the pointer hit your scene. Color & size scale with hits, normalized to the busiest cell.",
+  emptyLabel = "No 3D hit-points in range.",
+}: WorldHeatmap3DViewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraRef = useRef<OrbitZoomCamera | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
@@ -282,43 +288,54 @@ export function WorldHeatmap3D({
   }, [voxels, cellSize, proxyMeshes, markerShape]);
 
   return (
+    <div className="relative">
+      <canvas
+        ref={canvasRef}
+        className="aspect-video w-full rounded-lg border border-edge bg-ink"
+      />
+      {tip ? (
+        <div
+          className="pointer-events-none absolute z-10 max-w-[16rem] truncate rounded border border-edge bg-ink/90 px-1.5 py-0.5 text-xs text-white shadow backdrop-blur"
+          style={{ left: tip.x + 12, top: tip.y + 12 }}
+        >
+          {tip.label}
+        </div>
+      ) : null}
+      {phase === "ready" ? (
+        <>
+          <MarkerShapeToggle shape={markerShape} onChange={setMarkerShape} />
+          <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
+          <HeatLegend
+            title={legendTitle}
+            lowLabel={legendLow}
+            highLabel={legendHigh}
+            note={legendNote}
+          />
+        </>
+      ) : (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-fg-muted">
+          {phase === "loading"
+            ? "Rendering…"
+            : phase === "empty"
+              ? emptyLabel
+              : phase === "error"
+                ? (error ?? "Heatmap unavailable.")
+                : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Chrome-wrapped world heatmap for legacy call sites (the click + gaze mounts). */
+export function WorldHeatmap3D({
+  title = WORLD_HEATMAP_TITLE,
+  subtitle = WORLD_HEATMAP_SUBTITLE,
+  ...view
+}: { title?: string; subtitle?: string } & WorldHeatmap3DViewProps) {
+  return (
     <Panel title={title} subtitle={subtitle}>
-      <div className="relative">
-        <canvas
-          ref={canvasRef}
-          className="aspect-video w-full rounded-lg border border-edge bg-ink"
-        />
-        {tip ? (
-          <div
-            className="pointer-events-none absolute z-10 max-w-[16rem] truncate rounded border border-edge bg-ink/90 px-1.5 py-0.5 text-xs text-white shadow backdrop-blur"
-            style={{ left: tip.x + 12, top: tip.y + 12 }}
-          >
-            {tip.label}
-          </div>
-        ) : null}
-        {phase === "ready" ? (
-          <>
-            <MarkerShapeToggle shape={markerShape} onChange={setMarkerShape} />
-            <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
-            <HeatLegend
-              title={legendTitle}
-              lowLabel={legendLow}
-              highLabel={legendHigh}
-              note={legendNote}
-            />
-          </>
-        ) : (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-fg-muted">
-            {phase === "loading"
-              ? "Rendering…"
-              : phase === "empty"
-                ? emptyLabel
-                : phase === "error"
-                  ? (error ?? "Heatmap unavailable.")
-                  : null}
-          </div>
-        )}
-      </div>
+      <WorldHeatmap3DView {...view} />
     </Panel>
   );
 }
