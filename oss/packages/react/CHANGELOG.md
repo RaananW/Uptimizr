@@ -1,5 +1,11 @@
 # @uptimizr/react
 
+## 0.2.0
+
+### Minor Changes
+
+- 8f14077: feat(react): add the extensible dashboard panel contract — `PanelDefinition`, `PanelContext`, `definePanel`, and `usePanelData`, plus shared filter (`FilterState`, `toQueryParams`, …) and `LiveEvent` helpers — so the dashboard and embeds can register custom panels (ADR 0036)
+
 ## 0.1.1
 
 ### Patch Changes
