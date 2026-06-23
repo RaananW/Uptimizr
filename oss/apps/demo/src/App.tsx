@@ -3,6 +3,7 @@ import { SplitView } from "./components/SplitView.js";
 import { WelcomeScreen } from "./components/WelcomeScreen.js";
 import { prepareDemo, type PrepareProgress } from "./prepare.js";
 import { disposeDb, resetData } from "./store/host.js";
+import { trackPrepareError, trackPrepareReady, trackPrepareStarted } from "./analytics.js";
 
 type Phase = "welcome" | "ready";
 type PrepareState = "idle" | "preparing" | "error";
@@ -22,12 +23,16 @@ export function App() {
   const onPrepare = useCallback(async () => {
     setPrepareState("preparing");
     setError(null);
+    trackPrepareStarted();
     try {
       await prepareDemo(setProgress);
       setPhase("ready");
+      trackPrepareReady();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
       setPrepareState("error");
+      trackPrepareError(message);
     }
   }, []);
 
