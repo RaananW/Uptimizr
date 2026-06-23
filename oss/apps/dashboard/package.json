@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/dashboard",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Uptimizr analytics dashboard — a static-export SPA that reads the collector query API. Serve it standalone, all-in-one via the collector, or drop the assets on any static host.",
   "keywords": [
     "uptimizr",
