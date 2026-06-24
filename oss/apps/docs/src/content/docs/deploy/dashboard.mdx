@@ -22,7 +22,8 @@ with `x-api-key`. The key only ever reads its own project's data.
 - **Flow Sankey** — gaze→click flow links rendered in 3D, with position-aware **standpoint** gating,
   a **two-stage** (standpoint → gaze → mesh) view, and a camera-mode toggle (see below).
 - **Mesh rankings** — most-interacted meshes, a **part-popularity leaderboard** (trend sparkline +
-  per-mesh input-source split), interaction-kind breakdown, object dwell, hover hesitation.
+  per-mesh input-source split, scoped to active interactions so passive gaze doesn't inflate the
+  ranking), interaction-kind breakdown, object dwell, hover hesitation.
 - **Input** — an **input-modality split** (mouse/touch/keyboard/gamepad/XR share) with the most-used
   app-level shortcuts.
 - **Performance** — FPS/frame-time summaries with percentile aggregation, a **performance
@@ -58,6 +59,59 @@ It reads `GET /api/v1/heatmaps/flow` and exposes three controls:
 Standpoint gating is most meaningful in **walkable** scenes. For a single fixed orbit camera there is
 effectively one standpoint, so _Aggregate / All_ is the natural view.
 :::
+
+## Part-popularity leaderboard panel
+
+The **Part-popularity leaderboard** (#74) ranks meshes by how often people *act on* them, and adds
+two things the plain Mesh-rankings list doesn't: a per-row **trend sparkline** (rising/falling over
+the active range) and an **input-source split** (mouse / touch / keyboard / gamepad / XR) you can
+expand per row. It reads `GET /api/v1/meshes/sources` for the source split and
+`GET /api/v1/meshes/trend` for the sparkline.
+
+:::note[Active interactions only — gaze is excluded]
+The leaderboard counts **active** interactions only — `mesh_interaction` events (hover / pick /
+click / drag) and `pointer_click`. Passive **gaze** (`camera_sample` head-forward hits, the same
+signal behind the view-direction heatmap) is deliberately **not** counted, so a mesh that visitors
+merely look at past won't out-rank one they actually click or drag.
+
+This is an intentional divergence from `GET /api/v1/meshes/top` (and the **Mesh rankings** panel),
+which counts *every* mesh-referencing event including gaze. Use Mesh-rankings for "what's in view"
+and the leaderboard for "what gets used"; the two will diverge whenever gaze-only hits exist.
+:::
+
+## Dead-zone report panel
+
+The **Dead-zone report** (#76) surfaces the *negative space* of a walkable scene: registered proxy
+meshes that visitors' cameras **never approached**. It answers "which parts of my scene is nobody
+getting near?" — the inverse of the coverage heatmap.
+
+**How it works.** The panel reads two things and intersects them in the browser (no extra server
+join):
+
+1. **Scene coverage** — `GET /api/v1/coverage` returns the occupied **camera-position voxels** (a 1
+   world-unit grid) with a visit `count` each: where the audience actually stood.
+2. **The registered scene proxy** — the per-mesh bounding boxes (AABBs) from
+   `GET /api/v1/scenes/:id/representation` (ADR 0014): the geometry that *could* be visited.
+
+For each proxy mesh it sums the visit counts of every coverage voxel whose centre falls inside that
+mesh's AABB, padded outward by one cell so "standing right next to it" still counts. That sum is the
+mesh's **nearby-samples** score. Meshes are ranked **coldest first**; a mesh with **zero** nearby
+camera samples is flagged **dead**. The header reads e.g. _"5 of 42 proxy meshes are dead"_ — meaning
+5 registered meshes had no camera-position voxel land within a padded cell of their bounds over the
+selected range.
+
+:::caution[It measures proximity, not attention]
+"Dead" means **no camera got physically near the mesh**, not "nobody looked at it". A visitor can
+gaze across a room at a far wall without ever walking up to it — that wall can read as dead while
+still drawing gaze. Pair the dead-zone report with the view-direction heatmap to tell *unseen* (no
+gaze) apart from *unvisited* (no approach).
+:::
+
+The panel needs both a **walkable/first-person** scene (so there are camera-position samples to bin)
+and a **registered proxy** (so there's reference geometry to call dead). It renders a graceful
+empty-state when no proxy is registered, and a "widen the range" hint when there are no camera
+samples in range. See [Scene proxy](/docs/connectors/babylon/#scene-proxy-3d-heatmap-backdrop) for
+registering a proxy with `scanSceneProxy`.
 
 ## Build for production
 

@@ -134,7 +134,23 @@ function ok(body: unknown): DemoResponse {
  */
 type BuilderRoute = (pid: string, opts: DemoOpts, sp: URLSearchParams) => QuerySpec;
 
-const READ_ROUTES: Record<string, BuilderRoute> = {
+/**
+ * Read routes handled out-of-band in {@link handleRequest} rather than through
+ * {@link READ_ROUTES} — the parameterized session/scene endpoints plus the static
+ * scene-representation listing. Listed in the collector's `:param` literal form so
+ * the route-parity test (`routeParity.test.ts`) can diff this demo's coverage
+ * against the collector's `query.ts` one-to-one. Keep in sync with the handlers
+ * below.
+ */
+export const DEMO_SPECIAL_GET_ROUTES = [
+  "/api/v1/sessions/:sessionId/trajectory",
+  "/api/v1/sessions/:id/events",
+  "/api/v1/sessions/:id/meta",
+  "/api/v1/scene-representations",
+  "/api/v1/scenes/:sceneId/representation",
+] as const;
+
+export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/sessions": (pid, o) => buildListSessions(pid, o, duckdbDialect),
   "/api/v1/heatmaps/pointer": (pid, o) => buildPointerHeatmap(pid, o, duckdbDialect),
   "/api/v1/heatmaps/world": (pid, o) => buildWorldHeatmap(pid, o, duckdbDialect),
