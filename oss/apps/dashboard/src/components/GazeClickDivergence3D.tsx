@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { SceneProxyMesh, WorldHeatmapBin } from "@/lib/api";
 import { heatRgb } from "@/lib/heat";
-import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "@/lib/orbitZoom";
+import {
+  attachDoubleClickFocus,
+  disableWheelZoom,
+  resetFocus,
+  stepZoom,
+  type OrbitFocusCamera,
+  type OrbitHome,
+} from "@/lib/orbitZoom";
 import { attachMeshHover, type HoverTip } from "@/lib/sceneHover";
 import { Panel } from "./Panel";
 import { ZoomButtons } from "./ZoomButtons";
@@ -16,7 +23,7 @@ type LayerMode = "overlay" | "gaze" | "click" | "divergence";
 /** Default panel chrome copy for the gaze-vs-click divergence overlay. */
 export const GAZE_CLICK_TITLE = "Gaze vs. click divergence";
 export const GAZE_CLICK_SUBTITLE =
-  "Where viewers look (gaze) vs. where they act (clicks), voxel-binned in world space";
+  "Where viewers look (gaze) vs. where they act (clicks), voxel-binned in world space — double-click to focus";
 
 /** Cool ramp (gaze): deep blue → cyan, the visual opposite of the warm click heat. */
 function coolRgb(t: number): [number, number, number] {
@@ -59,7 +66,8 @@ export function GazeClickDivergence3DView({
   proxyMeshes?: SceneProxyMesh[];
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const cameraRef = useRef<OrbitZoomCamera | null>(null);
+  const cameraRef = useRef<OrbitFocusCamera | null>(null);
+  const homeRef = useRef<OrbitHome | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<LayerMode>("overlay");
@@ -156,6 +164,12 @@ export function GazeClickDivergence3DView({
         camera.attachControl(canvas, true);
         disableWheelZoom(camera);
         cameraRef.current = camera;
+        homeRef.current = {
+          target: center,
+          alpha: camera.alpha,
+          beta: camera.beta,
+          radius: camera.radius,
+        };
         new HemisphericLight("divergence-light", new Vector3(0.4, 1, 0.3), scene);
 
         // Faint wireframe backdrop: one thin-instanced unit box per proxy AABB.
@@ -275,13 +289,16 @@ export function GazeClickDivergence3DView({
         const onResize = () => engine.resize();
         window.addEventListener("resize", onResize);
         const detachHover = attachMeshHover(scene, canvas, setTip);
+        const detachFocus = attachDoubleClickFocus(scene, canvas, camera);
 
         setPhase("ready");
         cleanup = () => {
           window.removeEventListener("resize", onResize);
           detachHover();
+          detachFocus();
           setTip(null);
           cameraRef.current = null;
+          homeRef.current = null;
           scene.dispose();
           engine.dispose();
         };
@@ -328,7 +345,14 @@ export function GazeClickDivergence3DView({
               Divergence
             </ModeButton>
           </div>
-          <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
+          <ZoomButtons
+            onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)}
+            onReset={() =>
+              cameraRef.current &&
+              homeRef.current &&
+              resetFocus(cameraRef.current, homeRef.current)
+            }
+          />
           <DivergenceLegend mode={mode} />
         </>
       ) : (

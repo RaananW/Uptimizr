@@ -580,7 +580,10 @@ In the dashboard's 3D panels (Flow Sankey, Click rays, World/Gaze heatmap,
 View-direction dome), hovering one of these proxy boxes — or a flow mesh
 node/ribbon — shows the **mesh name** in a pointer tooltip, so you can identify a
 hotspot without guessing; the dome names the look-direction bin instead. The
-tooltip clears on pointer-out and never hijacks orbit/zoom.
+tooltip clears on pointer-out and never hijacks orbit/zoom. Those panels orbit
+the scene center by default; **double-click any point** to re-center the orbit
+pivot there (handy in large walkable scenes) and use the on-canvas **recenter**
+button to return focus to the default framing.
 
 ### Hover hesitation (`hoverDwell`) — opt-in
 

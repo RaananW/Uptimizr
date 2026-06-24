@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ClickRay, SceneProxyMesh } from "@/lib/api";
 import { heatRgb } from "@/lib/heat";
-import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "@/lib/orbitZoom";
+import {
+  attachDoubleClickFocus,
+  disableWheelZoom,
+  resetFocus,
+  stepZoom,
+  type OrbitFocusCamera,
+  type OrbitHome,
+} from "@/lib/orbitZoom";
 import { attachMeshHover, type HoverTip } from "@/lib/sceneHover";
 import { HeatLegend } from "./HeatLegend";
 import { Panel } from "./Panel";
@@ -47,7 +54,8 @@ export function ClickRays3D({
   proxyMeshes?: SceneProxyMesh[];
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const cameraRef = useRef<OrbitZoomCamera | null>(null);
+  const cameraRef = useRef<OrbitFocusCamera | null>(null);
+  const homeRef = useRef<OrbitHome | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string>(ALL);
@@ -183,6 +191,12 @@ export function ClickRays3D({
         camera.attachControl(canvas, true);
         disableWheelZoom(camera);
         cameraRef.current = camera;
+        homeRef.current = {
+          target: center,
+          alpha: camera.alpha,
+          beta: camera.beta,
+          radius: camera.radius,
+        };
         new HemisphericLight("rays-light", new Vector3(0.4, 1, 0.3), scene);
 
         // Faint wireframe backdrop: one thin-instanced unit box per proxy AABB.
@@ -339,13 +353,16 @@ export function ClickRays3D({
         const onResize = () => engine.resize();
         window.addEventListener("resize", onResize);
         const detachHover = attachMeshHover(scene, canvas, setTip);
+        const detachFocus = attachDoubleClickFocus(scene, canvas, camera);
 
         setPhase("ready");
         cleanup = () => {
           window.removeEventListener("resize", onResize);
           detachHover();
+          detachFocus();
           setTip(null);
           cameraRef.current = null;
+          homeRef.current = null;
           scene.dispose();
           engine.dispose();
         };
@@ -365,7 +382,7 @@ export function ClickRays3D({
   return (
     <Panel
       title="Click rays (3D)"
-      subtitle="Each click joined to the view it was made from — gate by viewpoint or focus a mesh"
+      subtitle="Each click joined to the view it was made from — gate by viewpoint or focus a mesh; double-click to recenter"
     >
       <div className="relative">
         <canvas
@@ -401,7 +418,14 @@ export function ClickRays3D({
                 options={meshes.map((m) => ({ value: m.name, label: `${m.name} · ${m.count}` }))}
               />
             </div>
-            <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
+            <ZoomButtons
+              onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)}
+              onReset={() =>
+                cameraRef.current &&
+                homeRef.current &&
+                resetFocus(cameraRef.current, homeRef.current)
+              }
+            />
             <HeatLegend
               title="Click volume"
               lowLabel="few clicks"

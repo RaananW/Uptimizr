@@ -99,6 +99,15 @@ test("3D panel controls render and toggle without errors", async ({ page, reques
   await dome.getByRole("button", { name: "Markers", exact: true }).click();
   await expect(domeCanvas).toBeVisible();
 
+  // Reset-focus control (#91): a recenter button sits with the zoom controls on
+  // every orbit panel. We can't assert the 3D pivot pixels, but the DOM button
+  // must render and click without tearing down the canvas. Double-click focus
+  // itself relies on canvas picking, which is unit-tested (flaky over WebGL).
+  const recenter = dome.getByRole("button", { name: "Reset camera focus to center" });
+  await expect(recenter).toBeVisible({ timeout: 20_000 });
+  await recenter.click();
+  await expect(domeCanvas).toBeVisible();
+
   // --- Flow Sankey (3D): camera-mode + two-stage toggles (#120–#122) ---
   const flow = page.locator("section", { hasText: "Flow Sankey (3D)" });
   await flow.scrollIntoViewIfNeeded();

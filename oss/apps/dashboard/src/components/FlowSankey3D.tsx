@@ -12,7 +12,14 @@ import {
   type TwoStageRibbon,
 } from "@/lib/flowGraph";
 import { heatRgb } from "@/lib/heat";
-import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "@/lib/orbitZoom";
+import {
+  attachDoubleClickFocus,
+  disableWheelZoom,
+  resetFocus,
+  stepZoom,
+  type OrbitFocusCamera,
+  type OrbitHome,
+} from "@/lib/orbitZoom";
 import { attachMeshHover, type HoverTip } from "@/lib/sceneHover";
 import { HeatLegend } from "./HeatLegend";
 import { Panel } from "./Panel";
@@ -77,7 +84,8 @@ export function FlowSankey3DView({
   hasFirstPerson?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const cameraRef = useRef<OrbitZoomCamera | null>(null);
+  const cameraRef = useRef<OrbitFocusCamera | null>(null);
+  const homeRef = useRef<OrbitHome | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
   const [meshFocus, setMeshFocus] = useState<string>(ALL);
@@ -594,6 +602,12 @@ export function FlowSankey3DView({
         camera.attachControl(canvas, true);
         disableWheelZoom(camera);
         cameraRef.current = camera;
+        homeRef.current = {
+          target: center,
+          alpha: camera.alpha,
+          beta: camera.beta,
+          radius: camera.radius,
+        };
         new HemisphericLight("flow-light", new Vector3(0.3, 1, 0.2), scene);
 
         // Faint source dome reference.
@@ -641,13 +655,16 @@ export function FlowSankey3DView({
         const onResize = () => engine.resize();
         window.addEventListener("resize", onResize);
         const detachHover = attachMeshHover(scene, canvas, setTip);
+        const detachFocus = attachDoubleClickFocus(scene, canvas, camera);
 
         setPhase("ready");
         cleanup = () => {
           window.removeEventListener("resize", onResize);
           detachHover();
+          detachFocus();
           setTip(null);
           cameraRef.current = null;
+          homeRef.current = null;
           scene.dispose();
           engine.dispose();
         };
@@ -816,30 +833,40 @@ export function FlowSankey3DView({
           tube.metadata = { hoverLabel: labelById.get(r.meshId) ?? r.meshId };
         }
 
+        const tsCenter = Vector3.Zero();
         const camera = new ArcRotateCamera(
           "ts-cam",
           Math.PI / 2,
           Math.PI / 2.4,
           8.5,
-          Vector3.Zero(),
+          tsCenter,
           scene,
         );
         camera.attachControl(canvas, true);
         disableWheelZoom(camera);
         cameraRef.current = camera;
+        homeRef.current = {
+          target: tsCenter,
+          alpha: camera.alpha,
+          beta: camera.beta,
+          radius: camera.radius,
+        };
         new HemisphericLight("ts-light", new Vector3(0.3, 1, 0.2), scene);
 
         engine.runRenderLoop(() => scene.render());
         const onResize = () => engine.resize();
         window.addEventListener("resize", onResize);
         const detachHover = attachMeshHover(scene, canvas, setTip);
+        const detachFocus = attachDoubleClickFocus(scene, canvas, camera);
 
         setPhase("ready");
         cleanup = () => {
           window.removeEventListener("resize", onResize);
           detachHover();
+          detachFocus();
           setTip(null);
           cameraRef.current = null;
+          homeRef.current = null;
           scene.dispose();
           engine.dispose();
         };
@@ -954,7 +981,14 @@ export function FlowSankey3DView({
               Active links: {activeCount}/{totalCount}
             </div>
           </div>
-          <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
+          <ZoomButtons
+            onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)}
+            onReset={() =>
+              cameraRef.current &&
+              homeRef.current &&
+              resetFocus(cameraRef.current, homeRef.current)
+            }
+          />
           <HeatLegend
             title="Flow volume"
             lowLabel="fewer links"
@@ -983,7 +1017,7 @@ export function FlowSankey3DView({
 
 export const FLOW_SANKEY_TITLE = "Flow Sankey (3D)";
 export const FLOW_SANKEY_SUBTITLE =
-  "Direction-bin → mesh links (aggregate), or standpoint → gaze → mesh (two-stage)";
+  "Direction-bin → mesh links (aggregate), or standpoint → gaze → mesh (two-stage) — double-click to focus";
 
 /** "?" help content shared by the chrome wrapper and the registered panel. */
 export const FLOW_SANKEY_HELP = (
