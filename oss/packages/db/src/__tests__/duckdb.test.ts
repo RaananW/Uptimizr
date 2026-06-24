@@ -565,7 +565,9 @@ describe("duckdb store", () => {
       db,
       buildTopInputActions(PID, RANGE, duckdbDialect),
     );
-    const byPair = Object.fromEntries(rows.map((r) => [`${r.action}/${r.source}`, Number(r.count)]));
+    const byPair = Object.fromEntries(
+      rows.map((r) => [`${r.action}/${r.source}`, Number(r.count)]),
+    );
     expect(byPair).toEqual({ "rotate-left/keyboard": 2, "next-camera/gamepad": 1 });
     // Ranked by count: the repeated rotate-left leads.
     expect(rows[0]).toMatchObject({ action: "rotate-left", source: "keyboard" });

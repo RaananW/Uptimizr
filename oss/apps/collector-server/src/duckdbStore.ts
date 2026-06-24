@@ -240,10 +240,7 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
         buildInteractionsBySource(projectId, opts, duckdbDialect),
       ),
     topInputActions: (projectId, opts = {}) =>
-      runDuckdbQuery<InputActionCountRow>(
-        db,
-        buildTopInputActions(projectId, opts, duckdbDialect),
-      ),
+      runDuckdbQuery<InputActionCountRow>(db, buildTopInputActions(projectId, opts, duckdbDialect)),
     scenes: (projectId, opts = {}) =>
       runDuckdbQuery<SceneRow>(db, buildDistinctScenes(projectId, opts, duckdbDialect)),
     timeseries: (projectId, opts = {}) =>

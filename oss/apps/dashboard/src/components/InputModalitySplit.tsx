@@ -115,7 +115,9 @@ export function InputModalitySplitView({
                   className="inline-block h-2 w-2 shrink-0 rounded-sm"
                   style={{ backgroundColor: sourceColor(a.source) }}
                 />
-                <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg">{a.action}</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg">
+                  {a.action}
+                </span>
                 <span className="shrink-0 text-xs text-fg-muted">{a.source}</span>
                 <span className="w-12 shrink-0 text-right tabular-nums text-fg-muted">
                   {formatNumber(a.count)}

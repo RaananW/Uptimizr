@@ -1,6 +1,11 @@
 "use client";
 
-import { definePanel, pickInterval, type PanelContext, type PanelDefinition } from "@uptimizr/react";
+import {
+  definePanel,
+  pickInterval,
+  type PanelContext,
+  type PanelDefinition,
+} from "@uptimizr/react";
 import type {
   AggregateTrajectoryPoint,
   CameraGestureStat,
