@@ -93,6 +93,26 @@ describe("CollectorApi", () => {
     const points = await api.aggregatePaths();
     expect(points[0]).toEqual({ session_id: "s1", ts: 1000, gx: 0, gz: 10 });
   });
+
+  it("coerces camera-gesture rows and hits the camera-gestures endpoint", async () => {
+    const fetchMock = mockFetch([
+      { kind: "orbit", gestures: "9", total_ms: "4500", avg_ms: "500", max_ms: "1200" },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.cameraGestures({ scene: "s" });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/camera-gestures");
+    expect(rows[0]).toEqual({
+      kind: "orbit",
+      gestures: 9,
+      total_ms: 4500,
+      avg_ms: 500,
+      max_ms: 1200,
+    });
+  });
 });
 
 describe("CollectorApi live (ADR 0032)", () => {

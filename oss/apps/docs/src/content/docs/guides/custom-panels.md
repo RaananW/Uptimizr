@@ -140,6 +140,9 @@ export const builtinPanels: PanelDefinition<unknown>[] = [
   meshKindsPanel,
   renderScalePanel,
   worldHeatmapPanel,
+  navigationMixPanel,
+  flowPanel,
+  divergencePanel,
   myPanel, // ← your panel
 ] as PanelDefinition<unknown>[];
 ```

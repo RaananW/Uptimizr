@@ -190,6 +190,24 @@ export interface NavigationStat {
   active_distance: number;
 }
 
+/**
+ * Per-kind camera-navigation gesture summary from `camera_gesture` events
+ * (ADR 0025): the orbit / pan / dolly / zoom / roll / fly / navigate breakdown
+ * with per-kind counts and durations. Powers the navigation-style mix panel.
+ */
+export interface CameraGestureStat {
+  /** Gesture class (`orbit` / `pan` / `dolly` / `zoom` / `roll` / `fly` / `navigate`). */
+  kind: string;
+  /** Number of gestures of this kind. */
+  gestures: number;
+  /** Total time spent in this gesture kind, in ms. */
+  total_ms: number;
+  /** Average gesture duration, in ms. */
+  avg_ms: number;
+  /** Longest single gesture, in ms. */
+  max_ms: number;
+}
+
 /** One `(event_type, source)` row of the input-source breakdown (ADR 0011). */
 export interface InteractionSource {
   event_type: string;
@@ -747,6 +765,23 @@ export class CollectorApi {
         total_distance: Number(r.total_distance ?? 0),
         active_segments: Number(r.active_segments ?? 0),
         active_distance: Number(r.active_distance ?? 0),
+      })),
+    );
+  }
+
+  /**
+   * Per-kind camera-navigation gesture breakdown from `camera_gesture` events
+   * (ADR 0025): orbit / pan / dolly / zoom / roll / fly / navigate, each with a
+   * count and duration stats. Drives the navigation-style mix panel.
+   */
+  cameraGestures(params?: QueryParams): Promise<CameraGestureStat[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/camera-gestures", params).then((rows) =>
+      rows.map((r) => ({
+        kind: String(r.kind ?? ""),
+        gestures: Number(r.gestures ?? 0),
+        total_ms: Number(r.total_ms ?? 0),
+        avg_ms: Number(r.avg_ms ?? 0),
+        max_ms: Number(r.max_ms ?? 0),
       })),
     );
   }
