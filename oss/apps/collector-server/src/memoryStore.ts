@@ -183,6 +183,51 @@ export function createMemoryStore({
         .map(([event_type, count]) => ({ event_type, count }))
         .sort((a, b) => b.count - a.count);
     },
+    funnel: async (_projectId, opts) => {
+      const steps = opts.steps ?? [];
+      if (steps.length === 0) return [];
+      const nameOf = (e: AnyEvent): string => {
+        const r = e as AnyEvent & Record<string, unknown>;
+        for (const k of ["name", "phase", "kind", "action"]) {
+          if (typeof r[k] === "string") return r[k] as string;
+        }
+        return "";
+      };
+      const meshOf = (e: AnyEvent): string => {
+        const r = e as AnyEvent & Record<string, unknown>;
+        if (typeof r.mesh === "string") return r.mesh;
+        if (typeof r.hitMesh === "string") return r.hitMesh;
+        return "";
+      };
+      const matches = (e: AnyEvent, step: (typeof steps)[number]): boolean =>
+        e.type === step.type &&
+        (step.name == null || step.name.length === 0 || nameOf(e) === step.name) &&
+        (step.mesh == null || step.mesh.length === 0 || meshOf(e) === step.mesh);
+
+      const bySession = new Map<string, AnyEvent[]>();
+      for (const e of forProject()) {
+        if (!inRange(e, opts)) continue;
+        if (opts.scene != null && opts.scene.length > 0 && sceneOf(e) !== opts.scene) continue;
+        const list = bySession.get(e.sessionId) ?? [];
+        list.push(e);
+        bySession.set(e.sessionId, list);
+      }
+
+      const counts = steps.map(() => 0);
+      for (const list of bySession.values()) {
+        const sorted = [...list].sort((a, b) => a.ts - b.ts);
+        let prevTs = -Infinity;
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
+          if (step == null) break;
+          const hit = sorted.find((e) => e.ts >= prevTs && matches(e, step));
+          if (hit == null) break;
+          prevTs = hit.ts;
+          counts[i] = (counts[i] ?? 0) + 1;
+        }
+      }
+      return counts.map((sessions, step) => ({ step, sessions }));
+    },
     getSessionEvents: async (_projectId, sessionId) => forSession(sessionId),
     streamSessionEvents: async function* (_projectId, sessionId) {
       for (const e of forSession(sessionId)) yield e;

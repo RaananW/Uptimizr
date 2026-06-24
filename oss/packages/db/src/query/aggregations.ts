@@ -23,6 +23,8 @@ import {
 import type {
   QuerySpec,
   CameraModeOptions,
+  FunnelOptions,
+  FunnelStepInput,
   RangeOptions,
   SceneOptions,
   SessionOptions,
@@ -1899,6 +1901,95 @@ export function buildXrAbandonment(
       GROUP BY session_id
       ORDER BY started_at DESC
       LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Render one funnel step's predicate against the wide `events` columns (ADR
+ * 0038). Every field compiles to plain equality on a promoted column, so the
+ * predicate is engine-agnostic and parameter-bound (injection-safe): `type` →
+ * `event_type`; `name` → the `name` column (which already carries the
+ * `camera_gesture` / `mesh_interaction` kind and the `custom` event name); and
+ * `mesh` → the `mesh` column. Columns are unqualified — they resolve to `events`
+ * even inside the joined CTEs because the joined funnel CTEs expose only
+ * `session_id` and `t`.
+ */
+function funnelStepPredicate(bag: ParamBag, step: FunnelStepInput, i: number): string {
+  const parts = [`event_type = ${bag.add(`fType${i}`, "string", step.type)}`];
+  if (step.name != null && step.name.length > 0) {
+    parts.push(`name = ${bag.add(`fName${i}`, "string", step.name)}`);
+  }
+  if (step.mesh != null && step.mesh.length > 0) {
+    parts.push(`mesh = ${bag.add(`fMesh${i}`, "string", step.mesh)}`);
+  }
+  return parts.join(" AND ");
+}
+
+/**
+ * Single-project configurator funnel (#78, ADR 0038): ordered, per-session
+ * step-reach with the drop-off between consecutive steps.
+ *
+ * Semantics — a session **reaches step N** iff there is an event matching step
+ * N's predicate at a timestamp **≥ the first time it reached step N−1**, within
+ * the same `session_id` (step 0 is reached on its first matching event). This is
+ * an ordered, first-touch, monotonic funnel: steps must occur in order, only the
+ * first qualifying occurrence per step counts, and a row's `sessions` is the
+ * number of sessions reaching that step.
+ *
+ * Implementation — a CTE chain, one level per step. Level 0 takes each session's
+ * first matching timestamp; level K joins the prior level on `session_id` and
+ * takes the first matching timestamp `≥` the prior level's. This uses only
+ * `JOIN` / `min` / `GROUP BY` — **no window or ASOF functions** — so it renders
+ * identically on DuckDB (OSS) and ClickHouse (scale tier) and is covered by a
+ * hand-verified parity golden (ADR 0020). The final `UNION ALL` counts the
+ * sessions surviving each level; the consumer derives the conversion rates.
+ *
+ * The `steps` come from the caller (request input / CLI / hosted), not a stored
+ * config — OSS has no authoring surface (ADR 0038).
+ */
+export function buildFunnel(projectId: string, opts: FunnelOptions, d: Dialect): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const cameraMode = cameraModeClause(bag, d, projectId, opts);
+  const steps = opts.steps;
+
+  const ctes = steps.map((step, i) => {
+    const pred = funnelStepPredicate(bag, step, i);
+    if (i === 0) {
+      // Level 0: each session's first event matching step 0. Session-level
+      // filters (range / scene / camera-mode) apply here and the subset
+      // propagates through the joins below.
+      return `s0 AS (
+        SELECT session_id, min(ts) AS t
+        FROM events
+        WHERE project_id = ${pid} AND ${pred}${range}${scene}${cameraMode}
+        GROUP BY session_id
+      )`;
+    }
+    // Level i: the first matching event at or after the prior step's reach time.
+    // `events.session_id` is qualified (ambiguous with the joined CTE); the
+    // unqualified predicate / range / scene columns resolve to `events`.
+    return `s${i} AS (
+        SELECT events.session_id AS session_id, min(events.ts) AS t
+        FROM events JOIN s${i - 1} ON events.session_id = s${i - 1}.session_id
+        WHERE project_id = ${pid} AND ${pred} AND ts >= s${i - 1}.t${range}${scene}
+        GROUP BY events.session_id
+      )`;
+  });
+
+  const counts = steps
+    .map((_step, i) => `SELECT ${i} AS step, count() AS sessions FROM s${i}`)
+    .join("\n      UNION ALL ");
+
+  return {
+    query: `
+      WITH ${ctes.join(",\n      ")}
+      ${counts}
+      ORDER BY step ASC
     `,
     query_params: bag.values,
   };

@@ -201,6 +201,26 @@ export interface EventTypeCount {
   count: number;
 }
 
+/**
+ * One step of a configured funnel (#78, ADR 0038). Steps are predicates over the
+ * wide event table: `type` is required; `name` matches a gesture/interaction kind
+ * or custom-event name; `mesh` restricts to one object. `label` is presentation-
+ * only. The OSS dashboard authors none of this — steps are supplied by the caller
+ * (CLI / hosted); authoring + persistence live in the hosted product.
+ */
+export interface FunnelStep {
+  type: string;
+  name?: string;
+  mesh?: string;
+  label?: string;
+}
+
+/** One row of a funnel result: the step index and how many sessions reached it (#78). */
+export interface FunnelStepResult {
+  step: number;
+  sessions: number;
+}
+
 /** An occupied camera-position voxel (scene coverage / dead zones, #38). */
 export interface CoverageVoxel {
   vx: number;
@@ -433,6 +453,8 @@ export interface QueryParams {
   moveThreshold?: number;
   /** FPS histogram bin width (frames per second). */
   bucket?: number;
+  /** Funnel (#78): JSON-encoded array of step predicates; supply via {@link CollectorApi.funnel}. */
+  steps?: string;
 }
 
 export class ApiError extends Error {
@@ -813,6 +835,22 @@ export class CollectorApi {
   eventCounts(params?: QueryParams): Promise<EventTypeCount[]> {
     return this.get<Record<string, unknown>[]>("api/v1/event-counts", params).then((rows) =>
       rows.map((r) => ({ event_type: String(r.event_type), count: Number(r.count ?? 0) })),
+    );
+  }
+
+  /**
+   * Ordered, per-session conversion funnel (#78, ADR 0038). `steps` is the funnel
+   * definition (2–20 predicates); a session reaches step N iff it matched step N's
+   * predicate at or after the time it first reached step N−1. Returns one row per
+   * step with the surviving session count. Authoring lives in the hosted product —
+   * here the caller supplies the steps.
+   */
+  funnel(steps: FunnelStep[], params?: QueryParams): Promise<FunnelStepResult[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/funnel", {
+      ...params,
+      steps: JSON.stringify(steps),
+    }).then((rows) =>
+      rows.map((r) => ({ step: Number(r.step), sessions: Number(r.sessions ?? 0) })),
     );
   }
 

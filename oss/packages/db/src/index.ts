@@ -86,6 +86,7 @@ export {
   buildXrSourceUsage,
   buildXrAbandonment,
   buildInteractionsBySource,
+  buildFunnel,
 } from "./query/aggregations.js";
 export type {
   QuerySpec,
@@ -139,6 +140,9 @@ export type {
   XrSourceUsageRow,
   XrAbandonmentRow,
   InteractionSourceRow,
+  FunnelStepInput,
+  FunnelOptions,
+  FunnelStepResultRow,
 } from "./query/types.js";
 
 // --- DuckDB (OSS single-file store, ADR 0020) ---

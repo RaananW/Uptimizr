@@ -57,4 +57,43 @@ describe("memory store", () => {
       user: { id: "anon" },
     });
   });
+
+  it("computes an ordered funnel with per-step drop-off", async () => {
+    const store = createMemoryStore({ projectId: "p1", apiKey: "k1" });
+    await store.insertEvents([
+      // sA reaches all three steps in order.
+      evt({ type: "session_start", sessionId: "sA", ts: 1 } as Partial<AnyEvent> & {
+        type: string;
+      }),
+      evt({ type: "camera_gesture", sessionId: "sA", ts: 2, kind: "orbit" } as Partial<AnyEvent> & {
+        type: string;
+      }),
+      evt({
+        type: "mesh_interaction",
+        sessionId: "sA",
+        ts: 3,
+        kind: "pick",
+        mesh: "box",
+      } as Partial<AnyEvent> & { type: string }),
+      // sB opens + rotates, never selects.
+      evt({ type: "session_start", sessionId: "sB", ts: 1 } as Partial<AnyEvent> & {
+        type: string;
+      }),
+      evt({ type: "camera_gesture", sessionId: "sB", ts: 2, kind: "orbit" } as Partial<AnyEvent> & {
+        type: string;
+      }),
+    ]);
+    const rows = await store.funnel("p1", {
+      steps: [
+        { type: "session_start" },
+        { type: "camera_gesture", name: "orbit" },
+        { type: "mesh_interaction", name: "pick" },
+      ],
+    });
+    expect(rows).toEqual([
+      { step: 0, sessions: 2 },
+      { step: 1, sessions: 2 },
+      { step: 2, sessions: 1 },
+    ]);
+  });
 });
