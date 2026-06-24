@@ -577,11 +577,13 @@ export function buildTopMeshes(
 }
 
 /**
- * Per-mesh source split (#74): the same most-interacted-mesh tally as
- * {@link buildTopMeshes}, but broken out by the input `source` that drove each
- * interaction (mouse / touch / xr-controller / hand / …). Summing a mesh's rows
- * reproduces its `buildTopMeshes` total, so the leaderboard derives both the rank
- * and the per-row source breakdown from this one query. Ranked by count.
+ * Per-mesh source split (#74): the most-interacted-mesh tally broken out by the
+ * input `source` that drove each interaction (mouse / touch / xr-controller /
+ * hand / …). Scoped to **active** interactions — `mesh_interaction` (hover / pick
+ * / click / drag) and `pointer_click` — so passive `camera_sample` gaze hits do
+ * NOT inflate popularity (this is the deliberate difference from
+ * {@link buildTopMeshes}, which counts every mesh-referencing event). Summing a
+ * mesh's rows gives its leaderboard total; ranked by count.
  */
 export function buildTopMeshesBySource(
   projectId: string,
@@ -599,7 +601,9 @@ export function buildTopMeshesBySource(
     query: `
       SELECT mesh, source, count() AS count
       FROM events
-      WHERE project_id = ${pid} AND mesh != ''${range}${scene}${source}${session}
+      WHERE project_id = ${pid}
+        AND event_type IN ('mesh_interaction', 'pointer_click')
+        AND mesh != ''${range}${scene}${source}${session}
       GROUP BY mesh, source
       ORDER BY count DESC
       LIMIT ${limit}
@@ -609,11 +613,13 @@ export function buildTopMeshesBySource(
 }
 
 /**
- * Per-mesh interaction trend (#74): the most-interacted-mesh tally bucketed into
+ * Per-mesh interaction trend (#74): the active-interaction tally bucketed into
  * fixed `interval`-second time windows, so the leaderboard can draw a per-mesh
- * sparkline and a rising/falling delta over the active range. Each row is a
- * `(mesh, bucket)` count; the consumer orders buckets per mesh and compares the
- * recent half against the earlier half. Ordered oldest bucket first for drawing.
+ * sparkline and a rising/falling delta over the active range. Scoped to the same
+ * `mesh_interaction` + `pointer_click` events as {@link buildTopMeshesBySource}
+ * (passive gaze excluded). Each row is a `(mesh, bucket)` count; the consumer
+ * orders buckets per mesh and compares the recent half against the earlier half.
+ * Ordered oldest bucket first for drawing.
  */
 export function buildTopMeshesTrend(
   projectId: string,
@@ -638,7 +644,9 @@ export function buildTopMeshesTrend(
         ${d.timeBucketMs("ts", interval)} AS bucket,
         count() AS count
       FROM events
-      WHERE project_id = ${pid} AND mesh != ''${range}${scene}${source}${session}
+      WHERE project_id = ${pid}
+        AND event_type IN ('mesh_interaction', 'pointer_click')
+        AND mesh != ''${range}${scene}${source}${session}
       GROUP BY mesh, bucket
       ORDER BY bucket ASC
       LIMIT ${limit}

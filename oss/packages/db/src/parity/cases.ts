@@ -319,27 +319,29 @@ export const PARITY_CASES: readonly ParityCase[] = [
     name: "topMeshesBySource",
     build: (d) => buildTopMeshesBySource(PID, PARITY_RANGE, d),
     sortKeys: ["mesh", "source"],
-    // Same mesh-carrying events as topMeshes, split by source. Every fixture hit
-    // is `mouse` (mesh_visibility has no source and defaults to mouse), so each
-    // mesh has a single mouse row whose count matches its topMeshes total (#74).
+    // Scoped to active interactions (#74): only `pointer_click` fixtures qualify
+    // (no `mesh_interaction` in the parity set; gaze `camera_sample` and dwell
+    // `mesh_visibility` are excluded). Each mesh has exactly one mouse click, so
+    // every mesh is a single `mouse` row with count 1.
     golden: [
-      { mesh: "box", source: "mouse", count: 2 },
-      { mesh: "floor", source: "mouse", count: 2 },
-      { mesh: "sphere", source: "mouse", count: 2 },
+      { mesh: "box", source: "mouse", count: 1 },
+      { mesh: "floor", source: "mouse", count: 1 },
+      { mesh: "sphere", source: "mouse", count: 1 },
     ],
   },
   {
     name: "topMeshesTrend",
     build: (d) => buildTopMeshesTrend(PID, PARITY_RANGE, d),
     sortKeys: ["mesh"],
-    // All fixtures fall in a single hourly bucket, so there is one row per mesh
-    // with the same total as topMeshes. The bucket epoch is engine-formatted, so
-    // it is ignored here; per-bucket grouping is covered by the DuckDB suite (#74).
+    // Active-interaction tally (#74), same `pointer_click`-only scope as
+    // topMeshesBySource. All fixtures fall in a single hourly bucket, so there is
+    // one row per mesh with count 1. The bucket epoch is engine-formatted, so it
+    // is ignored here; per-bucket grouping is covered by the DuckDB suite.
     ignoreColumns: ["bucket"],
     golden: [
-      { mesh: "box", count: 2 },
-      { mesh: "floor", count: 2 },
-      { mesh: "sphere", count: 2 },
+      { mesh: "box", count: 1 },
+      { mesh: "floor", count: 1 },
+      { mesh: "sphere", count: 1 },
     ],
   },
   {

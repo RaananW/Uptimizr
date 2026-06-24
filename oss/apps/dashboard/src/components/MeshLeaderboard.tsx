@@ -5,7 +5,7 @@ import { Panel } from "./Panel";
 export const MESH_LEADERBOARD_TITLE = "Part-popularity leaderboard";
 export const MESH_LEADERBOARD_SUBTITLE = "Ranked meshes, with trend and input split";
 export const MESH_LEADERBOARD_HELP =
-  "The most-interacted meshes ranked by total interactions, each with a trend sparkline (rising/falling over the range) and an input-source split (mouse / touch / XR / …). Expand a row to see which sources drove it. Richer than the plain Top-meshes list.";
+  "The most-interacted meshes ranked by total active interactions (clicks / hovers / picks / drags — passive gaze is excluded), each with a trend sparkline (rising/falling over the range) and an input-source split (mouse / touch / XR / …). Expand a row to see which sources drove it. Unlike the plain Top-meshes list, gaze-only hits don't inflate the ranking.";
 
 /** Stable per-source colours, shared with the input-modality panel (ADR 0011). */
 const SOURCE_COLORS: Record<string, string> = {
