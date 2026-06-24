@@ -273,3 +273,99 @@ describe("builtinPanels — gaze-click divergence panel", () => {
     expect(gazeCell).toBe(clickCell);
   });
 });
+
+describe("builtinPanels — part-popularity leaderboard panel (#74)", () => {
+  const panel = builtinPanels.find((p) => p.id === "mesh-leaderboard");
+
+  it("is registered as a half-width panel on both surfaces", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(1);
+    expect(panel?.clientOnly).toBeUndefined();
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+  });
+
+  it("loads the per-mesh source split and trend, deriving a bucket interval from the range", async () => {
+    const sources = [{ mesh: "box", source: "mouse", count: 4 }];
+    const trend = [{ mesh: "box", bucket: 0, count: 2 }];
+    const topMeshesBySource = vi.fn().mockResolvedValue(sources);
+    const topMeshesTrend = vi.fn().mockResolvedValue(trend);
+    const ctx = makeCtx({
+      params: { since: 0, until: 24 * 3600 * 1000 },
+      api: { topMeshesBySource, topMeshesTrend },
+    });
+    const data = (await panel?.load?.(ctx)) as {
+      sources: unknown[];
+      trend: unknown[];
+    };
+    expect(data.sources).toEqual(sources);
+    expect(data.trend).toEqual(trend);
+    const interval = (topMeshesTrend.mock.calls[0]?.[0] as { interval: number }).interval;
+    expect(interval).toBeGreaterThan(0);
+  });
+});
+
+describe("builtinPanels — input-modality split panel (#75)", () => {
+  const panel = builtinPanels.find((p) => p.id === "input-modality-split");
+
+  it("is registered as a half-width panel on both surfaces", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(1);
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+  });
+
+  it("loads the source breakdown and the most-used shortcuts together", async () => {
+    const sources = [{ event_type: "mesh_interaction", source: "mouse", count: 3 }];
+    const actions = [{ action: "undo", source: "keyboard", count: 5 }];
+    const interactionsBySource = vi.fn().mockResolvedValue(sources);
+    const topInputActions = vi.fn().mockResolvedValue(actions);
+    const ctx = makeCtx({ api: { interactionsBySource, topInputActions } });
+    const data = (await panel?.load?.(ctx)) as { sources: unknown[]; actions: unknown[] };
+    expect(data.sources).toEqual(sources);
+    expect(data.actions).toEqual(actions);
+    expect(topInputActions).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("builtinPanels — dead-zone report panel (#76)", () => {
+  const panel = builtinPanels.find((p) => p.id === "dead-zone-report");
+
+  it("is registered as a half-width panel on both surfaces", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(1);
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+  });
+
+  it("loads coverage at the floor cell size alongside the registered proxy", async () => {
+    const coverage = vi.fn().mockResolvedValue([{ vx: 0, vy: 0, vz: 0, count: 1 }]);
+    const scenes = vi.fn().mockResolvedValue([]);
+    const sceneRepresentation = vi.fn().mockResolvedValue({ proxy: { meshes: [] } });
+    const ctx = makeCtx({
+      params: { scene: "scene-a" },
+      api: { coverage, scenes, sceneRepresentation },
+    });
+    const data = (await panel?.load?.(ctx)) as { coverage: unknown[]; proxyMeshes: unknown[] };
+    expect(data.coverage).toHaveLength(1);
+    expect((coverage.mock.calls[0]?.[0] as { cellSize: number }).cellSize).toBe(1);
+  });
+});
+
+describe("builtinPanels — performance distribution panel (#77)", () => {
+  const panel = builtinPanels.find((p) => p.id === "perf-distribution");
+
+  it("is registered as a half-width panel on both surfaces", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(1);
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+  });
+
+  it("loads the percentile bands and the per-session FPS histogram together", async () => {
+    const distribution = { samples: 4, sessions: 4, p05_fps: 30, p50_fps: 60, p95_fps: 72 };
+    const histogram = [{ bucket: 50, sessions: 3 }];
+    const perfDistribution = vi.fn().mockResolvedValue(distribution);
+    const fpsHistogram = vi.fn().mockResolvedValue(histogram);
+    const ctx = makeCtx({ api: { perfDistribution, fpsHistogram } });
+    const data = (await panel?.load?.(ctx)) as { distribution: unknown; histogram: unknown[] };
+    expect(data.distribution).toEqual(distribution);
+    expect(data.histogram).toEqual(histogram);
+  });
+});

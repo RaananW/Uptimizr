@@ -94,6 +94,42 @@ describe("CollectorApi", () => {
     expect(points[0]).toEqual({ session_id: "s1", ts: 1000, gx: 0, gz: 10 });
   });
 
+  it("coerces the per-mesh source split and hits the sources endpoint (#74)", async () => {
+    const fetchMock = mockFetch([{ mesh: "door", source: "touch", count: "5" }]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.topMeshesBySource({ scene: "lobby" });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/meshes/sources");
+    expect(rows[0]).toEqual({ mesh: "door", source: "touch", count: 5 });
+  });
+
+  it("coerces the per-mesh trend points and hits the trend endpoint (#74)", async () => {
+    const fetchMock = mockFetch([{ mesh: "door", bucket: "1718532000000", count: "3" }]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.topMeshesTrend({ interval: 3600 });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/meshes/trend");
+    expect(rows[0]).toEqual({ mesh: "door", bucket: 1718532000000, count: 3 });
+  });
+
+  it("coerces the most-used input actions and hits the input-actions endpoint (#75)", async () => {
+    const fetchMock = mockFetch([{ action: "rotate-left", source: "keyboard", count: "12" }]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.topInputActions();
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/input-actions/top");
+    expect(rows[0]).toEqual({ action: "rotate-left", source: "keyboard", count: 12 });
+  });
+
   it("coerces camera-gesture rows and hits the camera-gestures endpoint", async () => {
     const fetchMock = mockFetch([
       { kind: "orbit", gestures: "9", total_ms: "4500", avg_ms: "500", max_ms: "1200" },

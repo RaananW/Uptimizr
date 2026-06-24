@@ -46,6 +46,40 @@ export interface MeshInteractionKind {
   count: number;
 }
 
+/**
+ * One (mesh, source) tally (#74): a mesh's interaction count broken out by the
+ * input `source` (mouse / touch / xr-controller / …). Summing a mesh's rows
+ * reproduces its overall interaction total, so the leaderboard derives both the
+ * rank and the per-row source split from this one shape.
+ */
+export interface MeshSourceCount {
+  mesh: string;
+  source: string;
+  count: number;
+}
+
+/**
+ * One (mesh, bucket) tally (#74): a mesh's interaction count within a fixed
+ * time window, for the leaderboard's per-mesh trend sparkline. `bucket` is the
+ * window start as epoch milliseconds.
+ */
+export interface MeshTrendPoint {
+  mesh: string;
+  bucket: number;
+  count: number;
+}
+
+/**
+ * One (action, source) tally (#75, ADR 0023): how many times an app-level
+ * `input_action` label (a keyboard chord / gamepad button) fired, split by input
+ * `source`. The most-used-shortcuts leaderboard.
+ */
+export interface InputActionCount {
+  action: string;
+  source: string;
+  count: number;
+}
+
 /** A single voxel of the world-space (3D) pointer heatmap. */
 export interface WorldHeatmapBin {
   vx: number;
@@ -463,6 +497,51 @@ export class CollectorApi {
       rows.map((r) => ({
         mesh: String(r.mesh ?? ""),
         kind: String(r.kind ?? ""),
+        count: Number(r.count ?? 0),
+      })),
+    );
+  }
+
+  /**
+   * Per-mesh source split (#74): the most-interacted-mesh tally broken out by the
+   * input source. Summing a mesh's rows gives its overall rank, so the leaderboard
+   * reads both the ranking and the per-row breakdown from this one call.
+   */
+  topMeshesBySource(params?: QueryParams): Promise<MeshSourceCount[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/meshes/sources", params).then((rows) =>
+      rows.map((r) => ({
+        mesh: String(r.mesh ?? ""),
+        source: String(r.source ?? ""),
+        count: Number(r.count ?? 0),
+      })),
+    );
+  }
+
+  /**
+   * Per-mesh interaction trend (#74): interaction counts bucketed into fixed
+   * time windows, for the leaderboard's per-mesh sparkline and rising/falling
+   * delta. Pass `interval` (seconds) to size the buckets.
+   */
+  topMeshesTrend(params?: QueryParams): Promise<MeshTrendPoint[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/meshes/trend", params).then((rows) =>
+      rows.map((r) => ({
+        mesh: String(r.mesh ?? ""),
+        bucket: Number(r.bucket ?? 0),
+        count: Number(r.count ?? 0),
+      })),
+    );
+  }
+
+  /**
+   * Most-used shortcuts / actions (#75): rank `input_action` events by their
+   * app-level action label, split by source (keyboard / gamepad / …). Pairs with
+   * {@link interactionsBySource} (the modality share) for the input panel.
+   */
+  topInputActions(params?: QueryParams): Promise<InputActionCount[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/input-actions/top", params).then((rows) =>
+      rows.map((r) => ({
+        action: String(r.action ?? ""),
+        source: String(r.source ?? ""),
         count: Number(r.count ?? 0),
       })),
     );

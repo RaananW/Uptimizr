@@ -17,6 +17,9 @@ import type {
   MeshCountRow,
   MeshDwellRow,
   MeshInteractionKindRow,
+  MeshSourceCountRow,
+  MeshTrendPointRow,
+  InputActionCountRow,
   PositionBinRow,
   RageClickRow,
   NavigationStatsRow,
@@ -170,6 +173,27 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SessionOptions & { limit?: number },
   ): Promise<MeshCountRow[]>;
+  /**
+   * Per-mesh source split (#74): the most-interacted-mesh tally broken out by the
+   * input `source` that drove each interaction. Summing a mesh's rows reproduces
+   * its `topMeshes` total, so the leaderboard reads rank + per-row breakdown here.
+   */
+  topMeshesBySource(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SourceOptions & SessionOptions & { limit?: number },
+  ): Promise<MeshSourceCountRow[]>;
+  /**
+   * Per-mesh interaction trend (#74): the most-interacted-mesh tally bucketed into
+   * fixed `interval`-second windows, for the leaderboard's per-mesh sparkline and
+   * rising/falling delta. Each row is a `(mesh, bucket)` count, oldest bucket first.
+   */
+  topMeshesTrend(
+    projectId: string,
+    opts?: RangeOptions &
+      SceneOptions &
+      SourceOptions &
+      SessionOptions & { interval?: number; limit?: number },
+  ): Promise<MeshTrendPointRow[]>;
   /**
    * Object dwell ranking (#37): per-mesh attention from `mesh_visibility`
    * summaries — total visible/centered time and peak screen fraction.
@@ -385,6 +409,15 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SourceOptions & SessionOptions & { limit?: number },
   ): Promise<InteractionSourceRow[]>;
+  /**
+   * Most-used shortcuts / actions (#75, ADR 0023): rank `input_action` events by
+   * their app-level `action` label, split by `source` (keyboard / gamepad / …).
+   * Pairs with `interactionsBySource` (the modality share) for the input panel.
+   */
+  topInputActions(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SourceOptions & SessionOptions & { limit?: number },
+  ): Promise<InputActionCountRow[]>;
   /** Distinct scenes (+counts, last-seen) for the project; time-range aware (ADR 0010). */
   scenes(projectId: string, opts?: RangeOptions & { limit?: number }): Promise<SceneRow[]>;
   /** Event-volume time-series bucketed by interval (the 4th dimension). */

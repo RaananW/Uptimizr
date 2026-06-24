@@ -133,14 +133,18 @@ import { myPanel } from "./MyPanel";
 
 export const builtinPanels: PanelDefinition<unknown>[] = [
   topMeshesPanel,
+  meshLeaderboardPanel,
   pointerHeatmapPanel,
   cameraDomePanel,
   floorPlanPanel,
   desireLinesPanel,
   meshKindsPanel,
+  inputModalityPanel,
   renderScalePanel,
+  perfDistributionPanel,
   worldHeatmapPanel,
   navigationMixPanel,
+  deadZonePanel,
   flowPanel,
   divergencePanel,
   myPanel, // ← your panel

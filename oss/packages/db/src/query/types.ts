@@ -124,6 +124,39 @@ export interface MeshInteractionKindRow {
 }
 
 /**
+ * One (mesh, source) tally (#74): the most-interacted-mesh count broken out by
+ * the input `source` (mouse / touch / xr-controller / …). Summing a mesh's rows
+ * reproduces its overall interaction total.
+ */
+export interface MeshSourceCountRow {
+  mesh: string;
+  source: string;
+  count: number;
+}
+
+/**
+ * One (mesh, bucket) tally (#74): a mesh's interaction count within a fixed
+ * `interval`-second time window, for the leaderboard's per-mesh trend sparkline.
+ * `bucket` is the window start as epoch milliseconds.
+ */
+export interface MeshTrendPointRow {
+  mesh: string;
+  bucket: number;
+  count: number;
+}
+
+/**
+ * One (action, source) tally (#75, ADR 0023): how many times each app-level
+ * `input_action` label (a keyboard chord / gamepad button mapped to an action)
+ * fired, split by input `source`. The most-used-shortcuts leaderboard.
+ */
+export interface InputActionCountRow {
+  action: string;
+  source: string;
+  count: number;
+}
+
+/**
  * Render-scale truth (#71, ADR 0021): the FPS headline paired with the
  * resolution the engine actually rendered at. `downscaled_samples / scale_samples`
  * gives the share of reported frames that rendered below native resolution.

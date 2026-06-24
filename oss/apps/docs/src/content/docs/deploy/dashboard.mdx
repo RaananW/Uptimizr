@@ -21,10 +21,14 @@ with `x-api-key`. The key only ever reads its own project's data.
 - **View-direction & pointer heatmaps** — 2D panels and full 3D against a scene proxy backdrop.
 - **Flow Sankey** — gaze→click flow links rendered in 3D, with position-aware **standpoint** gating,
   a **two-stage** (standpoint → gaze → mesh) view, and a camera-mode toggle (see below).
-- **Mesh rankings** — most-interacted meshes, object dwell, hover hesitation.
-- **Performance** — FPS/frame-time summaries with percentile aggregation, compile stalls, resource
-  footprint.
-- **Navigation & XR** — camera gestures, coverage/dead zones, XR rotation and source usage.
+- **Mesh rankings** — most-interacted meshes, a **part-popularity leaderboard** (trend sparkline +
+  per-mesh input-source split), interaction-kind breakdown, object dwell, hover hesitation.
+- **Input** — an **input-modality split** (mouse/touch/keyboard/gamepad/XR share) with the most-used
+  app-level shortcuts.
+- **Performance** — FPS/frame-time summaries with percentile aggregation, a **performance
+  distribution** histogram (p05/p50/p95 bands), compile stalls, resource footprint.
+- **Navigation & XR** — camera gestures, coverage and a **dead-zone report** (proxy meshes visitors
+  never approach), XR rotation and source usage.
 - **Session replay** — re-drive a recorded session inside a scene (requires raw retention; see
   below).
 
