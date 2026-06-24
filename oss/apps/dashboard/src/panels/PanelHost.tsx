@@ -53,6 +53,18 @@ function PanelCell({
   const { data, loading, error } = usePanelData(panel, ctx, revision);
   const subtitle = typeof panel.subtitle === "function" ? panel.subtitle(ctx) : panel.subtitle;
 
+  // Show the "Loading…" placeholder only while there is no data to render yet:
+  // the very first fetch, or a refetch that follows an error (which resets
+  // `data` to null). Once a panel has data, background refreshes (live
+  // `revision` bumps, filter changes) keep its last-rendered body on screen
+  // instead of collapsing to a one-line placeholder and re-expanding — that
+  // swap is what makes panels "jump" as the live dashboard refetches.
+  // `usePanelData` keeps the previous `data` in flight, so the existing chart
+  // simply stays put until new data arrives and redraws in place. Gating on
+  // `data == null` (rather than a "settled once" flag) also avoids rendering a
+  // panel body with null data after an error clears on the next refetch.
+  const showInitialLoading = loading && Boolean(panel.load) && data == null;
+
   // Client-only panels (canvas / Babylon) wait for mount to avoid hydration drift.
   const mounted = useMounted();
   const ready = !panel.clientOnly || mounted;
@@ -66,7 +78,7 @@ function PanelCell({
     >
       {!ready ? null : error ? (
         <p className="text-sm text-fg-muted">Could not load: {error.message}</p>
-      ) : loading && panel.load ? (
+      ) : showInitialLoading ? (
         <p className="text-sm text-fg-muted">Loading…</p>
       ) : (
         panel.render({ data, ctx })
