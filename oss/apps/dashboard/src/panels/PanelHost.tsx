@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PanelContext, PanelDefinition, PanelSurface } from "@uptimizr/react";
 import { usePanelData } from "@uptimizr/react";
 import { Panel } from "@/components/Panel";
@@ -53,6 +53,17 @@ function PanelCell({
   const { data, loading, error } = usePanelData(panel, ctx, revision);
   const subtitle = typeof panel.subtitle === "function" ? panel.subtitle(ctx) : panel.subtitle;
 
+  // Show the "Loading…" placeholder only on the very first fetch. Once a panel
+  // has settled once, background refreshes (live `revision` bumps, filter
+  // changes) keep its last-rendered body on screen instead of collapsing to a
+  // one-line placeholder and re-expanding — that swap is what makes panels
+  // "jump" as the live dashboard refetches. `usePanelData` keeps the previous
+  // `data` in flight, so the existing chart simply stays put until new data
+  // arrives and redraws in place.
+  const settledOnce = useRef(false);
+  if (!loading) settledOnce.current = true;
+  const showInitialLoading = loading && panel.load && !settledOnce.current;
+
   // Client-only panels (canvas / Babylon) wait for mount to avoid hydration drift.
   const mounted = useMounted();
   const ready = !panel.clientOnly || mounted;
@@ -66,7 +77,7 @@ function PanelCell({
     >
       {!ready ? null : error ? (
         <p className="text-sm text-fg-muted">Could not load: {error.message}</p>
-      ) : loading && panel.load ? (
+      ) : showInitialLoading ? (
         <p className="text-sm text-fg-muted">Loading…</p>
       ) : (
         panel.render({ data, ctx })
