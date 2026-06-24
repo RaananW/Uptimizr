@@ -348,9 +348,7 @@ export function GazeClickDivergence3DView({
           <ZoomButtons
             onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)}
             onReset={() =>
-              cameraRef.current &&
-              homeRef.current &&
-              resetFocus(cameraRef.current, homeRef.current)
+              cameraRef.current && homeRef.current && resetFocus(cameraRef.current, homeRef.current)
             }
           />
           <DivergenceLegend mode={mode} />

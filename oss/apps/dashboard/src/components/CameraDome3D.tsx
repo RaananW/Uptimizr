@@ -290,9 +290,7 @@ export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gri
           <ZoomButtons
             onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)}
             onReset={() =>
-              cameraRef.current &&
-              homeRef.current &&
-              resetFocus(cameraRef.current, homeRef.current)
+              cameraRef.current && homeRef.current && resetFocus(cameraRef.current, homeRef.current)
             }
           />
           <HeatLegend
