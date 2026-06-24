@@ -37,6 +37,9 @@ import {
   buildRenderScaleTruth,
   buildTimeseries,
   buildTopMeshes,
+  buildTopMeshesBySource,
+  buildTopMeshesTrend,
+  buildTopInputActions,
   buildWorldHeatmap,
   buildGazeHeatmap,
   createDuckdbClient,
@@ -71,6 +74,9 @@ import {
   type MeshCountRow,
   type MeshDwellRow,
   type MeshInteractionKindRow,
+  type MeshSourceCountRow,
+  type MeshTrendPointRow,
+  type InputActionCountRow,
   type NavigationStatsRow,
   type XrRotationRateRow,
   type XrSourceUsageRow,
@@ -150,6 +156,13 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<FlowLinkRow>(db, buildFlowHeatmap(projectId, opts, duckdbDialect)),
     topMeshes: (projectId, opts = {}) =>
       runDuckdbQuery<MeshCountRow>(db, buildTopMeshes(projectId, opts, duckdbDialect)),
+    topMeshesBySource: (projectId, opts = {}) =>
+      runDuckdbQuery<MeshSourceCountRow>(
+        db,
+        buildTopMeshesBySource(projectId, opts, duckdbDialect),
+      ),
+    topMeshesTrend: (projectId, opts = {}) =>
+      runDuckdbQuery<MeshTrendPointRow>(db, buildTopMeshesTrend(projectId, opts, duckdbDialect)),
     meshDwell: (projectId, opts = {}) =>
       runDuckdbQuery<MeshDwellRow>(db, buildMeshDwell(projectId, opts, duckdbDialect)),
     meshInteractionKinds: (projectId, opts = {}) =>
@@ -226,6 +239,8 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
         db,
         buildInteractionsBySource(projectId, opts, duckdbDialect),
       ),
+    topInputActions: (projectId, opts = {}) =>
+      runDuckdbQuery<InputActionCountRow>(db, buildTopInputActions(projectId, opts, duckdbDialect)),
     scenes: (projectId, opts = {}) =>
       runDuckdbQuery<SceneRow>(db, buildDistinctScenes(projectId, opts, duckdbDialect)),
     timeseries: (projectId, opts = {}) =>

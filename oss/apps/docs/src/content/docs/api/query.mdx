@@ -33,11 +33,14 @@ the [overview](/docs/api/overview/) for auth and parameter units.
 | Method | Path                          | Purpose                                                  | Extra params                |
 | ------ | ----------------------------- | -------------------------------------------------------- | --------------------------- |
 | `GET`  | `/api/v1/meshes/top`          | Most-interacted meshes.                                 | `limit`, `session`          |
+| `GET`  | `/api/v1/meshes/sources`      | Part-popularity source split: per `(mesh, source)` count, scoped to active interactions (gaze excluded) (#74). | `limit`, `scene`, `source`, `session` |
+| `GET`  | `/api/v1/meshes/trend`        | Part-popularity trend: per `(mesh, bucket)` count for sparklines, active interactions only (#74). | `interval`, `limit`, `scene`, `source`, `session` |
 | `GET`  | `/api/v1/meshes/dwell`        | Object dwell ranking from `mesh_visibility`.            | `scene`, `session`          |
 | `GET`  | `/api/v1/hover/dwell`         | Hover-hesitation ranking from `hover_dwell`.            | `limit`, `scene`, `source`, `session` |
 | `GET`  | `/api/v1/clicks/dead`         | Dead-click rate (clicks that hit empty space).         | `scene`, `source`, `session` |
 | `GET`  | `/api/v1/clicks/rage`         | Rage-click clusters.                                    | `interval`, `minRepeats`, `limit`, `scene`, `source`, `session` |
 | `GET`  | `/api/v1/interactions/sources` | Input-source breakdown (mouse/touch/XR/hand/gaze/…).   | `limit`, `scene`, `source`, `session` |
+| `GET`  | `/api/v1/input-actions/top`   | Most-used app-level shortcuts from `input_action` (#75). | `limit`, `scene`, `source`, `session` |
 
 ## Performance
 

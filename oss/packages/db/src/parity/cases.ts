@@ -25,6 +25,7 @@ import {
   buildListSessions,
   buildMeshDwell,
   buildMeshInteractionKinds,
+  buildTopInputActions,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -54,6 +55,8 @@ import {
   buildAggregateTrajectories,
   buildTimeseries,
   buildTopMeshes,
+  buildTopMeshesBySource,
+  buildTopMeshesTrend,
   buildWorldHeatmap,
   buildGazeHeatmap,
 } from "../query/aggregations.js";
@@ -313,12 +316,50 @@ export const PARITY_CASES: readonly ParityCase[] = [
     ],
   },
   {
+    name: "topMeshesBySource",
+    build: (d) => buildTopMeshesBySource(PID, PARITY_RANGE, d),
+    sortKeys: ["mesh", "source"],
+    // Scoped to active interactions (#74): only `pointer_click` fixtures qualify
+    // (no `mesh_interaction` in the parity set; gaze `camera_sample` and dwell
+    // `mesh_visibility` are excluded). Each mesh has exactly one mouse click, so
+    // every mesh is a single `mouse` row with count 1.
+    golden: [
+      { mesh: "box", source: "mouse", count: 1 },
+      { mesh: "floor", source: "mouse", count: 1 },
+      { mesh: "sphere", source: "mouse", count: 1 },
+    ],
+  },
+  {
+    name: "topMeshesTrend",
+    build: (d) => buildTopMeshesTrend(PID, PARITY_RANGE, d),
+    sortKeys: ["mesh"],
+    // Active-interaction tally (#74), same `pointer_click`-only scope as
+    // topMeshesBySource. All fixtures fall in a single hourly bucket, so there is
+    // one row per mesh with count 1. The bucket epoch is engine-formatted, so it
+    // is ignored here; per-bucket grouping is covered by the DuckDB suite.
+    ignoreColumns: ["bucket"],
+    golden: [
+      { mesh: "box", count: 1 },
+      { mesh: "floor", count: 1 },
+      { mesh: "sphere", count: 1 },
+    ],
+  },
+  {
     name: "meshInteractionKinds",
     build: (d) => buildMeshInteractionKinds(PID, PARITY_RANGE, d),
     sortKeys: ["mesh", "kind"],
     // No `mesh_interaction` fixtures in the parity set, so the per-(mesh,kind)
     // breakdown is empty. Validates the GROUP/ORDER renders identically (empty)
     // on both engines (#72); real grouping is covered by the DuckDB unit suite.
+    golden: [],
+  },
+  {
+    name: "topInputActions",
+    build: (d) => buildTopInputActions(PID, PARITY_RANGE, d),
+    sortKeys: ["action", "source"],
+    // No `input_action` fixtures in the parity set, so the shortcut leaderboard
+    // is empty. Validates the GROUP/ORDER renders identically (empty) on both
+    // engines (#75); real grouping is covered by the DuckDB unit suite.
     golden: [],
   },
   {

@@ -50,7 +50,7 @@ test("dashboard renders captured events end to end", async ({ page, request }) =
   await expect(inputSources.getByText("Mouse")).toBeVisible();
 
   // Rendering-performance panel reflects frame_perf samples.
-  await expect(page.getByText("Rendering performance")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rendering performance" })).toBeVisible();
 
   // 4) The session appears in the sessions table; opening it loads the drill-down.
   const shortId = sessionId.slice(0, 12);

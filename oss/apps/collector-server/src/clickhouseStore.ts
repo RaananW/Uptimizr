@@ -37,6 +37,9 @@ import {
   buildRenderScaleTruth,
   buildTimeseries,
   buildTopMeshes,
+  buildTopMeshesBySource,
+  buildTopMeshesTrend,
+  buildTopInputActions,
   buildWorldHeatmap,
   buildGazeHeatmap,
   clickhouseDialect,
@@ -58,6 +61,9 @@ import {
   type MeshCountRow,
   type MeshDwellRow,
   type MeshInteractionKindRow,
+  type MeshSourceCountRow,
+  type MeshTrendPointRow,
+  type InputActionCountRow,
   type NavigationStatsRow,
   type XrRotationRateRow,
   type XrSourceUsageRow,
@@ -150,6 +156,10 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<FlowLinkRow>(ch, buildFlowHeatmap(projectId, opts, d)),
     topMeshes: (projectId, opts = {}) =>
       runClickhouseQuery<MeshCountRow>(ch, buildTopMeshes(projectId, opts, d)),
+    topMeshesBySource: (projectId, opts = {}) =>
+      runClickhouseQuery<MeshSourceCountRow>(ch, buildTopMeshesBySource(projectId, opts, d)),
+    topMeshesTrend: (projectId, opts = {}) =>
+      runClickhouseQuery<MeshTrendPointRow>(ch, buildTopMeshesTrend(projectId, opts, d)),
     meshDwell: (projectId, opts = {}) =>
       runClickhouseQuery<MeshDwellRow>(ch, buildMeshDwell(projectId, opts, d)),
     meshInteractionKinds: (projectId, opts = {}) =>
@@ -202,6 +212,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<XrAbandonmentRow>(ch, buildXrAbandonment(projectId, opts, d)),
     interactionsBySource: (projectId, opts = {}) =>
       runClickhouseQuery<InteractionSourceRow>(ch, buildInteractionsBySource(projectId, opts, d)),
+    topInputActions: (projectId, opts = {}) =>
+      runClickhouseQuery<InputActionCountRow>(ch, buildTopInputActions(projectId, opts, d)),
     scenes: (projectId, opts = {}) =>
       runClickhouseQuery<SceneRow>(ch, buildDistinctScenes(projectId, opts, d)),
     timeseries: (projectId, opts = {}) =>

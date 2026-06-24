@@ -97,6 +97,8 @@ export function createMemoryStore({
     clickGazeRays: async () => [],
     flowHeatmap: async () => [],
     topMeshes: async () => [],
+    topMeshesBySource: async () => [],
+    topMeshesTrend: async () => [],
     meshDwell: async () => [],
     meshInteractionKinds: async () => [],
     deadClicks: async () => [],
@@ -123,6 +125,7 @@ export function createMemoryStore({
     xrSourceUsage: async () => [],
     xrAbandonment: async () => [],
     interactionsBySource: async () => [],
+    topInputActions: async () => [],
     scenes: async (_projectId, opts = {}) => {
       const map = new Map<string, { events: number; last: number }>();
       for (const e of forProject()) {

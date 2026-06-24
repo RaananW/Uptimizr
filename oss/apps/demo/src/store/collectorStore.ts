@@ -7,6 +7,7 @@ import {
   buildClickGazeRay,
   buildCompileStalls,
   buildDeadClicks,
+  buildAggregateTrajectories,
   buildDistinctScenes,
   buildEventTypeCounts,
   buildFlowHeatmap,
@@ -18,6 +19,7 @@ import {
   buildJankRate,
   buildListSessions,
   buildMeshDwell,
+  buildMeshInteractionKinds,
   buildNavigationStats,
   buildPerfByDevice,
   buildPerfByScene,
@@ -25,13 +27,17 @@ import {
   buildPerfSummary,
   buildPointerHeatmap,
   buildRageClicks,
+  buildRenderScaleTruth,
   buildResourcePercentiles,
   buildResourceSummary,
   buildSceneCoverage,
   buildSessionTrajectory,
   buildStabilityCounts,
   buildTimeseries,
+  buildTopInputActions,
   buildTopMeshes,
+  buildTopMeshesBySource,
+  buildTopMeshesTrend,
   buildWorldHeatmap,
   buildXrAbandonment,
   buildXrRotationRate,
@@ -128,7 +134,23 @@ function ok(body: unknown): DemoResponse {
  */
 type BuilderRoute = (pid: string, opts: DemoOpts, sp: URLSearchParams) => QuerySpec;
 
-const READ_ROUTES: Record<string, BuilderRoute> = {
+/**
+ * Read routes handled out-of-band in {@link handleRequest} rather than through
+ * {@link READ_ROUTES} — the parameterized session/scene endpoints plus the static
+ * scene-representation listing. Listed in the collector's `:param` literal form so
+ * the route-parity test (`routeParity.test.ts`) can diff this demo's coverage
+ * against the collector's `query.ts` one-to-one. Keep in sync with the handlers
+ * below.
+ */
+export const DEMO_SPECIAL_GET_ROUTES = [
+  "/api/v1/sessions/:sessionId/trajectory",
+  "/api/v1/sessions/:id/events",
+  "/api/v1/sessions/:id/meta",
+  "/api/v1/scene-representations",
+  "/api/v1/scenes/:sceneId/representation",
+] as const;
+
+export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/sessions": (pid, o) => buildListSessions(pid, o, duckdbDialect),
   "/api/v1/heatmaps/pointer": (pid, o) => buildPointerHeatmap(pid, o, duckdbDialect),
   "/api/v1/heatmaps/world": (pid, o) => buildWorldHeatmap(pid, o, duckdbDialect),
@@ -147,12 +169,16 @@ const READ_ROUTES: Record<string, BuilderRoute> = {
       duckdbDialect,
     ),
   "/api/v1/meshes/top": (pid, o) => buildTopMeshes(pid, o, duckdbDialect),
+  "/api/v1/meshes/sources": (pid, o) => buildTopMeshesBySource(pid, o, duckdbDialect),
+  "/api/v1/meshes/trend": (pid, o) => buildTopMeshesTrend(pid, o, duckdbDialect),
+  "/api/v1/meshes/kinds": (pid, o) => buildMeshInteractionKinds(pid, o, duckdbDialect),
   "/api/v1/meshes/dwell": (pid, o) => buildMeshDwell(pid, o, duckdbDialect),
   "/api/v1/clicks/dead": (pid, o) => buildDeadClicks(pid, o, duckdbDialect),
   "/api/v1/clicks/rage": (pid, o) => buildRageClicks(pid, o, duckdbDialect),
   "/api/v1/hover/dwell": (pid, o) => buildHoverDwell(pid, o, duckdbDialect),
   "/api/v1/perf/compile-stalls": (pid, o) => buildCompileStalls(pid, o, duckdbDialect),
   "/api/v1/perf": (pid, o) => buildPerfSummary(pid, o, duckdbDialect),
+  "/api/v1/perf/render-scale": (pid, o) => buildRenderScaleTruth(pid, o, duckdbDialect),
   "/api/v1/perf/resources": (pid, o) => buildResourceSummary(pid, o, duckdbDialect),
   "/api/v1/perf/distribution": (pid, o) => buildPerfDistribution(pid, o, duckdbDialect),
   "/api/v1/perf/fps-histogram": (pid, o) => buildFpsHistogram(pid, o, duckdbDialect),
@@ -172,9 +198,11 @@ const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/xr/sources": (pid, o) => buildXrSourceUsage(pid, o, duckdbDialect),
   "/api/v1/xr/abandonment": (pid, o) => buildXrAbandonment(pid, o, duckdbDialect),
   "/api/v1/interactions/sources": (pid, o) => buildInteractionsBySource(pid, o, duckdbDialect),
+  "/api/v1/input-actions/top": (pid, o) => buildTopInputActions(pid, o, duckdbDialect),
   "/api/v1/scenes": (pid, o) => buildDistinctScenes(pid, o, duckdbDialect),
   "/api/v1/timeseries": (pid, o) => buildTimeseries(pid, o, duckdbDialect),
   "/api/v1/event-counts": (pid, o) => buildEventTypeCounts(pid, o, duckdbDialect),
+  "/api/v1/paths": (pid, o) => buildAggregateTrajectories(pid, o, duckdbDialect),
 };
 
 function parseVoxel(raw: string | null): [number, number, number] | undefined {

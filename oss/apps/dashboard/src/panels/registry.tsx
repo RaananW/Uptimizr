@@ -1,14 +1,26 @@
 "use client";
 
-import { definePanel, type PanelContext, type PanelDefinition } from "@uptimizr/react";
+import {
+  definePanel,
+  pickInterval,
+  type PanelContext,
+  type PanelDefinition,
+} from "@uptimizr/react";
 import type {
   AggregateTrajectoryPoint,
   CameraGestureStat,
+  CoverageVoxel,
   DirectionBin,
   FlowLink,
+  FpsHistogramBin,
   HeatmapBin,
+  InputActionCount,
+  InteractionSource,
   MeshCount,
   MeshInteractionKind,
+  MeshSourceCount,
+  MeshTrendPoint,
+  PerfDistribution,
   PositionBin,
   QueryParams,
   RenderScaleTruth as RenderScaleTruthData,
@@ -38,6 +50,30 @@ import {
   MESH_KINDS_SUBTITLE,
   MESH_KINDS_HELP,
 } from "@/components/MeshInteractionKinds";
+import {
+  MeshLeaderboardView,
+  MESH_LEADERBOARD_TITLE,
+  MESH_LEADERBOARD_SUBTITLE,
+  MESH_LEADERBOARD_HELP,
+} from "@/components/MeshLeaderboard";
+import {
+  InputModalitySplitView,
+  INPUT_MODALITY_TITLE,
+  INPUT_MODALITY_SUBTITLE,
+  INPUT_MODALITY_HELP,
+} from "@/components/InputModalitySplit";
+import {
+  DeadZoneReportView,
+  DEAD_ZONE_TITLE,
+  DEAD_ZONE_SUBTITLE,
+  DEAD_ZONE_HELP,
+} from "@/components/DeadZoneReport";
+import {
+  PerfDistributionView,
+  PERF_DISTRIBUTION_TITLE,
+  PERF_DISTRIBUTION_SUBTITLE,
+  PERF_DISTRIBUTION_HELP,
+} from "@/components/PerfDistribution";
 import {
   RenderScaleTruthView,
   RENDER_SCALE_TITLE,
@@ -192,6 +228,146 @@ const meshKindsPanel = definePanel<MeshInteractionKind[]>({
   surfaces: ["overview", "session"],
   load: (ctx) => ctx.api.meshKinds({ ...scoped(ctx), limit: 200 }),
   render: ({ data }) => <MeshInteractionKindsView rows={data ?? []} />,
+});
+
+/** Aim the per-mesh trend at ~24 buckets across the active range for a sparkline. */
+function trendInterval(ctx: PanelContext): number {
+  const { since, until } = ctx.params;
+  if (since == null || until == null || until <= since) return 3600;
+  return pickInterval(until - since, 24);
+}
+
+/** Part-popularity leaderboard (#74) data: per-mesh source split + trend buckets. */
+interface MeshLeaderboardData {
+  sources: MeshSourceCount[];
+  trend: MeshTrendPoint[];
+}
+
+/**
+ * Part-popularity leaderboard (#74) — React/HTML, half width. Ranked meshes with
+ * a per-mesh trend sparkline (rising/falling delta) and an expandable input-source
+ * split. The total/rank derive from summing the source split, so two reads — the
+ * per-(mesh,source) split and the per-(mesh,bucket) trend — power the whole panel.
+ */
+const meshLeaderboardPanel = definePanel<MeshLeaderboardData>({
+  id: "mesh-leaderboard",
+  title: MESH_LEADERBOARD_TITLE,
+  subtitle: MESH_LEADERBOARD_SUBTITLE,
+  help: MESH_LEADERBOARD_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: async (ctx) => {
+    const [sources, trend] = await Promise.all([
+      ctx.api.topMeshesBySource({ ...scoped(ctx), source: undefined, limit: 400 }),
+      ctx.api.topMeshesTrend({
+        ...scoped(ctx),
+        source: undefined,
+        interval: trendInterval(ctx),
+        limit: 2000,
+      }),
+    ]);
+    return { sources, trend };
+  },
+  render: ({ data }) => (
+    <MeshLeaderboardView sources={data.sources ?? []} trend={data.trend ?? []} />
+  ),
+});
+
+/** Input-modality split (#75) data: per-source share + most-used shortcuts. */
+interface InputModalityData {
+  sources: InteractionSource[];
+  actions: InputActionCount[];
+}
+
+/**
+ * Input-modality split + most-used shortcuts (#75, ADR 0023) — React/HTML, half
+ * width. The per-source interaction share (from the input-source breakdown,
+ * ADR 0011) paired with the most-used app-level `input_action` shortcuts. Two
+ * reads: the existing source breakdown and the new shortcut leaderboard.
+ */
+const inputModalityPanel = definePanel<InputModalityData>({
+  id: "input-modality-split",
+  title: INPUT_MODALITY_TITLE,
+  subtitle: INPUT_MODALITY_SUBTITLE,
+  help: INPUT_MODALITY_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: async (ctx) => {
+    const [sources, actions] = await Promise.all([
+      ctx.api.interactionsBySource({ ...scoped(ctx), source: undefined, limit: 100 }),
+      ctx.api.topInputActions({ ...scoped(ctx), source: undefined, limit: 50 }),
+    ]);
+    return { sources, actions };
+  },
+  render: ({ data }) => (
+    <InputModalitySplitView sources={data.sources ?? []} actions={data.actions ?? []} />
+  ),
+});
+
+/** Dead-zone report (#76) data: scene-coverage voxels + the registered proxy. */
+interface DeadZoneData {
+  coverage: CoverageVoxel[];
+  proxyMeshes: SceneProxyMesh[];
+}
+
+/**
+ * Dead-zone report (#76) — React/HTML table, half width. The coldest proxy meshes
+ * by camera proximity: the inverse of scene coverage, computed client-side by
+ * intersecting the occupied camera-position voxels with the registered scene proxy
+ * (ADR 0014). Renders a graceful empty-state/CTA when no proxy is registered.
+ */
+const deadZonePanel = definePanel<DeadZoneData>({
+  id: "dead-zone-report",
+  title: DEAD_ZONE_TITLE,
+  subtitle: DEAD_ZONE_SUBTITLE,
+  help: DEAD_ZONE_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: async (ctx) => {
+    const [coverage, proxyMeshes] = await Promise.all([
+      ctx.api.coverage({ ...scoped(ctx), cellSize: FLOOR_CELL_SIZE }),
+      resolveProxyMeshes(ctx),
+    ]);
+    return { coverage, proxyMeshes };
+  },
+  render: ({ data }) => (
+    <DeadZoneReportView
+      coverage={data.coverage ?? []}
+      proxyMeshes={data.proxyMeshes ?? []}
+      cellSize={FLOOR_CELL_SIZE}
+    />
+  ),
+});
+
+/** Performance distribution (#77) data: the FPS percentile bands + histogram. */
+interface PerfDistributionData {
+  distribution: PerfDistribution;
+  histogram: FpsHistogramBin[];
+}
+
+/**
+ * Performance distribution histogram (#77, ADR 0028 §1) — React/HTML, half width.
+ * The p05/p50/p95 FPS bands plus a per-session median-FPS histogram, as a reusable
+ * panel. No new aggregation — it wraps the existing `perfDistribution` +
+ * `fpsHistogram` reads (the `PerformanceSummaryPanel` only shows avg/p50/min).
+ */
+const perfDistributionPanel = definePanel<PerfDistributionData>({
+  id: "perf-distribution",
+  title: PERF_DISTRIBUTION_TITLE,
+  subtitle: PERF_DISTRIBUTION_SUBTITLE,
+  help: PERF_DISTRIBUTION_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: async (ctx) => {
+    const [distribution, histogram] = await Promise.all([
+      ctx.api.perfDistribution(scoped(ctx)),
+      ctx.api.fpsHistogram(scoped(ctx)),
+    ]);
+    return { distribution, histogram };
+  },
+  render: ({ data }) => (
+    <PerfDistributionView distribution={data.distribution} histogram={data.histogram ?? []} />
+  ),
 });
 
 /**
@@ -353,14 +529,18 @@ const divergencePanel = definePanel<DivergenceData>({
  */
 export const builtinPanels: PanelDefinition<unknown>[] = [
   topMeshesPanel,
+  meshLeaderboardPanel,
   pointerHeatmapPanel,
   cameraDomePanel,
   floorPlanPanel,
   desireLinesPanel,
   meshKindsPanel,
+  inputModalityPanel,
   renderScalePanel,
+  perfDistributionPanel,
   worldHeatmapPanel,
   navigationMixPanel,
+  deadZonePanel,
   flowPanel,
   divergencePanel,
 ] as PanelDefinition<unknown>[];

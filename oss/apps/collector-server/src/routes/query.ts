@@ -77,6 +77,11 @@ const rageClickQueryParams = pointerHeatmapQueryParams.extend({
   minRepeats: z.coerce.number().int().min(2).max(100).optional(),
 });
 
+/** Mesh-trend params (#74): pointer filters + a `bucket` interval in seconds. */
+const meshTrendQueryParams = pointerHeatmapQueryParams.extend({
+  interval: z.coerce.number().int().positive().max(31_536_000).optional(),
+});
+
 /** World heatmap params: a positive voxel `cellSize` (world units) instead of bins. */
 const worldHeatmapQueryParams = z.object({
   since: z.coerce.number().int().optional(),
@@ -431,6 +436,32 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     },
   );
 
+  // Per-mesh source split (#74) — the most-interacted-mesh tally broken out by
+  // the input `source` that drove each interaction; the leaderboard reads both
+  // rank (sum across sources) and the per-row breakdown from this one query.
+  r.get(
+    "/api/v1/meshes/sources",
+    { schema: { querystring: pointerHeatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.topMeshesBySource(projectId, req.query);
+    },
+  );
+
+  // Per-mesh interaction trend (#74) — the most-interacted-mesh tally bucketed
+  // into fixed `interval`-second windows so the leaderboard can draw a per-mesh
+  // sparkline and a rising/falling delta over the active range.
+  r.get(
+    "/api/v1/meshes/trend",
+    { schema: { querystring: meshTrendQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.topMeshesTrend(projectId, req.query);
+    },
+  );
+
   // Object dwell ranking (#37) — per-mesh attention from `mesh_visibility`
   // summaries (total visible/centered time, peak screen fraction).
   r.get(
@@ -748,6 +779,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.interactionsBySource(projectId, req.query);
+    },
+  );
+
+  // Most-used shortcuts / actions (#75, ADR 0023) — rank `input_action` events by
+  // their app-level `action` label, split by `source` (keyboard / gamepad / …).
+  // Pairs with the input-source breakdown for the input-modality panel.
+  r.get(
+    "/api/v1/input-actions/top",
+    { schema: { querystring: pointerHeatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.topInputActions(projectId, req.query);
     },
   );
 

@@ -29,6 +29,9 @@ import {
   buildSceneCoverage,
   buildTimeseries,
   buildTopMeshes,
+  buildTopMeshesBySource,
+  buildTopMeshesTrend,
+  buildTopInputActions,
   buildWorldHeatmap,
   duckdbDialect,
 } from "../index.js";
@@ -510,6 +513,64 @@ describe("duckdb store", () => {
     expect(byPair).toEqual({ "door/hover": 2, "door/click": 1, "lever/drag": 1 });
     // Ranked by count: the two door hovers lead.
     expect(rows[0]).toMatchObject({ mesh: "door", kind: "hover" });
+  });
+
+  it("splits per-mesh interaction counts by input source (#74)", async () => {
+    await insertEvents(db, [
+      base("mesh_interaction", T0 + 1_000, { mesh: "door", kind: "pick", source: "mouse" }),
+      base("mesh_interaction", T0 + 2_000, { mesh: "door", kind: "pick", source: "touch" }),
+      base("mesh_interaction", T0 + 3_000, { mesh: "door", kind: "pick", source: "touch" }),
+      base("pointer_click", T0 + 4_000, { hitMesh: "lever", source: "xr-controller" }),
+    ]);
+    const rows = await runDuckdbQuery<{ mesh: string; source: string; count: number }>(
+      db,
+      buildTopMeshesBySource(PID, RANGE, duckdbDialect),
+    );
+    const byPair = Object.fromEntries(rows.map((r) => [`${r.mesh}/${r.source}`, Number(r.count)]));
+    expect(byPair).toEqual({ "door/touch": 2, "door/mouse": 1, "lever/xr-controller": 1 });
+    // Ranked by count: door's two touch picks lead.
+    expect(rows[0]).toMatchObject({ mesh: "door", source: "touch" });
+  });
+
+  it("buckets per-mesh interaction counts into a trend (#74)", async () => {
+    await insertEvents(db, [
+      base("mesh_interaction", T0 + 1_000, { mesh: "door", kind: "pick", source: "mouse" }),
+      base("mesh_interaction", T0 + 2_000, { mesh: "door", kind: "pick", source: "mouse" }),
+      // A second window 120 s later — distinct bucket at a 60 s interval.
+      base("mesh_interaction", T0 + 122_000, { mesh: "door", kind: "pick", source: "mouse" }),
+    ]);
+    const rows = await runDuckdbQuery<{ mesh: string; bucket: number; count: number }>(
+      db,
+      buildTopMeshesTrend(
+        PID,
+        { since: T0 - 60_000, until: T0 + 180_000, interval: 60 },
+        duckdbDialect,
+      ),
+    );
+    const door = rows.filter((r) => r.mesh === "door");
+    // Two distinct time buckets: the first holds 2 picks, the later holds 1.
+    expect(door).toHaveLength(2);
+    expect(door.map((r) => Number(r.count))).toEqual([2, 1]);
+    // Ordered oldest bucket first.
+    expect(Number(door[0]!.bucket)).toBeLessThan(Number(door[1]!.bucket));
+  });
+
+  it("ranks the most-used input actions by source (#75)", async () => {
+    await insertEvents(db, [
+      base("input_action", T0 + 1_000, { action: "rotate-left", code: "KeyA", source: "keyboard" }),
+      base("input_action", T0 + 2_000, { action: "rotate-left", code: "KeyA", source: "keyboard" }),
+      base("input_action", T0 + 3_000, { action: "next-camera", button: 1, source: "gamepad" }),
+    ]);
+    const rows = await runDuckdbQuery<{ action: string; source: string; count: number }>(
+      db,
+      buildTopInputActions(PID, RANGE, duckdbDialect),
+    );
+    const byPair = Object.fromEntries(
+      rows.map((r) => [`${r.action}/${r.source}`, Number(r.count)]),
+    );
+    expect(byPair).toEqual({ "rotate-left/keyboard": 2, "next-camera/gamepad": 1 });
+    // Ranked by count: the repeated rotate-left leads.
+    expect(rows[0]).toMatchObject({ action: "rotate-left", source: "keyboard" });
   });
 
   it("counts dead clicks (pointer_click that hit nothing) (#46)", async () => {

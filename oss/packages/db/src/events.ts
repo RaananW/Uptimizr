@@ -91,8 +91,9 @@ export function toEventRow(event: AnyEvent): EventRow {
   const hitPoint = vec(e.hitPoint).length ? vec(e.hitPoint) : vec(e.point);
   const mesh = typeof e.mesh === "string" ? e.mesh : typeof e.hitMesh === "string" ? e.hitMesh : "";
   // `name` carries the custom-event name / asset name, and is reused as the coarse
-  // `phase` label for compile_stall (#42) and the `kind` label for
-  // capability_change (#49) so those rollups can group without a dedicated column.
+  // `phase` label for compile_stall (#42), the `kind` label for capability_change
+  // (#49), and the `action` label for input_action (#75) so those rollups can group
+  // without a dedicated column.
   const name =
     typeof e.name === "string"
       ? e.name
@@ -100,7 +101,9 @@ export function toEventRow(event: AnyEvent): EventRow {
         ? e.phase
         : typeof e.kind === "string"
           ? e.kind
-          : "";
+          : typeof e.action === "string"
+            ? e.action
+            : "";
   const ray = (e.ray ?? {}) as { origin?: unknown; direction?: unknown };
 
   return {
