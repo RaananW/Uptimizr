@@ -95,6 +95,17 @@ describe("builtinPanels — world-heatmap panel", () => {
   });
 });
 
+/** A load-context stub exposing a single stubbed collector method. */
+function apiCtx(method: string, result: unknown, params: Record<string, unknown> = {}) {
+  const fn = vi.fn().mockResolvedValue(result);
+  const ctx = {
+    surface: "overview",
+    params,
+    api: { [method]: fn },
+  } as unknown as PanelDataContext;
+  return { ctx, fn };
+}
+
 /** Generic load-context stub: an api bag + params, for the remaining panels. */
 function makeCtx(opts: {
   surface?: "overview" | "session";
@@ -113,6 +124,64 @@ function makeCtx(opts: {
     apiKey: "test-key",
   } as unknown as PanelDataContext;
 }
+
+describe("builtinPanels — render-scale-truth panel (#71)", () => {
+  const panel = builtinPanels.find((p) => p.id === "render-scale-truth");
+
+  it("is registered as a half-width panel on both surfaces", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(1);
+    expect(panel?.clientOnly).toBeUndefined();
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+  });
+
+  it("loads the render-scale summary via the collector", async () => {
+    const summary = { samples: 3, p50_fps: 60, downscaled_share: 0.5 };
+    const { ctx, fn } = apiCtx("renderScale", summary);
+    const data = await panel?.load?.(ctx);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(data).toEqual(summary);
+  });
+});
+
+describe("builtinPanels — mesh-interaction-kinds panel (#72)", () => {
+  const panel = builtinPanels.find((p) => p.id === "mesh-interaction-kinds");
+
+  it("is registered as a half-width panel on both surfaces", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(1);
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+  });
+
+  it("loads the per-mesh kind breakdown with a row cap", async () => {
+    const rows = [{ mesh: "door", kind: "hover", count: 2 }];
+    const { ctx, fn } = apiCtx("meshKinds", rows);
+    const data = await panel?.load?.(ctx);
+    expect(fn).toHaveBeenCalledWith(expect.objectContaining({ limit: 200 }));
+    expect(data).toEqual(rows);
+  });
+});
+
+describe("builtinPanels — desire-lines panel (#73)", () => {
+  const panel = builtinPanels.find((p) => p.id === "desire-lines");
+
+  it("is a client-only, overview-only panel gated to walkable sessions", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(1);
+    expect(panel?.clientOnly).toBe(true);
+    expect(panel?.surfaces).toEqual(["overview"]);
+    expect(panel?.enabled?.(ctxWithCameraMode("viewer"))).toBe(false);
+    expect(panel?.enabled?.(ctxWithCameraMode("first-person"))).toBe(true);
+  });
+
+  it("loads aggregate paths binned on the ground plane", async () => {
+    const points = [{ session_id: "s1", ts: 1, gx: 0, gz: 0 }];
+    const { ctx, fn } = apiCtx("aggregatePaths", points);
+    const data = await panel?.load?.(ctx);
+    expect(fn).toHaveBeenCalledWith(expect.objectContaining({ cellSize: expect.any(Number) }));
+    expect(data).toEqual(points);
+  });
+});
 
 describe("builtinPanels — navigation-mix panel", () => {
   const panel = builtinPanels.find((p) => p.id === "navigation-mix");

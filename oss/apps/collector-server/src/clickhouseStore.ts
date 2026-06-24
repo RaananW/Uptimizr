@@ -20,6 +20,7 @@ import {
   buildXrAbandonment,
   buildInteractionsBySource,
   buildMeshDwell,
+  buildMeshInteractionKinds,
   buildPerfSummary,
   buildPerfDistribution,
   buildFpsHistogram,
@@ -32,6 +33,8 @@ import {
   buildPointerHeatmap,
   buildSceneCoverage,
   buildSessionTrajectory,
+  buildAggregateTrajectories,
+  buildRenderScaleTruth,
   buildTimeseries,
   buildTopMeshes,
   buildWorldHeatmap,
@@ -54,12 +57,15 @@ import {
   type HeatmapBinRow,
   type MeshCountRow,
   type MeshDwellRow,
+  type MeshInteractionKindRow,
   type NavigationStatsRow,
   type XrRotationRateRow,
   type XrSourceUsageRow,
   type XrAbandonmentRow,
   type InteractionSourceRow,
   type PerfSummaryRow,
+  type RenderScaleTruthRow,
+  type AggregateTrajectoryPointRow,
   type PerfDistributionRow,
   type FpsHistogramRow,
   type FrameTimePercentileRow,
@@ -133,6 +139,11 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
         ch,
         buildSessionTrajectory(projectId, { ...opts, session: sessionId }, d),
       ),
+    aggregateTrajectories: (projectId, opts = {}) =>
+      runClickhouseQuery<AggregateTrajectoryPointRow>(
+        ch,
+        buildAggregateTrajectories(projectId, opts, d),
+      ),
     clickGazeRays: (projectId, opts = {}) =>
       runClickhouseQuery<ClickGazeRayRow>(ch, buildClickGazeRay(projectId, opts, d)),
     flowHeatmap: (projectId, opts = {}) =>
@@ -141,6 +152,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<MeshCountRow>(ch, buildTopMeshes(projectId, opts, d)),
     meshDwell: (projectId, opts = {}) =>
       runClickhouseQuery<MeshDwellRow>(ch, buildMeshDwell(projectId, opts, d)),
+    meshInteractionKinds: (projectId, opts = {}) =>
+      runClickhouseQuery<MeshInteractionKindRow>(ch, buildMeshInteractionKinds(projectId, opts, d)),
     deadClicks: (projectId, opts = {}) =>
       runClickhouseQuery<DeadClickRow>(ch, buildDeadClicks(projectId, opts, d)),
     rageClicks: (projectId, opts = {}) =>
@@ -157,6 +170,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<CameraGestureRow>(ch, buildCameraGestures(projectId, opts, d)),
     perfSummary: (projectId, opts = {}) =>
       runClickhouseQuery<PerfSummaryRow>(ch, buildPerfSummary(projectId, opts, d)),
+    renderScaleTruth: (projectId, opts = {}) =>
+      runClickhouseQuery<RenderScaleTruthRow>(ch, buildRenderScaleTruth(projectId, opts, d)),
     perfDistribution: (projectId, opts = {}) =>
       runClickhouseQuery<PerfDistributionRow>(ch, buildPerfDistribution(projectId, opts, d)),
     fpsHistogram: (projectId, opts = {}) =>

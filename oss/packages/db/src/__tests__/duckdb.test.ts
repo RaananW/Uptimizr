@@ -10,6 +10,7 @@ import {
   buildFlowHeatmap,
   buildListSessions,
   buildMeshDwell,
+  buildMeshInteractionKinds,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -492,6 +493,23 @@ describe("duckdb store", () => {
     expect(Number(hero.centered_ms)).toBe(2000);
     expect(Number(hero.max_screen_fraction)).toBeCloseTo(0.51, 5);
     expect(Number(hero.samples)).toBe(2);
+  });
+
+  it("breaks interactions down per mesh and kind (#72)", async () => {
+    await insertEvents(db, [
+      base("mesh_interaction", T0 + 1_000, { mesh: "door", kind: "hover", source: "mouse" }),
+      base("mesh_interaction", T0 + 2_000, { mesh: "door", kind: "hover", source: "mouse" }),
+      base("mesh_interaction", T0 + 3_000, { mesh: "door", kind: "click", source: "mouse" }),
+      base("mesh_interaction", T0 + 4_000, { mesh: "lever", kind: "drag", source: "mouse" }),
+    ]);
+    const rows = await runDuckdbQuery<{ mesh: string; kind: string; count: number }>(
+      db,
+      buildMeshInteractionKinds(PID, RANGE, duckdbDialect),
+    );
+    const byPair = Object.fromEntries(rows.map((r) => [`${r.mesh}/${r.kind}`, Number(r.count)]));
+    expect(byPair).toEqual({ "door/hover": 2, "door/click": 1, "lever/drag": 1 });
+    // Ranked by count: the two door hovers lead.
+    expect(rows[0]).toMatchObject({ mesh: "door", kind: "hover" });
   });
 
   it("counts dead clicks (pointer_click that hit nothing) (#46)", async () => {
