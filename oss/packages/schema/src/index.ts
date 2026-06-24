@@ -140,3 +140,15 @@ export {
   type CoordinateHandedness,
   type CoordinateSystem,
 } from "./coordinateSystem.js";
+
+export {
+  FUNNEL_CONFIG_VERSION,
+  funnelStepEventTypeSchema,
+  funnelStepSchema,
+  funnelStepsSchema,
+  funnelConfigSchema,
+  type FunnelStepEventType,
+  type FunnelStep,
+  type FunnelSteps,
+  type FunnelConfig,
+} from "./funnel.js";

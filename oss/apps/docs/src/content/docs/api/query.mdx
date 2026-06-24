@@ -9,72 +9,73 @@ the [overview](/docs/api/overview/) for auth and parameter units.
 
 ## Sessions & scenes
 
-| Method | Path                          | Purpose                                                  | Extra params         |
-| ------ | ----------------------------- | -------------------------------------------------------- | -------------------- |
-| `GET`  | `/api/v1/sessions`            | Recent sessions (id, visitor, event count, start/end).   | `limit`, `cameraMode` |
-| `GET`  | `/api/v1/sessions/:id/meta`   | Coarse session descriptor (device/scene/user).           | —                    |
-| `GET`  | `/api/v1/sessions/:id/trajectory` | One session's ordered walked path.                   | `scene`, `limit`     |
-| `GET`  | `/api/v1/scenes`              | Distinct scenes with activity (for the scene picker).    | `limit`              |
+| Method | Path                              | Purpose                                                | Extra params          |
+| ------ | --------------------------------- | ------------------------------------------------------ | --------------------- |
+| `GET`  | `/api/v1/sessions`                | Recent sessions (id, visitor, event count, start/end). | `limit`, `cameraMode` |
+| `GET`  | `/api/v1/sessions/:id/meta`       | Coarse session descriptor (device/scene/user).         | —                     |
+| `GET`  | `/api/v1/sessions/:id/trajectory` | One session's ordered walked path.                     | `scene`, `limit`      |
+| `GET`  | `/api/v1/scenes`                  | Distinct scenes with activity (for the scene picker).  | `limit`               |
 
 ## Heatmaps
 
-| Method | Path                          | Purpose                                                  | Extra params                              |
-| ------ | ----------------------------- | -------------------------------------------------------- | ----------------------------------------- |
-| `GET`  | `/api/v1/heatmaps/pointer`    | 2D pointer heatmap bins.                                 | `bins`, `scene`, `source`, `session`, `cameraMode` |
-| `GET`  | `/api/v1/heatmaps/world`      | 3D world-space pointer heatmap.                          | `cellSize`, `scene`, `source`, `cameraMode` |
-| `GET`  | `/api/v1/heatmaps/gaze`       | 3D world-space **gaze** heatmap (requires `capture.gaze`). | `cellSize`, `scene`, `session`, `cameraMode` |
-| `GET`  | `/api/v1/heatmaps/camera`     | View-direction heatmap (spherical bins).                | `bins`, `scene`, `session`, `cameraMode`  |
-| `GET`  | `/api/v1/heatmaps/position`   | Top-down floor-plan camera-position heatmap.            | `cellSize`, `scene`, `session`, `cameraMode` |
-| `GET`  | `/api/v1/heatmaps/click-rays` | Click rays per voxel/mesh.                              | `cellSize`, `scene`, `source`, `session`  |
+| Method | Path                          | Purpose                                                                                                                                        | Extra params                                                                                  |
+| ------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/v1/heatmaps/pointer`    | 2D pointer heatmap bins.                                                                                                                       | `bins`, `scene`, `source`, `session`, `cameraMode`                                            |
+| `GET`  | `/api/v1/heatmaps/world`      | 3D world-space pointer heatmap.                                                                                                                | `cellSize`, `scene`, `source`, `cameraMode`                                                   |
+| `GET`  | `/api/v1/heatmaps/gaze`       | 3D world-space **gaze** heatmap (requires `capture.gaze`).                                                                                     | `cellSize`, `scene`, `session`, `cameraMode`                                                  |
+| `GET`  | `/api/v1/heatmaps/camera`     | View-direction heatmap (spherical bins).                                                                                                       | `bins`, `scene`, `session`, `cameraMode`                                                      |
+| `GET`  | `/api/v1/heatmaps/position`   | Top-down floor-plan camera-position heatmap.                                                                                                   | `cellSize`, `scene`, `session`, `cameraMode`                                                  |
+| `GET`  | `/api/v1/heatmaps/click-rays` | Click rays per voxel/mesh.                                                                                                                     | `cellSize`, `scene`, `source`, `session`                                                      |
 | `GET`  | `/api/v1/heatmaps/flow`       | Gaze→mesh flow links. Position-aware mode (`groupByOrigin`/`originVoxel`) bins by click-time camera **standpoint** — best for walkable scenes. | `bins`, `limit`, `scene`, `session`, `cellSize`, `groupByOrigin`, `originVoxel`, `cameraMode` |
 
 ## Meshes & interactions
 
-| Method | Path                          | Purpose                                                  | Extra params                |
-| ------ | ----------------------------- | -------------------------------------------------------- | --------------------------- |
-| `GET`  | `/api/v1/meshes/top`          | Most-interacted meshes.                                 | `limit`, `session`          |
-| `GET`  | `/api/v1/meshes/sources`      | Part-popularity source split: per `(mesh, source)` count, scoped to active interactions (gaze excluded) (#74). | `limit`, `scene`, `source`, `session` |
-| `GET`  | `/api/v1/meshes/trend`        | Part-popularity trend: per `(mesh, bucket)` count for sparklines, active interactions only (#74). | `interval`, `limit`, `scene`, `source`, `session` |
-| `GET`  | `/api/v1/meshes/dwell`        | Object dwell ranking from `mesh_visibility`.            | `scene`, `session`          |
-| `GET`  | `/api/v1/hover/dwell`         | Hover-hesitation ranking from `hover_dwell`.            | `limit`, `scene`, `source`, `session` |
-| `GET`  | `/api/v1/clicks/dead`         | Dead-click rate (clicks that hit empty space).         | `scene`, `source`, `session` |
-| `GET`  | `/api/v1/clicks/rage`         | Rage-click clusters.                                    | `interval`, `minRepeats`, `limit`, `scene`, `source`, `session` |
-| `GET`  | `/api/v1/interactions/sources` | Input-source breakdown (mouse/touch/XR/hand/gaze/…).   | `limit`, `scene`, `source`, `session` |
-| `GET`  | `/api/v1/input-actions/top`   | Most-used app-level shortcuts from `input_action` (#75). | `limit`, `scene`, `source`, `session` |
+| Method | Path                           | Purpose                                                                                                        | Extra params                                                    |
+| ------ | ------------------------------ | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `GET`  | `/api/v1/meshes/top`           | Most-interacted meshes.                                                                                        | `limit`, `session`                                              |
+| `GET`  | `/api/v1/meshes/sources`       | Part-popularity source split: per `(mesh, source)` count, scoped to active interactions (gaze excluded) (#74). | `limit`, `scene`, `source`, `session`                           |
+| `GET`  | `/api/v1/meshes/trend`         | Part-popularity trend: per `(mesh, bucket)` count for sparklines, active interactions only (#74).              | `interval`, `limit`, `scene`, `source`, `session`               |
+| `GET`  | `/api/v1/meshes/dwell`         | Object dwell ranking from `mesh_visibility`.                                                                   | `scene`, `session`                                              |
+| `GET`  | `/api/v1/hover/dwell`          | Hover-hesitation ranking from `hover_dwell`.                                                                   | `limit`, `scene`, `source`, `session`                           |
+| `GET`  | `/api/v1/clicks/dead`          | Dead-click rate (clicks that hit empty space).                                                                 | `scene`, `source`, `session`                                    |
+| `GET`  | `/api/v1/clicks/rage`          | Rage-click clusters.                                                                                           | `interval`, `minRepeats`, `limit`, `scene`, `source`, `session` |
+| `GET`  | `/api/v1/interactions/sources` | Input-source breakdown (mouse/touch/XR/hand/gaze/…).                                                           | `limit`, `scene`, `source`, `session`                           |
+| `GET`  | `/api/v1/input-actions/top`    | Most-used app-level shortcuts from `input_action` (#75).                                                       | `limit`, `scene`, `source`, `session`                           |
 
 ## Performance
 
-| Method | Path                          | Purpose                                                  | Extra params       |
-| ------ | ----------------------------- | -------------------------------------------------------- | ------------------ |
-| `GET`  | `/api/v1/perf`                | Rendering-performance summary (samples, avg/min/p50 FPS). | `session`         |
-| `GET`  | `/api/v1/perf/resources`      | GPU/memory footprint summary from `resource_sample`.    | `session`          |
-| `GET`  | `/api/v1/perf/compile-stalls` | Shader/pipeline compile stalls.                         | `limit`, `scene`, `session` |
-| `GET`  | `/api/v1/capabilities`        | Capability fallbacks/recoveries (e.g. WebGPU→WebGL2).   | `limit`, `scene`, `session` |
+| Method | Path                          | Purpose                                                   | Extra params                |
+| ------ | ----------------------------- | --------------------------------------------------------- | --------------------------- |
+| `GET`  | `/api/v1/perf`                | Rendering-performance summary (samples, avg/min/p50 FPS). | `session`                   |
+| `GET`  | `/api/v1/perf/resources`      | GPU/memory footprint summary from `resource_sample`.      | `session`                   |
+| `GET`  | `/api/v1/perf/compile-stalls` | Shader/pipeline compile stalls.                           | `limit`, `scene`, `session` |
+| `GET`  | `/api/v1/capabilities`        | Capability fallbacks/recoveries (e.g. WebGPU→WebGL2).     | `limit`, `scene`, `session` |
 
 ## Navigation & XR
 
-| Method | Path                          | Purpose                                                  | Extra params       |
-| ------ | ----------------------------- | -------------------------------------------------------- | ------------------ |
-| `GET`  | `/api/v1/camera-gestures`     | Camera-navigation breakdown (orbit/pan/dolly/zoom/…).   | `limit`, `scene`, `source`, `session` |
-| `GET`  | `/api/v1/coverage`            | Scene coverage / dead zones from camera positions.      | `cellSize`, `scene`, `source`, `session` |
-| `GET`  | `/api/v1/camera/distance`     | Camera distance / zoom histogram.                       | `centerX/Y/Z`, `bucketSize`, `scene`, `source`, `session` |
-| `GET`  | `/api/v1/navigation`          | Per-session travel (segments, distance, active vs idle). | `moveThreshold`, `scene`, `source`, `session` |
-| `GET`  | `/api/v1/xr/rotation`         | XR head/view rotation rate (motion-sickness proxy).     | `rapidTurn`, `limit`, `scene`, `session` |
-| `GET`  | `/api/v1/xr/sources`          | XR input-source usage (hand vs controller vs gaze).     | `limit`, `scene`, `session` |
-| `GET`  | `/api/v1/xr/abandonment`      | XR session abandonment.                                 | `limit`, `scene`, `session` |
+| Method | Path                      | Purpose                                                  | Extra params                                              |
+| ------ | ------------------------- | -------------------------------------------------------- | --------------------------------------------------------- |
+| `GET`  | `/api/v1/camera-gestures` | Camera-navigation breakdown (orbit/pan/dolly/zoom/…).    | `limit`, `scene`, `source`, `session`                     |
+| `GET`  | `/api/v1/coverage`        | Scene coverage / dead zones from camera positions.       | `cellSize`, `scene`, `source`, `session`                  |
+| `GET`  | `/api/v1/camera/distance` | Camera distance / zoom histogram.                        | `centerX/Y/Z`, `bucketSize`, `scene`, `source`, `session` |
+| `GET`  | `/api/v1/navigation`      | Per-session travel (segments, distance, active vs idle). | `moveThreshold`, `scene`, `source`, `session`             |
+| `GET`  | `/api/v1/xr/rotation`     | XR head/view rotation rate (motion-sickness proxy).      | `rapidTurn`, `limit`, `scene`, `session`                  |
+| `GET`  | `/api/v1/xr/sources`      | XR input-source usage (hand vs controller vs gaze).      | `limit`, `scene`, `session`                               |
+| `GET`  | `/api/v1/xr/abandonment`  | XR session abandonment.                                  | `limit`, `scene`, `session`                               |
 
 ## Time & volume
 
-| Method | Path                          | Purpose                                                  | Extra params       |
-| ------ | ----------------------------- | -------------------------------------------------------- | ------------------ |
-| `GET`  | `/api/v1/timeseries`          | Event-volume buckets over time (`bucket`, `events`, `avg_fps`). | `scene`, `interval`, `type` |
-| `GET`  | `/api/v1/event-counts`        | Per-event-type counts over the range.                   | `scene`            |
+| Method | Path                   | Purpose                                                                                                                                                                      | Extra params                                    |
+| ------ | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `GET`  | `/api/v1/timeseries`   | Event-volume buckets over time (`bucket`, `events`, `avg_fps`).                                                                                                              | `scene`, `interval`, `type`                     |
+| `GET`  | `/api/v1/event-counts` | Per-event-type counts over the range.                                                                                                                                        | `scene`                                         |
+| `GET`  | `/api/v1/funnel`       | Ordered, per-session conversion funnel (#78): sessions reaching each step (`step`, `sessions`). Steps are caller-supplied; the OSS dashboard has no authoring UI (ADR 0038). | `steps` (JSON, required), `scene`, `cameraMode` |
 
 ## Replay (raw events)
 
-| Method | Path                          | Purpose                                                  | Extra params       |
-| ------ | ----------------------------- | -------------------------------------------------------- | ------------------ |
-| `GET`  | `/api/v1/sessions/:id/events` | Ordered raw event stream for replay.                    | —                  |
+| Method | Path                          | Purpose                              | Extra params |
+| ------ | ----------------------------- | ------------------------------------ | ------------ |
+| `GET`  | `/api/v1/sessions/:id/events` | Ordered raw event stream for replay. | —            |
 
 :::note
 `/api/v1/sessions/:id/events` requires the collector to run with `ENABLE_RAW_SESSION_RETENTION`;

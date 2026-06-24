@@ -8,6 +8,8 @@ import type {
   DirectionBinRow,
   EventTypeCountRow,
   FlowLinkRow,
+  FunnelStepInput,
+  FunnelStepResultRow,
   HeatmapBinRow,
   HoverDwellRow,
   CompileStallRow,
@@ -430,6 +432,17 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions,
   ): Promise<EventTypeCountRow[]>;
+  /**
+   * Single-project configurator funnel (#78, ADR 0038): ordered, per-session
+   * step-reach with the drop-off between consecutive steps. Each row is
+   * `(step, sessions)` — the number of sessions that reached step `k` in order.
+   * `steps` are supplied by the caller (request input / CLI / hosted), since the
+   * OSS dashboard is a passive viewer with no authoring surface.
+   */
+  funnel(
+    projectId: string,
+    opts: RangeOptions & SceneOptions & CameraModeOptions & { steps: readonly FunnelStepInput[] },
+  ): Promise<FunnelStepResultRow[]>;
   /** Ordered session timeline for replay (gated by raw-session retention). */
   getSessionEvents(projectId: string, sessionId: string): Promise<AnyEvent[]>;
   /**

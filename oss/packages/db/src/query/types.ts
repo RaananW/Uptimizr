@@ -503,3 +503,37 @@ export interface XrAbandonmentRow {
   started_at: string;
   ended_at: string;
 }
+
+/**
+ * One funnel step predicate (ADR 0038): the structural subset of a
+ * `@uptimizr/schema` `FunnelStep` the aggregation compiles to SQL. Each field
+ * maps to a promoted column — `type`→`event_type`, `name`→the `name` column
+ * (gesture/interaction kind or custom name), `mesh`→`mesh` — so the predicate is
+ * pure equality and dialect-agnostic. `label` is presentation-only and ignored
+ * by the query.
+ */
+export interface FunnelStepInput {
+  type: string;
+  name?: string;
+  mesh?: string;
+  label?: string;
+}
+
+/**
+ * Options for {@link "./aggregations".buildFunnel}: the ordered `steps` plus the
+ * standard range / scene / camera-mode scope applied to every step.
+ */
+export interface FunnelOptions extends RangeOptions, SceneOptions, CameraModeOptions {
+  /** Ordered step predicates; array order is the funnel order (min 2). */
+  steps: readonly FunnelStepInput[];
+}
+
+/**
+ * One funnel row (ADR 0038): how many sessions reached step `step` (0-based) in
+ * order. `sessions[k] / sessions[k-1]` is the conversion into step k; the
+ * consumer attaches labels from the input steps and computes the rates.
+ */
+export interface FunnelStepResultRow {
+  step: number;
+  sessions: number;
+}

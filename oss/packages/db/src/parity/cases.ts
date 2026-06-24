@@ -38,6 +38,7 @@ import {
   buildXrSourceUsage,
   buildXrAbandonment,
   buildInteractionsBySource,
+  buildFunnel,
   buildPerfDaily,
   buildPerfSummary,
   buildRenderScaleTruth,
@@ -670,6 +671,29 @@ export const PARITY_CASES: readonly ParityCase[] = [
     golden: [
       { event_type: "pointer_click", source: "mouse", count: 3, sessions: 2 },
       { event_type: "pointer_move", source: "mouse", count: 1, sessions: 1 },
+    ],
+  },
+  {
+    // Funnel (#78, ADR 0038): an ordered camera_sample → click-on-"sphere"
+    // funnel. Step 0 (camera_sample) is reached by both sessions: s1 at T0+1s,
+    // s2 at T0+11s. Step 1 (pointer_click with mesh "sphere") is reached only by
+    // s1 (its T0+4s click hits "sphere", at/after the T0+1s camera_sample); s2's
+    // only click hits "floor", so it drops. Exercises the sequential CTE chain,
+    // the mesh predicate, and the per-step session count. Hand-verified.
+    name: "funnel",
+    build: (d) =>
+      buildFunnel(
+        PID,
+        {
+          ...PARITY_RANGE,
+          steps: [{ type: "camera_sample" }, { type: "pointer_click", mesh: "sphere" }],
+        },
+        d,
+      ),
+    sortKeys: ["step"],
+    golden: [
+      { step: 0, sessions: 2 },
+      { step: 1, sessions: 1 },
     ],
   },
 ];

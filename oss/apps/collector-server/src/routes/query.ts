@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { Readable } from "node:stream";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { sceneProxySchema } from "@uptimizr/schema";
+import { sceneProxySchema, funnelStepsSchema } from "@uptimizr/schema";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
 
@@ -200,6 +200,21 @@ const eventCountsQueryParams = z.object({
   since: z.coerce.number().int().optional(),
   until: z.coerce.number().int().optional(),
   scene: sceneFilter,
+});
+
+/**
+ * Funnel params (#78, ADR 0038): a time range, optional scene/camera-mode scope,
+ * and `steps` — a JSON-encoded array of step predicates validated against
+ * `funnelStepsSchema` in the handler (the structured input is too rich for a flat
+ * query schema). The OSS dashboard has no authoring surface, so steps are passed
+ * by the caller (CLI / hosted / ad-hoc), not stored.
+ */
+const funnelQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  scene: sceneFilter,
+  cameraMode: cameraModeFilter,
+  steps: z.string().min(1).max(8192),
 });
 
 /** Scene-coverage params: voxel `cellSize` + scene/session filters + result cap. */
@@ -823,6 +838,34 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       return store.eventTypeCounts(projectId, req.query);
     },
   );
+
+  // Single-project configurator funnel (#78, ADR 0038) — ordered, per-session
+  // step-reach with the drop-off between steps. `steps` is a JSON-encoded array
+  // of step predicates, validated against the shared `funnelStepsSchema`; the
+  // OSS dashboard is a passive viewer, so steps are supplied by the caller
+  // (CLI / hosted), never authored or persisted here.
+  r.get("/api/v1/funnel", { schema: { querystring: funnelQueryParams } }, async (req, reply) => {
+    const projectId = await authProject(req, reply, store);
+    if (!projectId) return reply;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(req.query.steps);
+    } catch {
+      return reply.code(400).send({ error: "steps must be a JSON array" });
+    }
+    const result = funnelStepsSchema.safeParse(parsed);
+    if (!result.success) {
+      return reply.code(400).send({ error: "invalid funnel steps", details: result.error.issues });
+    }
+    const { since, until, scene, cameraMode } = req.query;
+    return store.funnel(projectId, {
+      since,
+      until,
+      scene,
+      cameraType: cameraTypeForMode(cameraMode),
+      steps: result.data,
+    });
+  });
 
   // Ordered session timeline for replay — gated by raw-session retention (ADR 0003).
   // Negotiates NDJSON (`Accept: application/x-ndjson` or `?format=ndjson`): when

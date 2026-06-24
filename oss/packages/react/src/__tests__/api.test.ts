@@ -130,6 +130,30 @@ describe("CollectorApi", () => {
     expect(rows[0]).toEqual({ action: "rotate-left", source: "keyboard", count: 12 });
   });
 
+  it("encodes funnel steps into the query and coerces the result (#78)", async () => {
+    const fetchMock = mockFetch([
+      { step: "0", sessions: "10" },
+      { step: "1", sessions: "4" },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const steps = [
+      { type: "camera_gesture", name: "orbit" },
+      { type: "mesh_interaction", name: "pick", mesh: "box" },
+    ];
+    const rows = await api.funnel(steps, { scene: "lobby" });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/funnel");
+    expect(parsed.searchParams.get("scene")).toBe("lobby");
+    expect(JSON.parse(parsed.searchParams.get("steps") ?? "[]")).toEqual(steps);
+    expect(rows).toEqual([
+      { step: 0, sessions: 10 },
+      { step: 1, sessions: 4 },
+    ]);
+  });
+
   it("coerces camera-gesture rows and hits the camera-gestures endpoint", async () => {
     const fetchMock = mockFetch([
       { kind: "orbit", gestures: "9", total_ms: "4500", avg_ms: "500", max_ms: "1200" },

@@ -989,6 +989,7 @@ free/walkable (`first-person`) camera.
 | `GET`  | `/api/v1/scenes`                  | Distinct scenes with activity (id, event count, last seen) for the scene picker (ADR 0010).                                                                                                                                                                                                                                                                                                                                         | `limit`                                                                                       |
 | `GET`  | `/api/v1/timeseries`              | Event-volume buckets over time (`bucket` epoch-ms, `events`, `avg_fps`) — the time dimension.                                                                                                                                                                                                                                                                                                                                       | `scene`, `interval` (sec), `type`                                                             |
 | `GET`  | `/api/v1/event-counts`            | Per-event-type counts over the range (powers the scene-health panel).                                                                                                                                                                                                                                                                                                                                                               | `scene`                                                                                       |
+| `GET`  | `/api/v1/funnel`                  | Ordered, per-session conversion funnel (ADR 0038, #78): how many sessions reach each step of a caller-supplied sequence (`step`, `sessions`). Steps come in via the `steps` query param — there is no authoring surface in OSS.                                                                                                                                                                                                     | `steps` (JSON, required), `scene`, `cameraMode`                                               |
 | `GET`  | `/api/v1/sessions/:id/meta`       | Coarse session descriptor (device/scene/user).                                                                                                                                                                                                                                                                                                                                                                                      | —                                                                                             |
 | `GET`  | `/api/v1/sessions/:id/trajectory` | One session's ordered walked path (ADR 0026): `camera_sample` positions oldest-first (`ts,x,y,z`).                                                                                                                                                                                                                                                                                                                                  | `scene`, `limit`                                                                              |
 | `GET`  | `/api/v1/paths`                   | Aggregate desire lines (ADR 0037): every session's `camera_sample` path binned onto the X/Z ground grid (`session_id,ts,gx,gz`), ordered per session — the crowd's common routes overlaid as low-opacity poly-lines (#73).                                                                                                                                                                                                          | `cellSize`, `limit`, `scene`, `cameraMode`                                                    |
@@ -1035,6 +1036,49 @@ curl -H "x-api-key: $KEY" \
 > every store, including ClickHouse — the `clickhouse` store disables 64-bit
 > integer quoting so results match the DuckDB store byte-for-byte. The dashboard's
 > `CollectorApi` still coerces defensively.
+
+### Funnels (`/api/v1/funnel`) — caller-configured (ADR 0038, #78)
+
+A **funnel** counts how many sessions reach each step of an ordered sequence of
+events — e.g. _opened the scene → orbited the camera → clicked the product_. The
+collector computes the aggregation; it does **not** author or store funnel
+definitions. The OSS dashboard is a passive viewer with no configuration surface
+(ADR 0038), so the **caller supplies the steps on every request** (CLI, a seed
+script, or the hosted product). Step authoring, persistence, and the saved-funnel
+panel live in the hosted product.
+
+`steps` is a URL-encoded JSON array of **2–20** step predicates over the wide event
+table:
+
+| Field   | Required | Matches                                                             |
+| ------- | -------- | ------------------------------------------------------------------- |
+| `type`  | yes      | the event type (e.g. `camera_sample`, `mesh_interaction`, `custom`) |
+| `name`  | no       | a gesture/interaction kind or custom-event name                     |
+| `mesh`  | no       | a single object name                                                |
+| `label` | no       | presentation-only; ignored by the query                             |
+
+**Semantics** — sequential, first-touch, monotonic: step 0 is a session's first
+matching event; a session reaches step _N_ iff it has an event matching step _N_'s
+predicate at a timestamp **at or after** the first time it reached step _N−1_.
+Out-of-order events therefore don't count, and a step can never report more
+sessions than the step before it.
+
+```bash
+STEPS='[{"type":"camera_sample"},{"type":"mesh_interaction","name":"pick","mesh":"product"}]'
+curl -H "x-api-key: $KEY" \
+  --get "https://collect.example.com/api/v1/funnel" \
+  --data-urlencode "steps=$STEPS" --data-urlencode "scene=lobby"
+# → [{ "step": 0, "sessions": 128 }, { "step": 1, "sessions": 37 }]
+```
+
+From the client:
+
+```ts
+const rows = await api.funnel(
+  [{ type: "camera_sample" }, { type: "mesh_interaction", name: "pick", mesh: "product" }],
+  { scene: "lobby" },
+);
+```
 
 ---
 

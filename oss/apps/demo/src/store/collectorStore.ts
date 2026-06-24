@@ -13,6 +13,7 @@ import {
   buildFlowHeatmap,
   buildFpsHistogram,
   buildFrameTimePercentiles,
+  buildFunnel,
   buildGazeHeatmap,
   buildHoverDwell,
   buildInteractionsBySource,
@@ -44,9 +45,15 @@ import {
   buildXrSourceUsage,
   duckdbDialect,
   nodeSampleRowToEvent,
+  type FunnelStepInput,
   type QuerySpec,
 } from "@uptimizr/db/query";
-import { anyEventSchema, sceneProxySchema, type AnyEvent } from "@uptimizr/schema";
+import {
+  anyEventSchema,
+  funnelStepsSchema,
+  sceneProxySchema,
+  type AnyEvent,
+} from "@uptimizr/schema";
 import { DEMO_PROJECT_ID } from "./constants.js";
 import type { WasmDb } from "./db.js";
 
@@ -148,6 +155,7 @@ export const DEMO_SPECIAL_GET_ROUTES = [
   "/api/v1/sessions/:id/meta",
   "/api/v1/scene-representations",
   "/api/v1/scenes/:sceneId/representation",
+  "/api/v1/funnel",
 ] as const;
 
 export const READ_ROUTES: Record<string, BuilderRoute> = {
@@ -293,6 +301,30 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
   }
 
   if (req.method === "GET") {
+    // Funnel (#78): `steps` is a JSON array validated against the shared schema,
+    // mirroring the collector's `GET /api/v1/funnel` (400 on bad input). It is the
+    // one read route whose body is too rich for the flat `readOpts` bag.
+    if (path === "/api/v1/funnel") {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(sp.get("steps") ?? "");
+      } catch {
+        return { status: 400, body: { error: "steps must be a JSON array" } };
+      }
+      const result = funnelStepsSchema.safeParse(parsed);
+      if (!result.success) {
+        return { status: 400, body: { error: "invalid funnel steps" } };
+      }
+      const rows = await db.all(
+        buildFunnel(
+          pid,
+          { ...readOpts(sp), steps: result.data as readonly FunnelStepInput[] },
+          duckdbDialect,
+        ),
+      );
+      return ok(rows);
+    }
+
     const route = READ_ROUTES[path];
     if (route) {
       const rows = await db.all(route(pid, readOpts(sp), sp));

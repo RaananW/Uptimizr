@@ -183,6 +183,10 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
     scenes: async () => [{ scene_id: "lobby", events: 42, last_seen: "2024-06-16 10:05:00.000" }],
     timeseries: async () => [{ bucket: 1718532000000, events: 12, avg_fps: 59.5 }],
     eventTypeCounts: async () => [{ event_type: "pointer_move", count: 30 }],
+    funnel: async () => [
+      { step: 0, sessions: 10 },
+      { step: 1, sessions: 4 },
+    ],
     getSessionEvents: async () => [],
     streamSessionEvents: async function* () {},
     getSessionMeta: async () => ({
@@ -344,6 +348,75 @@ describe("collector app", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(received).toMatchObject({ scene: "lobby" });
+    await app.close();
+  });
+
+  it("returns the funnel for a valid API key (#78)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const steps = JSON.stringify([{ type: "camera_sample" }, { type: "pointer_click" }]);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/funnel?steps=${encodeURIComponent(steps)}`,
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      { step: 0, sessions: 10 },
+      { step: 1, sessions: 4 },
+    ]);
+    await app.close();
+  });
+
+  it("forwards parsed funnel steps + filters to the store call (#78)", async () => {
+    let received: unknown;
+    const store = makeStore({
+      funnel: async (_projectId, opts) => {
+        received = opts;
+        return [{ step: 0, sessions: 1 }];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const steps = JSON.stringify([
+      { type: "camera_gesture", name: "orbit" },
+      { type: "mesh_interaction", name: "pick", mesh: "box" },
+    ]);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/funnel?scene=lobby&cameraMode=viewer&steps=${encodeURIComponent(steps)}`,
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received).toMatchObject({
+      scene: "lobby",
+      cameraType: "arc-rotate",
+      steps: [
+        { type: "camera_gesture", name: "orbit" },
+        { type: "mesh_interaction", name: "pick", mesh: "box" },
+      ],
+    });
+    await app.close();
+  });
+
+  it("rejects funnel steps that are not valid JSON with 400 (#78)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/funnel?steps=not-json",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("rejects a funnel with fewer than two steps with 400 (#78)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const steps = JSON.stringify([{ type: "camera_sample" }]);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/funnel?steps=${encodeURIComponent(steps)}`,
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(400);
     await app.close();
   });
 
