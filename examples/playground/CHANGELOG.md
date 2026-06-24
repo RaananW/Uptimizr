@@ -1,5 +1,18 @@
 # @uptimizr/example-playground
 
+## 0.0.3
+
+### Patch Changes
+
+- @uptimizr/replay@0.1.2
+- @uptimizr/aframe@0.1.2
+- @uptimizr/babylon@0.1.2
+- @uptimizr/babylon-lite@0.1.2
+- @uptimizr/sdk-core@0.1.2
+- @uptimizr/playcanvas@0.1.2
+- @uptimizr/r3f@0.1.2
+- @uptimizr/three@0.1.2
+
 ## 0.0.2
 
 ### Patch Changes

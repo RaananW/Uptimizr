@@ -1,5 +1,15 @@
 # @uptimizr/demo
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [9e22ebd]
+- Updated dependencies [394d5c8]
+- Updated dependencies [e5ce02c]
+  - @uptimizr/schema@0.2.0
+  - @uptimizr/db@0.3.0
+
 ## 0.0.3
 
 ### Patch Changes

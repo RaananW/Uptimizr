@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/babylon-lite",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Babylon Lite (@babylonjs/lite) connector for Uptimizr — captures camera, pointer, mesh, and perf events from the functional/WebGPU Babylon engine as an sdk-core collector.",
   "keywords": [
     "uptimizr",
