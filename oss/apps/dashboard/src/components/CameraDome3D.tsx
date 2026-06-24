@@ -4,7 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { buildGazeEquirect } from "@uptimizr/heatmap";
 import type { DirectionBin } from "@/lib/api";
 import { heatRgb } from "@/lib/heat";
-import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "@/lib/orbitZoom";
+import {
+  attachDoubleClickFocus,
+  disableWheelZoom,
+  resetFocus,
+  stepZoom,
+  type OrbitFocusCamera,
+  type OrbitHome,
+} from "@/lib/orbitZoom";
 import { attachMeshHover, type HoverTip } from "@/lib/sceneHover";
 import { HeatLegend } from "./HeatLegend";
 import { Panel } from "./Panel";
@@ -24,7 +31,8 @@ type DomeMode = "markers" | "skydome";
  */
 export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gridSize: number }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const cameraRef = useRef<OrbitZoomCamera | null>(null);
+  const cameraRef = useRef<OrbitFocusCamera | null>(null);
+  const homeRef = useRef<OrbitHome | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<DomeMode>("markers");
@@ -77,12 +85,13 @@ export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gri
         const scene = new Scene(engine);
         scene.clearColor = new Color4(0.04, 0.05, 0.07, 1);
 
+        const domeCenter = Vector3.Zero();
         const camera = new ArcRotateCamera(
           "dome-cam",
           Math.PI / 3,
           Math.PI / 2.4,
           3.6,
-          Vector3.Zero(),
+          domeCenter,
           scene,
         );
         camera.attachControl(canvas, true);
@@ -90,6 +99,12 @@ export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gri
         camera.upperRadiusLimit = 8;
         disableWheelZoom(camera);
         cameraRef.current = camera;
+        homeRef.current = {
+          target: domeCenter,
+          alpha: camera.alpha,
+          beta: camera.beta,
+          radius: camera.radius,
+        };
         new HemisphericLight("dome-light", new Vector3(0.3, 1, 0.2), scene);
 
         // Reference dome (faint wireframe) so directions read as "on a sphere".
@@ -216,13 +231,16 @@ export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gri
         const onResize = () => engine.resize();
         window.addEventListener("resize", onResize);
         const detachHover = attachMeshHover(scene, canvas, setTip);
+        const detachFocus = attachDoubleClickFocus(scene, canvas, camera);
 
         setPhase("ready");
         cleanup = () => {
           window.removeEventListener("resize", onResize);
           detachHover();
+          detachFocus();
           setTip(null);
           cameraRef.current = null;
+          homeRef.current = null;
           scene.dispose();
           engine.dispose();
         };
@@ -269,7 +287,12 @@ export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gri
               </button>
             ))}
           </div>
-          <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
+          <ZoomButtons
+            onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)}
+            onReset={() =>
+              cameraRef.current && homeRef.current && resetFocus(cameraRef.current, homeRef.current)
+            }
+          />
           <HeatLegend
             title="Gaze density"
             lowLabel="rarely"
@@ -298,7 +321,7 @@ export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gri
 
 export const CAMERA_DOME_TITLE = "View-direction dome (3D)";
 export const CAMERA_DOME_SUBTITLE =
-  "Where the audience looked, mapped onto a sphere — drag to orbit, +/- to zoom";
+  "Where the audience looked, mapped onto a sphere — drag to orbit, +/- to zoom, double-click to focus";
 
 /** Chrome-wrapped dome for legacy call sites (overview + session surfaces). */
 export function CameraDome3D(props: { bins: DirectionBin[]; gridSize: number }) {

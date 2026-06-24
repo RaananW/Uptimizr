@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { SceneProxyMesh, WorldHeatmapBin } from "@/lib/api";
 import { heatRgb } from "@/lib/heat";
-import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "@/lib/orbitZoom";
+import {
+  attachDoubleClickFocus,
+  disableWheelZoom,
+  resetFocus,
+  stepZoom,
+  type OrbitFocusCamera,
+  type OrbitHome,
+} from "@/lib/orbitZoom";
 import { attachMeshHover, type HoverTip } from "@/lib/sceneHover";
 import { HeatLegend } from "./HeatLegend";
 import { Panel } from "./Panel";
@@ -17,7 +24,7 @@ type MarkerShape = "sphere" | "cube";
 /** Default panel chrome copy for the world (click) heatmap. */
 export const WORLD_HEATMAP_TITLE = "World heatmap (3D)";
 export const WORLD_HEATMAP_SUBTITLE =
-  "Pointer hit-points voxel-binned in world space — drag to orbit, +/- to zoom";
+  "Pointer hit-points voxel-binned in world space — drag to orbit, +/- to zoom, double-click to focus";
 
 /** Props shared by the body view and the chrome-wrapped legacy component. */
 interface WorldHeatmap3DViewProps {
@@ -53,7 +60,8 @@ export function WorldHeatmap3DView({
   emptyLabel = "No 3D hit-points in range.",
 }: WorldHeatmap3DViewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const cameraRef = useRef<OrbitZoomCamera | null>(null);
+  const cameraRef = useRef<OrbitFocusCamera | null>(null);
+  const homeRef = useRef<OrbitHome | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
   const [markerShape, setMarkerShape] = useState<MarkerShape>("sphere");
@@ -150,6 +158,12 @@ export function WorldHeatmap3DView({
         camera.attachControl(canvas, true);
         disableWheelZoom(camera);
         cameraRef.current = camera;
+        homeRef.current = {
+          target: center,
+          alpha: camera.alpha,
+          beta: camera.beta,
+          radius: camera.radius,
+        };
         new HemisphericLight("world-light", new Vector3(0.4, 1, 0.3), scene);
 
         // Faint wireframe backdrop: one thin-instanced unit box per proxy AABB.
@@ -264,13 +278,16 @@ export function WorldHeatmap3DView({
         const onResize = () => engine.resize();
         window.addEventListener("resize", onResize);
         const detachHover = attachMeshHover(scene, canvas, setTip);
+        const detachFocus = attachDoubleClickFocus(scene, canvas, camera);
 
         setPhase("ready");
         cleanup = () => {
           window.removeEventListener("resize", onResize);
           detachHover();
+          detachFocus();
           setTip(null);
           cameraRef.current = null;
+          homeRef.current = null;
           scene.dispose();
           engine.dispose();
         };
@@ -304,7 +321,12 @@ export function WorldHeatmap3DView({
       {phase === "ready" ? (
         <>
           <MarkerShapeToggle shape={markerShape} onChange={setMarkerShape} />
-          <ZoomButtons onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)} />
+          <ZoomButtons
+            onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)}
+            onReset={() =>
+              cameraRef.current && homeRef.current && resetFocus(cameraRef.current, homeRef.current)
+            }
+          />
           <HeatLegend
             title={legendTitle}
             lowLabel={legendLow}
