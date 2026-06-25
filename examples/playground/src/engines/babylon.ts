@@ -114,6 +114,7 @@ const DEFAULT_CAPABILITIES: EngineCapabilities = {
   cursorOverlay: true,
   inputSource: true,
   replay: true,
+  backdrop: true,
   heatmap: true,
   sceneProxy: true,
 };
@@ -229,6 +230,9 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
     // The Babylon replay driver is imported lazily so it only ships when replay runs.
     const { createBabylonReplayDriver } = await import("@uptimizr/replay/babylon");
 
+    // Tracks the active backdrop so loading a new one disposes the previous.
+    let currentBackdrop: { dispose(): void } | null = null;
+
     return {
       client,
       flashMesh,
@@ -250,6 +254,27 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
             hooks.setStatus(`replay: custom "${name}" ${props ? JSON.stringify(props) : ""}`);
           },
         });
+      },
+      async loadBackdrop(source) {
+        // Lazily pull the backdrop helper + glTF loader registration so the orbit
+        // path stays lean until a backdrop is actually loaded.
+        const [{ loadSceneBackdrop }] = await Promise.all([
+          import("@uptimizr/replay/babylon"),
+          import("@babylonjs/loaders/glTF"),
+        ]);
+        if (currentBackdrop) {
+          currentBackdrop.dispose();
+          currentBackdrop = null;
+        }
+        const backdrop = await loadSceneBackdrop(scene, source);
+        currentBackdrop = backdrop;
+        return {
+          meshCount: backdrop.meshes.length,
+          dispose() {
+            backdrop.dispose();
+            if (currentBackdrop === backdrop) currentBackdrop = null;
+          },
+        };
       },
       async showHeatmap(sceneId) {
         return showWorldHeatmap({
@@ -275,6 +300,8 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
       },
       dispose() {
         window.removeEventListener("resize", onResize);
+        currentBackdrop?.dispose();
+        currentBackdrop = null;
         void client.stop("manual");
         engine.dispose();
       },

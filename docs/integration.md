@@ -836,6 +836,36 @@ isn't reconstructed, and a directly captured `childPath` sample always wins over
 reconstructed pose. If no scan-time root transform is available (or the root matrix
 is singular) it returns `[]`.
 
+#### Loading a scene backdrop (`loadSceneBackdrop`)
+
+Replay normally re-drives into the scene you already have. When you only have the
+captured stream and no scene to host it — a hosted drag-and-drop viewer, for
+example — load an arbitrary asset as a **backdrop** first, then replay over it. The
+Babylon helper accepts a URL **or** a dropped `File`:
+
+```ts
+import { loadSceneBackdrop } from "@uptimizr/replay/babylon";
+
+const backdrop = await loadSceneBackdrop(scene, urlOrFile); // ".glb" / ".gltf"
+console.log(`${backdrop.meshes.length} meshes added`);
+
+backdrop.dispose(); // remove it (e.g. to swap one dropped model for the next)
+```
+
+`loadSceneBackdrop(scene, source, options?)` returns a handle
+(`{ rootNodes, meshes, container, dispose() }`). Its `dispose()` removes everything
+it added and releases the GPU resources. The default loader **lazily** imports
+Babylon's glTF `SceneLoader`, so the lean replay path never pulls it in unless a
+backdrop is requested; pass `options.load` for a custom loader or
+`options.pluginExtension` to force a parser. Actor/subtree nodes from the loaded
+model re-drive exactly like any other scene node (`node_transform`, ADR 0033).
+
+The dashboard's **Session replay** birdview exposes this with no code: a **Load
+model (.glb)** control under the timeline loads a `.glb`/`.gltf` and replaces the
+wireframe proxy boxes with the real model, re-driving the session over it (**Replace
+model** swaps files, **Remove model** restores the boxes). The model stays in the
+browser for that view — nothing is uploaded.
+
 The global build exposes `window.UptimizrReplay`, with a one-call
 `replayInScene` convenience that fetches and plays a session:
 
@@ -848,6 +878,7 @@ r.onload = () => {
     endpoint: "https://collect.example.com",
     apiKey: "your-project-api-key",
     sessionId: "<copy from the dashboard Sessions table>",
+    backdropUrl: "https://example.com/room.glb", // optional — load a model first
     debug: true, // log fetch/play progress to the console
   });
 };
@@ -856,6 +887,13 @@ document.head.appendChild(r);
 
 `pnpm playground` prints this snippet pre-filled and serves the bundle at
 `/uptimizr-replay.global.js`.
+
+`backdropUrl` loads a `.glb`/`.gltf` into the scene before replay. To keep the
+global bundle from shipping a second copy of Babylon's `SceneLoader`, it **reuses
+the host page's loader**: expose Babylon as `window.BABYLON` (with
+`LoadAssetContainerAsync` and a glTF loader registered) or pass an explicit
+`loadBackdrop` callback. When no loader is found it warns and replays without a
+backdrop.
 
 `replayInScene` starts playback immediately; it does not wait for the scene to be
 "ready", so call it once `scene` exists and has an `activeCamera`. It always logs

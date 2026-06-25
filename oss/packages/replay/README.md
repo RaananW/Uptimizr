@@ -42,6 +42,49 @@ const player = new ReplayPlayer(events, driver, { speed: 1, onComplete: () => {}
 player.play(); // play / pause / seek(ms) / stop
 ```
 
+### Scene backdrop (load a `.glb` to re-drive over)
+
+Replay normally re-drives into your **existing** scene. When you only have the
+captured stream and no scene to host it (e.g. a hosted drag-and-drop viewer),
+load an arbitrary asset as a **backdrop** first, then replay over it. The Babylon
+helper accepts a URL **or** a dropped `File`:
+
+```ts
+import { loadSceneBackdrop } from "@uptimizr/replay/babylon";
+
+// from a URL…
+const backdrop = await loadSceneBackdrop(scene, "https://example.com/room.glb");
+// …or from a dropped File:
+// const backdrop = await loadSceneBackdrop(scene, file);
+
+console.log(`${backdrop.meshes.length} meshes added`);
+
+// later — swap one model for another:
+backdrop.dispose();
+```
+
+`loadSceneBackdrop(scene, source, options?)` returns a handle
+(`{ rootNodes, meshes, container, dispose() }`). Its `dispose()` removes
+everything it added and releases the GPU resources, so the hosted slice can
+replace one dropped model with the next. The default loader lazily imports
+Babylon's glTF `SceneLoader`, so the lean replay path never pulls it in unless a
+backdrop is actually requested; pass `options.load` to supply your own loader, or
+`options.pluginExtension` to force a parser. Loaded actor/subtree nodes re-drive
+exactly like any other scene node (`node_transform`, ADR 0033).
+
+With the **global** one-call entry point, pass `backdropUrl` (it reuses the host
+page's Babylon loader so the IIFE never bundles a second `SceneLoader`):
+
+```ts
+await replayInScene({
+  scene,
+  endpoint: "https://collect.example.com",
+  apiKey: "utk_…",
+  sessionId: "…",
+  backdropUrl: "https://example.com/room.glb",
+});
+```
+
 ### three.js
 
 The three driver lives at `@uptimizr/replay/three`. three has no

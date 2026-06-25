@@ -546,6 +546,7 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   setHidden("captureConfigNote", !(hasClient && caps.capturePanel));
   setHidden("sceneSection", !(hasClient && caps.sceneSwitch));
   setHidden("replaySection", !(hasClient && caps.replay && instance.createReplayDriver));
+  setHidden("backdropSection", !(hasClient && caps.backdrop && instance.loadBackdrop));
   setHidden("heatmapSection", !(hasClient && caps.heatmap && instance.showHeatmap));
   setHidden("proxySection", !(hasClient && caps.sceneProxy && instance.registerSceneProxy));
   setHidden("heatmapStatus", !(hasClient && (caps.heatmap || caps.sceneProxy)));
@@ -635,7 +636,52 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
     });
   }
 
-  // --- 3D heatmap overlay (Babylon only, Tier 0) -----------------------------
+  // --- Load a .glb backdrop and re-drive over it (Babylon only) ---------------
+  const backdropStatus = document.getElementById("backdropStatus");
+  if (caps.backdrop && instance.loadBackdrop && backdropStatus) {
+    const loadBackdrop = instance.loadBackdrop.bind(instance);
+    const backdropFile = requireElement("backdropFile", HTMLInputElement);
+    const backdropUrlInput = requireElement("backdropUrlInput", HTMLInputElement);
+    const backdropButton = requireElement("backdropButton", HTMLButtonElement);
+    const backdropClearButton = requireElement("backdropClearButton", HTMLButtonElement);
+    let backdrop: { meshCount: number; dispose(): void } | null = null;
+
+    const setLoaded = (loaded: boolean): void => {
+      backdropClearButton.disabled = !loaded;
+    };
+    setLoaded(false);
+
+    backdropButton.addEventListener("click", () => {
+      void (async () => {
+        const url = backdropUrlInput.value.trim();
+        const file = backdropFile.files?.[0];
+        const source: string | File | undefined = url || file;
+        if (!source) {
+          backdropStatus.textContent = "Choose a .glb file or enter a URL first.";
+          return;
+        }
+        backdropStatus.textContent = "Loading backdrop…";
+        try {
+          if (backdrop) backdrop.dispose();
+          backdrop = await loadBackdrop(source);
+          setLoaded(true);
+          const label = typeof source === "string" ? source : source.name;
+          backdropStatus.textContent = `Backdrop loaded: ${label} (${backdrop.meshCount} meshes). Replay over it ↑`;
+        } catch (err) {
+          backdrop = null;
+          setLoaded(false);
+          backdropStatus.textContent = err instanceof Error ? err.message : "Backdrop load failed.";
+        }
+      })();
+    });
+
+    backdropClearButton.addEventListener("click", () => {
+      backdrop?.dispose();
+      backdrop = null;
+      setLoaded(false);
+      backdropStatus.textContent = "Backdrop removed.";
+    });
+  }
   const heatmapStatus = document.getElementById("heatmapStatus");
   if (caps.heatmap && instance.showHeatmap && heatmapStatus) {
     const showHeatmap = instance.showHeatmap.bind(instance);
