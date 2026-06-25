@@ -185,6 +185,9 @@ importers:
       '@babylonjs/core':
         specifier: ^9.13.0
         version: 9.13.0
+      '@babylonjs/loaders':
+        specifier: ^9.13.0
+        version: 9.13.0(@babylonjs/core@9.13.0)(babylonjs-gltf2interface@9.13.0)
       '@uptimizr/heatmap':
         specifier: workspace:*
         version: link:../../packages/heatmap

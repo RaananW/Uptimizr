@@ -49,6 +49,7 @@
   },
   "dependencies": {
     "@babylonjs/core": "^9.13.0",
+    "@babylonjs/loaders": "^9.13.0",
     "@uptimizr/heatmap": "workspace:*",
     "@uptimizr/react": "workspace:*",
     "@uptimizr/replay": "workspace:*",

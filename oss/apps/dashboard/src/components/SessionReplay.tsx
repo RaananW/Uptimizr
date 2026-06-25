@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import type { Scene } from "@babylonjs/core/scene.js";
+import type { SceneBackdrop } from "@uptimizr/replay/babylon";
 import { CollectorApi } from "@/lib/api";
 import { useLiveSession, type LiveEvent } from "@/lib/live";
 import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "@/lib/orbitZoom";
@@ -296,6 +299,16 @@ export function SessionReplay({
   // highlights in sync with the on-canvas ray pulse. Ref-mirrored so the per-frame
   // render loop only pushes state on an actual change.
   const highlightedMeshRef = useRef<string | null>(null);
+  // Scene-backdrop refs (issue #80): a viewer can load a `.glb` to replace the
+  // wireframe AABB proxy boxes with the real model and re-drive the session over
+  // it. `sceneRef` lets the toolbar handlers reach the built scene; `proxyBoxesRef`
+  // holds the wireframe boxes so a loaded model can hide them (and restore them on
+  // removal); `backdropRef` is the loaded model handle (disposed on swap/teardown);
+  // `modelInputRef` is the hidden file picker.
+  const sceneRef = useRef<Scene | null>(null);
+  const proxyBoxesRef = useRef<{ setEnabled(value: boolean): void }[]>([]);
+  const backdropRef = useRef<SceneBackdrop | null>(null);
+  const modelInputRef = useRef<HTMLInputElement | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
@@ -311,6 +324,11 @@ export function SessionReplay({
   const [view, setView] = useState<"birdview" | "follow">("birdview");
   // Mesh hit by the most-recent active interaction ray (drives the label highlight).
   const [highlightedMesh, setHighlightedMesh] = useState<string | null>(null);
+  // Scene-backdrop UI state (issue #80): whether a model is loaded over the proxy
+  // boxes, whether a load is in flight, and a short status/error line.
+  const [modelLoaded, setModelLoaded] = useState(false);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelStatus, setModelStatus] = useState<string | null>(null);
 
   // Mirror the labels-visible flag into a ref for the render loop.
   useEffect(() => {
@@ -358,6 +376,14 @@ export function SessionReplay({
     labelElsRef.current = [];
     actorLabelElsRef.current = [];
     progressRef.current = 0;
+    // Reset the scene-backdrop state: the previous scene (and any loaded model) is
+    // torn down with the old effect, so start clean for the rebuilt scene.
+    backdropRef.current = null;
+    proxyBoxesRef.current = [];
+    sceneRef.current = null;
+    setModelLoaded(false);
+    setModelLoading(false);
+    setModelStatus(null);
 
     void (async () => {
       try {
@@ -487,6 +513,7 @@ export function SessionReplay({
         const engine = new Engine(canvas, true, { preserveDrawingBuffer: false });
         const scene = new Scene(engine);
         scene.clearColor = new Color4(0.04, 0.05, 0.07, 1);
+        sceneRef.current = scene;
 
         const camera = new ArcRotateCamera(
           "birdview-cam",
@@ -555,6 +582,7 @@ export function SessionReplay({
           return movingLeaves.has(m.name);
         };
         const labelCenters: { name: string; center: Vector3 }[] = [];
+        const proxyBoxes: { setEnabled(value: boolean): void }[] = [];
         for (const m of proxyMeshes) {
           if (isMovingActor(m)) continue;
           const a = m.aabb;
@@ -574,6 +602,7 @@ export function SessionReplay({
           proxyMat.alpha = 0.35;
           proxyBox.material = proxyMat;
           proxyBox.isPickable = false;
+          proxyBoxes.push(proxyBox);
           // Anchor an HTML label at the top-center of the box so it floats above
           // the wireframe without occluding it.
           labelCenters.push({
@@ -584,6 +613,9 @@ export function SessionReplay({
         labelCentersRef.current = labelCenters;
         labelElsRef.current = labelCenters.map(() => null);
         setProxyLabels(labelCenters.map((l) => l.name));
+        proxyBoxesRef.current = proxyBoxes;
+        // If a model was loaded against the previous build it is gone with the old
+        // scene; the rebuilt boxes start visible (model state was reset above).
 
         // Moving scene actors (ADR 0027) → ONE emissive marker per declared actor
         // ROOT. A subtree actor (ADR 0033) streams the root plus one track per
@@ -1349,6 +1381,10 @@ export function SessionReplay({
           trailHits?.dispose();
           persistentMarks?.dispose();
           glowOrb.dispose();
+          backdropRef.current?.dispose();
+          backdropRef.current = null;
+          proxyBoxesRef.current = [];
+          sceneRef.current = null;
           scene.dispose();
           engine.dispose();
           cameraRef.current = null;
@@ -1446,6 +1482,62 @@ export function SessionReplay({
     },
     [highlightedMesh],
   );
+
+  // Load a `.glb`/`.gltf` (file or via the picker) as the birdview backdrop and
+  // re-drive the session over it (issue #80). The real model replaces the wireframe
+  // AABB proxy boxes: hide them while a model is loaded, restore on removal. The
+  // glTF `SceneLoader` is heavy, so it (and the replay backdrop helper) load lazily
+  // only when the viewer actually drops a model.
+  const onModelFile = useCallback(async (file: File) => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    setModelLoading(true);
+    setModelStatus(`Loading ${file.name}…`);
+    try {
+      const [{ loadSceneBackdrop }] = await Promise.all([
+        import("@uptimizr/replay/babylon"),
+        // Side-effect import: registers Babylon's glTF loader plugin so the
+        // backdrop loader can parse `.glb`/`.gltf`.
+        import("@babylonjs/loaders/glTF"),
+      ]);
+      if (sceneRef.current !== scene) return; // scene rebuilt mid-load — discard.
+      backdropRef.current?.dispose();
+      const backdrop = await loadSceneBackdrop(scene, file);
+      if (sceneRef.current !== scene) {
+        backdrop.dispose();
+        return;
+      }
+      backdropRef.current = backdrop;
+      for (const box of proxyBoxesRef.current) box.setEnabled(false);
+      dirtyRef.current = true;
+      setModelLoaded(true);
+      setModelStatus(`Loaded ${file.name} (${backdrop.meshes.length} meshes).`);
+    } catch (err) {
+      setModelStatus(err instanceof Error ? err.message : "Could not load model.");
+    } finally {
+      setModelLoading(false);
+    }
+  }, []);
+
+  const onPickModel = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      // Reset the input so picking the same file again still fires `change`.
+      e.target.value = "";
+      if (file) void onModelFile(file);
+    },
+    [onModelFile],
+  );
+
+  // Remove the loaded model and bring the wireframe proxy boxes back.
+  const onRemoveModel = useCallback(() => {
+    backdropRef.current?.dispose();
+    backdropRef.current = null;
+    for (const box of proxyBoxesRef.current) box.setEnabled(true);
+    dirtyRef.current = true;
+    setModelLoaded(false);
+    setModelStatus(null);
+  }, []);
 
   return (
     <Panel
@@ -1600,6 +1692,51 @@ export function SessionReplay({
           {formatClock(duration)}
         </span>
       </div>
+
+      {phase === "ready" ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          {/* Scene backdrop (issue #80): load a real model to replace the wireframe
+              AABB proxy boxes and re-drive the session over it. */}
+          <input
+            ref={modelInputRef}
+            type="file"
+            accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
+            onChange={onPickModel}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => modelInputRef.current?.click()}
+            disabled={modelLoading}
+            className="rounded-md border border-edge bg-ink/80 px-2.5 py-1.5 text-xs font-medium text-fg transition hover:bg-ink hover:text-white disabled:opacity-40"
+          >
+            {modelLoading
+              ? "Loading model…"
+              : modelLoaded
+                ? "Replace model (.glb)"
+                : "Load model (.glb)"}
+          </button>
+          {modelLoaded ? (
+            <button
+              type="button"
+              onClick={onRemoveModel}
+              disabled={modelLoading}
+              className="rounded-md border border-edge px-2.5 py-1.5 text-xs font-medium text-fg transition hover:bg-ink hover:text-white disabled:opacity-40"
+            >
+              Remove model
+            </button>
+          ) : null}
+          {modelStatus ? (
+            <span className="text-xs text-fg-muted" role="status">
+              {modelStatus}
+            </span>
+          ) : (
+            <span className="text-xs text-fg-muted">
+              Load a glTF model to replace the wireframe boxes with your real scene.
+            </span>
+          )}
+        </div>
+      ) : null}
 
       {phase === "ready" ? (
         <EventTimeline

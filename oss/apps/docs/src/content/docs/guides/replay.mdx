@@ -164,3 +164,13 @@ grows in real time. A **● LIVE** control pins the playhead to the live edge; s
 to review what already happened, then press **● LIVE** to jump back to the edge. Live follow uses the
 same raw-retention gate as replay — with retention off, the window shows nothing to follow.
 
+### Load your model into the birdview
+
+By default the birdview draws a wireframe box per [registered proxy
+mesh](/docs/guides/mesh-tracking/) so the recorded motion reads against your scene's rough shape. To
+see the session re-driven over the **real** geometry, use **Load model (.glb)** under the timeline and
+pick a `.glb`/`.gltf`. The model loads as a [backdrop](#loading-a-scene-backdrop) and replaces the
+wireframe boxes; the camera path, interaction rays, and actor markers keep re-driving over it.
+**Replace model** swaps in a different file and **Remove model** restores the boxes. The model is held
+only in your browser for the current view — nothing is uploaded.
+

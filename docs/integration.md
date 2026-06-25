@@ -860,6 +860,12 @@ backdrop is requested; pass `options.load` for a custom loader or
 `options.pluginExtension` to force a parser. Actor/subtree nodes from the loaded
 model re-drive exactly like any other scene node (`node_transform`, ADR 0033).
 
+The dashboard's **Session replay** birdview exposes this with no code: a **Load
+model (.glb)** control under the timeline loads a `.glb`/`.gltf` and replaces the
+wireframe proxy boxes with the real model, re-driving the session over it (**Replace
+model** swaps files, **Remove model** restores the boxes). The model stays in the
+browser for that view — nothing is uploaded.
+
 The global build exposes `window.UptimizrReplay`, with a one-call
 `replayInScene` convenience that fetches and plays a session:
 
