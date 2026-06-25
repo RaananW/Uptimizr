@@ -138,6 +138,85 @@ const FLOOR_PLAN_SETTINGS = {
   },
 } as const satisfies PanelSettings;
 
+/**
+ * Per-panel data-resolution settings (ADR 0039, #79). Each exposes the binning /
+ * cap constant the panel previously hardcoded as a viewer-tunable slider; changing
+ * one re-runs the panel's `load` (it feeds the query), exactly like `cellSize`.
+ */
+const POINTER_HEATMAP_SETTINGS = {
+  bins: {
+    type: "number",
+    label: "Grid resolution",
+    help: "Bins per axis for the 2D pointer grid. More bins sharpen detail; fewer smooth the heat.",
+    default: POINTER_BINS,
+    min: 10,
+    max: 120,
+    step: 10,
+  },
+} as const satisfies PanelSettings;
+
+const CAMERA_DOME_SETTINGS = {
+  bins: {
+    type: "number",
+    label: "Direction resolution",
+    help: "Angular bins for the view-direction dome. More bins resolve finer look-directions; fewer aggregate them.",
+    default: CAMERA_BINS,
+    min: 12,
+    max: 72,
+    step: 6,
+  },
+} as const satisfies PanelSettings;
+
+const WORLD_HEATMAP_SETTINGS = {
+  cellSize: {
+    type: "number",
+    label: "Voxel size",
+    help: "World-space voxel size for binning pointer hits. Larger voxels smooth the heat; smaller ones sharpen spatial detail.",
+    default: WORLD_CELL_SIZE,
+    min: 0.1,
+    max: 2,
+    step: 0.1,
+    unit: "m",
+  },
+} as const satisfies PanelSettings;
+
+const DIVERGENCE_SETTINGS = {
+  cellSize: {
+    type: "number",
+    label: "Voxel size",
+    help: "Shared world-space voxel size for both the gaze and click grids, so the divergence field stays aligned.",
+    default: WORLD_CELL_SIZE,
+    min: 0.1,
+    max: 2,
+    step: 0.1,
+    unit: "m",
+  },
+} as const satisfies PanelSettings;
+
+const FLOW_SANKEY_SETTINGS = {
+  maxLinks: {
+    type: "number",
+    label: "Max links",
+    help: "Maximum aggregate flow links drawn before the panel caps for legibility.",
+    default: FLOW_MAX_LINKS,
+    min: 10,
+    max: 200,
+    step: 10,
+  },
+} as const satisfies PanelSettings;
+
+const TOP_MESHES_SETTINGS = {
+  limit: {
+    type: "number",
+    label: "Top N",
+    help: "How many meshes to rank in the list.",
+    default: 25,
+    min: 5,
+    max: 100,
+    step: 5,
+  },
+} as const satisfies PanelSettings;
+
 /** On the session surface, scope a panel's query to the inspected session. */
 function scoped(ctx: PanelContext): QueryParams {
   return ctx.surface === "session" && ctx.sessionId
@@ -163,39 +242,48 @@ async function resolveProxyMeshes(ctx: PanelContext): Promise<SceneProxyMesh[]> 
 }
 
 /** Top meshes — React/HTML list, half width. */
-const topMeshesPanel = definePanel<MeshCount[]>({
+const topMeshesPanel = definePanel<MeshCount[], typeof TOP_MESHES_SETTINGS>({
   id: "top-meshes",
   title: TOP_MESHES_TITLE,
   subtitle: TOP_MESHES_SUBTITLE,
   span: 1,
   surfaces: ["overview", "session"],
+  settings: TOP_MESHES_SETTINGS,
   load: (ctx) =>
-    ctx.api.topMeshes({ ...scoped(ctx), source: undefined, scene: undefined, limit: 25 }),
+    ctx.api.topMeshes({
+      ...scoped(ctx),
+      source: undefined,
+      scene: undefined,
+      limit: ctx.settings.limit,
+    }),
   render: ({ data }) => <TopMeshesView meshes={data ?? []} />,
 });
 
 /** Pointer heatmap — 2D canvas, half width. */
-const pointerHeatmapPanel = definePanel<HeatmapBin[]>({
+const pointerHeatmapPanel = definePanel<HeatmapBin[], typeof POINTER_HEATMAP_SETTINGS>({
   id: "pointer-heatmap",
   title: POINTER_HEATMAP_TITLE,
   subtitle: POINTER_HEATMAP_SUBTITLE,
   span: 1,
   surfaces: ["overview", "session"],
   clientOnly: true,
-  load: (ctx) => ctx.api.pointerHeatmap({ ...scoped(ctx), bins: POINTER_BINS }),
-  render: ({ data }) => <PointerHeatmapView bins={data ?? []} gridSize={POINTER_BINS} />,
+  settings: POINTER_HEATMAP_SETTINGS,
+  load: (ctx) => ctx.api.pointerHeatmap({ ...scoped(ctx), bins: ctx.settings.bins }),
+  render: ({ data, ctx }) => <PointerHeatmapView bins={data ?? []} gridSize={ctx.settings.bins} />,
 });
 
 /** View-direction dome — 3D Babylon scene, full width. */
-const cameraDomePanel = definePanel<DirectionBin[]>({
+const cameraDomePanel = definePanel<DirectionBin[], typeof CAMERA_DOME_SETTINGS>({
   id: "camera-dome-3d",
   title: CAMERA_DOME_TITLE,
   subtitle: CAMERA_DOME_SUBTITLE,
   span: 2,
   surfaces: ["overview", "session"],
   clientOnly: true,
-  load: (ctx) => ctx.api.cameraHeatmap({ ...scoped(ctx), source: undefined, bins: CAMERA_BINS }),
-  render: ({ data }) => <CameraDome3DView bins={data ?? []} gridSize={CAMERA_BINS} />,
+  settings: CAMERA_DOME_SETTINGS,
+  load: (ctx) =>
+    ctx.api.cameraHeatmap({ ...scoped(ctx), source: undefined, bins: ctx.settings.bins }),
+  render: ({ data, ctx }) => <CameraDome3DView bins={data ?? []} gridSize={ctx.settings.bins} />,
 });
 
 /**
@@ -421,24 +509,25 @@ interface WorldHeatmapData {
  * faint backdrop (ADR 0014). Client-only (Babylon loads in the browser). The
  * proxy is resolved alongside the voxels so the backdrop tracks the scene filter.
  */
-const worldHeatmapPanel = definePanel<WorldHeatmapData>({
+const worldHeatmapPanel = definePanel<WorldHeatmapData, typeof WORLD_HEATMAP_SETTINGS>({
   id: "world-heatmap-3d",
   title: WORLD_HEATMAP_TITLE,
   subtitle: WORLD_HEATMAP_SUBTITLE,
   span: 2,
   surfaces: ["overview", "session"],
   clientOnly: true,
+  settings: WORLD_HEATMAP_SETTINGS,
   load: async (ctx) => {
     const [voxels, proxyMeshes] = await Promise.all([
-      ctx.api.worldHeatmap({ ...scoped(ctx), cellSize: WORLD_CELL_SIZE }),
+      ctx.api.worldHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
       resolveProxyMeshes(ctx),
     ]);
     return { voxels, proxyMeshes };
   },
-  render: ({ data }) => (
+  render: ({ data, ctx }) => (
     <WorldHeatmap3DView
       voxels={data.voxels}
-      cellSize={WORLD_CELL_SIZE}
+      cellSize={ctx.settings.cellSize}
       proxyMeshes={data.proxyMeshes}
     />
   ),
@@ -475,7 +564,7 @@ interface FlowData {
  * the flow query scoped to walk/orbit/all from `ctx.baseUrl`/`ctx.apiKey`, so
  * `load` only seeds the initial rows + proxy backdrop. Client-only (Babylon).
  */
-const flowPanel = definePanel<FlowData>({
+const flowPanel = definePanel<FlowData, typeof FLOW_SANKEY_SETTINGS>({
   id: "flow-sankey-3d",
   title: FLOW_SANKEY_TITLE,
   subtitle: FLOW_SANKEY_SUBTITLE,
@@ -483,6 +572,7 @@ const flowPanel = definePanel<FlowData>({
   span: 2,
   surfaces: ["overview", "session"],
   clientOnly: true,
+  settings: FLOW_SANKEY_SETTINGS,
   load: async (ctx) => {
     // The panel re-issues the flow query per camera mode, so the base query
     // strips the global camera-mode filter (the panel's own toggle owns it).
@@ -498,7 +588,7 @@ const flowPanel = definePanel<FlowData>({
       links={data.links}
       gridSize={CAMERA_BINS}
       proxyMeshes={data.proxyMeshes}
-      maxLinks={FLOW_MAX_LINKS}
+      maxLinks={ctx.settings.maxLinks}
       baseUrl={ctx.baseUrl}
       apiKey={ctx.apiKey}
       flowQuery={data.flowQuery}
@@ -521,26 +611,27 @@ interface DivergenceData {
  * interaction (ADR 0030). Both grids load at the same `WORLD_CELL_SIZE` so the
  * voxels align and the client-side divergence field is meaningful. Client-only.
  */
-const divergencePanel = definePanel<DivergenceData>({
+const divergencePanel = definePanel<DivergenceData, typeof DIVERGENCE_SETTINGS>({
   id: "gaze-click-divergence-3d",
   title: GAZE_CLICK_TITLE,
   subtitle: GAZE_CLICK_SUBTITLE,
   span: 2,
   surfaces: ["overview", "session"],
   clientOnly: true,
+  settings: DIVERGENCE_SETTINGS,
   load: async (ctx) => {
     const [gaze, click, proxyMeshes] = await Promise.all([
-      ctx.api.gazeHeatmap({ ...scoped(ctx), source: undefined, cellSize: WORLD_CELL_SIZE }),
-      ctx.api.worldHeatmap({ ...scoped(ctx), cellSize: WORLD_CELL_SIZE }),
+      ctx.api.gazeHeatmap({ ...scoped(ctx), source: undefined, cellSize: ctx.settings.cellSize }),
+      ctx.api.worldHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
       resolveProxyMeshes(ctx),
     ]);
     return { gaze, click, proxyMeshes };
   },
-  render: ({ data }) => (
+  render: ({ data, ctx }) => (
     <GazeClickDivergence3DView
       gazeVoxels={data.gaze}
       clickVoxels={data.click}
-      cellSize={WORLD_CELL_SIZE}
+      cellSize={ctx.settings.cellSize}
       proxyMeshes={data.proxyMeshes}
     />
   ),

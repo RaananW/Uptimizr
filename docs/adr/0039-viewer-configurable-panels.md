@@ -88,10 +88,26 @@ defaults" simply drops keys.
 - SSR-safe: the first paint applies the empty state (matching server HTML); stored state is applied
   after mount, so a hidden `clientOnly` panel just drops out post-hydration with no mismatch.
 
-### 4. First adopter
+### 4. Adopters
 
 The floor-plan dwell heatmap exposes `cellSize` (0.25–5 m slider, default 1) as the reference
 setting and gains a heat legend. `FLOOR_CELL_SIZE` stays only as the slider's default.
+
+The same data-resolution pattern then rolled out to the rest of the binned/capped panels (#79),
+each turning a former module constant into a viewer slider that re-runs the panel's `load`:
+
+| Panel | Setting | Default |
+| --- | --- | --- |
+| View-direction dome (3D) | `bins` — angular resolution | 36 |
+| World heatmap (3D) | `cellSize` — voxel size | 0.5 m |
+| Gaze ↔ click divergence (3D) | `cellSize` — shared voxel size | 0.5 m |
+| Pointer heatmap | `bins` — grid resolution | 50 |
+| Click → part flow (Sankey) | `maxLinks` — link cap | 80 |
+| Top meshes | `limit` — Top N | 25 |
+
+Each former constant survives only as its slider's default, so nothing changes until a viewer
+opts in. Purely visual knobs (marker shape, opacity) are deferred until the contract grows a
+render-only setting flag that skips the refetch a value change currently triggers.
 
 ## Consequences
 

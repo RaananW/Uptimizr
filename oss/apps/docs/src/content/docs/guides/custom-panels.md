@@ -163,6 +163,10 @@ the new value. Panels that declare no settings get an empty `ctx.settings` and n
 Removing or renaming a setting is safe: stored overrides for unknown keys are ignored, and missing
 keys fall back to the default, so a viewer's persisted state never breaks an evolving panel.
 
+Several built-in panels ship a data-resolution setting out of the box: the view-direction dome and
+pointer heatmap expose a `bins` resolution, the world and gaze↔click heatmaps a voxel `cellSize`,
+the flow Sankey a `maxLinks` cap, and top-meshes a Top-N `limit` — each re-queries on change.
+
 ## Hiding & restoring panels
 
 Every panel rendered by the host gets a hide ("×") action. Hiding a panel removes it from the grid
