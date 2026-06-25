@@ -61,7 +61,9 @@ export interface LoadSceneBackdropOptions {
  * A loader that resolves an asset (already bound to a target scene) to a
  * {@link BackdropAssetContainer}, without adding it to the scene yet.
  */
-export type BackdropLoader = (pluginExtension: string | undefined) => Promise<BackdropAssetContainer>;
+export type BackdropLoader = (
+  pluginExtension: string | undefined,
+) => Promise<BackdropAssetContainer>;
 
 /**
  * Core backdrop loader: run `load`, add the resulting container to the scene, and
