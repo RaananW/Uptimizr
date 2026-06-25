@@ -22,6 +22,23 @@ describe("builtinPanels — floor-plan panel", () => {
     expect(panel?.enabled?.(ctxWithCameraMode("first-person"))).toBe(true);
     expect(panel?.enabled?.(ctxWithCameraMode(undefined))).toBe(true);
   });
+
+  it("exposes a clamped cellSize setting (ADR 0039)", () => {
+    const cellSize = panel?.settings?.cellSize;
+    expect(cellSize).toMatchObject({ type: "number", default: 1, min: 0.25, max: 5, step: 0.25 });
+  });
+
+  it("loads the floor plan at the resolved cellSize setting", async () => {
+    const cameraPositionHeatmap = vi.fn().mockResolvedValue([{ gx: 0, gz: 0, count: 1 }]);
+    const ctx = {
+      surface: "overview",
+      params: { scene: "scene-a" },
+      settings: { cellSize: 0.5 },
+      api: { cameraPositionHeatmap },
+    } as unknown as PanelDataContext;
+    await panel?.load?.(ctx);
+    expect(cameraPositionHeatmap).toHaveBeenCalledWith(expect.objectContaining({ cellSize: 0.5 }));
+  });
 });
 
 /** Build a load-context stub with stubbed collector methods for the world panel. */

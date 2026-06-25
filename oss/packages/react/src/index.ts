@@ -25,7 +25,7 @@ export {
 export type { FilterState, TimeWindow } from "./filters";
 export type { LiveEvent } from "./live";
 
-// Extensible dashboard panel contract (ADR 0036).
+// Extensible dashboard panel contract (ADR 0036, extended by ADR 0039).
 export { definePanel } from "./panels/contract";
 export type {
   PanelDefinition,
@@ -36,7 +36,24 @@ export type {
   PanelCapabilities,
   PanelSurface,
   PanelSpan,
+  PanelSettingSpec,
+  NumberSettingSpec,
+  BooleanSettingSpec,
+  SelectSettingSpec,
+  PanelSettings,
+  PanelSettingValue,
+  AnyPanelSettingValue,
+  ResolvedPanelSettings,
 } from "./panels/contract";
+export {
+  resolvePanelSettings,
+  coercePanelSetting,
+  pruneDefaultOverrides,
+  createLocalStoragePanelStore,
+  memoryPanelStore,
+  EMPTY_PANEL_STATE,
+} from "./panels/settings";
+export type { PanelState, PanelStateStore } from "./panels/settings";
 export { usePanelData } from "./panels/usePanelData";
 export { PanelCard, PanelMessage } from "./panels/PanelCard";
 export {

@@ -5,6 +5,7 @@ import {
   pickInterval,
   type PanelContext,
   type PanelDefinition,
+  type PanelSettings,
 } from "@uptimizr/react";
 import type {
   AggregateTrajectoryPoint,
@@ -118,6 +119,25 @@ const WORLD_CELL_SIZE = 0.5;
 /** Max aggregate flow links drawn before the panel caps for legibility. */
 const FLOW_MAX_LINKS = 80;
 
+/**
+ * Floor-plan per-panel settings (ADR 0039). `cellSize` is the canonical first
+ * example of a viewer-tunable setting (#79): the ground-plane bin size, exposed
+ * as a clamped slider so a viewer can trade spatial resolution against smoothing
+ * without editing the panel definition.
+ */
+const FLOOR_PLAN_SETTINGS = {
+  cellSize: {
+    type: "number",
+    label: "Cell size",
+    help: "Ground-plane bin size in world units. Larger cells smooth the dwell heat; smaller cells sharpen spatial resolution.",
+    default: FLOOR_CELL_SIZE,
+    min: 0.25,
+    max: 5,
+    step: 0.25,
+    unit: "m",
+  },
+} as const satisfies PanelSettings;
+
 /** On the session surface, scope a panel's query to the inspected session. */
 function scoped(ctx: PanelContext): QueryParams {
   return ctx.surface === "session" && ctx.sessionId
@@ -183,7 +203,7 @@ const cameraDomePanel = definePanel<DirectionBin[]>({
  * visitors stood/lingered (ADR 0026). Hidden in the orbit/"viewer" camera mode,
  * where a camera position orbits the model rather than tracking a walker.
  */
-const floorPlanPanel = definePanel<PositionBin[]>({
+const floorPlanPanel = definePanel<PositionBin[], typeof FLOOR_PLAN_SETTINGS>({
   id: "floor-plan",
   title: FLOOR_PLAN_TITLE,
   subtitle: FLOOR_PLAN_SUBTITLE,
@@ -191,9 +211,12 @@ const floorPlanPanel = definePanel<PositionBin[]>({
   span: 1,
   surfaces: ["overview", "session"],
   clientOnly: true,
+  settings: FLOOR_PLAN_SETTINGS,
   enabled: (ctx) => ctx.filters.cameraMode !== "viewer",
-  load: (ctx) => ctx.api.cameraPositionHeatmap({ ...scoped(ctx), cellSize: FLOOR_CELL_SIZE }),
-  render: ({ data }) => <FloorPlanHeatmapView bins={data ?? []} cellSize={FLOOR_CELL_SIZE} />,
+  load: (ctx) => ctx.api.cameraPositionHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
+  render: ({ data, ctx }) => (
+    <FloorPlanHeatmapView bins={data ?? []} cellSize={ctx.settings.cellSize} />
+  ),
 });
 
 /**

@@ -55,6 +55,7 @@ Everything you need arrives through the `PanelContext`:
 | `capabilities`       | Range-derived flags such as `hasFirstPerson`.                                     |
 | `actions`            | Host actions: `selectSession`, `setTimeRange`, `setFilters`.                      |
 | `live`               | Live layer: `presence`, `enabled`, and `subscribe(handler)` for the SSE firehose. |
+| `settings`           | Resolved values of the panel's declared [`settings`](#per-panel-settings) (ADR 0039). |
 
 ### Driving the host from a panel
 
@@ -121,6 +122,55 @@ function LiveSessionPanel({ ctx }: { ctx: PanelContext }) {
 Filter on `event.sessionId === ctx.sessionId` so unrelated traffic doesn't churn the followed
 session's view. A panel that doesn't subscribe behaves like a frozen snapshot on the session
 surface — which is the right default for ended sessions.
+
+## Per-panel settings
+
+A panel can expose its own **typed settings** that a viewer tunes at runtime from the panel's
+"⚙" menu (ADR 0039). Declare them with `settings`; the host renders the controls into the chrome,
+persists the viewer's choices, and threads the resolved values back through `ctx.settings`.
+
+The primitive set is intentionally small — a clamped `number` (slider), a `boolean` (toggle), and a
+`select` (enum):
+
+```ts
+export const floorPlanPanel = definePanel({
+  id: "floor-plan",
+  title: "Floor-plan heatmap",
+  clientOnly: true,
+  settings: {
+    cellSize: {
+      type: "number",
+      label: "Cell size",
+      help: "Ground-plane bin size in world units.",
+      default: 1,
+      min: 0.25,
+      max: 5,
+      step: 0.25,
+      unit: "m",
+    },
+  },
+  // ctx.settings.cellSize is typed `number`, defaulted + clamped for you.
+  load: (ctx) => ctx.api.cameraPositionHeatmap({ ...ctx.params, cellSize: ctx.settings.cellSize }),
+  render: ({ data, ctx }) => <FloorPlanView bins={data} cellSize={ctx.settings.cellSize} />,
+});
+```
+
+`ctx.settings` is the panel's declared defaults overlaid with the viewer's saved overrides, coerced
+to valid values (numbers clamped to `[min, max]`, selects validated against `options`). Changing a
+setting re-runs `load()` automatically — exactly like a filter change — so the panel re-queries at
+the new value. Panels that declare no settings get an empty `ctx.settings` and no "⚙" menu.
+
+Removing or renaming a setting is safe: stored overrides for unknown keys are ignored, and missing
+keys fall back to the default, so a viewer's persisted state never breaks an evolving panel.
+
+## Hiding & restoring panels
+
+Every panel rendered by the host gets a hide ("×") action. Hiding a panel removes it from the grid
+and lists it in a **"Hidden panels"** bar, where the viewer can restore it individually or with
+"Show all" — so the action is always reversible. Visibility (and settings) persist per surface in
+`localStorage` by default; an embedding host can supply its own `PanelStateStore` to back the state
+with, say, a user-preferences API. No panel code is needed — this is host chrome that wraps every
+`PanelDefinition`.
 
 ## Registering a panel
 

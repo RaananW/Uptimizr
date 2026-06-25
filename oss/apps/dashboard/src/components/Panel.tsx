@@ -30,6 +30,36 @@ export function InfoHint({
   );
 }
 
+/** Square icon button used for the panel-chrome actions (settings, hide). */
+function ChromeButton({
+  label,
+  onClick,
+  active = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex h-6 w-6 items-center justify-center rounded-md border text-sm leading-none transition focus:outline-none focus:ring-1 focus:ring-amber ${
+        active
+          ? "border-amber text-amber"
+          : "border-edge text-fg-muted hover:border-amber hover:text-fg-hi"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 /** Consistent card/panel wrapper used across the dashboard. */
 export function Panel({
   title,
@@ -39,6 +69,8 @@ export function Panel({
   className = "",
   collapsible = false,
   defaultCollapsed = false,
+  onHide,
+  settings,
 }: {
   title: string;
   subtitle?: string;
@@ -50,9 +82,14 @@ export function Panel({
   collapsible?: boolean;
   /** Initial collapsed state when `collapsible` (defaults to expanded). */
   defaultCollapsed?: boolean;
+  /** When set, renders a hide ("×") action that removes the panel (ADR 0039). */
+  onHide?: () => void;
+  /** When set, renders a settings ("⚙") toggle that reveals this content (ADR 0039). */
+  settings?: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
-  const body = (
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const titleBlock = (
     <header className={collapsed ? "" : "mb-3"}>
       <div className="flex items-center gap-1.5">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-fg">{title}</h2>
@@ -66,22 +103,48 @@ export function Panel({
       {subtitle ? <p className="mt-0.5 text-xs text-fg-muted">{subtitle}</p> : null}
     </header>
   );
+
+  const hasActions = Boolean(settings) || Boolean(onHide);
+
   return (
     <section
       className={`rounded-xl border border-edge bg-panel p-4 shadow-lg shadow-black/20 ${className}`}
     >
-      {collapsible ? (
-        <button
-          type="button"
-          onClick={() => setCollapsed((c) => !c)}
-          aria-expanded={collapsed ? "false" : "true"}
-          className="w-full text-left"
-        >
-          {body}
-        </button>
-      ) : (
-        body
-      )}
+      <div className="flex items-start justify-between gap-2">
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={collapsed ? "false" : "true"}
+            className="min-w-0 flex-1 text-left"
+          >
+            {titleBlock}
+          </button>
+        ) : (
+          <div className="min-w-0 flex-1">{titleBlock}</div>
+        )}
+        {hasActions ? (
+          <div className="flex shrink-0 items-center gap-1">
+            {settings ? (
+              <ChromeButton
+                label={`${title} settings`}
+                active={settingsOpen}
+                onClick={() => setSettingsOpen((o) => !o)}
+              >
+                <span aria-hidden="true">⚙</span>
+              </ChromeButton>
+            ) : null}
+            {onHide ? (
+              <ChromeButton label={`Hide ${title}`} onClick={onHide}>
+                <span aria-hidden="true">×</span>
+              </ChromeButton>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      {settings && settingsOpen ? (
+        <div className="mb-3 rounded-lg border border-edge bg-ink/40 p-3">{settings}</div>
+      ) : null}
       {collapsed ? null : children}
     </section>
   );

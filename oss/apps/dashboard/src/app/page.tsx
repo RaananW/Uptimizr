@@ -622,6 +622,9 @@ export default function Page() {
     capabilities: { hasFirstPerson: data.hasFirstPerson },
     actions: panelActions,
     live: { presence: livePresence, enabled: liveEnabled, subscribe: subscribeLive },
+    // Per-panel settings (ADR 0039) are injected per panel by the PanelHost; the
+    // base context carries none. Panels without settings see an empty object.
+    settings: {},
   };
   const overviewCtx: PanelContext = { ...panelBase, surface: "overview" };
   const sessionCtx: PanelContext | null = detail
