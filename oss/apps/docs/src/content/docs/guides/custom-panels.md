@@ -44,17 +44,17 @@ surface, or the inspected session change, cancels superseded requests via an `Ab
 
 Everything you need arrives through the `PanelContext`:
 
-| Field                | What it gives you                                                                 |
-| -------------------- | --------------------------------------------------------------------------------- |
-| `api`                | A shared `CollectorApi` bound to the active collector.                            |
-| `baseUrl` / `apiKey` | Raw connection details for self-fetch or SSE URLs.                                |
-| `params`             | Query params resolved from the global filter bar (since/until/scene/source…).     |
-| `filters`            | Raw filter state, for panels that need `cameraMode` etc. directly.                |
-| `surface`            | `"overview"` or `"session"`.                                                      |
-| `sessionId`          | The inspected session id on the session surface.                                  |
-| `capabilities`       | Range-derived flags such as `hasFirstPerson`.                                     |
-| `actions`            | Host actions: `selectSession`, `setTimeRange`, `setFilters`.                      |
-| `live`               | Live layer: `presence`, `enabled`, and `subscribe(handler)` for the SSE firehose. |
+| Field                | What it gives you                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------- |
+| `api`                | A shared `CollectorApi` bound to the active collector.                                |
+| `baseUrl` / `apiKey` | Raw connection details for self-fetch or SSE URLs.                                    |
+| `params`             | Query params resolved from the global filter bar (since/until/scene/source…).         |
+| `filters`            | Raw filter state, for panels that need `cameraMode` etc. directly.                    |
+| `surface`            | `"overview"` or `"session"`.                                                          |
+| `sessionId`          | The inspected session id on the session surface.                                      |
+| `capabilities`       | Range-derived flags such as `hasFirstPerson`.                                         |
+| `actions`            | Host actions: `selectSession`, `setTimeRange`, `setFilters`.                          |
+| `live`               | Live layer: `presence`, `enabled`, and `subscribe(handler)` for the SSE firehose.     |
 | `settings`           | Resolved values of the panel's declared [`settings`](#per-panel-settings) (ADR 0039). |
 
 ### Driving the host from a panel

@@ -30,11 +30,7 @@ type SpecLookup = (panelId: string) => PanelDefinition<unknown>["settings"];
  * hidden simply drops out post-hydration rather than mismatching the server HTML.
  * `hydrated` lets the host defer visibility filtering until that swap.
  */
-export function usePanelPrefs(
-  surface: PanelSurface,
-  specFor: SpecLookup,
-  store?: PanelStateStore,
-) {
+export function usePanelPrefs(surface: PanelSurface, specFor: SpecLookup, store?: PanelStateStore) {
   const resolvedStore = useMemo(
     () => store ?? createLocalStoragePanelStore(storageKeyFor(surface)),
     [store, surface],

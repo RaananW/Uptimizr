@@ -146,8 +146,9 @@ export interface PanelContext<TSettings extends PanelSettings = PanelSettings> {
 }
 
 /** Context passed to `load()`; adds an `AbortSignal` for in-flight cancellation. */
-export interface PanelDataContext<TSettings extends PanelSettings = PanelSettings>
-  extends PanelContext<TSettings> {
+export interface PanelDataContext<
+  TSettings extends PanelSettings = PanelSettings,
+> extends PanelContext<TSettings> {
   readonly signal: AbortSignal;
 }
 
