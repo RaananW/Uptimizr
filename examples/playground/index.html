@@ -580,6 +580,20 @@
         <button id="replayButton" type="button" class="secondary">Replay session</button>
       </div>
 
+      <div id="backdropSection">
+        <label>
+          Load a .glb backdrop
+          <input id="backdropFile" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" />
+        </label>
+        <label>
+          …or by URL
+          <input id="backdropUrlInput" placeholder="https://example.com/model.glb" autocomplete="off" />
+        </label>
+        <button id="backdropButton" type="button">Load backdrop</button>
+        <button id="backdropClearButton" type="button" class="secondary">Remove backdrop</button>
+        <div id="backdropStatus" class="muted"></div>
+      </div>
+
       <div id="status"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>

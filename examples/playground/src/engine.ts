@@ -93,6 +93,12 @@ export interface EngineCapabilities {
   readonly inputSource: boolean;
   /** Can replay a recorded session in-scene. */
   readonly replay: boolean;
+  /**
+   * Can load an arbitrary asset (e.g. a `.glb`) into the scene as a replay
+   * **backdrop** and re-drive a session over it. Babylon-only for now (the first
+   * connector); other engines leave it unset.
+   */
+  readonly backdrop?: boolean;
   /** Can draw an in-scene 3D heatmap overlay. */
   readonly heatmap: boolean;
   /** Can scan + register a scene proxy. */
@@ -148,6 +154,12 @@ export interface EngineInstance {
   flashMesh(name: string): void;
   /** Build the engine-specific replay driver, wired to shell cursor/status hooks. */
   createReplayDriver?(hooks: ReplayHooks): ReplayDriver;
+  /**
+   * Load an asset (URL or dropped `File`, e.g. a `.glb`) into the scene as a replay
+   * backdrop. Resolves with the mesh count and a disposer that removes it (so a new
+   * backdrop can replace it). Babylon-only for now.
+   */
+  loadBackdrop?(source: string | File): Promise<{ meshCount: number; dispose(): void }>;
   /** Draw an in-scene heatmap overlay for a scene id; returns a disposer. */
   showHeatmap?(sceneId: string): Promise<{ dispose(): void }>;
   /** Scan + register a scene proxy; resolves with the mesh count. */

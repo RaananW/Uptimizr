@@ -58,7 +58,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run bundle:global",
-    "bundle:global": "esbuild src/global.ts --bundle --format=iife --global-name=UptimizrReplay --platform=browser --target=es2022 --minify --legal-comments=none --banner:js=\"/* @uptimizr/replay standalone bundle (global) — Apache-2.0. Inject via a <script> tag into any page (e.g. playground.babylonjs.com); exposes window.UptimizrReplay. Bundles the Babylon Vector3 it constructs; the host page owns the scene. */\" --outfile=dist/uptimizr-replay.global.js",
+    "bundle:global": "esbuild src/global.ts --bundle --format=iife --global-name=UptimizrReplay --platform=browser --target=es2022 --minify --legal-comments=none --external:@babylonjs/core/Loading/sceneLoader.js --banner:js=\"/* @uptimizr/replay standalone bundle (global) — Apache-2.0. Inject via a <script> tag into any page (e.g. playground.babylonjs.com); exposes window.UptimizrReplay. Bundles the Babylon Vector3 it constructs; the host page owns the scene (and its asset loader). */\" --outfile=dist/uptimizr-replay.global.js",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",

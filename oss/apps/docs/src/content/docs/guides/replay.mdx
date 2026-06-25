@@ -87,6 +87,28 @@ The Babylon, three, and PlayCanvas drivers re-apply Tier-1 root transforms **and
 and forwards bone samples to the callback only. Unknown `nodeId` / `boneId` are skipped without error
 (forward/back-compatible).
 
+### Loading a scene backdrop
+
+Replay normally re-drives into the scene you already have. When you only have the captured stream and
+no scene to host it — a hosted drag-and-drop viewer, say — load an arbitrary asset as a **backdrop**
+first, then replay over it. The Babylon helper accepts a URL **or** a dropped `File`:
+
+```ts
+import { loadSceneBackdrop } from "@uptimizr/replay/babylon";
+
+const backdrop = await loadSceneBackdrop(scene, urlOrFile); // ".glb" / ".gltf"
+console.log(`${backdrop.meshes.length} meshes added`);
+
+// swap one dropped model for the next:
+backdrop.dispose();
+```
+
+It returns a handle (`{ rootNodes, meshes, container, dispose() }`) whose `dispose()` removes
+everything it added and releases the GPU resources. The default loader **lazily** imports Babylon's
+glTF `SceneLoader`, so the lean replay path never pulls it in unless a backdrop is requested; pass
+`options.load` to supply your own loader or `options.pluginExtension` to force a parser. Actor /
+subtree nodes from the loaded model re-drive exactly like any other scene node (see above).
+
 ## Option B — `<script>` tag
 
 The global build exposes `window.UptimizrReplay`, with a one-call `replayInScene` convenience that
@@ -101,6 +123,7 @@ r.onload = () => {
     endpoint: "https://collect.example.com",
     apiKey: "your-project-api-key",
     sessionId: "<copy from the dashboard Sessions table>",
+    backdropUrl: "https://example.com/room.glb", // optional — load a model first
     debug: true, // log fetch/play progress to the console
   });
 };
@@ -112,6 +135,11 @@ once `scene` exists and has an `activeCamera`. It always logs a concise summary 
 common "nothing happens" causes: an empty session, a session with no `camera_sample` events (camera
 won't move), or a scene with no active camera. (`pnpm playground` prints this snippet pre-filled and
 serves the bundle at `/uptimizr-replay.global.js`.)
+
+`backdropUrl` loads a `.glb`/`.gltf` into the scene before replay. To keep the global bundle from
+shipping a second copy of Babylon's `SceneLoader`, it **reuses the host page's loader**: expose Babylon
+as `window.BABYLON` (with `LoadAssetContainerAsync` and a glTF loader registered) or pass an explicit
+`loadBackdrop` callback. When no loader is found it warns and replays without a backdrop.
 
 ## Troubleshooting
 

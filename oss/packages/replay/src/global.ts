@@ -11,6 +11,11 @@
  */
 import type { Camera, Scene } from "@babylonjs/core";
 import { createBabylonReplayDriver, type BabylonReplayDriverOptions } from "./drivers/babylon.js";
+import {
+  loadSceneBackdropWith,
+  type BackdropAssetContainer,
+  type SceneBackdrop,
+} from "./drivers/backdrop.js";
 import { fetchSessionEvents, fetchSessionEventsStream } from "./fetchSession.js";
 import { ReplayPlayer } from "./player.js";
 import type { AnyEvent } from "@uptimizr/schema";
@@ -28,6 +33,31 @@ export interface ReplayInSceneOptions {
   sessionId: string;
   /** Camera to move. Defaults to `scene.activeCamera`. */
   camera?: Camera;
+  /**
+   * Optional asset to load into the scene as a **backdrop** (URL or `File`) before
+   * replay starts — e.g. a `.glb` to re-drive the recorded session over. The host
+   * page's Babylon owns the scene, so this build does **not** bundle a glTF
+   * `SceneLoader`; it reuses the page's loader. Provide one via {@link loadBackdrop},
+   * or expose Babylon globally (`window.BABYLON` with `LoadAssetContainerAsync`).
+   * If no loader can be found, a warning is logged and replay continues without a
+   * backdrop.
+   */
+  backdropUrl?: string | File;
+  /**
+   * Force a loader plugin when {@link backdropUrl} has no recognizable extension
+   * (e.g. a `blob:`/`data:` URL). Pass `".glb"`/`".gltf"`.
+   */
+  backdropPluginExtension?: string;
+  /**
+   * Custom backdrop loader. Receives the {@link backdropUrl}, the `scene`, and the
+   * resolved plugin extension, and must resolve a Babylon `AssetContainer` (not yet
+   * added to the scene). Overrides the `window.BABYLON` auto-detection.
+   */
+  loadBackdrop?: (
+    source: string | File,
+    scene: Scene,
+    pluginExtension: string | undefined,
+  ) => Promise<BackdropAssetContainer>;
   /** Playback speed multiplier. Default 1. */
   speed?: number;
   /** Per pointer event, so the host can render a cursor/marker. */
@@ -126,6 +156,14 @@ export async function replayInScene(options: ReplayInSceneOptions): Promise<Repl
     );
   }
 
+  // Load an optional backdrop (e.g. a .glb) before playback so the recorded
+  // camera/pointer/picks and actor transforms re-drive over a real model. This
+  // reuses the host page's Babylon loader — the global build never bundles a glTF
+  // SceneLoader of its own.
+  if (options.backdropUrl !== undefined) {
+    await loadBackdropFromHost(options, log);
+  }
+
   const driver = createBabylonReplayDriver({
     scene: options.scene,
     camera: options.camera,
@@ -150,6 +188,86 @@ export async function replayInScene(options: ReplayInSceneOptions): Promise<Repl
   );
   player.play();
   return player;
+}
+
+/**
+ * Resolve a Babylon asset loader from the host page and load {@link
+ * ReplayInSceneOptions.backdropUrl} into the scene. Prefers an explicit
+ * `loadBackdrop`, then a global `BABYLON.LoadAssetContainerAsync` (Babylon 7+) or
+ * `BABYLON.SceneLoader.LoadAssetContainerAsync` (legacy). Logs a warning and skips
+ * (without throwing) when no loader is available — replay still runs.
+ */
+async function loadBackdropFromHost(
+  options: ReplayInSceneOptions,
+  log: (...args: unknown[]) => void,
+): Promise<SceneBackdrop | undefined> {
+  const source = options.backdropUrl;
+  if (source === undefined) return undefined;
+  const loader = resolveHostBackdropLoader(options);
+  if (!loader) {
+    console.warn(
+      `${LOG_PREFIX} a backdrop was requested but no Babylon loader was found. ` +
+        `Pass \`loadBackdrop\`, or expose Babylon as \`window.BABYLON\` with ` +
+        `\`LoadAssetContainerAsync\` (and a glTF loader registered). Replaying without a backdrop.`,
+    );
+    return undefined;
+  }
+  const label = typeof source === "string" ? source : (source.name ?? "dropped file");
+  log(`loading backdrop "${label}"`);
+  try {
+    const backdrop = await loadSceneBackdropWith(
+      (pluginExtension) => loader(source, options.scene, pluginExtension),
+      { pluginExtension: options.backdropPluginExtension },
+    );
+    log(`backdrop loaded (${backdrop.meshes.length} meshes)`);
+    return backdrop;
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} failed to load backdrop "${label}":`, err);
+    return undefined;
+  }
+}
+
+/** Minimal structural view of the host page's Babylon namespace. */
+interface HostBabylon {
+  LoadAssetContainerAsync?: (
+    source: string | File,
+    scene: Scene,
+    options?: { pluginExtension?: string },
+  ) => Promise<BackdropAssetContainer>;
+  SceneLoader?: {
+    LoadAssetContainerAsync?: (
+      rootUrl: string | File,
+      sceneFilename: string,
+      scene: Scene,
+      onProgress?: null,
+      pluginExtension?: string,
+    ) => Promise<BackdropAssetContainer>;
+  };
+}
+
+/** Build a `(source, scene, pluginExtension) => Promise<AssetContainer>` loader. */
+function resolveHostBackdropLoader(
+  options: ReplayInSceneOptions,
+):
+  | ((
+      source: string | File,
+      scene: Scene,
+      pluginExtension: string | undefined,
+    ) => Promise<BackdropAssetContainer>)
+  | null {
+  if (options.loadBackdrop) return options.loadBackdrop;
+  const babylon = (globalThis as { BABYLON?: HostBabylon }).BABYLON;
+  if (babylon?.LoadAssetContainerAsync) {
+    const load = babylon.LoadAssetContainerAsync.bind(babylon);
+    return (source, scene, pluginExtension) =>
+      load(source, scene, pluginExtension ? { pluginExtension } : undefined);
+  }
+  const legacy = babylon?.SceneLoader?.LoadAssetContainerAsync;
+  if (legacy) {
+    const load = legacy.bind(babylon.SceneLoader);
+    return (source, scene, pluginExtension) => load(source, "", scene, null, pluginExtension);
+  }
+  return null;
 }
 
 export { createBabylonReplayDriver, fetchSessionEvents, fetchSessionEventsStream, ReplayPlayer };

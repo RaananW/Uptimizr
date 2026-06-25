@@ -4,6 +4,10 @@ import type { Camera, Scene } from "@babylonjs/core";
 import type { AnyEvent, CustomPropValue } from "@uptimizr/schema";
 import type { ReplayDriver } from "../types.js";
 
+export { loadSceneBackdrop } from "./babylonBackdrop.js";
+export type { LoadBabylonBackdropOptions } from "./babylonBackdrop.js";
+export type { BackdropAssetContainer, SceneBackdrop } from "./backdrop.js";
+
 export interface BabylonReplayDriverOptions {
   /** Scene to re-drive. */
   scene: Scene;
