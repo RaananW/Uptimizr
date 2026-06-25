@@ -23,6 +23,74 @@ export type PanelSurface = "overview" | "session";
 /** Fixed-grid width: 1 = half width, 2 = full width. */
 export type PanelSpan = 1 | 2;
 
+// Per-panel settings (ADR 0039). A panel may declare a small set of typed
+// settings the HOST renders into the panel chrome (a "⚙" menu) and threads back
+// into `load` / `render` through `ctx.settings`. The primitive set is kept
+// intentionally tiny — number (slider/stepper), boolean (toggle), and select
+// (enum) — so the host can render every setting without a forms framework.
+
+/** A numeric setting rendered as a clamped slider/stepper. */
+export interface NumberSettingSpec {
+  readonly type: "number";
+  /** Default applied until a viewer overrides it. */
+  readonly default: number;
+  /** Optional label shown in the settings menu (falls back to the key). */
+  readonly label?: string;
+  /** Optional one-line help shown under the control. */
+  readonly help?: string;
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
+  /** Optional unit suffix shown next to the value (e.g. "m", "px"). */
+  readonly unit?: string;
+}
+
+/** A boolean setting rendered as a toggle/checkbox. */
+export interface BooleanSettingSpec {
+  readonly type: "boolean";
+  readonly default: boolean;
+  readonly label?: string;
+  readonly help?: string;
+}
+
+/** An enum setting rendered as a select. */
+export interface SelectSettingSpec {
+  readonly type: "select";
+  readonly default: string;
+  readonly options: readonly { readonly value: string; readonly label?: string }[];
+  readonly label?: string;
+  readonly help?: string;
+}
+
+/** One declared per-panel setting. */
+export type PanelSettingSpec = NumberSettingSpec | BooleanSettingSpec | SelectSettingSpec;
+
+/** A panel's declared settings: a record of setting key → spec. */
+export type PanelSettings = Record<string, PanelSettingSpec>;
+
+/** The resolved runtime value type for a single setting spec. */
+export type PanelSettingValue<S extends PanelSettingSpec = PanelSettingSpec> = S extends {
+  type: "number";
+}
+  ? number
+  : S extends { type: "boolean" }
+    ? boolean
+    : S extends { type: "select" }
+      ? string
+      : never;
+
+/** Any resolved setting value (the loose union used by the persistence seam). */
+export type AnyPanelSettingValue = number | boolean | string;
+
+/**
+ * Resolved values for a settings record — what a panel reads from `ctx.settings`.
+ * Authoring a panel with `definePanel<TData, typeof mySettings>` (or letting the
+ * settings object infer) keeps each key precisely typed (e.g. `cellSize: number`).
+ */
+export type ResolvedPanelSettings<T extends PanelSettings = PanelSettings> = {
+  readonly [K in keyof T]: PanelSettingValue<T[K]>;
+};
+
 /** Capability flags derived from the active range, for `enabled` / `render`. */
 export interface PanelCapabilities {
   /** Whether the active range has first-person camera-position samples (ADR 0026). */
@@ -50,7 +118,7 @@ export interface PanelLive {
 }
 
 /** Everything a panel needs from its host. */
-export interface PanelContext {
+export interface PanelContext<TSettings extends PanelSettings = PanelSettings> {
   /** Shared query client bound to the active collector. */
   readonly api: CollectorApi;
   /** Raw collector connection (for self-fetch / SSE URLs). */
@@ -69,25 +137,34 @@ export interface PanelContext {
   readonly actions: PanelActions;
   /** Live-layer access. */
   readonly live: PanelLive;
+  /**
+   * Resolved per-panel settings (ADR 0039): the panel's declared `settings`
+   * defaults overlaid with the viewer's persisted overrides. Empty for panels
+   * that declare none. The host re-runs `load` whenever a value here changes.
+   */
+  readonly settings: ResolvedPanelSettings<TSettings>;
 }
 
 /** Context passed to `load()`; adds an `AbortSignal` for in-flight cancellation. */
-export interface PanelDataContext extends PanelContext {
+export interface PanelDataContext<
+  TSettings extends PanelSettings = PanelSettings,
+> extends PanelContext<TSettings> {
   readonly signal: AbortSignal;
 }
 
 /**
  * A self-contained dashboard panel. `TData` is the shape returned by `load` and
  * handed to `render`; panels that self-fetch in `render` omit `load` and leave
- * `TData` as `void`.
+ * `TData` as `void`. `TSettings` captures the panel's declared per-panel
+ * settings (ADR 0039) so `ctx.settings` is precisely typed.
  */
-export interface PanelDefinition<TData = void> {
+export interface PanelDefinition<TData = void, TSettings extends PanelSettings = PanelSettings> {
   /** Stable, unique id (used for layout keys and dedupe). */
   readonly id: string;
   /** Panel title shown in the chrome. */
   readonly title: string;
   /** Optional subtitle — static, or derived from the active context. */
-  readonly subtitle?: string | ((ctx: PanelContext) => string | undefined);
+  readonly subtitle?: string | ((ctx: PanelContext<TSettings>) => string | undefined);
   /** Optional "?" help content shown in the chrome. */
   readonly help?: ReactNode;
   /** Fixed-grid width. Default `1` (half width). */
@@ -98,19 +175,27 @@ export interface PanelDefinition<TData = void> {
   readonly collapsible?: boolean;
   /** Render client-only (no SSR) — for canvas / Babylon panels. */
   readonly clientOnly?: boolean;
+  /**
+   * Typed per-panel settings the host renders into the chrome and threads back
+   * through `ctx.settings` (ADR 0039). Omit for panels with no settings.
+   */
+  readonly settings?: TSettings;
   /** Show/hide based on filters + capabilities (e.g. first-person only). */
-  enabled?(ctx: PanelContext): boolean;
+  enabled?(ctx: PanelContext<TSettings>): boolean;
   /** Declarative data load. Omit for panels that self-fetch inside `render`. */
-  load?(ctx: PanelDataContext): Promise<TData>;
+  load?(ctx: PanelDataContext<TSettings>): Promise<TData>;
   /** Render the panel BODY (the host supplies chrome + layout). */
-  render(props: { data: TData; ctx: PanelContext }): ReactNode;
+  render(props: { data: TData; ctx: PanelContext<TSettings> }): ReactNode;
 }
 
 /**
- * Identity helper that preserves a panel's `TData` inference. Authoring a panel
- * with `definePanel({ ... })` keeps `load`'s return type flowing into `render`'s
- * `data` argument.
+ * Identity helper that preserves a panel's `TData` (and `TSettings`) inference.
+ * Authoring a panel with `definePanel({ ... })` keeps `load`'s return type
+ * flowing into `render`'s `data` argument, and a `settings` object's shape
+ * flowing into `ctx.settings`.
  */
-export function definePanel<TData>(def: PanelDefinition<TData>): PanelDefinition<TData> {
+export function definePanel<TData, TSettings extends PanelSettings = PanelSettings>(
+  def: PanelDefinition<TData, TSettings>,
+): PanelDefinition<TData, TSettings> {
   return def;
 }

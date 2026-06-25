@@ -1122,8 +1122,31 @@ only** — the host wraps it in the card and grid cell.
 The `PanelContext` carries everything a panel needs: `api` (a shared `CollectorApi`),
 `baseUrl` / `apiKey`, the resolved `params`, raw `filters`, `surface` / `sessionId`,
 range-derived `capabilities`, host `actions` (`selectSession`, `setTimeRange`,
-`setFilters`), and the realtime `live` layer (`presence`, `enabled`,
-`subscribe(handler)`).
+`setFilters`), the realtime `live` layer (`presence`, `enabled`, `subscribe(handler)`),
+and the resolved per-panel `settings` (see below).
+
+### Per-panel settings & visibility (ADR 0039)
+
+A panel can declare typed `settings` that a viewer tunes at runtime from the panel's
+"⚙" menu — a clamped `number` (slider), a `boolean` (toggle), or a `select` (enum):
+
+```ts
+export const floorPlanPanel = definePanel({
+  id: "floor-plan",
+  title: "Floor-plan heatmap",
+  settings: {
+    cellSize: { type: "number", label: "Cell size", default: 1, min: 0.25, max: 5, step: 0.25, unit: "m" },
+  },
+  // ctx.settings.cellSize is typed `number`, defaulted + clamped by the host.
+  load: (ctx) => ctx.api.cameraPositionHeatmap({ ...ctx.params, cellSize: ctx.settings.cellSize }),
+  render: ({ data, ctx }) => <FloorPlanView bins={data} cellSize={ctx.settings.cellSize} />,
+});
+```
+
+The host resolves `ctx.settings` (declared defaults overlaid with the viewer's saved overrides,
+clamped/validated) and re-runs `load()` whenever a value changes. Every panel also gets a hide
+("×") action and is restorable from a "Hidden panels" bar. Both visibility and settings persist
+per surface in `localStorage` by default; embeds can plug in their own `PanelStateStore`.
 
 Under live traffic, panels with a `load()` auto-refetch on the **overview** surface as events
 arrive. The **session** drill-down is a frozen snapshot; a panel that should keep updating while

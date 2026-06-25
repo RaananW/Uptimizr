@@ -22,6 +22,23 @@ describe("builtinPanels — floor-plan panel", () => {
     expect(panel?.enabled?.(ctxWithCameraMode("first-person"))).toBe(true);
     expect(panel?.enabled?.(ctxWithCameraMode(undefined))).toBe(true);
   });
+
+  it("exposes a clamped cellSize setting (ADR 0039)", () => {
+    const cellSize = panel?.settings?.cellSize;
+    expect(cellSize).toMatchObject({ type: "number", default: 1, min: 0.25, max: 5, step: 0.25 });
+  });
+
+  it("loads the floor plan at the resolved cellSize setting", async () => {
+    const cameraPositionHeatmap = vi.fn().mockResolvedValue([{ gx: 0, gz: 0, count: 1 }]);
+    const ctx = {
+      surface: "overview",
+      params: { scene: "scene-a" },
+      settings: { cellSize: 0.5 },
+      api: { cameraPositionHeatmap },
+    } as unknown as PanelDataContext;
+    await panel?.load?.(ctx);
+    expect(cameraPositionHeatmap).toHaveBeenCalledWith(expect.objectContaining({ cellSize: 0.5 }));
+  });
 });
 
 /** Build a load-context stub with stubbed collector methods for the world panel. */
@@ -44,6 +61,7 @@ function loadCtx(opts: {
   const ctx = {
     surface: "overview",
     params: opts.scene ? { scene: opts.scene } : {},
+    settings: { cellSize: 0.5 },
     api: { worldHeatmap, scenes, sceneRepresentation },
   } as unknown as PanelDataContext;
   return { ctx, worldHeatmap, scenes, sceneRepresentation };
@@ -113,6 +131,7 @@ function makeCtx(opts: {
   params?: Record<string, unknown>;
   api: Record<string, unknown>;
   capabilities?: { hasFirstPerson: boolean };
+  settings?: Record<string, unknown>;
 }): PanelDataContext {
   return {
     surface: opts.surface ?? "overview",
@@ -120,6 +139,7 @@ function makeCtx(opts: {
     params: opts.params ?? {},
     api: opts.api,
     capabilities: opts.capabilities ?? { hasFirstPerson: false },
+    settings: opts.settings ?? {},
     baseUrl: "http://collector",
     apiKey: "test-key",
   } as unknown as PanelDataContext;
@@ -263,6 +283,7 @@ describe("builtinPanels — gaze-click divergence panel", () => {
     const sceneRepresentation = vi.fn().mockResolvedValue({ proxy: { meshes: [] } });
     const ctx = makeCtx({
       params: { scene: "scene-a" },
+      settings: { cellSize: 0.75 },
       api: { gazeHeatmap, worldHeatmap, scenes, sceneRepresentation },
     });
     const data = (await panel?.load?.(ctx)) as { gaze: unknown[]; click: unknown[] };
@@ -271,6 +292,12 @@ describe("builtinPanels — gaze-click divergence panel", () => {
     const gazeCell = (gazeHeatmap.mock.calls[0]?.[0] as { cellSize: number }).cellSize;
     const clickCell = (worldHeatmap.mock.calls[0]?.[0] as { cellSize: number }).cellSize;
     expect(gazeCell).toBe(clickCell);
+    // Both grids honor the panel's resolved voxel-size setting (ADR 0039).
+    expect(gazeCell).toBe(0.75);
+  });
+
+  it("exposes a clamped voxel-size setting (ADR 0039)", () => {
+    expect(panel?.settings?.cellSize).toMatchObject({ type: "number", default: 0.5 });
   });
 });
 
@@ -346,6 +373,48 @@ describe("builtinPanels — dead-zone report panel (#76)", () => {
     const data = (await panel?.load?.(ctx)) as { coverage: unknown[]; proxyMeshes: unknown[] };
     expect(data.coverage).toHaveLength(1);
     expect((coverage.mock.calls[0]?.[0] as { cellSize: number }).cellSize).toBe(1);
+  });
+});
+
+describe("builtinPanels — data-resolution settings (ADR 0039, #79)", () => {
+  it("top-meshes exposes a Top N limit setting and loads at the resolved value", async () => {
+    const panel = builtinPanels.find((p) => p.id === "top-meshes");
+    expect(panel?.settings?.limit).toMatchObject({ type: "number", default: 25, min: 5, max: 100 });
+    const topMeshes = vi.fn().mockResolvedValue([]);
+    const ctx = makeCtx({ params: {}, settings: { limit: 40 }, api: { topMeshes } });
+    await panel?.load?.(ctx);
+    expect(topMeshes).toHaveBeenCalledWith(expect.objectContaining({ limit: 40 }));
+  });
+
+  it("pointer-heatmap exposes a grid-resolution setting and loads at the resolved bins", async () => {
+    const panel = builtinPanels.find((p) => p.id === "pointer-heatmap");
+    expect(panel?.settings?.bins).toMatchObject({ type: "number", default: 50 });
+    const pointerHeatmap = vi.fn().mockResolvedValue([]);
+    const ctx = makeCtx({ params: {}, settings: { bins: 80 }, api: { pointerHeatmap } });
+    await panel?.load?.(ctx);
+    expect(pointerHeatmap).toHaveBeenCalledWith(expect.objectContaining({ bins: 80 }));
+  });
+
+  it("camera-dome exposes a direction-resolution setting and loads at the resolved bins", async () => {
+    const panel = builtinPanels.find((p) => p.id === "camera-dome-3d");
+    expect(panel?.settings?.bins).toMatchObject({ type: "number", default: 36, step: 6 });
+    const cameraHeatmap = vi.fn().mockResolvedValue([]);
+    const ctx = makeCtx({ params: {}, settings: { bins: 48 }, api: { cameraHeatmap } });
+    await panel?.load?.(ctx);
+    expect(cameraHeatmap).toHaveBeenCalledWith(expect.objectContaining({ bins: 48 }));
+  });
+
+  it("world-heatmap exposes a voxel-size setting and loads at the resolved cellSize", async () => {
+    const panel = builtinPanels.find((p) => p.id === "world-heatmap-3d");
+    expect(panel?.settings?.cellSize).toMatchObject({ type: "number", default: 0.5, unit: "m" });
+    const { ctx, worldHeatmap } = loadCtx({ scene: "scene-a" });
+    await panel?.load?.(ctx);
+    expect(worldHeatmap).toHaveBeenCalledWith(expect.objectContaining({ cellSize: 0.5 }));
+  });
+
+  it("flow-sankey exposes a max-links setting", () => {
+    const panel = builtinPanels.find((p) => p.id === "flow-sankey-3d");
+    expect(panel?.settings?.maxLinks).toMatchObject({ type: "number", default: 80, max: 200 });
   });
 });
 

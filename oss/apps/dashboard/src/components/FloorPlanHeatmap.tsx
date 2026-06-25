@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { PositionBin } from "@/lib/api";
 import { heatColor } from "@/lib/format";
+import { HeatLegend } from "./HeatLegend";
 import { Panel } from "./Panel";
 
 const SIZE = 360;
@@ -77,13 +78,23 @@ export function FloorPlanHeatmapView({
   return (
     <>
       <div className="flex justify-center">
-        <canvas
-          ref={ref}
-          width={SIZE}
-          height={SIZE}
-          className="rounded-lg border border-edge"
-          aria-label="Floor-plan position heatmap"
-        />
+        <div className="relative inline-block">
+          <canvas
+            ref={ref}
+            width={SIZE}
+            height={SIZE}
+            className="rounded-lg border border-edge"
+            aria-label="Floor-plan position heatmap"
+          />
+          {bins.length > 0 ? (
+            <HeatLegend
+              title="Dwell density"
+              lowLabel="rarely"
+              highLabel="most"
+              note={`${cellSize} m cells`}
+            />
+          ) : null}
+        </div>
       </div>
       {bins.length === 0 ? (
         <p className="mt-2 text-center text-xs text-fg-muted">

@@ -26,7 +26,9 @@ export function usePanelData<TData>(
   });
 
   // Re-run when the resolved query, the surface/session, or the revision change.
-  const key = JSON.stringify(ctx.params);
+  // Per-panel settings (ADR 0039) also key the effect so a settings change
+  // (e.g. the floor-plan `cellSize`) re-runs `load` against the new value.
+  const key = JSON.stringify({ params: ctx.params, settings: ctx.settings });
 
   useEffect(() => {
     if (!panel.load) {
