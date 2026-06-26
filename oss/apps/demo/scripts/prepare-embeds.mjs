@@ -32,7 +32,10 @@ function run(cmd, args, env) {
     cwd: repoRoot,
     stdio: "inherit",
     env: { ...process.env, ...env },
-    shell: false,
+    // On Windows `pnpm` is a `.cmd` shim that Node can't resolve/exec without a
+    // shell; on POSIX it's directly executable. The args below are static, so
+    // enabling the shell only where required is safe.
+    shell: process.platform === "win32",
   });
   return res.status === 0;
 }
