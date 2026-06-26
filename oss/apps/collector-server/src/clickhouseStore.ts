@@ -42,7 +42,9 @@ import {
   buildTopMeshesTrend,
   buildTopInputActions,
   buildWorldHeatmap,
+  buildWorldHeatmapStats,
   buildGazeHeatmap,
+  buildGazeHeatmapStats,
   clickhouseDialect,
   readDbSettings,
   type CameraDistanceBucketRow,
@@ -85,6 +87,7 @@ import {
   type PositionBinRow,
   type SceneRow,
   type SessionSummaryRow,
+  type SpatialStatsRow,
   type TimeseriesBucketRow,
   type TrajectoryPointRow,
   type WorldHeatmapBinRow,
@@ -136,8 +139,22 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<HeatmapBinRow>(ch, buildPointerHeatmap(projectId, opts, d)),
     worldHeatmap: (projectId, opts = {}) =>
       runClickhouseQuery<WorldHeatmapBinRow>(ch, buildWorldHeatmap(projectId, opts, d)),
+    worldHeatmapStats: async (projectId, opts = {}) => {
+      const rows = await runClickhouseQuery<SpatialStatsRow>(
+        ch,
+        buildWorldHeatmapStats(projectId, opts, d),
+      );
+      return rows[0] ?? { cells: 0, hits: 0 };
+    },
     gazeHeatmap: (projectId, opts = {}) =>
       runClickhouseQuery<WorldHeatmapBinRow>(ch, buildGazeHeatmap(projectId, opts, d)),
+    gazeHeatmapStats: async (projectId, opts = {}) => {
+      const rows = await runClickhouseQuery<SpatialStatsRow>(
+        ch,
+        buildGazeHeatmapStats(projectId, opts, d),
+      );
+      return rows[0] ?? { cells: 0, hits: 0 };
+    },
     cameraHeatmap: (projectId, opts = {}) =>
       runClickhouseQuery<DirectionBinRow>(ch, buildCameraDirectionHeatmap(projectId, opts, d)),
     cameraPositionHeatmap: (projectId, opts = {}) =>

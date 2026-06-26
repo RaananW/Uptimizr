@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SceneProxyMesh, WorldHeatmapBin } from "@/lib/api";
-import { heatRgb } from "@/lib/heat";
+import { heatRgb, percentileMax } from "@/lib/heat";
 import {
   attachDoubleClickFocus,
   disableWheelZoom,
@@ -36,6 +36,12 @@ interface WorldHeatmap3DViewProps {
   legendHigh?: string;
   legendNote?: string;
   emptyLabel?: string;
+  /**
+   * Scene-wide totals (ADR 0040 §3). When the rendered voxels are a truncated
+   * top-N slice, this lets the legend say "showing top N of M cells" so cold
+   * spots and overall coverage aren't mistaken for the whole picture.
+   */
+  totals?: { cells: number; hits: number };
 }
 
 /**
@@ -56,8 +62,9 @@ export function WorldHeatmap3DView({
   legendTitle = "Pointer-hit density",
   legendLow = "few hits",
   legendHigh = "most hits",
-  legendNote = "Each marker is a voxel where the pointer hit your scene. Color & size scale with hits, normalized to the busiest cell.",
+  legendNote = "Each marker is a voxel where the pointer hit your scene. Color & size scale with hits, normalized to the 95th-percentile cell so a few hotspots don't wash out the rest.",
   emptyLabel = "No 3D hit-points in range.",
+  totals,
 }: WorldHeatmap3DViewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraRef = useRef<OrbitFocusCamera | null>(null);
@@ -106,7 +113,13 @@ export function WorldHeatmap3DView({
         ]);
         if (disposed) return;
 
-        const maxCount = voxels.reduce((m, v) => Math.max(m, v.count), 1);
+        // Robust normalization (ADR 0040 §2): scale color/size by the p95 of hit
+        // counts rather than the global max, so a few hot voxels don't crush the
+        // contrast of an otherwise busy scene (the failure mode on large scenes).
+        const scaleMax = percentileMax(
+          voxels.map((v) => v.count),
+          0.95,
+        );
 
         // World-space bounds to frame the camera. Prefer voxel centers; fall
         // back to proxy AABB centers when there are no hit-points yet.
@@ -227,7 +240,7 @@ export function WorldHeatmap3DView({
           const fitScale = markerUnit / (cellSize * 0.9);
           for (let i = 0; i < n; i++) {
             const v = voxels[i]!;
-            const t = v.count / maxCount;
+            const t = Math.min(1, v.count / scaleMax);
             // Intensity modulates each marker between 50% and 100% of its size
             // so hotspots read as larger without low cells vanishing.
             const s = fitScale * (0.5 + 0.5 * t);
@@ -304,6 +317,15 @@ export function WorldHeatmap3DView({
     };
   }, [voxels, cellSize, proxyMeshes, markerShape]);
 
+  // ADR 0040 §3: when the voxel list is a truncated top-N slice, surface the true
+  // totals so cold spots / overall coverage read correctly. Number truncation is
+  // detected by comparing the rendered cells to the scene-wide occupied total.
+  const coverageNote = totals
+    ? totals.cells > voxels.length
+      ? ` Showing the ${voxels.length.toLocaleString()} busiest of ${totals.cells.toLocaleString()} occupied cells (${totals.hits.toLocaleString()} total hits).`
+      : ` ${totals.cells.toLocaleString()} occupied cells, ${totals.hits.toLocaleString()} total hits.`
+    : "";
+
   return (
     <div className="relative">
       <canvas
@@ -331,7 +353,7 @@ export function WorldHeatmap3DView({
             title={legendTitle}
             lowLabel={legendLow}
             highLabel={legendHigh}
-            note={legendNote}
+            note={legendNote + coverageNote}
           />
         </>
       ) : (

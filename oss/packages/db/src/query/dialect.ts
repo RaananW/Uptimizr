@@ -21,6 +21,7 @@ import type {
   SceneOptions,
   SourceOptions,
   SessionOptions,
+  RegionOptions,
 } from "./types.js";
 
 export type { QuerySpec };
@@ -133,6 +134,33 @@ export function sourceClause(bag: ParamBag, opts: SourceOptions): string {
 export function sessionClause(bag: ParamBag, opts: SessionOptions): string {
   if (opts.session == null || opts.session.length === 0) return "";
   return ` AND session_id = ${bag.add("session", "string", opts.session)}`;
+}
+
+/**
+ * Build a world-space region (AABB) predicate (ADR 0040 §4): restrict a spatial
+ * heatmap to the box `[minX, minY, minZ, maxX, maxY, maxZ]`, inclusive on both
+ * ends. `cols` names the SQL column expressions for the x/y/z coordinate of the
+ * point being filtered (e.g. `hit_point[1]` for world/gaze, `position[1]` for the
+ * floor plan). Returns `""` when no region is given. Degenerate boxes (`max < min`
+ * on any axis) are passed through verbatim — the caller validates at the boundary.
+ */
+export function regionClause(
+  bag: ParamBag,
+  opts: RegionOptions,
+  cols: { x: string; y: string; z: string },
+): string {
+  const r = opts.region;
+  if (r == null) return "";
+  const [minX, minY, minZ, maxX, maxY, maxZ] = r;
+  const parts = [
+    `${cols.x} >= ${bag.add("regMinX", "f64", minX)}`,
+    `${cols.x} <= ${bag.add("regMaxX", "f64", maxX)}`,
+    `${cols.y} >= ${bag.add("regMinY", "f64", minY)}`,
+    `${cols.y} <= ${bag.add("regMaxY", "f64", maxY)}`,
+    `${cols.z} >= ${bag.add("regMinZ", "f64", minZ)}`,
+    `${cols.z} <= ${bag.add("regMaxZ", "f64", maxZ)}`,
+  ];
+  return ` AND ${parts.join(" AND ")}`;
 }
 
 /**

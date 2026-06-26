@@ -1,6 +1,6 @@
 # ADR 0040: Large-scene spatial resolution (bounds-driven binning, robust normalization, region drill-down)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-06-26
 - **Deciders:** Project owner, engineering
 

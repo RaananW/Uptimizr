@@ -497,10 +497,12 @@ const renderScalePanel = definePanel<RenderScaleTruthData>({
   render: ({ data }) => <RenderScaleTruthView data={data} />,
 });
 
-/** World (click) heatmap data: voxels + the scene-proxy backdrop. */
+/** World (click) heatmap data: voxels + the scene-proxy backdrop + scene totals. */
 interface WorldHeatmapData {
   voxels: WorldHeatmapBin[];
   proxyMeshes: SceneProxyMesh[];
+  /** Scene-wide totals (ADR 0040 §3) behind the truncated voxel list. */
+  totals: { cells: number; hits: number };
 }
 
 /**
@@ -518,17 +520,19 @@ const worldHeatmapPanel = definePanel<WorldHeatmapData, typeof WORLD_HEATMAP_SET
   clientOnly: true,
   settings: WORLD_HEATMAP_SETTINGS,
   load: async (ctx) => {
-    const [voxels, proxyMeshes] = await Promise.all([
+    const [voxels, proxyMeshes, stats] = await Promise.all([
       ctx.api.worldHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
       resolveProxyMeshes(ctx),
+      ctx.api.worldHeatmapStats({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
     ]);
-    return { voxels, proxyMeshes };
+    return { voxels, proxyMeshes, totals: { cells: stats.cells, hits: stats.hits } };
   },
   render: ({ data, ctx }) => (
     <WorldHeatmap3DView
       voxels={data.voxels}
       cellSize={ctx.settings.cellSize}
       proxyMeshes={data.proxyMeshes}
+      totals={data.totals}
     />
   ),
 });

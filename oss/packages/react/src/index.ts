@@ -5,7 +5,7 @@
 // (browser → query API only; never the database — ADR 0004).
 
 export * from "./api";
-export { heatRgb, HEAT_GRADIENT } from "./heat";
+export { heatRgb, HEAT_GRADIENT, percentileMax } from "./heat";
 export { heatColor, formatNumber, formatTime, parseTimestamp } from "./format";
 export { drawPointerHeatmap, drawDirectionHeatmap, HEATMAP_BACKGROUND } from "./draw";
 export { UptimizrProvider, useUptimizr, useCollectorApi } from "./provider";

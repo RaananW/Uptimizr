@@ -50,10 +50,12 @@ function loadCtx(opts: {
 }): {
   ctx: PanelDataContext;
   worldHeatmap: ReturnType<typeof vi.fn>;
+  worldHeatmapStats: ReturnType<typeof vi.fn>;
   scenes: ReturnType<typeof vi.fn>;
   sceneRepresentation: ReturnType<typeof vi.fn>;
 } {
   const worldHeatmap = vi.fn().mockResolvedValue(opts.voxels ?? []);
+  const worldHeatmapStats = vi.fn().mockResolvedValue({ cellSize: 0.5, cells: 0, hits: 0 });
   const scenes = vi.fn().mockResolvedValue(opts.scenes ?? []);
   const sceneRepresentation = vi
     .fn()
@@ -62,9 +64,9 @@ function loadCtx(opts: {
     surface: "overview",
     params: opts.scene ? { scene: opts.scene } : {},
     settings: { cellSize: 0.5 },
-    api: { worldHeatmap, scenes, sceneRepresentation },
+    api: { worldHeatmap, worldHeatmapStats, scenes, sceneRepresentation },
   } as unknown as PanelDataContext;
-  return { ctx, worldHeatmap, scenes, sceneRepresentation };
+  return { ctx, worldHeatmap, worldHeatmapStats, scenes, sceneRepresentation };
 }
 
 describe("builtinPanels — world-heatmap panel", () => {

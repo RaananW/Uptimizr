@@ -40,6 +40,23 @@ export interface SessionOptions {
 }
 
 /**
+ * Axis-aligned bounding box in world space, encoded as
+ * `[minX, minY, minZ, maxX, maxY, maxZ]` — structurally identical to the schema
+ * `Aabb`, re-declared here so the query layer has no dependency on `@uptimizr/schema`.
+ */
+export type WorldAabb = readonly [number, number, number, number, number, number];
+
+/**
+ * Optional world-space region filter (ADR 0040 §4): restrict a spatial heatmap to
+ * an axis-aligned box. Drives semantic-zoom drill-down — the viewer re-bins a
+ * sub-region at finer resolution. Omit for the whole scene.
+ */
+export interface RegionOptions {
+  /** `[minX, minY, minZ, maxX, maxY, maxZ]` in canonical world space. Omit for unbounded. */
+  region?: WorldAabb;
+}
+
+/**
  * Optional camera/navigation-model filter (ADR 0026). Segments aggregates by the
  * `scene.cameraType` declared on each session's `session_start` — e.g.
  * `"arc-rotate"` (orbit viewer) vs. `"free"` (first-person walkthrough). Omit for
@@ -78,6 +95,20 @@ export interface WorldHeatmapBinRow {
   vy: number;
   vz: number;
   count: number;
+}
+
+/**
+ * Scene-wide totals for a spatial heatmap (ADR 0040 §3). Computed without a
+ * `LIMIT`, so it reports the *true* occupied-cell and hit counts behind a
+ * truncated top-N voxel list — letting the viewer say "showing top 1000 of N
+ * cells" and reason about cold spots/coverage. Region-aware: when a
+ * {@link RegionOptions.region} is set, the totals describe only that box.
+ */
+export interface SpatialStatsRow {
+  /** Number of occupied (non-empty) cells across the whole scene/region. */
+  cells: number;
+  /** Total hits (sum of per-cell counts) across the whole scene/region. */
+  hits: number;
 }
 
 /**

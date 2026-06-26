@@ -52,7 +52,9 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
     ],
     pointerHeatmap: async () => [{ gx: 1, gy: 2, count: 5 }],
     worldHeatmap: async () => [{ vx: 1, vy: 0, vz: -2, count: 7 }],
+    worldHeatmapStats: async () => ({ cells: 12, hits: 34 }),
     gazeHeatmap: async () => [{ vx: 3, vy: 1, vz: -1, count: 6 }],
+    gazeHeatmapStats: async () => ({ cells: 5, hits: 9 }),
     cameraHeatmap: async () => [],
     clickGazeRays: async () => [
       {
@@ -448,6 +450,104 @@ describe("collector app", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(received).toMatchObject({ scene: "lobby" });
+    await app.close();
+  });
+
+  it("returns world heatmap totals with the effective cellSize (ADR 0040 §3)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/world/stats?cellSize=0.25",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cellSize: 0.25, cells: 12, hits: 34 });
+    await app.close();
+  });
+
+  it("returns gaze heatmap totals (ADR 0040 §3)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/gaze/stats?cellSize=0.5",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cellSize: 0.5, cells: 5, hits: 9 });
+    await app.close();
+  });
+
+  it("parses a region filter and forwards it as an AABB to the world heatmap (ADR 0040 §4)", async () => {
+    let received: { region?: unknown } | undefined;
+    const store = makeStore({
+      worldHeatmap: async (_projectId, opts) => {
+        received = opts;
+        return [];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/world?region=0,0,0,10,5,10",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received?.region).toEqual([0, 0, 0, 10, 5, 10]);
+    await app.close();
+  });
+
+  it("rejects a malformed region filter with 400 (ADR 0040 §4)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/world?region=0,0,0,10",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("derives the world heatmap cellSize from scene bounds when omitted (ADR 0040 §1)", async () => {
+    let received: { cellSize?: number } | undefined;
+    const store = makeStore({
+      getSceneRepresentation: async () =>
+        ({ bounds: [0, 0, 0, 128, 4, 8] }) as unknown as Awaited<
+          ReturnType<CollectorStore["getSceneRepresentation"]>
+        >,
+      worldHeatmap: async (_projectId, opts) => {
+        received = opts;
+        return [];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/world?scene=lobby",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    // Longest axis is 128; 128 / 64 = 2 world units per voxel.
+    expect(received?.cellSize).toBe(2);
+    await app.close();
+  });
+
+  it("derives the world heatmap cellSize from a region when omitted (ADR 0040 §1/§4)", async () => {
+    let received: { cellSize?: number } | undefined;
+    const store = makeStore({
+      worldHeatmap: async (_projectId, opts) => {
+        received = opts;
+        return [];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/world?region=0,0,0,64,2,2",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    // The region's longest axis is 64; 64 / 64 = 1 world unit per voxel.
+    expect(received?.cellSize).toBe(1);
     await app.close();
   });
 

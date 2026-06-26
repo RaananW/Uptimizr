@@ -15,6 +15,7 @@ import {
   cameraModeClause,
   dayRangeClause,
   rangeClause,
+  regionClause,
   sceneClause,
   sessionClause,
   sourceClause,
@@ -26,11 +27,37 @@ import type {
   FunnelOptions,
   FunnelStepInput,
   RangeOptions,
+  RegionOptions,
   SceneOptions,
   SessionOptions,
   SourceOptions,
   TimeseriesOptions,
+  WorldAabb,
 } from "./types.js";
+
+/** World/gaze voxel coordinates derive from the raycast `hit_point` vector. */
+const HIT_POINT_COLS = { x: "hit_point[1]", y: "hit_point[2]", z: "hit_point[3]" } as const;
+/** Floor-plan cells derive from the camera `position` vector (Y is height). */
+const POSITION_COLS = { x: "position[1]", y: "position[2]", z: "position[3]" } as const;
+
+/**
+ * Bounds-driven default voxel size (ADR 0040 §1). Picks a `cellSize` so the
+ * longest axis of `bounds` spans roughly `targetCells` cells, keeping spatial
+ * resolution proportional to scene extent instead of a fixed world-unit default
+ * that dissolves large scenes into a few coarse blocks. Returns `null` for a
+ * missing or degenerate (zero/negative longest-axis) box so the caller can fall
+ * back to its fixed default.
+ */
+export function defaultCellSizeForBounds(
+  bounds: WorldAabb | null | undefined,
+  targetCells = 64,
+): number | null {
+  if (bounds == null) return null;
+  const [minX, minY, minZ, maxX, maxY, maxZ] = bounds;
+  const longest = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+  if (!Number.isFinite(longest) || longest <= 0 || targetCells <= 0) return null;
+  return longest / targetCells;
+}
 
 /** List sessions for a project with event counts and time bounds. */
 export function buildListSessions(
@@ -109,6 +136,7 @@ export function buildWorldHeatmap(
   opts: RangeOptions &
     SceneOptions &
     SourceOptions &
+    RegionOptions &
     CameraModeOptions & { cellSize?: number; limit?: number },
   d: Dialect,
 ): QuerySpec {
@@ -119,6 +147,7 @@ export function buildWorldHeatmap(
   const scene = sceneClause(bag, opts);
   const source = sourceClause(bag, opts);
   const cameraMode = cameraModeClause(bag, d, projectId, opts);
+  const region = regionClause(bag, opts, HIT_POINT_COLS);
   const limit = bag.add("limit", "u32", opts.limit ?? 1000);
   return {
     query: `
@@ -130,10 +159,54 @@ export function buildWorldHeatmap(
       FROM events
       WHERE project_id = ${pid}
         AND event_type IN ('pointer_move', 'pointer_click')
-        AND length(hit_point) = 3${range}${scene}${source}${cameraMode}
+        AND length(hit_point) = 3${range}${scene}${source}${cameraMode}${region}
       GROUP BY vx, vy, vz
       ORDER BY count DESC
       LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Scene-wide totals for the world (pointer) heatmap (ADR 0040 §3): the true count
+ * of occupied voxels and total hits, computed with no `LIMIT` so the viewer can
+ * report "showing top N of M cells" and reason about cold spots/coverage. Shares
+ * every filter (including {@link RegionOptions.region}) with {@link buildWorldHeatmap}.
+ * Uses a grouped sub-select so the dialect needs no `COUNT(DISTINCT tuple)`.
+ */
+export function buildWorldHeatmapStats(
+  projectId: string,
+  opts: RangeOptions &
+    SceneOptions &
+    SourceOptions &
+    RegionOptions &
+    CameraModeOptions & { cellSize?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const cellSize = bag.add("cellSize", "f64", opts.cellSize ?? 0.5);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const source = sourceClause(bag, opts);
+  const cameraMode = cameraModeClause(bag, d, projectId, opts);
+  const region = regionClause(bag, opts, HIT_POINT_COLS);
+  return {
+    query: `
+      SELECT count() AS cells, coalesce(sum(c), 0) AS hits
+      FROM (
+        SELECT
+          floor(hit_point[1] / ${cellSize}) AS vx,
+          floor(hit_point[2] / ${cellSize}) AS vy,
+          floor(hit_point[3] / ${cellSize}) AS vz,
+          count() AS c
+        FROM events
+        WHERE project_id = ${pid}
+          AND event_type IN ('pointer_move', 'pointer_click')
+          AND length(hit_point) = 3${range}${scene}${source}${cameraMode}${region}
+        GROUP BY vx, vy, vz
+      ) t
     `,
     query_params: bag.values,
   };
@@ -154,6 +227,7 @@ export function buildGazeHeatmap(
   opts: RangeOptions &
     SceneOptions &
     SessionOptions &
+    RegionOptions &
     CameraModeOptions & { cellSize?: number; limit?: number },
   d: Dialect,
 ): QuerySpec {
@@ -164,6 +238,7 @@ export function buildGazeHeatmap(
   const scene = sceneClause(bag, opts);
   const session = sessionClause(bag, opts);
   const cameraMode = cameraModeClause(bag, d, projectId, opts);
+  const region = regionClause(bag, opts, HIT_POINT_COLS);
   const limit = bag.add("limit", "u32", opts.limit ?? 1000);
   return {
     query: `
@@ -175,10 +250,52 @@ export function buildGazeHeatmap(
       FROM events
       WHERE project_id = ${pid}
         AND event_type = 'camera_sample'
-        AND length(hit_point) = 3${range}${scene}${session}${cameraMode}
+        AND length(hit_point) = 3${range}${scene}${session}${cameraMode}${region}
       GROUP BY vx, vy, vz
       ORDER BY count DESC
       LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Scene-wide totals for the gaze heatmap (ADR 0040 §3): the true occupied-voxel
+ * and hit counts behind the truncated top-N gaze voxels, with no `LIMIT`. Shares
+ * every filter (including {@link RegionOptions.region}) with {@link buildGazeHeatmap}.
+ */
+export function buildGazeHeatmapStats(
+  projectId: string,
+  opts: RangeOptions &
+    SceneOptions &
+    SessionOptions &
+    RegionOptions &
+    CameraModeOptions & { cellSize?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const cellSize = bag.add("cellSize", "f64", opts.cellSize ?? 0.5);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const cameraMode = cameraModeClause(bag, d, projectId, opts);
+  const region = regionClause(bag, opts, HIT_POINT_COLS);
+  return {
+    query: `
+      SELECT count() AS cells, coalesce(sum(c), 0) AS hits
+      FROM (
+        SELECT
+          floor(hit_point[1] / ${cellSize}) AS vx,
+          floor(hit_point[2] / ${cellSize}) AS vy,
+          floor(hit_point[3] / ${cellSize}) AS vz,
+          count() AS c
+        FROM events
+        WHERE project_id = ${pid}
+          AND event_type = 'camera_sample'
+          AND length(hit_point) = 3${range}${scene}${session}${cameraMode}${region}
+        GROUP BY vx, vy, vz
+      ) t
     `,
     query_params: bag.values,
   };
@@ -228,6 +345,7 @@ export function buildCameraPositionHeatmap(
   opts: RangeOptions &
     SceneOptions &
     SessionOptions &
+    RegionOptions &
     CameraModeOptions & { cellSize?: number; limit?: number },
   d: Dialect,
 ): QuerySpec {
@@ -238,6 +356,7 @@ export function buildCameraPositionHeatmap(
   const scene = sceneClause(bag, opts);
   const session = sessionClause(bag, opts);
   const cameraMode = cameraModeClause(bag, d, projectId, opts);
+  const region = regionClause(bag, opts, POSITION_COLS);
   const limit = bag.add("limit", "u32", opts.limit ?? 2000);
   return {
     query: `
@@ -249,7 +368,7 @@ export function buildCameraPositionHeatmap(
       FROM events
       WHERE project_id = ${pid}
         AND event_type = 'camera_sample'
-        AND length(position) = 3${range}${scene}${session}${cameraMode}
+        AND length(position) = 3${range}${scene}${session}${cameraMode}${region}
       GROUP BY gx, gz
       ORDER BY count DESC
       LIMIT ${limit}

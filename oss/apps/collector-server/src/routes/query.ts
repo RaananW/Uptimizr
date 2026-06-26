@@ -3,6 +3,7 @@ import { Readable } from "node:stream";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { sceneProxySchema, funnelStepsSchema } from "@uptimizr/schema";
+import { defaultCellSizeForBounds, type WorldAabb } from "@uptimizr/db";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
 
@@ -37,6 +38,65 @@ const cameraModeFilter = z.enum(["viewer", "first-person"]).optional();
 function cameraTypeForMode(mode: "viewer" | "first-person" | undefined): string | undefined {
   if (mode === "first-person") return "free";
   if (mode === "viewer") return "arc-rotate";
+  return undefined;
+}
+
+/**
+ * World-space region filter (ADR 0040 §4): a `minX,minY,minZ,maxX,maxY,maxZ`
+ * comma list naming an axis-aligned box to drill into. Validated to six finite
+ * numbers with `max >= min` on every axis, then handed to the aggregation layer
+ * as a {@link WorldAabb}. Omit for the whole scene.
+ */
+const regionFilter = z
+  .string()
+  .optional()
+  .transform((val, ctx): WorldAabb | undefined => {
+    if (val == null) return undefined;
+    const parts = val.split(",").map((s) => Number(s.trim()));
+    if (parts.length !== 6 || parts.some((n) => !Number.isFinite(n))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "region must be 6 comma-separated finite numbers: minX,minY,minZ,maxX,maxY,maxZ",
+      });
+      return z.NEVER;
+    }
+    const [minX, minY, minZ, maxX, maxY, maxZ] = parts as [
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ];
+    if (maxX < minX || maxY < minY || maxZ < minZ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "region max must be >= min on every axis",
+      });
+      return z.NEVER;
+    }
+    return [minX, minY, minZ, maxX, maxY, maxZ];
+  });
+
+/**
+ * Resolve the effective voxel `cellSize` for a spatial heatmap (ADR 0040 §1).
+ * When the caller pins a `cellSize` it wins. Otherwise the resolution is driven
+ * by extent: a `region` drill-down sizes cells to the box, and a single selected
+ * `scene` sizes them to its registered world bounds — so large scenes stay
+ * legible instead of dissolving into a few coarse blocks. Returns `undefined`
+ * when no extent is known, letting the aggregation fall back to its fixed default.
+ */
+async function resolveSpatialCellSize(
+  store: CollectorStore,
+  projectId: string,
+  opts: { cellSize?: number; scene?: string; region?: WorldAabb },
+): Promise<number | undefined> {
+  if (opts.cellSize != null) return opts.cellSize;
+  if (opts.region != null) return defaultCellSizeForBounds(opts.region) ?? undefined;
+  if (opts.scene != null) {
+    const rep = await store.getSceneRepresentation(projectId, opts.scene);
+    if (rep?.bounds) return defaultCellSizeForBounds(rep.bounds) ?? undefined;
+  }
   return undefined;
 }
 
@@ -91,6 +151,18 @@ const worldHeatmapQueryParams = z.object({
   scene: sceneFilter,
   source: sourceFilter,
   cameraMode: cameraModeFilter,
+  region: regionFilter,
+});
+
+/** World heatmap totals params (ADR 0040 §3): same filters as the world heatmap, no `limit`. */
+const worldStatsQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  cellSize: z.coerce.number().positive().max(1000).optional(),
+  scene: sceneFilter,
+  source: sourceFilter,
+  cameraMode: cameraModeFilter,
+  region: regionFilter,
 });
 
 /**
@@ -106,6 +178,18 @@ const gazeHeatmapQueryParams = z.object({
   scene: sceneFilter,
   session: sessionFilter,
   cameraMode: cameraModeFilter,
+  region: regionFilter,
+});
+
+/** Gaze heatmap totals params (ADR 0040 §3): same filters as the gaze heatmap, no `limit`. */
+const gazeStatsQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  cellSize: z.coerce.number().positive().max(1000).optional(),
+  scene: sceneFilter,
+  session: sessionFilter,
+  cameraMode: cameraModeFilter,
+  region: regionFilter,
 });
 
 /**
@@ -120,6 +204,7 @@ const cameraPositionQueryParams = z.object({
   scene: sceneFilter,
   session: sessionFilter,
   cameraMode: cameraModeFilter,
+  region: regionFilter,
 });
 
 /**
@@ -337,8 +422,44 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
-      const { cameraMode, ...rest } = req.query;
-      return store.worldHeatmap(projectId, { ...rest, cameraType: cameraTypeForMode(cameraMode) });
+      const { cameraMode, region, cellSize, ...rest } = req.query;
+      const resolved = await resolveSpatialCellSize(store, projectId, {
+        cellSize,
+        scene: rest.scene,
+        region,
+      });
+      return store.worldHeatmap(projectId, {
+        ...rest,
+        region,
+        cellSize: resolved,
+        cameraType: cameraTypeForMode(cameraMode),
+      });
+    },
+  );
+
+  // World heatmap totals (ADR 0040 §3) — true occupied-cell + hit counts behind
+  // the truncated top-N voxels, so the viewer can report coverage/cold-spots and
+  // "showing top N of M cells". Echoes the effective (possibly bounds-derived)
+  // cellSize so the caller can label its own grid.
+  r.get(
+    "/api/v1/heatmaps/world/stats",
+    { schema: { querystring: worldStatsQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      const { cameraMode, region, cellSize, ...rest } = req.query;
+      const resolved = await resolveSpatialCellSize(store, projectId, {
+        cellSize,
+        scene: rest.scene,
+        region,
+      });
+      const stats = await store.worldHeatmapStats(projectId, {
+        ...rest,
+        region,
+        cellSize: resolved,
+        cameraType: cameraTypeForMode(cameraMode),
+      });
+      return { cellSize: resolved ?? 0.5, cells: stats.cells, hits: stats.hits };
     },
   );
 
@@ -350,8 +471,41 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
-      const { cameraMode, ...rest } = req.query;
-      return store.gazeHeatmap(projectId, { ...rest, cameraType: cameraTypeForMode(cameraMode) });
+      const { cameraMode, region, cellSize, ...rest } = req.query;
+      const resolved = await resolveSpatialCellSize(store, projectId, {
+        cellSize,
+        scene: rest.scene,
+        region,
+      });
+      return store.gazeHeatmap(projectId, {
+        ...rest,
+        region,
+        cellSize: resolved,
+        cameraType: cameraTypeForMode(cameraMode),
+      });
+    },
+  );
+
+  // Gaze heatmap totals (ADR 0040 §3) — gaze sibling of the world stats route.
+  r.get(
+    "/api/v1/heatmaps/gaze/stats",
+    { schema: { querystring: gazeStatsQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      const { cameraMode, region, cellSize, ...rest } = req.query;
+      const resolved = await resolveSpatialCellSize(store, projectId, {
+        cellSize,
+        scene: rest.scene,
+        region,
+      });
+      const stats = await store.gazeHeatmapStats(projectId, {
+        ...rest,
+        region,
+        cellSize: resolved,
+        cameraType: cameraTypeForMode(cameraMode),
+      });
+      return { cellSize: resolved ?? 0.5, cells: stats.cells, hits: stats.hits };
     },
   );
 
