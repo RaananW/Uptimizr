@@ -110,6 +110,25 @@ query contract** with common parameters — `scene`, optional `sessionId`, time 
 `limit` — rather than five bespoke routes with divergent shapes. Decide the unified contract before
 adding the next heatmap endpoint.
 
+### 6.1 Large scenes (ADR 0040) — reversible tactics
+
+[ADR 0040](../adr/0040-large-scene-spatial-resolution.md) makes a scene that is much larger than its
+walkable area legible **automatically within one `scene_id`** (no forced `setScene` segmentation).
+The durable decisions live in the ADR; the tunable tactics and constants live here and may evolve:
+
+- **Bounds-driven default `cellSize`.** Derive the default from the registry AABB ([ADR 0014](../adr/0014-scene-registry.md))
+  to target a roughly constant cell count across the longest axis (start ~64; revisit per heatmap,
+  and note 3D cells grow cubically). Explicit `cellSize` always overrides; bounds-less scenes keep
+  today's fixed defaults. Open: anisotropic (long-thin) scenes may want per-axis sizing.
+- **Robust normalization.** Replace single-cell max with a high percentile (p95/p99) and/or log
+  scale, computed within the queried scope; the legend states the scheme and what the top represents.
+- **Explicit totals + cold-spots.** Return distinct-cell and total-hit counts alongside the busiest-N
+  voxels so truncation is visible, and surface an unreached/coverage signal (builds on the dead-zone
+  report) so "nobody went here" renders instead of being dropped by `LIMIT`.
+- **Region (AABB) drill-down — semantic zoom.** An optional bounding-box query param re-bins a
+  sub-region at finer `cellSize` and re-normalizes to it; the box is viewer-chosen, not
+  developer-declared. Server-side multi-resolution tiles are deferred — v1 re-bins on demand.
+
 ## 7. Backlog — tracked viewer improvements
 
 A single list of proposed, not-yet-built viewer enhancements so they live in one place. Ordered
