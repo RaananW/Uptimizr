@@ -26,14 +26,20 @@ import { showWorldHeatmap } from "@uptimizr/heatmap/babylon";
 import {
   BOX_COLORS,
   COMMON_CAPTURE_FEATURES,
+  sectionAt,
   type CaptureFeature,
   type EngineCapabilities,
   type EngineId,
   type EngineInstance,
   type EngineModule,
   type EngineMountContext,
+  type SceneSection,
 } from "../engine.js";
 import { buildWalkableScene } from "./babylon-walkable.js";
+
+// Re-export so per-scene Babylon builders can import the section type alongside the
+// engine factory from this module (the canonical definition lives in engine.ts).
+export type { SceneSection };
 
 const CAPTURE_FEATURES: CaptureFeature[] = [
   ...COMMON_CAPTURE_FEATURES.slice(0, 7), // camera … contextLoss
@@ -109,14 +115,6 @@ export interface BabylonSceneSetup {
    * starting id before the first match). Defaults to `ctx.sceneId`.
    */
   readonly defaultSceneId?: string;
-}
-
-/** One named sub-area box of a large scene (ADR 0040 §5). */
-export interface SceneSection {
-  /** The `scene_id` the connector tags events with while the camera is inside. */
-  readonly id: string;
-  /** Inclusive world-space AABB `[minX, minY, minZ, maxX, maxY, maxZ]`. */
-  readonly aabb: readonly [number, number, number, number, number, number];
 }
 
 /** Builds the Babylon scene for a mount; may load assets asynchronously. */
@@ -263,22 +261,8 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
     if (setup.sections && setup.sections.length > 0) {
       const sections = setup.sections;
       const fallbackSceneId = setup.defaultSceneId ?? sceneId;
-      const sectionFor = (p: Vector3): string => {
-        for (const s of sections) {
-          const [minX, minY, minZ, maxX, maxY, maxZ] = s.aabb;
-          if (
-            p.x >= minX &&
-            p.x <= maxX &&
-            p.y >= minY &&
-            p.y <= maxY &&
-            p.z >= minZ &&
-            p.z <= maxZ
-          ) {
-            return s.id;
-          }
-        }
-        return fallbackSceneId;
-      };
+      const sectionFor = (p: Vector3): string =>
+        sectionAt(sections, fallbackSceneId, p.x, p.y, p.z);
       let activeSection = sectionFor(camera.position);
       if (activeSection !== sceneId) {
         client.setScene(activeSection);

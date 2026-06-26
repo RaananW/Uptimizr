@@ -25,12 +25,14 @@ import { scanSceneProxy, trackScene } from "@uptimizr/three";
 import {
   BOX_COLORS,
   COMMON_CAPTURE_FEATURES,
+  sectionAt,
   type CaptureFeature,
   type EngineCapabilities,
   type EngineId,
   type EngineInstance,
   type EngineModule,
   type EngineMountContext,
+  type SceneSection,
 } from "../engine.js";
 import { buildWalkableScene } from "./three-walkable.js";
 
@@ -106,6 +108,18 @@ export interface ThreeSceneSetup {
   readonly cameraType?: "free" | "arc-rotate";
   readonly nodeSampling?: Record<string, { hz: number; include?: string[] | "*" }>;
   readonly actors?: Record<string, string>;
+  /**
+   * Self-declared sub-areas of one large scene (ADR 0040 §5). As the camera enters a
+   * section's axis-aligned box the connector calls `client.setScene(section.id)`, so the
+   * continuous space is tracked as distinct, semantically-named areas. The first matching
+   * section (or `defaultSceneId`) is active on entry; boxes are tested in order.
+   */
+  readonly sections?: readonly SceneSection[];
+  /**
+   * Scene id used while the camera is in none of the {@link sections} (and the starting
+   * id before the first match). Defaults to `ctx.sceneId`.
+   */
+  readonly defaultSceneId?: string;
 }
 
 /** Builds the three.js scene for a mount; may load assets asynchronously. */
@@ -186,11 +200,13 @@ export function createThreeEngineModule(options: ThreeEngineOptions): EngineModu
 
     const timer = new Timer();
     let running = true;
+    let sectionTick: (() => void) | null = null;
     function renderLoop(): void {
       if (!running) return;
       timer.update();
       const dt = timer.getDelta();
       setup.update?.(dt);
+      sectionTick?.();
       renderer.render(scene, camera);
       requestAnimationFrame(renderLoop);
     }
@@ -288,6 +304,36 @@ export function createThreeEngineModule(options: ThreeEngineOptions): EngineModu
       ctx.onBoxPick(name);
       client.track(setup.pickEvent ?? "box_picked", { box: name, totalPicks: clickCount });
     });
+
+    // Large-scene section auto-switching (ADR 0040 §5): when the scene declares
+    // sub-area boxes, watch the camera each frame (via the render loop's `sectionTick`)
+    // and call `setScene` as it crosses a boundary, so one continuous space is tracked
+    // as distinct, named areas. The shell mirrors the active id in the HUD.
+    if (setup.sections && setup.sections.length > 0) {
+      const sections = setup.sections;
+      const fallbackSceneId = setup.defaultSceneId ?? ctx.sceneId;
+      const sectionFor = (): string =>
+        sectionAt(
+          sections,
+          fallbackSceneId,
+          camera.position.x,
+          camera.position.y,
+          camera.position.z,
+        );
+      let activeSection = sectionFor();
+      if (activeSection !== ctx.sceneId) {
+        client.setScene(activeSection);
+        ctx.onSceneChange?.(activeSection);
+      }
+      sectionTick = (): void => {
+        const next = sectionFor();
+        if (next !== activeSection) {
+          activeSection = next;
+          client.setScene(next);
+          ctx.onSceneChange?.(next);
+        }
+      };
+    }
 
     const { createThreeReplayDriver } = await import("@uptimizr/replay/three");
 

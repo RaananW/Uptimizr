@@ -105,6 +105,40 @@ export interface EngineCapabilities {
   readonly sceneProxy: boolean;
 }
 
+/**
+ * One named sub-area box of a large scene (ADR 0040 §5). As the camera enters a
+ * section's axis-aligned box the connector calls `client.setScene(section.id)`, so a
+ * single continuous space is tracked as distinct, semantically-named areas you can
+ * filter/segment on. Engine-agnostic so every connector's scene setup can declare it.
+ */
+export interface SceneSection {
+  /** The `scene_id` the connector tags events with while the camera is inside. */
+  readonly id: string;
+  /** Inclusive world-space AABB `[minX, minY, minZ, maxX, maxY, maxZ]`. */
+  readonly aabb: readonly [number, number, number, number, number, number];
+}
+
+/**
+ * Resolve which section a world-space point is in: the first section whose box
+ * contains `(x, y, z)` wins (boxes are tested in order), else `fallback`. Shared by
+ * every engine module's per-frame section watcher so the containment rule is identical.
+ */
+export function sectionAt(
+  sections: readonly SceneSection[],
+  fallback: string,
+  x: number,
+  y: number,
+  z: number,
+): string {
+  for (const s of sections) {
+    const [minX, minY, minZ, maxX, maxY, maxZ] = s.aabb;
+    if (x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ) {
+      return s.id;
+    }
+  }
+  return fallback;
+}
+
 export type PointerKind = "pointer_move" | "pointer_click" | "pointer_down" | "pointer_up";
 
 /** Shell callbacks the engine's replay driver drives (cursor overlay + status). */

@@ -9,12 +9,14 @@ import { createSceneRaycaster, scanSceneProxy, trackScene } from "@uptimizr/play
 import {
   BOX_COLORS,
   COMMON_CAPTURE_FEATURES,
+  sectionAt,
   type CaptureFeature,
   type EngineCapabilities,
   type EngineId,
   type EngineInstance,
   type EngineModule,
   type EngineMountContext,
+  type SceneSection,
 } from "../engine.js";
 import { buildWalkableScene } from "./playcanvas-walkable.js";
 
@@ -148,6 +150,18 @@ export interface PlayCanvasSceneSetup {
   readonly actors?: Record<string, string>;
   /** Scene-specific teardown (walkable). */
   disposeScene?(): void;
+  /**
+   * Self-declared sub-areas of one large scene (ADR 0040 §5). As the camera enters a
+   * section's axis-aligned box the connector calls `client.setScene(section.id)`, so the
+   * continuous space is tracked as distinct, semantically-named areas. The first matching
+   * section (or `defaultSceneId`) is active on entry; boxes are tested in order.
+   */
+  readonly sections?: readonly SceneSection[];
+  /**
+   * Scene id used while the camera is in none of the {@link sections} (and the starting
+   * id before the first match). Defaults to `ctx.sceneId`.
+   */
+  readonly defaultSceneId?: string;
 }
 
 /** Builds the PlayCanvas scene for a mount; may load assets asynchronously. */
@@ -316,6 +330,34 @@ export function createPlayCanvasEngineModule(options: PlayCanvasEngineOptions): 
       client.track(setup.pickEvent ?? "box_picked", { box: name, totalPicks: clickCount });
     });
 
+    // Large-scene section auto-switching (ADR 0040 §5): when the scene declares
+    // sub-area boxes, watch the camera each frame (PlayCanvas `update` event) and call
+    // `setScene` as it crosses a boundary, so one continuous space is tracked as
+    // distinct, named areas. The shell mirrors the active id in the HUD.
+    let onSectionUpdate: (() => void) | null = null;
+    if (setup.sections && setup.sections.length > 0) {
+      const sections = setup.sections;
+      const fallbackSceneId = setup.defaultSceneId ?? ctx.sceneId;
+      const sectionFor = (): string => {
+        const p = camera.getPosition();
+        return sectionAt(sections, fallbackSceneId, p.x, p.y, p.z);
+      };
+      let activeSection = sectionFor();
+      if (activeSection !== ctx.sceneId) {
+        client.setScene(activeSection);
+        ctx.onSceneChange?.(activeSection);
+      }
+      onSectionUpdate = (): void => {
+        const next = sectionFor();
+        if (next !== activeSection) {
+          activeSection = next;
+          client.setScene(next);
+          ctx.onSceneChange?.(next);
+        }
+      };
+      app.on("update", onSectionUpdate);
+    }
+
     const { createPlayCanvasReplayDriver } = await import("@uptimizr/replay/playcanvas");
 
     return {
@@ -353,6 +395,7 @@ export function createPlayCanvasEngineModule(options: PlayCanvasEngineOptions): 
         return proxy.meshCount;
       },
       dispose() {
+        if (onSectionUpdate) app.off("update", onSectionUpdate);
         setup.disposeScene?.();
         void client.stop("manual");
         app.destroy();

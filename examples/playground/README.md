@@ -21,7 +21,7 @@ Built-in scenes:
 | Atrium   | `atrium`   | first-person   | babylon, three, playcanvas                            |
 | Showcase | `showcase` | viewer (orbit) | babylon, three, playcanvas                            |
 | Gallery  | `gallery`  | first-person   | babylon, three, playcanvas                            |
-| Expanse  | `expanse`  | first-person   | babylon                                               |
+| Expanse  | `expanse`  | first-person   | babylon, three, playcanvas                            |
 
 `lobby` and `atrium` are synthetic demo scenes (procedural boxes / a room).
 **`showcase` and `gallery` load real glTF models** to exercise the connectors
@@ -42,7 +42,11 @@ against production-like assets:
   gardens; ADR 0040 §5), so one continuous space is captured as distinct, named
   sub-areas you can filter and segment on — and its registered (large) bounds drive
   a coarse default voxel size (§1). A hands-on test bed for the bounds-driven cell
-  size, region drill-down, and coverage features.
+  size, region drill-down, and coverage features. Built for **Babylon, three.js and
+  PlayCanvas**: the three connectors share one layout (`src/scenes/expanse/layout.ts`
+  — geometry, an analytic floor-height field the first-person controller samples to
+  climb the ramp/overlook/tower, and the section boxes), so every engine walks the
+  same multi-level world and exercises the identical large-scene path.
 
 Both reuse the same shared connector wiring as the demo scenes via each engine's
 `create<Engine>EngineModule` factory — only the model loading/placement is custom
@@ -200,8 +204,9 @@ Three specs cover the stack:
   `large-scene` drives a Babylon session and exercises the world-heatmap **stats**
   (true cell/hit totals behind the truncated voxel list), **region** AABB
   drill-down, and a derived `cellSize`. `expanse` boots the large multi-level
-  **Expanse** scene and asserts its section auto-switching (the spawn tracks as
-  `expanse-plaza`) and that its registered large bounds drive a **coarse**
-  bounds-driven cell size when `cellSize` is omitted.
+  **Expanse** scene **on each engine that builds it (Babylon, three.js, PlayCanvas)**
+  and asserts its section auto-switching (the spawn tracks as `expanse-plaza`) and
+  that its registered large bounds drive a **coarse** bounds-driven cell size when
+  `cellSize` is omitted.
 
 WebXR / immersive events are intentionally out of scope.
