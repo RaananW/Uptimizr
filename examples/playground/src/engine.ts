@@ -144,6 +144,14 @@ export interface EngineMountContext {
   onBoxPick(name: string): void;
   /** Push a line of status text into the panel (used by the declarative A-Frame path). */
   onStatus(text: string): void;
+  /**
+   * Notify the shell that the engine switched the active scene/area id via
+   * `client.setScene()` — e.g. a large multi-level scene crossing a section
+   * boundary (ADR 0010 §1 / ADR 0040 §5). The shell updates the HUD and points
+   * heatmap/proxy actions at the now-active id. Optional: scenes that never call
+   * `setScene` themselves omit it.
+   */
+  onSceneChange?(sceneId: string): void;
 }
 
 /** A live, mounted engine the shell can drive. */

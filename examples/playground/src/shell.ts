@@ -493,6 +493,18 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   const { projectId: activeProjectId, apiKey: activeApiKey } = resolveSceneProject(scene);
   requireElement("projectId", HTMLElement).textContent = activeProjectId;
 
+  // Live scene/area id (ADR 0010). It starts as the catalog scene id, but a scene
+  // can switch it at runtime via `client.setScene()` — e.g. the large multi-level
+  // "expanse" scene crossing a section boundary (ADR 0040 §5). The engine reports
+  // each switch through `onSceneChange`; the HUD readout and the heatmap/proxy
+  // actions all follow this single live value.
+  let currentScene = scene.id;
+  const setCurrentScene = (sceneId: string): void => {
+    currentScene = sceneId;
+    const el = document.getElementById("currentScene");
+    if (el) el.textContent = sceneId;
+  };
+
   // Live click counter (local) — the engine reports each demo box pick.
   let clickCount = 0;
   const clicksEl = requireElement("clicks", HTMLElement);
@@ -526,6 +538,9 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
       onStatus: (text) => {
         status.textContent = text;
       },
+      onSceneChange: (sceneId) => {
+        setCurrentScene(sceneId);
+      },
     });
   } catch (err) {
     status.textContent = err instanceof Error ? err.message : "Failed to start the engine.";
@@ -558,13 +573,13 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   if (caps.capturePanel) buildCapturePanel(engine, captureState);
 
   // --- Scene/area switching (ADR 0010) ---------------------------------------
-  let currentScene = scene.id;
   if (caps.sceneSwitch) {
     const currentSceneEl = requireElement("currentScene", HTMLElement);
     currentSceneEl.textContent = currentScene;
     // The lobby/gallery sub-area switcher only applies to the built-in viewer
     // scene; first-person is a single traversable area, and custom scenes don't
-    // ship the lobby/gallery sub-areas — hide the buttons in those cases.
+    // ship the lobby/gallery sub-areas — hide the buttons in those cases. (Large
+    // first-person scenes switch areas automatically as you walk; see ADR 0040.)
     const firstPerson = cameraMode === "first-person";
     const subAreas = !firstPerson && scene.builtin && scene.id === "lobby";
     setHidden("sceneSwitcher", !subAreas);
@@ -572,8 +587,7 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
       const switchScene = (sceneId: string): void => {
         if (sceneId === currentScene) return;
         client.setScene(sceneId);
-        currentScene = sceneId;
-        currentSceneEl.textContent = sceneId;
+        setCurrentScene(sceneId);
       };
       for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-scene]")) {
         button.addEventListener("click", () => switchScene(button.dataset.scene ?? "lobby"));
