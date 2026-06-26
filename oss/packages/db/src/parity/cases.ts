@@ -133,11 +133,7 @@ export const PARITY_CASES: readonly ParityCase[] = [
     // [1,1,1] (x2) and [5,5,5] world hits but excludes [0.2,0.2,0.2].
     name: "worldHeatmapRegion",
     build: (d) =>
-      buildWorldHeatmap(
-        PID,
-        { ...PARITY_RANGE, cellSize: 1, region: [0.5, 0.5, 0.5, 6, 6, 6] },
-        d,
-      ),
+      buildWorldHeatmap(PID, { ...PARITY_RANGE, cellSize: 1, region: [0.5, 0.5, 0.5, 6, 6, 6] }, d),
     sortKeys: ["vx", "vy", "vz"],
     golden: [
       { vx: 1, vy: 1, vz: 1, count: 2 },

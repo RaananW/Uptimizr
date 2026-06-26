@@ -41,8 +41,6 @@ export function percentileMax(counts: readonly number[], p = 0.95): number {
   const rank = clampedP * (sorted.length - 1);
   const lo = Math.floor(rank);
   const hi = Math.ceil(rank);
-  const value =
-    lo === hi ? sorted[lo]! : sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (rank - lo);
+  const value = lo === hi ? sorted[lo]! : sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (rank - lo);
   return Math.max(1, value);
 }
-

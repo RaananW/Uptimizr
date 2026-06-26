@@ -15,6 +15,7 @@ import {
   buildFrameTimePercentiles,
   buildFunnel,
   buildGazeHeatmap,
+  buildGazeHeatmapStats,
   buildHoverDwell,
   buildInteractionsBySource,
   buildJankRate,
@@ -40,13 +41,17 @@ import {
   buildTopMeshesBySource,
   buildTopMeshesTrend,
   buildWorldHeatmap,
+  buildWorldHeatmapStats,
   buildXrAbandonment,
   buildXrRotationRate,
   buildXrSourceUsage,
+  defaultCellSizeForBounds,
   duckdbDialect,
   nodeSampleRowToEvent,
   type FunnelStepInput,
   type QuerySpec,
+  type SpatialStatsRow,
+  type WorldAabb,
 } from "@uptimizr/db/query";
 import {
   anyEventSchema,
@@ -90,6 +95,7 @@ interface DemoOpts {
   center?: [number, number, number];
   groupByOrigin?: boolean;
   originVoxel?: [number, number, number];
+  region?: WorldAabb;
 }
 
 /** Map the dashboard camera-mode toggle to the stored `cameraType` (mirrors query.ts). */
@@ -126,6 +132,7 @@ function readOpts(sp: URLSearchParams): DemoOpts {
     session: str(sp, "session"),
     cameraType: cameraTypeForMode(sp.get("cameraMode")),
     minRepeats: num(sp, "minRepeats"),
+    region: parseRegion(sp.get("region")),
   };
 }
 
@@ -156,13 +163,27 @@ export const DEMO_SPECIAL_GET_ROUTES = [
   "/api/v1/scene-representations",
   "/api/v1/scenes/:sceneId/representation",
   "/api/v1/funnel",
+  // Large-scene spatial routes (ADR 0040): handled out-of-band because they need
+  // an async, bounds-driven `cellSize` (from the scene registry / region box) that
+  // the synchronous {@link READ_ROUTES} builder table can't resolve, and the two
+  // `/stats` routes wrap their totals in a `{ cellSize, cells, hits }` envelope.
+  "/api/v1/heatmaps/world",
+  "/api/v1/heatmaps/world/stats",
+  "/api/v1/heatmaps/gaze",
+  "/api/v1/heatmaps/gaze/stats",
 ] as const;
+
+/** The four spatial heatmap routes resolved via {@link handleSpatialHeatmap}. */
+const SPATIAL_HEATMAP_ROUTES = new Set<string>([
+  "/api/v1/heatmaps/world",
+  "/api/v1/heatmaps/world/stats",
+  "/api/v1/heatmaps/gaze",
+  "/api/v1/heatmaps/gaze/stats",
+]);
 
 export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/sessions": (pid, o) => buildListSessions(pid, o, duckdbDialect),
   "/api/v1/heatmaps/pointer": (pid, o) => buildPointerHeatmap(pid, o, duckdbDialect),
-  "/api/v1/heatmaps/world": (pid, o) => buildWorldHeatmap(pid, o, duckdbDialect),
-  "/api/v1/heatmaps/gaze": (pid, o) => buildGazeHeatmap(pid, o, duckdbDialect),
   "/api/v1/heatmaps/camera": (pid, o) => buildCameraDirectionHeatmap(pid, o, duckdbDialect),
   "/api/v1/heatmaps/position": (pid, o) => buildCameraPositionHeatmap(pid, o, duckdbDialect),
   "/api/v1/heatmaps/click-rays": (pid, o) => buildClickGazeRay(pid, o, duckdbDialect),
@@ -225,6 +246,73 @@ function parseCenter(sp: URLSearchParams): [number, number, number] | undefined 
   const z = num(sp, "centerZ");
   if (x == null && y == null && z == null) return undefined;
   return [x ?? 0, y ?? 0, z ?? 0];
+}
+
+/**
+ * Parse a `region=minX,minY,minZ,maxX,maxY,maxZ` world-space AABB (ADR 0040 §4),
+ * mirroring the collector's `regionFilter`. Leniently returns `undefined` for
+ * anything that isn't six finite numbers with `max >= min` on every axis (the
+ * collector 400s; the backend-less demo just falls back to the whole scene).
+ */
+function parseRegion(raw: string | null): WorldAabb | undefined {
+  if (!raw) return undefined;
+  const p = raw.split(",").map((s) => Number(s.trim()));
+  if (p.length !== 6 || p.some((n) => !Number.isFinite(n))) return undefined;
+  const [minX, minY, minZ, maxX, maxY, maxZ] = p as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  if (maxX < minX || maxY < minY || maxZ < minZ) return undefined;
+  return [minX, minY, minZ, maxX, maxY, maxZ];
+}
+
+/**
+ * Resolve the effective voxel `cellSize` for a spatial heatmap (ADR 0040 §1),
+ * mirroring the collector's `resolveSpatialCellSize`: a pinned `cellSize` wins,
+ * else a `region` box sizes the cells, else the selected scene's registered world
+ * bounds do. Returns `undefined` when no extent is known (builder default).
+ */
+async function resolveSpatialCellSize(db: WasmDb, o: DemoOpts): Promise<number | undefined> {
+  if (o.cellSize != null) return o.cellSize;
+  if (o.region != null) return defaultCellSizeForBounds(o.region) ?? undefined;
+  if (o.scene != null) {
+    const bounds = (await db.getSceneRepresentation(o.scene))?.bounds;
+    if (bounds && bounds.length === 6) {
+      return defaultCellSizeForBounds(bounds as unknown as WorldAabb) ?? undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Serve one of the four large-scene spatial routes (ADR 0040). The world/gaze
+ * heatmap and its `/stats` sibling share the same resolved `cellSize` (so the
+ * displayed voxels and the coverage totals are binned on one grid); the `/stats`
+ * routes wrap their totals in the collector's `{ cellSize, cells, hits }` shape.
+ */
+async function handleSpatialHeatmap(
+  db: WasmDb,
+  pid: string,
+  path: string,
+  o: DemoOpts,
+): Promise<DemoResponse> {
+  const cellSize = await resolveSpatialCellSize(db, o);
+  const opts = { ...o, cellSize };
+  if (path === "/api/v1/heatmaps/world") {
+    return ok(await db.all(buildWorldHeatmap(pid, opts, duckdbDialect)));
+  }
+  if (path === "/api/v1/heatmaps/gaze") {
+    return ok(await db.all(buildGazeHeatmap(pid, opts, duckdbDialect)));
+  }
+  const build =
+    path === "/api/v1/heatmaps/world/stats" ? buildWorldHeatmapStats : buildGazeHeatmapStats;
+  const rows = await db.all<SpatialStatsRow>(build(pid, opts, duckdbDialect));
+  const stats = rows[0] ?? { cells: 0, hits: 0 };
+  return ok({ cellSize: cellSize ?? 0.5, cells: Number(stats.cells), hits: Number(stats.hits) });
 }
 
 /**
@@ -329,6 +417,11 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
     if (route) {
       const rows = await db.all(route(pid, readOpts(sp), sp));
       return ok(rows);
+    }
+
+    // Large-scene spatial routes (ADR 0040) — async, bounds-driven cellSize.
+    if (SPATIAL_HEATMAP_ROUTES.has(path)) {
+      return handleSpatialHeatmap(db, pid, path, readOpts(sp));
     }
   }
 

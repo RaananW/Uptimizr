@@ -90,8 +90,16 @@ test("world heatmap exposes true totals, region drill-down, and a derived cellSi
 
   // 4) Region drill-down. A box around every occupied voxel keeps all of them…
   const axisMin = (k: "vx" | "vy" | "vz") => Math.min(...world.map((v) => v[k])) * CELL - CELL;
-  const axisMax = (k: "vx" | "vy" | "vz") => (Math.max(...world.map((v) => v[k])) + 1) * CELL + CELL;
-  const inBox = [axisMin("vx"), axisMin("vy"), axisMin("vz"), axisMax("vx"), axisMax("vy"), axisMax("vz")].join(",");
+  const axisMax = (k: "vx" | "vy" | "vz") =>
+    (Math.max(...world.map((v) => v[k])) + 1) * CELL + CELL;
+  const inBox = [
+    axisMin("vx"),
+    axisMin("vy"),
+    axisMin("vz"),
+    axisMax("vx"),
+    axisMax("vy"),
+    axisMax("vz"),
+  ].join(",");
   const statsIn = await getJson<SpatialStats>(
     request,
     worldStatsQuery(sessionId, `&region=${inBox}`),
@@ -111,9 +119,12 @@ test("world heatmap exposes true totals, region drill-down, and a derived cellSi
   expect(statsFar.hits).toBe(0);
 
   // 5) A malformed region is rejected at the query boundary.
-  const bad = await request.get(`${COLLECTOR_URL}/api/v1/heatmaps/world?session=${sessionId}&region=1,2,3`, {
-    headers: { "x-api-key": API_KEY },
-  });
+  const bad = await request.get(
+    `${COLLECTOR_URL}/api/v1/heatmaps/world?session=${sessionId}&region=1,2,3`,
+    {
+      headers: { "x-api-key": API_KEY },
+    },
+  );
   expect(bad.status()).toBe(400);
 
   // 6) Omitting cellSize still resolves to a positive effective cell size (ADR
