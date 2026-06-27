@@ -10,6 +10,13 @@ import {
   type Processor,
   type WorkerFactory,
 } from "./processor.js";
+import { createAggregator, type AggregatorConfig } from "./aggregation/aggregator.js";
+import type { Snapshot } from "./aggregation/snapshot.js";
+import {
+  createMainSink,
+  createWorkerAggregationSink,
+  type AggregationSink,
+} from "./aggregationSink.js";
 import { SDK_VERSION } from "./version.js";
 import type {
   CapabilityChangeReport,
@@ -67,6 +74,11 @@ export class UptimizrClient {
   private readonly beforeSend?: (event: AnyEvent) => AnyEvent | null;
   private readonly collectors: Collector[] = [];
   private readonly handles: CollectorHandle[] = [];
+  private readonly aggSinks: AggregationSink[] = [];
+  /** Set when a custom transport disables worker offload (main-thread closure). */
+  private readonly customTransport?: Transport;
+  /** Bundler escape hatch for constructing the offload worker. */
+  private readonly createWorkerFn?: () => Worker;
 
   private started = false;
   private startedAt = 0;
@@ -93,6 +105,8 @@ export class UptimizrClient {
     this.sessionId = randomId();
     this.queue = new EventQueue(this.config.maxQueueSize);
     this.transport = config.transport ?? createBeaconTransport(this.config.endpoint);
+    this.customTransport = config.transport;
+    this.createWorkerFn = config.createWorker;
     this.processor = this.createProcessor(config);
     this.beforeSend = config.beforeSend;
   }
@@ -175,11 +189,26 @@ export class UptimizrClient {
     if (!this.started || this.config.disabled) {
       return;
     }
+    this.emitInternal(input, this.now());
+  }
+
+  /**
+   * Build the envelope (stamping the given `ts`) and queue an event. Unlike the
+   * public {@link emit}, this does **not** gate on `started`, so finalized events
+   * returned asynchronously from the worker-resident aggregator are still queued
+   * while the session is draining on stop (replay-completeness, ADR 0031 §5). The
+   * `ts` is the snapshot's page-stamped capture time, so worker round-trip latency
+   * does not skew timestamps.
+   */
+  private emitInternal(input: EventInput, ts: number): void {
+    if (this.config.disabled) {
+      return;
+    }
     const event = {
       ...input,
       projectId: this.config.projectId,
       sessionId: this.sessionId,
-      ts: this.now(),
+      ts,
       sdkVersion: this.config.sdkVersion,
       ...(this.url ? { url: this.url } : {}),
       ...(this.currentScene !== DEFAULT_SCENE_ID ? { sceneId: this.currentScene } : {}),
@@ -282,7 +311,6 @@ export class UptimizrClient {
       reason,
     } as EventInput);
 
-    this.started = false;
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.flushTimer = undefined;
@@ -291,9 +319,22 @@ export class UptimizrClient {
     for (const handle of this.handles.splice(0)) {
       handle.stop();
     }
+    // Drain any worker-resident aggregator state so the final windows are
+    // finalized and their events queued on the main thread before we send
+    // (ADR 0031 §5). `postMessage` ordering guarantees every prior snapshot's
+    // events arrive before each sink's drain barrier resolves. `started` is still
+    // true here so those returned events queue normally.
+    if (this.aggSinks.length > 0) {
+      await Promise.all(this.aggSinks.map((sink) => sink.drain()));
+    }
+
+    this.started = false;
     // Terminal flush on the main thread (beacon-reliable), then release the
-    // worker if one was running (ADR 0031).
+    // worker(s) if any were running (ADR 0031).
     await this.flush({ unload: true });
+    for (const sink of this.aggSinks.splice(0)) {
+      sink.dispose();
+    }
     this.processor.dispose();
   }
 
@@ -330,6 +371,38 @@ export class UptimizrClient {
     return createMainProcessor(this.transport);
   }
 
+  /**
+   * Build the aggregation sink for a connector channel (ADR 0031 follow-up, #10),
+   * mirroring {@link createProcessor}. With `offload: "worker"` (and no custom
+   * transport) snapshots are aggregated in a worker; otherwise — or if a worker
+   * cannot be constructed — a synchronous main-thread aggregator runs, keeping the
+   * default path byte-for-byte identical to inline-connector aggregation.
+   */
+  private createAggregation(config: AggregatorConfig): (snapshot: Snapshot) => void {
+    if (this.config.offload === "worker" && !this.customTransport) {
+      const sink = createWorkerAggregationSink({
+        config,
+        onEvents: (events, capturedAt) => {
+          for (const event of events) {
+            this.emitInternal(event, capturedAt);
+          }
+        },
+        ...(this.createWorkerFn
+          ? { workerFactory: this.createWorkerFn as unknown as WorkerFactory }
+          : {}),
+      });
+      if (sink) {
+        this.aggSinks.push(sink);
+        return (snapshot) => sink.ingest(snapshot, this.now());
+      }
+      this.log("worker aggregation unavailable; falling back to main-thread aggregator");
+    }
+    const aggregator = createAggregator({ ...config, emit: (event) => this.emit(event) });
+    const sink = createMainSink(aggregator);
+    this.aggSinks.push(sink);
+    return (snapshot) => sink.ingest(snapshot, this.now());
+  }
+
   private startCollector(collector: Collector): void {
     const ctx: CollectorContext = {
       config: this.config,
@@ -339,6 +412,7 @@ export class UptimizrClient {
       trackInput: (action, opts) => this.trackInput(action, opts),
       reportCapabilityChange: (change) => this.reportCapabilityChange(change),
       setScene: (sceneId) => this.setScene(sceneId),
+      createAggregation: (config) => this.createAggregation(config),
       now: () => this.now(),
     };
     try {
