@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import type { CollectorContext } from "@uptimizr/sdk-core";
+import type { AggregatorConfig, CollectorContext, Snapshot } from "@uptimizr/sdk-core";
+import { createAggregator } from "@uptimizr/sdk-core";
 
 import { xrCollector } from "../xr.js";
 import type { XrRayProbe } from "../xr.js";
@@ -64,6 +65,10 @@ function makeCtx() {
     trackInput: vi.fn(),
     reportCapabilityChange: vi.fn(),
     setScene: vi.fn(),
+    createAggregation: (config: AggregatorConfig) => {
+      const aggregator = createAggregator({ ...config, emit: (e) => emit(e) });
+      return (s: Snapshot) => aggregator.ingest(s);
+    },
     now: () => 0,
   } as unknown as CollectorContext;
   return { ctx, emit };

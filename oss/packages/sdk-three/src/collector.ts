@@ -1,16 +1,20 @@
 import type { Camera, Scene, WebGLRenderer } from "three";
 import type {
+  AggregatorConfig,
   CameraGestureSample,
+  CameraPose,
   Collector,
   CollectorContext,
   CollectorHandle,
+  NodeSample,
   NodeSamplingConfig,
   ResolvedCadence,
   SampleRate,
   SamplingProfile,
+  VisibilityMeshObservation,
 } from "@uptimizr/sdk-core";
 import {
-  classifyCameraGesture,
+  poseUnchanged,
   resolveCadence,
   toCanonicalDirection,
   toCanonicalPosition,
@@ -127,45 +131,14 @@ function isPointerLocked(getCanvas: () => unknown): boolean {
 
 type Vec3T = [number, number, number];
 
-function vec3Close(a: Vec3T, b: Vec3T, eps: number): boolean {
-  return (
-    Math.abs(a[0] - b[0]) <= eps && Math.abs(a[1] - b[1]) <= eps && Math.abs(a[2] - b[2]) <= eps
-  );
-}
-
-interface CameraPose {
-  position: Vec3T;
-  direction: Vec3T;
-  fov?: number;
-}
-
-/** True when two poses are equal within `eps`. */
-function poseUnchanged(a: CameraPose, b: CameraPose, eps: number): boolean {
-  if (!vec3Close(a.position, b.position, eps)) return false;
-  if (!vec3Close(a.direction, b.direction, eps)) return false;
-  if ((a.fov === undefined) !== (b.fov === undefined)) return false;
-  if (a.fov !== undefined && b.fov !== undefined && Math.abs(a.fov - b.fov) > eps) return false;
-  return true;
-}
-
 function sub3(a: Vec3T, b: Vec3T): Vec3T {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 }
 function dot3(a: Vec3T, b: Vec3T): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
-function len3(a: Vec3T): number {
-  return Math.hypot(a[0], a[1], a[2]);
-}
 
 type QuatT = [number, number, number, number];
-
-/** A captured world transform for a scene actor (`node_transform`, ADR 0027). */
-interface NodeSample {
-  position: Vec3T;
-  rotation: QuatT;
-  scale?: Vec3T;
-}
 
 /**
  * Structural view of the three `Object3D` members the node sampler reads. three
@@ -352,22 +325,6 @@ function readThreeNodeTransform(node: ThreeNodeView, scaleEps: number): NodeSamp
   return sample;
 }
 
-/** True when two node samples are equal within `eps` (scale presence must also match). */
-function nodeSampleUnchanged(a: NodeSample, b: NodeSample, eps: number): boolean {
-  if (!vec3Close(a.position, b.position, eps)) return false;
-  if (
-    Math.abs(a.rotation[0] - b.rotation[0]) > eps ||
-    Math.abs(a.rotation[1] - b.rotation[1]) > eps ||
-    Math.abs(a.rotation[2] - b.rotation[2]) > eps ||
-    Math.abs(a.rotation[3] - b.rotation[3]) > eps
-  ) {
-    return false;
-  }
-  if ((a.scale === undefined) !== (b.scale === undefined)) return false;
-  if (a.scale && b.scale && !vec3Close(a.scale, b.scale, eps)) return false;
-  return true;
-}
-
 /**
  * Structural view of a three `Bone`. A `Bone` extends `Object3D`, so its
  * **parent-relative local** transform is exposed directly as `position` /
@@ -488,16 +445,6 @@ function readGestureSample(camera: Camera): CameraGestureSample {
     sample.fov = (c.fov * Math.PI) / 180;
   }
   return sample;
-}
-
-/** Round an AABB to mm precision so tiny float jitter doesn't re-send the box. */
-function roundAabb(b: Aabb): Aabb {
-  return b.map((v) => Math.round(v * 1000) / 1000) as Aabb;
-}
-/** True when two AABBs match within `eps` on every axis. */
-function aabbClose(a: Aabb, b: Aabb, eps: number): boolean {
-  for (let i = 0; i < 6; i++) if (Math.abs((a[i] ?? 0) - (b[i] ?? 0)) > eps) return false;
-  return true;
 }
 
 /** Structural view of a three.js `Mesh` we read for visibility (never mutated except lazy bounds). */
@@ -641,14 +588,6 @@ function sphereInFrustum(
   }
   // Fallback: anything in front of the camera (matrices unavailable).
   return dot3(sub3(center, camPos), forward) > 0;
-}
-
-/** Per-object visibility accumulator for the current window (mirrors Babylon). */
-interface VisibilityAccumulator {
-  visibleMs: number;
-  centeredMs: number;
-  maxScreenFraction: number;
-  bounds?: Aabb;
 }
 
 /** Which signals the collector captures. All default to `true`. */
@@ -1041,6 +980,17 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
   return {
     name: "three",
     start(ctx: CollectorContext): CollectorHandle {
+      // The engine-agnostic aggregator (#10): the connector reads live engine
+      // state into plain-number snapshot DTOs and hands them here; the
+      // offload-eligible math (percentiles, matrix decompose, visibility
+      // bucketing, idle-diffs, gesture classification) runs main-thread by
+      // default or inside the offload worker, behind the client `offload` flag.
+      const aggregatorConfig: AggregatorConfig = {
+        perf: { suppressIdle: suppressIdlePerfSamples, fpsThreshold: perfFpsThreshold },
+        node: { suppressIdle: suppressIdleSamples },
+        visibility: { centeredCos: visCenteredCos, boundingBox: visBoundingBox, boundsEps: 1e-3 },
+      };
+      const snapshot = ctx.createAggregation(aggregatorConfig);
       const timers: ReturnType<typeof setInterval>[] = [];
       const domListeners: Array<{
         target: EventTargetView;
@@ -1055,7 +1005,6 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
 
       let lastPointerMove = 0;
       let lastPose: CameraPose | undefined;
-      let lastFps: number | undefined;
       // camera_gesture (ADR 0025) bracket state: the camera snapshot at
       // pointer-down, diffed against pointer-up to classify the navigation.
       let gestureStart: { sample: CameraGestureSample; ts: number; source?: InputSource } | null =
@@ -1110,8 +1059,8 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
           ? (toCanonicalPosition(gazeHit.point, "right") as Vec3T)
           : undefined;
         const hitMesh = gazeHit && gazeHit.name ? gazeHit.name : undefined;
-        ctx.emit({
-          type: "camera_sample",
+        snapshot({
+          channel: "camera",
           position: pose.position,
           direction: pose.direction,
           ...(pose.fov !== undefined ? { fov: pose.fov } : {}),
@@ -1129,15 +1078,10 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
         lastFrameTime = now;
         if (secondsDelta <= 0) return;
         const fps = framesDelta / secondsDelta;
-        if (
-          suppressIdlePerfSamples &&
-          lastFps !== undefined &&
-          Math.abs(fps - lastFps) <= perfFpsThreshold
-        ) {
-          return;
-        }
-        lastFps = fps;
-        ctx.emit({ type: "frame_perf", fps });
+        // three has no per-frame delta window (no engine render observable the
+        // connector owns), so the perf snapshot carries an empty frame-time window;
+        // the aggregator owns the FPS idle-diff (#10).
+        snapshot({ channel: "perf", frameTimes: new Float32Array(0), fps, jankFrameMs: 0 });
       };
 
       // Drive a continuous channel either on a timer (fixed interval) or once per
@@ -1171,9 +1115,10 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
         // Scene-actor capture (`node_transform`, ADR 0027 Tier 1). Each declared
         // actor gets its own cadence-driven sampler: resolve the node (lazily),
         // refuse cameras (the visitor camera is already `camera_sample`), read +
-        // canonicalize the WORLD transform, and emit. Idle suppression skips
-        // frames where the transform is unchanged so a static actor costs nothing.
-        const lastNodeSample = new Map<string, NodeSample>();
+        // canonicalize the WORLD transform, and hand it to the aggregator. three
+        // nodes are engine-decomposed + handedness-converted in the connector, so
+        // we pass the decomposed sample; the aggregator owns the idle-diff so a
+        // static actor still costs nothing on the wire (#10).
         const refusedCamera = new Set<string>();
         for (const id of actorIds) {
           const actor = actorMap[id]!;
@@ -1199,24 +1144,17 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
             }
             const sample = readThreeNodeTransform(node, cameraEpsilon);
             if (sample) {
-              const prev = lastNodeSample.get(id);
-              if (
-                !(suppressIdleSamples && prev && nodeSampleUnchanged(prev, sample, cameraEpsilon))
-              ) {
-                lastNodeSample.set(id, sample);
-                ctx.emit({
-                  type: "node_transform",
-                  nodeId: id,
-                  position: sample.position,
-                  rotation: sample.rotation,
-                  ...(sample.scale ? { scale: sample.scale } : {}),
-                });
-              }
+              snapshot({
+                channel: "node",
+                nodeId: id,
+                decomposed: sample,
+                scaleEps: cameraEpsilon,
+              });
             }
             // Subtree descendants (ADR 0033): walk the bounded hierarchy and emit
-            // each kept node's WORLD transform with its `childPath`. Idle
-            // suppression is keyed per (actor, childPath) so a static part costs
-            // nothing on the wire.
+            // each kept node's WORLD transform with its `childPath`. The aggregator
+            // idle-diffs per (actor, childPath) so a static part costs nothing on
+            // the wire.
             if (subtree) {
               for (const { childPath, node: child } of collectThreeSubtree(
                 node as ThreeNodeView,
@@ -1224,23 +1162,12 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
               )) {
                 const childSample = readThreeNodeTransform(child, cameraEpsilon);
                 if (!childSample) continue;
-                const key = `${id}\u0000${childPath}`;
-                const childPrev = lastNodeSample.get(key);
-                if (
-                  suppressIdleSamples &&
-                  childPrev &&
-                  nodeSampleUnchanged(childPrev, childSample, cameraEpsilon)
-                ) {
-                  continue;
-                }
-                lastNodeSample.set(key, childSample);
-                ctx.emit({
-                  type: "node_transform",
+                snapshot({
+                  channel: "node",
                   nodeId: id,
                   childPath,
-                  position: childSample.position,
-                  rotation: childSample.rotation,
-                  ...(childSample.scale ? { scale: childSample.scale } : {}),
+                  decomposed: childSample,
+                  scaleEps: cameraEpsilon,
                 });
               }
             }
@@ -1254,10 +1181,11 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
         // Skeleton bone capture (`node_transform` + `boneId`, ADR 0027 Tier 2).
         // For each declared SkinnedMesh actor, resolve its skeleton bones (by the
         // configured allowlist or "*"), then sample each bone's skeleton-LOCAL
-        // pose at the actor's cadence. Per-bone idle suppression keeps a still
-        // rig free. The local frame is parent-relative, so motion replays onto a
-        // differently-placed instance of the same rig (ADR 0027).
-        const lastBoneSample = new Map<string, NodeSample>();
+        // pose at the actor's cadence. three bones expose their parent-relative TRS
+        // directly, so we decompose + handedness-convert in the connector and pass
+        // the decomposed sample; the aggregator idle-diffs per (actor, bone) so a
+        // still rig stays free (#10). The local frame is parent-relative, so motion
+        // replays onto a differently-placed instance of the same rig (ADR 0027).
         const warnedNoSkeleton = new Set<string>();
         for (const id of boneActorIds) {
           const actor = actorMap[id]!;
@@ -1283,19 +1211,12 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
               if (typeof boneName !== "string") continue;
               const sample = readThreeBoneTransform(bone, cameraEpsilon);
               if (!sample) continue;
-              const key = `${id}\u0000${boneName}`;
-              const prev = lastBoneSample.get(key);
-              if (suppressIdleSamples && prev && nodeSampleUnchanged(prev, sample, cameraEpsilon)) {
-                continue;
-              }
-              lastBoneSample.set(key, sample);
-              ctx.emit({
-                type: "node_transform",
+              snapshot({
+                channel: "node",
                 nodeId: id,
                 boneId: boneName,
-                position: sample.position,
-                rotation: sample.rotation,
-                ...(sample.scale ? { scale: sample.scale } : {}),
+                decomposed: sample,
+                scaleEps: cameraEpsilon,
               });
             }
           };
@@ -1309,16 +1230,14 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
       }
 
       // --- Per-object dwell (`mesh_visibility`, #37) ---
-      // Accumulate on-screen / near-centre time per object every animation frame
-      // (rAF ≈ render cadence, so dwell pauses when the tab is hidden — like
-      // Babylon's onBeforeRender), then flush one bucketed summary per object per
-      // window (ADR 0012). three has no frustum-cull / world-AABB readers, so the
-      // geometry is computed import-free above.
+      // Each animation frame (rAF ≈ render cadence, so dwell pauses when the tab is
+      // hidden — like Babylon's onBeforeRender) we read which tracked objects are
+      // on-screen (the frustum/world-AABB reads must stay main-thread; three has no
+      // native readers, so the geometry is computed import-free above) and hand the
+      // raw per-tick observations to the aggregator. It owns the dwell/centred/
+      // screen-fraction bucketing, the AABB dedupe and the per-window flush
+      // (ADR 0012, #10). Only the coarse aggregate leaves the device (ADR 0003).
       if (want.meshVisibility) {
-        const accum = new Map<string, VisibilityAccumulator>();
-        // Last AABB sent per mesh, so a static box is sent once then suppressed.
-        const sentBounds = new Map<string, Aabb>();
-        const boundsEps = 1e-3;
         let lastVisTime = ctx.now();
 
         const sampleVisibility = () => {
@@ -1332,14 +1251,15 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
           const fd = camView.getWorldDirection(new Vec3Sink());
           const camPos: Vec3T = [fp.x, fp.y, fp.z];
           const forward: Vec3T = [fd.x, fd.y, fd.z];
-          const fwdLen = len3(forward) || 1;
-          // Half vertical FOV in radians (three FOV is degrees); fall back for ortho.
-          const halfFov =
+          // Camera vertical FOV in radians (three FOV is degrees); ortho falls back
+          // to 0.8 (the aggregator's default), matching the prior 0.4 half-FOV.
+          const fov =
             camView.isPerspectiveCamera && typeof camView.fov === "number"
-              ? (camView.fov * Math.PI) / 360
-              : 0.4;
+              ? (camView.fov * Math.PI) / 180
+              : 0.8;
 
           let tracked = 0;
+          const observations: VisibilityMeshObservation[] = [];
           (scene as unknown as SceneTraverseView).traverse((obj) => {
             if (!obj.isMesh) return;
             const name = obj.name;
@@ -1365,53 +1285,35 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
             ) {
               return;
             }
-            const toCenter = sub3(bounds.center, camPos);
-            const dist = len3(toCenter) || 1e-6;
-            const cosAngle = dot3(toCenter, forward) / (dist * fwdLen);
-            const screenFraction = clamp01(Math.atan2(bounds.radius, dist) / (halfFov || 1e-6));
-
-            let entry = accum.get(name);
-            if (!entry) {
-              entry = { visibleMs: 0, centeredMs: 0, maxScreenFraction: 0 };
-              accum.set(name, entry);
-            }
-            entry.visibleMs += stepMs;
-            if (cosAngle >= visCenteredCos) entry.centeredMs += stepMs;
-            if (screenFraction > entry.maxScreenFraction) entry.maxScreenFraction = screenFraction;
+            let aabb: Aabb | undefined;
             if (visBoundingBox) {
               // Canonical frame negates Z (right-handed three → canonical), which
               // swaps the Z min/max — match hitPoint / camera_sample (ADR 0018).
               const [aMinX, aMinY, aMinZ, aMaxX, aMaxY, aMaxZ] = bounds.aabb;
-              entry.bounds = [aMinX, aMinY, -aMaxZ, aMaxX, aMaxY, -aMinZ];
+              aabb = [aMinX, aMinY, -aMaxZ, aMaxX, aMaxY, -aMinZ];
             }
+            observations.push({
+              mesh: name,
+              center: bounds.center,
+              radius: bounds.radius,
+              // Ride the world AABB along only when bounds capture is on (#53); the
+              // aggregator dedupes/rounds it across the window.
+              ...(aabb ? { aabb } : {}),
+            });
+          });
+          if (observations.length === 0) return;
+          snapshot({
+            channel: "visibilityTick",
+            stepMs,
+            camPos,
+            // Pass the raw (un-normalized) forward; the aggregator normalizes.
+            forward,
+            fov,
+            meshes: observations,
           });
         };
 
-        const flushVisibility = () => {
-          for (const [mesh, entry] of accum) {
-            if (entry.visibleMs <= 0) continue;
-            let bounds: Aabb | undefined;
-            if (entry.bounds) {
-              const rounded = roundAabb(entry.bounds);
-              const prev = sentBounds.get(mesh);
-              if (!prev || !aabbClose(prev, rounded, boundsEps)) {
-                bounds = rounded;
-                sentBounds.set(mesh, rounded);
-              }
-            }
-            ctx.emit({
-              type: "mesh_visibility",
-              mesh,
-              visibleMs: Math.round(entry.visibleMs),
-              ...(entry.centeredMs > 0 ? { centeredMs: Math.round(entry.centeredMs) } : {}),
-              ...(entry.maxScreenFraction > 0
-                ? { maxScreenFraction: entry.maxScreenFraction }
-                : {}),
-              ...(bounds ? { bounds } : {}),
-            });
-          }
-          accum.clear();
-        };
+        const flushVisibility = () => snapshot({ channel: "visibilityFlush" });
 
         // Sample every frame; flush on the window timer + once on stop (trailing).
         frameCallbacks.push(sampleVisibility);
@@ -1493,8 +1395,8 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
         if (hoverMesh !== undefined && !hoverActed) {
           const dwellMs = now - hoverStartMs;
           if (dwellMs >= hoverMinDwellMs) {
-            ctx.emit({
-              type: "hover_dwell",
+            snapshot({
+              channel: "hover",
               mesh: hoverMesh,
               dwellMs,
               ...(hoverSource ? { source: hoverSource } : {}),
@@ -1633,18 +1535,14 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
           const opened = gestureStart;
           gestureStart = null;
           if (!opened) return;
-          const classified = classifyCameraGesture(opened.sample, readGestureSample(camera), {
-            sensitivity: cameraGestureSensitivity,
-          });
-          if (!classified) return;
-          ctx.emit({
-            type: "camera_gesture",
-            kind: classified.kind,
+          // Hand the start→end bracket to the aggregator; the (pure)
+          // classification math runs there, main-thread or in the worker (#10).
+          snapshot({
+            channel: "gesture",
+            start: opened.sample,
+            end: readGestureSample(camera),
             durationMs: Math.max(0, Math.round(ctx.now() - opened.ts)),
-            ...(classified.orbitDeg !== undefined ? { orbitDeg: classified.orbitDeg } : {}),
-            ...(classified.rollDeg !== undefined ? { rollDeg: classified.rollDeg } : {}),
-            ...(classified.zoomRatio !== undefined ? { zoomRatio: classified.zoomRatio } : {}),
-            ...(classified.panDist !== undefined ? { panDist: classified.panDist } : {}),
+            options: { sensitivity: cameraGestureSensitivity },
             ...(opened.source ? { source: opened.source } : {}),
           });
         };
