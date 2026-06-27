@@ -161,6 +161,11 @@ export default function Page() {
   // Bumped on a throttled live refetch so registry panels (ADR 0036) refresh and
   // relative time windows advance without a filter change.
   const [liveRevision, setLiveRevision] = useState(0);
+  // Live scene auto-follow (ADR 0040): the section the live avatar is currently
+  // in, tracked from the firehose so the 3D backdrop swaps to it. Kept in a ref
+  // too for the event handler's change check without re-subscribing.
+  const [liveSceneId, setLiveSceneId] = useState<string | undefined>(undefined);
+  const liveSceneIdRef = useRef<string | undefined>(undefined);
   // Registry panels that opted into the live firehose (ADR 0036 PanelLive).
   const liveSubscribersRef = useRef<Set<(event: LiveEvent) => void>>(new Set());
 
@@ -353,17 +358,7 @@ export default function Page() {
           })(),
         ]);
         setScenes(sceneList);
-        // The proxy backdrop needs a single scene to anchor the mesh geometry.
-        // Use the active scene filter; otherwise, when the project has exactly
-        // one scene, fall back to it so the 3D viewers (click rays, world
-        // heatmap) render their mesh backdrop instead of leaving rays floating
-        // in empty space when "All scenes" is selected.
-        const backdropScene =
-          params.scene ?? (sceneList.length === 1 ? sceneList[0]?.scene_id : undefined);
-        const proxyMeshes = backdropScene
-          ? ((await api.sceneRepresentation(backdropScene).catch(() => null))?.proxy?.meshes ?? [])
-          : [];
-        setData({
+        setData((prev) => ({
           sessions,
           camera,
           perf,
@@ -373,7 +368,9 @@ export default function Page() {
           // any bins means walkable samples exist) drives the panel capability so
           // walk-only panels (floor-plan, flow) can default sensibly (ADR 0026).
           hasFirstPerson: floorPlan.length > 0,
-          proxyMeshes,
+          // The proxy backdrop is owned by a dedicated effect (it follows the live
+          // section in live mode, ADR 0040); preserve it across data refetches.
+          proxyMeshes: prev.proxyMeshes,
           timeseries,
           counts,
           coverage,
@@ -383,7 +380,7 @@ export default function Page() {
           floorPlan,
           performance,
           intervalMs,
-        });
+        }));
         setStatus("ready");
       } catch (err) {
         setData(EMPTY);
@@ -407,6 +404,10 @@ export default function Page() {
     (project: ProjectOption) => {
       setSelectedId(project.id);
       setApiKey(project.apiKey);
+      // Reset the live-followed section so the new project's backdrop doesn't
+      // inherit the previous project's last section (ADR 0040).
+      setLiveSceneId(undefined);
+      liveSceneIdRef.current = undefined;
       pushPath(projectPath(project.id));
       void load(project.apiKey);
     },
@@ -435,6 +436,20 @@ export default function Page() {
       setLiveFeed((prev) => [event, ...prev].slice(0, LIVE_FEED_MAX));
       // Fan the event out to any registry panels that subscribed (ADR 0036).
       liveSubscribersRef.current.forEach((handler) => handler(event));
+      // Live scene auto-follow (ADR 0040): track the section the live avatar is
+      // in so the 3D backdrop swaps to it. Only on a real section change (rare,
+      // at boundary crossings) bump the revision so the panels re-resolve their
+      // backdrop. Skip while a session drill-down is open — that view owns its
+      // own scope and merges every visited section already.
+      if (
+        !detailOpenRef.current &&
+        event.sceneId &&
+        event.sceneId !== liveSceneIdRef.current
+      ) {
+        liveSceneIdRef.current = event.sceneId;
+        setLiveSceneId(event.sceneId);
+        setLiveRevision((r) => r + 1);
+      }
       // Throttle the aggregate refetch and skip it while a session drill-down is
       // open (that view has its own scope and shouldn't be reset under the user).
       const nowTs = Date.now();
@@ -460,6 +475,36 @@ export default function Page() {
     const t = setInterval(() => setLiveNow(Date.now()), 1_000);
     return () => clearInterval(t);
   }, [liveEnabled]);
+
+  // The 3D panels (world/gaze heatmaps, click rays) anchor their proxy geometry
+  // to a single scene. Resolve that backdrop scene independently of the query
+  // data (ADR 0040): the manual Scene filter wins; otherwise, in live mode,
+  // follow the live avatar's current section so the geometry swaps as it crosses
+  // boundaries; otherwise fall back to the sole scene. The heatmap *data* keeps
+  // whatever the filter says (e.g. "All scenes"), so only the backdrop follows.
+  const manualScene =
+    filters.scene && filters.scene.length > 0 ? filters.scene : undefined;
+  const backdropSceneId =
+    manualScene ??
+    (liveEnabled ? liveSceneId : undefined) ??
+    (scenes.length === 1 ? scenes[0]?.scene_id : undefined);
+  useEffect(() => {
+    if (status === "idle") return;
+    let cancelled = false;
+    void (async () => {
+      const meshes = backdropSceneId
+        ? ((
+            await new CollectorApi(baseUrl, apiKey)
+              .sceneRepresentation(backdropSceneId)
+              .catch(() => null)
+          )?.proxy?.meshes ?? [])
+        : [];
+      if (!cancelled) setData((prev) => ({ ...prev, proxyMeshes: meshes }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [backdropSceneId, baseUrl, apiKey, status]);
 
   // Fetch the aggregate panels (heatmaps, top meshes, perf, meta) for one
   // session. Shared by the initial open and the live → ended refresh below.
@@ -621,7 +666,12 @@ export default function Page() {
     filters,
     capabilities: { hasFirstPerson: data.hasFirstPerson },
     actions: panelActions,
-    live: { presence: livePresence, enabled: liveEnabled, subscribe: subscribeLive },
+    live: {
+      presence: livePresence,
+      enabled: liveEnabled,
+      subscribe: subscribeLive,
+      sceneId: liveEnabled ? liveSceneId : undefined,
+    },
     // Per-panel settings (ADR 0039) are injected per panel by the PanelHost; the
     // base context carries none. Panels without settings see an empty object.
     settings: {},

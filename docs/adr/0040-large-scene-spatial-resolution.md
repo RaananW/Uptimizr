@@ -103,6 +103,13 @@ distinct or coordinate-colliding areas. Concretely:
   framed backdrop (an elevated level shows just that level), and sections the visitor never entered
   still have a representation. The playground's `expanse` scene demonstrates this across all three
   connectors.
+- Because the backdrop is anchored to a single `scene_id`, the dashboard resolves that anchor
+  independently of the query scope. The manual **Scene** filter wins; otherwise, **in live mode the
+  backdrop auto-follows the live session's current section** — as the avatar crosses a boundary and
+  emits events under the next `scene_id`, the 3D panels swap to that section's geometry. Only the
+  backdrop geometry follows; the heatmap _data_ keeps whatever the filter says (e.g. "All scenes"),
+  so the aggregate isn't silently re-scoped. The session-replay viewer is the exception: it merges
+  every section a session visited into one whole-world backdrop.
 
 This ADR records the **durable** decisions (bounds-driven default resolution; robust, scope-local
 normalization; an explicit region filter and absence/coverage signal; the semantic vs. resolution

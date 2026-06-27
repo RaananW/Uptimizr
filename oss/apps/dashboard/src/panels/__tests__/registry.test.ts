@@ -47,6 +47,7 @@ function loadCtx(opts: {
   voxels?: unknown[];
   scenes?: { scene_id: string }[];
   proxyMeshes?: { name: string }[];
+  live?: { enabled: boolean; sceneId?: string };
 }): {
   ctx: PanelDataContext;
   worldHeatmap: ReturnType<typeof vi.fn>;
@@ -64,6 +65,7 @@ function loadCtx(opts: {
     surface: "overview",
     params: opts.scene ? { scene: opts.scene } : {},
     settings: { cellSize: 0.5 },
+    live: opts.live,
     api: { worldHeatmap, worldHeatmapStats, scenes, sceneRepresentation },
   } as unknown as PanelDataContext;
   return { ctx, worldHeatmap, worldHeatmapStats, scenes, sceneRepresentation };
@@ -112,6 +114,29 @@ describe("builtinPanels — world-heatmap panel", () => {
     const data = (await panel?.load?.(ctx)) as { proxyMeshes: unknown[] };
     expect(sceneRepresentation).not.toHaveBeenCalled();
     expect(data.proxyMeshes).toEqual([]);
+  });
+
+  it("follows the live section for the backdrop when no scene is selected (ADR 0040)", async () => {
+    const { ctx, sceneRepresentation, scenes } = loadCtx({
+      scenes: [{ scene_id: "a" }, { scene_id: "b" }],
+      proxyMeshes: [{ name: "TowerL2" }],
+      live: { enabled: true, sceneId: "expanse-tower-l2" },
+    });
+    const data = (await panel?.load?.(ctx)) as { proxyMeshes: unknown[] };
+    expect(sceneRepresentation).toHaveBeenCalledWith("expanse-tower-l2");
+    // The live section short-circuits the sole-scene fallback lookup.
+    expect(scenes).not.toHaveBeenCalled();
+    expect(data.proxyMeshes).toEqual([{ name: "TowerL2" }]);
+  });
+
+  it("lets an explicit scene filter win over the live section", async () => {
+    const { ctx, sceneRepresentation } = loadCtx({
+      scene: "scene-a",
+      proxyMeshes: [{ name: "Floor" }],
+      live: { enabled: true, sceneId: "expanse-tower-l2" },
+    });
+    await panel?.load?.(ctx);
+    expect(sceneRepresentation).toHaveBeenCalledWith("scene-a");
   });
 });
 

@@ -115,6 +115,13 @@ export interface PanelLive {
   readonly enabled: boolean;
   /** Subscribe to the live event firehose; returns an unsubscribe fn. */
   subscribe(handler: (event: LiveEvent) => void): () => void;
+  /**
+   * Scene id of the section the live avatar is currently in (ADR 0040), or
+   * `undefined` when not following a live session. The 3D backdrop resolvers read
+   * this to auto-swap proxy geometry to the current section in live mode, without
+   * scoping the query data (which stays across all scenes).
+   */
+  readonly sceneId?: string;
 }
 
 /** Everything a panel needs from its host. */

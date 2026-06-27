@@ -226,12 +226,15 @@ function scoped(ctx: PanelContext): QueryParams {
 
 /**
  * Resolve the scene-proxy backdrop (ADR 0014) for the 3D world heatmap: use the
- * selected scene, or fall back to the sole scene when the project has exactly
- * one (mirrors the legacy dashboard so rays/voxels read against geometry instead
- * of floating in empty space). Returns [] when no scene anchors it.
+ * selected scene; in live mode with no explicit filter, follow the live avatar's
+ * current section (ADR 0040) so the backdrop swaps as it crosses boundaries;
+ * otherwise fall back to the sole scene when the project has exactly one (mirrors
+ * the legacy dashboard so rays/voxels read against geometry instead of floating
+ * in empty space). Returns [] when no scene anchors it.
  */
 async function resolveProxyMeshes(ctx: PanelContext): Promise<SceneProxyMesh[]> {
   let sceneId = ctx.params.scene;
+  if (!sceneId && ctx.live?.enabled) sceneId = ctx.live.sceneId;
   if (!sceneId) {
     const scenes = await ctx.api.scenes(ctx.params).catch(() => []);
     if (scenes.length === 1) sceneId = scenes[0]?.scene_id;

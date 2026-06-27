@@ -107,6 +107,19 @@ Omit the filter to see the whole session across all scenes, and use `/api/v1/sce
 distinct scenes that have activity. See the [query endpoints](/docs/api/query/) for the full
 parameter list.
 
+## In the dashboard
+
+The 3D panels (world heatmap, gaze heatmap, click rays) draw your scene geometry as a backdrop, and
+that backdrop is anchored to a single scene. Pick the **Scene** dropdown in the filter bar to choose
+which section's geometry shows — selecting one also scopes the heatmap data to that scene.
+
+When the **live** layer is on and you leave the Scene filter on "All scenes", the backdrop
+**auto-follows the live visitor's current section**: as they cross into the next area and events
+start arriving under that `sceneId`, the panels swap to that section's geometry automatically. Only
+the geometry follows — the heatmap data stays across all scenes, so the aggregate isn't re-scoped
+underneath you. [Session replay](/docs/guides/replay/) is the exception: it merges every section a
+session visited into one combined backdrop so the whole walkthrough renders against full geometry.
+
 ## Replay across scenes
 
 Because the transitions are recorded as ordered `scene_change` markers in the same stream, [session
