@@ -8,16 +8,20 @@ import type {
   TransformNode,
 } from "@babylonjs/core";
 import type {
+  AggregatorConfig,
   CameraGestureSample,
+  CameraPose,
   Collector,
   CollectorContext,
   CollectorHandle,
+  NodeSample,
   NodeSamplingConfig,
   ResolvedCadence,
   SampleRate,
   SamplingProfile,
+  VisibilityMeshObservation,
 } from "@uptimizr/sdk-core";
-import { classifyCameraGesture, resolveCadence } from "@uptimizr/sdk-core";
+import { poseUnchanged, resolveCadence } from "@uptimizr/sdk-core";
 import type { Aabb, InputSource } from "@uptimizr/schema";
 import { resolveTrackedCamera } from "./scene.js";
 import { clamp01, toVec3, toQuat } from "./vec.js";
@@ -473,39 +477,6 @@ interface EngineWithShaderCompilation {
   onAfterShaderCompilationObservable?: MinimalObservable<unknown>;
 }
 
-function vec3Close(a: Vec3, b: Vec3, eps: number): boolean {
-  return (
-    Math.abs(a[0] - b[0]) <= eps && Math.abs(a[1] - b[1]) <= eps && Math.abs(a[2] - b[2]) <= eps
-  );
-}
-
-interface CameraPose {
-  position: Vec3;
-  direction: Vec3;
-  target?: Vec3;
-  fov?: number;
-}
-
-/** True when two poses are equal within `eps` (target presence must also match). */
-function poseUnchanged(a: CameraPose, b: CameraPose, eps: number): boolean {
-  if (!vec3Close(a.position, b.position, eps)) return false;
-  if (!vec3Close(a.direction, b.direction, eps)) return false;
-  if ((a.target === undefined) !== (b.target === undefined)) return false;
-  if (a.target && b.target && !vec3Close(a.target, b.target, eps)) return false;
-  if ((a.fov === undefined) !== (b.fov === undefined)) return false;
-  if (a.fov !== undefined && b.fov !== undefined && Math.abs(a.fov - b.fov) > eps) return false;
-  return true;
-}
-
-type Quat = [number, number, number, number];
-
-/** A captured world transform for a scene actor (`node_transform`, ADR 0027). */
-interface NodeSample {
-  position: Vec3;
-  rotation: Quat;
-  scale?: Vec3;
-}
-
 /**
  * Minimal structural view of a Babylon node we read a world transform from. We
  * deliberately avoid calling Babylon at runtime (it stays a peer dependency), so
@@ -624,22 +595,6 @@ function readNodeTransform(node: WorldTransformNode, scaleEps: number): NodeSamp
   return sample;
 }
 
-/** True when two node samples are equal within `eps` (scale presence must also match). */
-function nodeSampleUnchanged(a: NodeSample, b: NodeSample, eps: number): boolean {
-  if (!vec3Close(a.position, b.position, eps)) return false;
-  if (
-    Math.abs(a.rotation[0] - b.rotation[0]) > eps ||
-    Math.abs(a.rotation[1] - b.rotation[1]) > eps ||
-    Math.abs(a.rotation[2] - b.rotation[2]) > eps ||
-    Math.abs(a.rotation[3] - b.rotation[3]) > eps
-  ) {
-    return false;
-  }
-  if ((a.scale === undefined) !== (b.scale === undefined)) return false;
-  if (a.scale && b.scale && !vec3Close(a.scale, b.scale, eps)) return false;
-  return true;
-}
-
 /** Structural view of a Babylon `Bone` whose skeleton-local pose Tier 2 reads. */
 interface BoneNode {
   name?: string;
@@ -653,82 +608,17 @@ interface SkinnedNode {
 }
 
 /**
- * Decompose a column-major Babylon `Matrix` (its `.m` array) into position /
- * rotation quaternion / scale — the same algorithm as `Matrix.decompose`: scale
- * is each basis column's length (negate `sx` for a mirrored basis), then the
- * scale-normalized 3×3 becomes a quaternion. Babylon's frame is already the
- * canonical left-handed frame (ADR 0018), so no axis conversion is applied. Scale
- * is omitted when identity (within `scaleEps`).
+ * Read a bone's **skeleton-local** matrix as a fresh, owned 16-float column-major
+ * `Float32Array` (ADR 0027 Tier 2). The aggregator decomposes it into
+ * position/rotation/scale (the offload-eligible math, #10) — keeping the bone's
+ * live Babylon matrix untouched (the copy is what gets transferred to the worker).
+ * Returns `null` when the bone exposes no readable local matrix.
  */
-function decomposeLocalMatrix(m: ArrayLike<number>, scaleEps: number): NodeSample {
-  const position: Vec3 = [(m[12] as number) ?? 0, (m[13] as number) ?? 0, (m[14] as number) ?? 0];
-  let sx = Math.hypot(m[0] as number, m[1] as number, m[2] as number);
-  const sy = Math.hypot(m[4] as number, m[5] as number, m[6] as number);
-  const sz = Math.hypot(m[8] as number, m[9] as number, m[10] as number);
-  const det =
-    (m[0] as number) *
-      ((m[5] as number) * (m[10] as number) - (m[6] as number) * (m[9] as number)) -
-    (m[4] as number) *
-      ((m[1] as number) * (m[10] as number) - (m[2] as number) * (m[9] as number)) +
-    (m[8] as number) * ((m[1] as number) * (m[6] as number) - (m[2] as number) * (m[5] as number));
-  if (det < 0) sx = -sx;
-  const ix = sx !== 0 ? 1 / sx : 0;
-  const iy = sy !== 0 ? 1 / sy : 0;
-  const iz = sz !== 0 ? 1 / sz : 0;
-  const m11 = (m[0] as number) * ix,
-    m21 = (m[1] as number) * ix,
-    m31 = (m[2] as number) * ix;
-  const m12 = (m[4] as number) * iy,
-    m22 = (m[5] as number) * iy,
-    m32 = (m[6] as number) * iy;
-  const m13 = (m[8] as number) * iz,
-    m23 = (m[9] as number) * iz,
-    m33 = (m[10] as number) * iz;
-  const trace = m11 + m22 + m33;
-  let x: number, y: number, z: number, w: number;
-  if (trace > 0) {
-    const s = 0.5 / Math.sqrt(trace + 1);
-    w = 0.25 / s;
-    x = (m32 - m23) * s;
-    y = (m13 - m31) * s;
-    z = (m21 - m12) * s;
-  } else if (m11 > m22 && m11 > m33) {
-    const s = 2 * Math.sqrt(1 + m11 - m22 - m33);
-    w = (m32 - m23) / s;
-    x = 0.25 * s;
-    y = (m12 + m21) / s;
-    z = (m13 + m31) / s;
-  } else if (m22 > m33) {
-    const s = 2 * Math.sqrt(1 + m22 - m11 - m33);
-    w = (m13 - m31) / s;
-    x = (m12 + m21) / s;
-    y = 0.25 * s;
-    z = (m23 + m32) / s;
-  } else {
-    const s = 2 * Math.sqrt(1 + m33 - m11 - m22);
-    w = (m21 - m12) / s;
-    x = (m13 + m31) / s;
-    y = (m23 + m32) / s;
-    z = 0.25 * s;
-  }
-  const sample: NodeSample = { position, rotation: [x, y, z, w] };
-  if (Math.abs(sx - 1) > scaleEps || Math.abs(sy - 1) > scaleEps || Math.abs(sz - 1) > scaleEps) {
-    sample.scale = [sx, sy, sz];
-  }
-  return sample;
-}
-
-/**
- * Read a bone's **skeleton-local** transform into a `node_transform` sample (ADR
- * 0027 Tier 2). Decomposes the bone's live local matrix (relative to its parent
- * bone) — the only frame portable across differing world placements of the same
- * rig. Returns `null` when the bone exposes no readable local matrix.
- */
-function readBoneTransform(bone: BoneNode, scaleEps: number): NodeSample | null {
+function readBoneMatrix(bone: BoneNode): Float32Array | null {
   const local = bone.getLocalMatrix?.();
   const m = local?.m;
   if (!m || m.length < 16) return null;
-  return decomposeLocalMatrix(m, scaleEps);
+  return Float32Array.from(m as ArrayLike<number>);
 }
 
 /**
@@ -776,27 +666,6 @@ function resolveActorNode(scene: ActorLookupScene, actor: BabylonActor): WorldTr
 }
 
 /**
- * Nearest-rank percentile of an ascending-sorted sample. Returns 0 for an empty
- * sample. Used to summarise a window of frame times into p95 / p99 jank figures
- * (#41) without shipping the raw per-frame series.
- */
-function percentileAsc(sortedAsc: number[], p: number): number {
-  if (sortedAsc.length === 0) return 0;
-  const rank = Math.ceil((p / 100) * sortedAsc.length);
-  const idx = Math.min(sortedAsc.length, Math.max(1, rank)) - 1;
-  return sortedAsc[idx] ?? 0;
-}
-
-/** Per-object dwell accumulator over the current `mesh_visibility` window (#37). */
-interface VisibilityAccumulator {
-  visibleMs: number;
-  centeredMs: number;
-  maxScreenFraction: number;
-  /** Latest observed world-space AABB this window (#53), when bounds capture is on. */
-  bounds?: Aabb;
-}
-
-/**
  * Read a mesh's world-space bounding sphere (centre + radius) and AABB
  * defensively. The AABB (#53) reuses the scene-proxy tuple convention
  * `[minX, minY, minZ, maxX, maxY, maxZ]`.
@@ -828,30 +697,6 @@ function sub3(a: Vec3, b: Vec3): Vec3 {
 
 function dot3(a: Vec3, b: Vec3): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-
-function length3(a: Vec3): number {
-  return Math.hypot(a[0], a[1], a[2]);
-}
-
-/** True when two AABBs match on every component within `eps` (#53 dedupe). */
-function aabbClose(a: Aabb, b: Aabb, eps: number): boolean {
-  for (let i = 0; i < 6; i++) {
-    if (Math.abs((a[i] ?? 0) - (b[i] ?? 0)) > eps) return false;
-  }
-  return true;
-}
-
-/** Round an AABB to millimetre precision for the wire (and to coarsen layout). */
-function roundAabb(a: Aabb): Aabb {
-  return [
-    Math.round(a[0] * 1e3) / 1e3,
-    Math.round(a[1] * 1e3) / 1e3,
-    Math.round(a[2] * 1e3) / 1e3,
-    Math.round(a[3] * 1e3) / 1e3,
-    Math.round(a[4] * 1e3) / 1e3,
-    Math.round(a[5] * 1e3) / 1e3,
-  ];
 }
 
 /**
@@ -1016,6 +861,17 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
   return {
     name: "babylon",
     start(ctx: CollectorContext): CollectorHandle {
+      // The engine-agnostic aggregator (#10): the connector reads live engine
+      // state into plain-number snapshot DTOs and hands them here; the
+      // offload-eligible math (percentiles, matrix decompose, visibility
+      // bucketing, idle-diffs, gesture classification) runs main-thread by
+      // default or inside the offload worker, behind the client `offload` flag.
+      const aggregatorConfig: AggregatorConfig = {
+        perf: { suppressIdle: suppressIdlePerfSamples, fpsThreshold: perfFpsThreshold },
+        node: { suppressIdle: suppressIdleSamples },
+        visibility: { centeredCos: visCenteredCos, boundingBox: visBoundingBox, boundsEps: 1e-3 },
+      };
+      const snapshot = ctx.createAggregation(aggregatorConfig);
       const timers: ReturnType<typeof setInterval>[] = [];
       const renderObservers: Array<() => void> = [];
       let pointerObserver: Observer<PointerInfo> | null = null;
@@ -1034,10 +890,10 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
       let hoverActed = false;
       let hoverSource: InputSource | undefined;
       let lastPose: CameraPose | undefined;
-      let lastFps: number | undefined;
       // Per-window frame-time samples for jank percentiles (#41). Filled every
       // render tick (see the perf frame observer below) and drained each perf
-      // sample so p95/p99/longFrames describe the window just elapsed.
+      // sample so the aggregator's p95/p99/longFrames describe the window just
+      // elapsed.
       let frameTimes: number[] = [];
       const sampleCamera = () => {
         const cam = resolveTrackedCamera(scene, explicitCamera);
@@ -1050,6 +906,10 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
           ...(target ? { target } : {}),
           ...(typeof view.fov === "number" ? { fov: view.fov } : {}),
         };
+        // Cheap main-thread idle pre-gate: keep at most one gaze pick per emitted
+        // pose (and none while the view is static) by diffing against the last
+        // pose with the same `poseUnchanged` the aggregator uses (#10, no logic
+        // fork). The aggregator's camera channel is then a pass-through.
         if (suppressIdleSamples && lastPose && poseUnchanged(lastPose, pose, cameraEpsilon)) {
           return;
         }
@@ -1057,8 +917,8 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
         // Gaze raycast (ADR 0030): only after the idle-dedup check passes, so we
         // run at most one pick per emitted pose and none while the view is static.
         const gaze = want.gaze ? sampleGaze(scene, cam, gazeMaxDistance, gazePredicate) : undefined;
-        ctx.emit({
-          type: "camera_sample",
+        snapshot({
+          channel: "camera",
           position: pose.position,
           direction: pose.direction,
           ...(pose.target ? { target: pose.target } : {}),
@@ -1071,22 +931,12 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
       const samplePerf = () => {
         const engine = scene.getEngine();
         const fps = engine.getFps();
-        // Drain the frame-time window collected since the last sample.
+        // Drain the frame-time window collected since the last sample into a fresh
+        // owned Float32Array so the percentile/longFrames/idle math can move to the
+        // worker zero-copy (the buffer is transferred there, kept here in main mode).
         const window = frameTimes;
         frameTimes = [];
-        let percentiles:
-          | { frameTimeP95Ms: number; frameTimeP99Ms: number; longFrames: number }
-          | undefined;
-        if (window.length > 0) {
-          let longFrames = 0;
-          for (const ms of window) if (ms > jankFrameMs) longFrames++;
-          const sorted = [...window].sort((a, b) => a - b);
-          percentiles = {
-            frameTimeP95Ms: percentileAsc(sorted, 95),
-            frameTimeP99Ms: percentileAsc(sorted, 99),
-            longFrames,
-          };
-        }
+        const frameTimeArray = Float32Array.from(window);
         // Render resolution (#43): device pixel ratio and engine render scale
         // (1 = native; Babylon's hardware scaling level is the inverse).
         const dpr = (globalThis as { devicePixelRatio?: number }).devicePixelRatio;
@@ -1094,18 +944,11 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
           engine as unknown as { getHardwareScalingLevel?: () => number }
         ).getHardwareScalingLevel?.();
         const renderScale = typeof scaling === "number" && scaling > 0 ? 1 / scaling : undefined;
-        if (
-          suppressIdlePerfSamples &&
-          lastFps !== undefined &&
-          Math.abs(fps - lastFps) <= perfFpsThreshold
-        ) {
-          return;
-        }
-        lastFps = fps;
-        ctx.emit({
-          type: "frame_perf",
+        snapshot({
+          channel: "perf",
+          frameTimes: frameTimeArray,
           fps,
-          ...(percentiles ?? {}),
+          jankFrameMs,
           ...(typeof dpr === "number" && dpr > 0 ? { dpr } : {}),
           ...(renderScale !== undefined ? { renderScale } : {}),
         });
@@ -1144,9 +987,9 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
         // actor gets its own cadence-driven sampler: resolve the node (lazily —
         // resolvers handle load order), refuse cameras (the visitor camera is
         // already `camera_sample`; "events live once"), read the WORLD transform,
-        // and emit. Idle suppression skips frames where the transform is
-        // unchanged so a static actor costs nothing on the wire.
-        const lastNodeSample = new Map<string, NodeSample>();
+        // and hand it to the aggregator. Babylon world nodes are engine-decomposed,
+        // so we pass the decomposed sample; the aggregator owns the idle-diff so a
+        // static actor still costs nothing on the wire (#10).
         const refusedCamera = new Set<string>();
         for (const id of actorIds) {
           const actor = actorMap[id]!;
@@ -1170,47 +1013,27 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
               }
               return;
             }
-            const sample = readNodeTransform(node, cameraEpsilon);
-            const prev = lastNodeSample.get(id);
-            if (
-              !(suppressIdleSamples && prev && nodeSampleUnchanged(prev, sample, cameraEpsilon))
-            ) {
-              lastNodeSample.set(id, sample);
-              ctx.emit({
-                type: "node_transform",
-                nodeId: id,
-                position: sample.position,
-                rotation: sample.rotation,
-                ...(sample.scale ? { scale: sample.scale } : {}),
-              });
-            }
+            snapshot({
+              channel: "node",
+              nodeId: id,
+              decomposed: readNodeTransform(node, cameraEpsilon),
+              scaleEps: cameraEpsilon,
+            });
             // Subtree descendants (ADR 0033): walk the bounded hierarchy and emit
-            // each kept node's WORLD transform with its `childPath`. Idle
-            // suppression is keyed per (actor, childPath) so a static part costs
+            // each kept node's WORLD transform with its `childPath`. The
+            // aggregator idle-diffs per (actor, childPath) so a static part costs
             // nothing on the wire.
             if (subtree) {
               for (const { childPath, node: child } of collectSubtree(
                 node as WorldTransformNode,
                 subtree,
               )) {
-                const childSample = readNodeTransform(child, cameraEpsilon);
-                const key = `${id}\u0000${childPath}`;
-                const childPrev = lastNodeSample.get(key);
-                if (
-                  suppressIdleSamples &&
-                  childPrev &&
-                  nodeSampleUnchanged(childPrev, childSample, cameraEpsilon)
-                ) {
-                  continue;
-                }
-                lastNodeSample.set(key, childSample);
-                ctx.emit({
-                  type: "node_transform",
+                snapshot({
+                  channel: "node",
                   nodeId: id,
                   childPath,
-                  position: childSample.position,
-                  rotation: childSample.rotation,
-                  ...(childSample.scale ? { scale: childSample.scale } : {}),
+                  decomposed: readNodeTransform(child, cameraEpsilon),
+                  scaleEps: cameraEpsilon,
                 });
               }
             }
@@ -1224,10 +1047,9 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
         // Tier-2 skeleton-bone capture (`node_transform` + `boneId`, ADR 0027).
         // Each rigged actor gets a cadence-driven sampler that resolves the node,
         // walks its skeleton for the allowlisted bones, reads each bone's
-        // skeleton-LOCAL transform, and emits one sample per bone. Idle
-        // suppression is keyed per (actor, bone) so an unmoving bone costs
-        // nothing. A node that resolves without a skeleton warns once.
-        const lastBoneSample = new Map<string, NodeSample>();
+        // skeleton-LOCAL matrix, and hands it to the aggregator (which decomposes
+        // it and idle-diffs per (actor, bone), #10). A node that resolves without
+        // a skeleton warns once.
         const warnedNoSkeleton = new Set<string>();
         for (const id of boneActorIds) {
           const actor = actorMap[id]!;
@@ -1252,21 +1074,14 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
             for (const bone of bones) {
               const boneId = bone.name;
               if (typeof boneId !== "string") continue;
-              const sample = readBoneTransform(bone, cameraEpsilon);
-              if (!sample) continue;
-              const key = `${id}\u0000${boneId}`;
-              const prev = lastBoneSample.get(key);
-              if (suppressIdleSamples && prev && nodeSampleUnchanged(prev, sample, cameraEpsilon)) {
-                continue;
-              }
-              lastBoneSample.set(key, sample);
-              ctx.emit({
-                type: "node_transform",
+              const matrix = readBoneMatrix(bone);
+              if (!matrix) continue;
+              snapshot({
+                channel: "node",
                 nodeId: id,
                 boneId,
-                position: sample.position,
-                rotation: sample.rotation,
-                ...(sample.scale ? { scale: sample.scale } : {}),
+                matrix,
+                scaleEps: cameraEpsilon,
               });
             }
           };
@@ -1300,11 +1115,11 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
       }
 
       if (want.meshVisibility) {
-        // Per-object dwell (#37). Each render tick we accumulate on-screen time,
-        // centred (gaze-proxy) time, and the max screen fraction reached per
-        // tracked object; a window timer flushes ONE bucketed summary per object
-        // (ADR 0012), then resets. Frustum/screen-fraction is per-frame client
-        // work; only the coarse aggregate leaves the device (ADR 0003).
+        // Per-object dwell (#37). Each render tick we read which tracked objects
+        // are on-screen (the engine frustum/bounds reads must stay main-thread)
+        // and hand the raw per-tick observations to the aggregator; it owns the
+        // dwell/centred/screen-fraction bucketing and the per-window flush
+        // (ADR 0012, #10). Only the coarse aggregate leaves the device (ADR 0003).
         const beforeRender = (
           scene as unknown as {
             onBeforeRenderObservable?: {
@@ -1313,11 +1128,6 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
             };
           }
         ).onBeforeRenderObservable;
-        let accums = new Map<string, VisibilityAccumulator>();
-        // Last AABB sent per object (#53) so bounds ride along once per object and
-        // re-send only when they move/resize beyond `boundsEps` — never per window.
-        const sentBounds = new Map<string, Aabb>();
-        const boundsEps = 1e-3;
         if (beforeRender) {
           const visObs = beforeRender.add(() => {
             const cam = resolveTrackedCamera(scene, explicitCamera);
@@ -1325,8 +1135,7 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
             const view = cam as unknown as CameraView;
             const camPos = toVec3(view.globalPosition);
             const fwd = toVec3(view.getForwardRay().direction);
-            const fwdLen = length3(fwd) || 1;
-            const halfFov = (typeof view.fov === "number" ? view.fov : 0.8) / 2;
+            const fov = typeof view.fov === "number" ? view.fov : 0.8;
             const dt = (
               scene.getEngine() as unknown as { getDeltaTime?: () => number }
             ).getDeltaTime?.();
@@ -1336,6 +1145,7 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
             const meshesRaw = (scene as unknown as { meshes?: unknown[] }).meshes;
             if (!Array.isArray(meshesRaw)) return;
             let tracked = 0;
+            const observations: VisibilityMeshObservation[] = [];
             for (const raw of meshesRaw) {
               if (!visMeshAllowlist && tracked >= visMaxMeshes) break;
               const mesh = raw as {
@@ -1368,58 +1178,30 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
               }
               if (!visible) continue;
 
-              const toCenter = sub3(sphere.center, camPos);
-              const dist = length3(toCenter) || 1e-6;
-              const cosAngle = dot3(toCenter, fwd) / (dist * fwdLen);
-              const centered = cosAngle >= visCenteredCos;
-              // Coarse prominence proxy from the bounding-sphere angular size as a
-              // fraction of the vertical FOV (ADR 0014 — proxy AABBs, not assets).
-              const angularRadius = Math.atan2(sphere.radius, dist);
-              const frac = clamp01(angularRadius / (halfFov || 1e-6));
-
-              let acc = accums.get(name);
-              if (!acc) {
-                acc = { visibleMs: 0, centeredMs: 0, maxScreenFraction: 0 };
-                accums.set(name, acc);
-              }
-              acc.visibleMs += stepMs;
-              if (centered) acc.centeredMs += stepMs;
-              if (frac > acc.maxScreenFraction) acc.maxScreenFraction = frac;
-              // Remember the latest world AABB so the flush can ride it along (#53).
-              if (visBoundingBox) acc.bounds = sphere.aabb;
+              observations.push({
+                mesh: name,
+                center: sphere.center,
+                radius: sphere.radius,
+                // Ride the world AABB along only when bounds capture is on (#53);
+                // the aggregator dedupes/rounds it across the window.
+                ...(visBoundingBox ? { aabb: sphere.aabb } : {}),
+              });
             }
+            if (observations.length === 0) return;
+            snapshot({
+              channel: "visibilityTick",
+              stepMs,
+              camPos,
+              // Pass the raw (un-normalized) forward; the aggregator normalizes.
+              forward: fwd,
+              fov,
+              meshes: observations,
+            });
           });
           renderObservers.push(() => beforeRender.remove(visObs));
         }
 
-        const flushVisibility = () => {
-          if (accums.size === 0) return;
-          const pending = accums;
-          accums = new Map<string, VisibilityAccumulator>();
-          for (const [mesh, acc] of pending) {
-            if (acc.visibleMs <= 0) continue;
-            // Ride the AABB along only the first time we see an object, or when it
-            // has moved/resized beyond `boundsEps` (#53). Round for wire + privacy.
-            let bounds: Aabb | undefined;
-            if (acc.bounds) {
-              const prev = sentBounds.get(mesh);
-              if (!prev || !aabbClose(prev, acc.bounds, boundsEps)) {
-                bounds = roundAabb(acc.bounds);
-                sentBounds.set(mesh, acc.bounds);
-              }
-            }
-            ctx.emit({
-              type: "mesh_visibility",
-              mesh,
-              visibleMs: Math.round(acc.visibleMs),
-              ...(acc.centeredMs > 0 ? { centeredMs: Math.round(acc.centeredMs) } : {}),
-              ...(acc.maxScreenFraction > 0
-                ? { maxScreenFraction: Math.round(acc.maxScreenFraction * 1e4) / 1e4 }
-                : {}),
-              ...(bounds ? { bounds } : {}),
-            });
-          }
-        };
+        const flushVisibility = () => snapshot({ channel: "visibilityFlush" });
         const visTimer = setInterval(flushVisibility, visWindowMs);
         timers.push(visTimer);
         // Flush any partial window on stop so trailing dwell isn't dropped.
@@ -1440,8 +1222,8 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
           if (hoverMesh != null && !hoverActed) {
             const dwellMs = now - hoverStartMs;
             if (dwellMs >= hoverMinDwellMs) {
-              ctx.emit({
-                type: "hover_dwell",
+              snapshot({
+                channel: "hover",
                 mesh: hoverMesh,
                 dwellMs: Math.round(dwellMs),
                 ...(hoverSource ? { source: hoverSource } : {}),
@@ -1516,23 +1298,16 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
               const opened = gestureStart;
               gestureStart = null;
               if (cam) {
-                const classified = classifyCameraGesture(opened.sample, readGestureSample(cam), {
-                  sensitivity: cameraGestureSensitivity,
+                // Hand the start→end bracket to the aggregator; the (pure)
+                // classification math runs there, main-thread or in the worker (#10).
+                snapshot({
+                  channel: "gesture",
+                  start: opened.sample,
+                  end: readGestureSample(cam),
+                  durationMs: Math.max(0, Math.round(ctx.now() - opened.ts)),
+                  options: { sensitivity: cameraGestureSensitivity },
+                  ...(opened.source ? { source: opened.source } : {}),
                 });
-                if (classified) {
-                  ctx.emit({
-                    type: "camera_gesture",
-                    kind: classified.kind,
-                    durationMs: Math.max(0, Math.round(ctx.now() - opened.ts)),
-                    ...(classified.orbitDeg !== undefined ? { orbitDeg: classified.orbitDeg } : {}),
-                    ...(classified.rollDeg !== undefined ? { rollDeg: classified.rollDeg } : {}),
-                    ...(classified.zoomRatio !== undefined
-                      ? { zoomRatio: classified.zoomRatio }
-                      : {}),
-                    ...(classified.panDist !== undefined ? { panDist: classified.panDist } : {}),
-                    ...(opened.source ? { source: opened.source } : {}),
-                  });
-                }
               }
             }
           }
