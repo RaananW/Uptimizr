@@ -1207,6 +1207,43 @@ where `event.sessionId === ctx.sessionId`.
 Panels are registered at **build time** by appending to the `builtinPanels` array in
 the dashboard's `src/panels/registry.tsx`; the `PanelHost` filters by surface and each
 panel's `enabled` gate and renders the bodies into the grid — no manual placement in
-`page.tsx`. Loading panels from a remote URL at runtime is tracked for a future
-release. See the [Custom dashboard panels guide](https://uptimizr.com/docs/guides/custom-panels/)
-for a full walkthrough.
+`page.tsx`.
+
+### Loading panels at runtime (ADR 0041)
+
+The dashboard can also discover and load panels from a **remote manifest at runtime**, so a
+self-hoster adds a panel without rebuilding. It uses the same `PanelDefinition` contract — a panel
+module you can `import()` in the browser. Runtime loading is **off by default**; enable it with a
+build-time env var:
+
+```bash
+# One manifest, or a comma-separated list.
+NEXT_PUBLIC_PANELS_MANIFEST_URL="https://panels.example.com/uptimizr.panels.json"
+# Optional comma-separated allowlist of module origins.
+NEXT_PUBLIC_PANELS_ALLOWED_ORIGINS="https://panels.example.com"
+```
+
+A manifest lists panel modules and the contract major each targets
+(`PANEL_CONTRACT_VERSION` from `@uptimizr/react`):
+
+```json
+{
+  "version": 1,
+  "panels": [
+    {
+      "id": "co2-budget",
+      "url": "https://panels.example.com/co2-budget.js",
+      "contract": 1,
+      "export": "default"
+    }
+  ]
+}
+```
+
+Remote panels execute **with the dashboard's full privileges** (no iframe/worker sandbox — that
+would break the rich `PanelContext`), so only point the manifest at sources you trust; the origin
+allowlist is a guardrail, not a sandbox. Loading is resilient: an unreachable/invalid manifest, an
+incompatible `contract`, a blocked origin, a failed import, or a throwing `render` is isolated per
+panel and surfaced in a "panels failed to load" banner without breaking the grid. See the
+[Custom dashboard panels guide](https://uptimizr.com/docs/guides/custom-panels/) for a full
+walkthrough.
