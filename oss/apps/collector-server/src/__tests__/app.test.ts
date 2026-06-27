@@ -254,6 +254,27 @@ describe("collector app", () => {
     await app.close();
   });
 
+  it("derives a coarse browser/os onto session_start.device from the User-Agent", async () => {
+    const store = makeStore();
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/collect",
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+      },
+      payload: { schemaVersion: "1.0", events: [sessionStart()] },
+    });
+    expect(res.statusCode).toBe(200);
+    const inserted = store.inserted[0]! as AnyEvent & {
+      device?: { browser?: string; os?: string };
+    };
+    expect(inserted.device?.browser).toBe("Safari");
+    expect(inserted.device?.os).toBe("macOS");
+    await app.close();
+  });
+
   it("rejects a batch for an unknown project with 401", async () => {
     const store = makeStore({ projectExists: async () => false });
     const app = await buildApp({ store, config });

@@ -5,7 +5,7 @@
 "@uptimizr/db-clickhouse": minor
 ---
 
-feat: reconstruct near-plane origin for flat-pointer click rays (ADR 0041)
+feat: reconstruct near-plane origin for flat-pointer click rays (ADR 0043)
 
 Flat pointers (mouse/touch/stylus) have no native pointing ray, so the click-ray heatmap
 (`/api/v1/heatmaps/click-rays`) collapsed every flat click to the nearest `camera_sample`

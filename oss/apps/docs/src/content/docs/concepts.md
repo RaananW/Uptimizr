@@ -48,7 +48,7 @@ Uptimizr aggregates raw spatial events into several heatmap types:
 - **Click rays / flow** — clicks ray-cast into the scene, and gaze→mesh flow links. Pose inputs
   (XR controllers, hands, gaze) use their own pointing-ray origin; flat pointers (mouse, touch,
   stylus) reconstruct the ray origin on the camera's near plane from the click's screen position
-  (ADR 0041), so the rays fan out the way the clicks were actually made.
+  (ADR 0043), so the rays fan out the way the clicks were actually made.
 
 In **first-person / walkable** scenes that use the browser Pointer Lock API, the cursor is hidden and
 the aim point is the fixed crosshair at the viewport centre. The connectors detect pointer lock and

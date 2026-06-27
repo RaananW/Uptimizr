@@ -1,4 +1,4 @@
-# ADR 0041: Near-plane origin for flat-pointer click rays
+# ADR 0043: Near-plane origin for flat-pointer click rays
 
 - **Status:** Accepted
 - **Date:** 2026-06-24

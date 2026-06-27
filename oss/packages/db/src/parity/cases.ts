@@ -458,10 +458,29 @@ export const PARITY_CASES: readonly ParityCase[] = [
     build: (d) => buildPerfByDevice(PID, PARITY_RANGE, d),
     sortKeys: ["engine"],
     // s1 -> webgpu (2 samples), s2 -> webgl2 (1 sample); both sessions have a
-    // single median FPS of 45. isMobile/renderer were never reported -> ''.
+    // single median FPS of 45. isMobile/renderer/browser/os were never reported
+    // -> ''.
     golden: [
-      { engine: "webgl2", is_mobile: "", renderer: "", sessions: 1, samples: 1, p50_fps: 45 },
-      { engine: "webgpu", is_mobile: "", renderer: "", sessions: 1, samples: 2, p50_fps: 45 },
+      {
+        engine: "webgl2",
+        is_mobile: "",
+        renderer: "",
+        browser: "",
+        os: "",
+        sessions: 1,
+        samples: 1,
+        p50_fps: 45,
+      },
+      {
+        engine: "webgpu",
+        is_mobile: "",
+        renderer: "",
+        browser: "",
+        os: "",
+        sessions: 1,
+        samples: 2,
+        p50_fps: 45,
+      },
     ],
   },
   {

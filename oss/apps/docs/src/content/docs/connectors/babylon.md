@@ -50,7 +50,7 @@ trackScene(scene, { projectId, endpoint, camera: mainCamera });
 Each `camera_sample` also carries the camera's projection intrinsics — vertical `fov`, viewport
 `aspect`, and the near-plane distance `near` — captured automatically when the engine exposes them.
 They let the click-ray heatmap reconstruct a flat pointer's ray origin on the near plane instead of
-collapsing it to the camera point (ADR 0041); they're optional, so a camera that doesn't expose
+collapsing it to the camera point (ADR 0043); they're optional, so a camera that doesn't expose
 them simply falls back to the camera position.
 
 ## First-person scenes (pointer lock)

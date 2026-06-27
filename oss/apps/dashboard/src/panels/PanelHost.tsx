@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, Component, type ReactNode } from "react";
 import type { PanelContext, PanelDefinition, PanelSurface } from "@uptimizr/react";
 import { resolvePanelSettings, usePanelData } from "@uptimizr/react";
 import { Panel } from "@/components/Panel";
@@ -47,7 +47,17 @@ export function PanelHost({
           const settings = resolvePanelSettings(panel.settings, prefs.overridesFor(panel.id));
           return { panel, panelCtx: { ...ctx, settings } as PanelContext };
         })
-        .filter(({ panel, panelCtx }) => (panel.enabled ? panel.enabled(panelCtx) : true)),
+        .filter(({ panel, panelCtx }) => {
+          if (!panel.enabled) return true;
+          // A misbehaving panel (e.g. a remote one, ADR 0041) must not break the
+          // whole grid: treat a throwing `enabled` gate as "not eligible".
+          try {
+            return panel.enabled(panelCtx);
+          } catch (err) {
+            console.error(`Panel "${panel.id}" enabled() threw; hiding it`, err);
+            return false;
+          }
+        }),
     [panels, surface, ctx, prefs],
   );
 
@@ -175,10 +185,44 @@ function PanelCell({
       ) : showInitialLoading ? (
         <p className="text-sm text-fg-muted">Loading…</p>
       ) : (
-        panel.render({ data, ctx })
+        <PanelErrorBoundary panelId={panel.id}>{panel.render({ data, ctx })}</PanelErrorBoundary>
       )}
     </Panel>
   );
+}
+
+/**
+ * Isolates a single panel's render so a throwing body (e.g. a remote panel from
+ * ADR 0041) shows an inline error inside its own chrome instead of crashing the
+ * whole grid. Keyed by `panelId` so a panel that starts rendering cleanly after
+ * a filter change recovers from a prior error.
+ */
+class PanelErrorBoundary extends Component<
+  { panelId: string; children: ReactNode },
+  { error: Error | null }
+> {
+  override state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  override componentDidCatch(error: Error) {
+    console.error(`Panel "${this.props.panelId}" failed to render`, error);
+  }
+
+  override componentDidUpdate(prev: { panelId: string }) {
+    if (prev.panelId !== this.props.panelId && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  override render() {
+    if (this.state.error) {
+      return <p className="text-sm text-fg-muted">Could not render: {this.state.error.message}</p>;
+    }
+    return this.props.children;
+  }
 }
 
 function useMounted(): boolean {
