@@ -19,6 +19,18 @@ export const cameraSampleSchema = defineEvent("camera_sample", {
   /** Vertical field of view in radians, when applicable. */
   fov: z.number().optional(),
   /**
+   * Viewport aspect ratio (width / height), when applicable. Together with `fov`
+   * and `near` this lets flat-pointer click rays unproject a click's `screen[x,y]`
+   * onto the camera near plane (issue #22). Absent unless the connector captures it.
+   */
+  aspect: z.number().positive().optional(),
+  /**
+   * Camera near-plane distance in world units, when applicable. Reconstructs the
+   * near-plane origin for flat-pointer click-ray unprojection (issue #22). Absent
+   * unless the connector captures it.
+   */
+  near: z.number().positive().optional(),
+  /**
    * World-space point where the camera-forward (gaze) ray hits scene geometry,
    * when gaze raycasting is enabled (ADR 0030). This is the "what did people
    * actually look at" surface signal — a first-class world-space gaze heatmap,

@@ -83,6 +83,11 @@ export async function insertEvents(
         appender.appendDouble(row.long_frames);
         appender.appendDouble(row.dpr);
         appender.appendDouble(row.render_scale);
+        // camera_sample projection intrinsics (#22, migrations 0028–0030) follow,
+        // in table column order. 0 on rows that didn't capture them.
+        appender.appendDouble(row.fov);
+        appender.appendDouble(row.aspect);
+        appender.appendDouble(row.near);
         appender.endRow();
       }
       appender.flushSync();

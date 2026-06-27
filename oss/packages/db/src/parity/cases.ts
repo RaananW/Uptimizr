@@ -213,12 +213,17 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["mesh"],
     golden: [
       {
-        cam_vx: 0,
+        // Flat-pointer near-plane reconstruction (#22): the box click ASOF-joins to
+        // the camera sample carrying intrinsics (pos [0,0,0], dir [2,1,2], fov π/2,
+        // aspect 2, near 0.1) and screen [0.15, 0.15], so its origin is unprojected
+        // onto the near plane instead of collapsing to the camera point. Verified
+        // from the unproject formula; at cellSize 1 the origin voxel is (-1, 0, 0).
+        cam_vx: -1,
         cam_vy: 0,
         cam_vz: 0,
-        origin_x: 0,
-        origin_y: 0,
-        origin_z: 0,
+        origin_x: -0.04882744092713605,
+        origin_y: 0.09932996624407775,
+        origin_z: 0.14916245780509718,
         hit_vx: 0,
         hit_vy: 0,
         hit_vz: 0,

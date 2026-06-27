@@ -37,6 +37,7 @@ function makeEngine() {
     webGLVersion: 2,
     getGlInfo: () => ({ vendor: "Acme", renderer: "GPU-9000" }),
     getCaps: () => ({ maxTextureSize: 8192 }),
+    getAspectRatio: () => 800 / 600,
     onContextLostObservable: new FakeObservable<unknown>(),
     onContextRestoredObservable: new FakeObservable<unknown>(),
     onBeforeShaderCompilationObservable: new FakeObservable<unknown>(),
@@ -54,6 +55,7 @@ function makeScene() {
       globalPosition: { x: 1, y: 2, z: 3 },
       getForwardRay: () => ({ direction: { x: 0, y: 0, z: 1 } }),
       fov: 0.8,
+      minZ: 0.1,
       getTarget: () => ({ x: 0, y: 0, z: 0 }),
     },
     pointerX: 400,
@@ -116,6 +118,40 @@ describe("babylonCollector", () => {
       target: [0, 0, 0],
       fov: 0.8,
     });
+    handle.stop();
+  });
+
+  it("captures camera projection intrinsics (fov/aspect/near) on camera_sample (#22)", () => {
+    const { scene } = makeScene();
+    const { ctx, events } = makeCtx();
+    const handle = babylonCollector({ scene, capture: { perf: false } }).start(ctx)!;
+
+    const cam = events.find((e) => e.type === "camera_sample");
+    expect(cam).toMatchObject({
+      type: "camera_sample",
+      fov: 0.8,
+      aspect: 800 / 600,
+      near: 0.1,
+    });
+    handle.stop();
+  });
+
+  it("omits aspect/near when the engine/camera don't expose them (#22)", () => {
+    const { scene } = makeScene();
+    const mutableCam = (scene as unknown as { activeCamera: Record<string, unknown> })
+      .activeCamera;
+    delete mutableCam.minZ;
+    (scene as unknown as { getEngine: () => Record<string, unknown> }).getEngine = () => ({
+      getFps: () => 60,
+      getRenderWidth: () => 800,
+      getRenderHeight: () => 600,
+    });
+    const { ctx, events } = makeCtx();
+    const handle = babylonCollector({ scene, capture: { perf: false } }).start(ctx)!;
+
+    const cam = events.find((e) => e.type === "camera_sample");
+    expect(cam).not.toHaveProperty("aspect");
+    expect(cam).not.toHaveProperty("near");
     handle.stop();
   });
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   anyEventSchema,
+  cameraSampleSchema,
   eventSchemaByType,
   collectRequestSchema,
   EVENT_TYPES,
@@ -39,6 +40,44 @@ describe("anyEventSchema (discriminated union)", () => {
     const parsed = anyEventSchema.parse(event);
     expect(parsed.type).toBe("camera_sample");
     expect((parsed as CameraSampleEvent).position).toEqual([0, 1, 2]);
+  });
+
+  it("round-trips a camera_sample with projection intrinsics (fov, aspect, near)", () => {
+    const event = {
+      ...baseEnvelope,
+      type: "camera_sample",
+      position: [0, 1, 2],
+      direction: [0, 0, 1],
+      fov: 0.8,
+      aspect: 1.7777,
+      near: 0.1,
+    };
+    const parsed = cameraSampleSchema.parse(event);
+    expect(parsed.fov).toBe(0.8);
+    expect(parsed.aspect).toBe(1.7777);
+    expect(parsed.near).toBe(0.1);
+  });
+
+  it("rejects a camera_sample with a non-positive near plane", () => {
+    const event = {
+      ...baseEnvelope,
+      type: "camera_sample",
+      position: [0, 1, 2],
+      direction: [0, 0, 1],
+      near: 0,
+    };
+    expect(cameraSampleSchema.safeParse(event).success).toBe(false);
+  });
+
+  it("rejects a camera_sample with a non-positive aspect ratio", () => {
+    const event = {
+      ...baseEnvelope,
+      type: "camera_sample",
+      position: [0, 1, 2],
+      direction: [0, 0, 1],
+      aspect: -1.5,
+    };
+    expect(cameraSampleSchema.safeParse(event).success).toBe(false);
   });
 
   it("rejects an event with an unknown type", () => {
