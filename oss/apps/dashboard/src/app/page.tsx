@@ -34,6 +34,7 @@ import {
   type TimeWindow,
 } from "@/lib/filters";
 import { parseTimestamp } from "@/lib/format";
+import { mergeSceneProxies } from "@/lib/sceneProxies";
 import { useLivePresence, useLiveStream, type LiveEvent } from "@/lib/live";
 import type { PanelContext } from "@uptimizr/react";
 import { PanelHost } from "@/panels/PanelHost";
@@ -436,11 +437,12 @@ export default function Page() {
       setLiveFeed((prev) => [event, ...prev].slice(0, LIVE_FEED_MAX));
       // Fan the event out to any registry panels that subscribed (ADR 0036).
       liveSubscribersRef.current.forEach((handler) => handler(event));
-      // Live scene auto-follow (ADR 0040): track the section the live avatar is
-      // in so the 3D backdrop swaps to it. Only on a real section change (rare,
-      // at boundary crossings) bump the revision so the panels re-resolve their
-      // backdrop. Skip while a session drill-down is open — that view owns its
-      // own scope and merges every visited section already.
+      // Live area tracking (ADR 0040): note the section the live avatar is in.
+      // The backdrop shows the whole building, so we no longer swap geometry per
+      // section; but on a real section change (rare, at boundary crossings) bump
+      // the revision so the backdrop effect re-merges and picks up an area that
+      // just became active. Skip while a session drill-down is open — that view
+      // owns its own scope and renders the whole building already.
       if (
         !detailOpenRef.current &&
         event.sceneId &&
@@ -477,34 +479,28 @@ export default function Page() {
   }, [liveEnabled]);
 
   // The 3D panels (world/gaze heatmaps, click rays) anchor their proxy geometry
-  // to a single scene. Resolve that backdrop scene independently of the query
-  // data (ADR 0040): the manual Scene filter wins; otherwise, in live mode,
-  // follow the live avatar's current section so the geometry swaps as it crosses
-  // boundaries; otherwise fall back to the sole scene. The heatmap *data* keeps
-  // whatever the filter says (e.g. "All scenes"), so only the backdrop follows.
+  // to the scene backdrop, resolved independently of the query data (ADR 0040):
+  // a pinned Scene filter shows just that area; otherwise show the WHOLE building —
+  // every active area's proxy merged — so elevated levels and far areas are always
+  // present and deterministic, instead of one section appearing at a time as the
+  // live avatar crosses boundaries. The heatmap *data* still honours the filter.
   const manualScene =
     filters.scene && filters.scene.length > 0 ? filters.scene : undefined;
-  const backdropSceneId =
-    manualScene ??
-    (liveEnabled ? liveSceneId : undefined) ??
-    (scenes.length === 1 ? scenes[0]?.scene_id : undefined);
   useEffect(() => {
     if (status === "idle") return;
     let cancelled = false;
     void (async () => {
-      const meshes = backdropSceneId
-        ? ((
-            await new CollectorApi(baseUrl, apiKey)
-              .sceneRepresentation(backdropSceneId)
-              .catch(() => null)
-          )?.proxy?.meshes ?? [])
-        : [];
+      const api = new CollectorApi(baseUrl, apiKey);
+      const meshes = manualScene
+        ? ((await api.sceneRepresentation(manualScene).catch(() => null))?.proxy
+            ?.meshes ?? [])
+        : await mergeSceneProxies(api, toQueryParams(filtersRef.current));
       if (!cancelled) setData((prev) => ({ ...prev, proxyMeshes: meshes }));
     })();
     return () => {
       cancelled = true;
     };
-  }, [backdropSceneId, baseUrl, apiKey, status]);
+  }, [manualScene, baseUrl, apiKey, status, liveRevision]);
 
   // Fetch the aggregate panels (heatmaps, top meshes, perf, meta) for one
   // session. Shared by the initial open and the live → ended refresh below.

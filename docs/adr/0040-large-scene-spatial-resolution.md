@@ -103,13 +103,17 @@ distinct or coordinate-colliding areas. Concretely:
   framed backdrop (an elevated level shows just that level), and sections the visitor never entered
   still have a representation. The playground's `expanse` scene demonstrates this across all three
   connectors.
-- Because the backdrop is anchored to a single `scene_id`, the dashboard resolves that anchor
-  independently of the query scope. The manual **Scene** filter wins; otherwise, **in live mode the
-  backdrop auto-follows the live session's current section** — as the avatar crosses a boundary and
-  emits events under the next `scene_id`, the 3D panels swap to that section's geometry. Only the
-  backdrop geometry follows; the heatmap _data_ keeps whatever the filter says (e.g. "All scenes"),
-  so the aggregate isn't silently re-scoped. The session-replay viewer is the exception: it merges
-  every section a session visited into one whole-world backdrop.
+- Because each section's backdrop is anchored to its own `scene_id`, the dashboard resolves the
+  backdrop independently of the query scope. The manual **Scene** filter wins — pinning an area
+  anchors the 3D panels to just that area's geometry. Otherwise (the default **All scenes**) the
+  dashboard renders the **whole building**: it lists every active section and merges their scoped
+  proxies into one backdrop (de-duplicated by mesh name), so elevated levels and far areas are all
+  present at once — deterministically, rather than appearing one section at a time as a live avatar
+  crosses boundaries. Only the backdrop geometry is affected; the heatmap _data_ keeps whatever the
+  filter says (e.g. "All scenes"), so the aggregate isn't silently re-scoped. In live mode, crossing
+  into a newly-active section refreshes the merge so the new area joins the backdrop promptly. The
+  session-replay viewer follows the same rule: it merges every active section into one whole-building
+  backdrop for the session's time window, so the full multi-level world is always shown.
 
 This ADR records the **durable** decisions (bounds-driven default resolution; robust, scope-local
 normalization; an explicit region filter and absence/coverage signal; the semantic vs. resolution

@@ -33,6 +33,7 @@ import {
   CAMERA_DOME_TITLE,
   CAMERA_DOME_SUBTITLE,
 } from "@/components/CameraDome3D";
+import { mergeSceneProxies } from "@/lib/sceneProxies";
 import {
   FloorPlanHeatmapView,
   FLOOR_PLAN_TITLE,
@@ -225,23 +226,20 @@ function scoped(ctx: PanelContext): QueryParams {
 }
 
 /**
- * Resolve the scene-proxy backdrop (ADR 0014) for the 3D world heatmap: use the
- * selected scene; in live mode with no explicit filter, follow the live avatar's
- * current section (ADR 0040) so the backdrop swaps as it crosses boundaries;
- * otherwise fall back to the sole scene when the project has exactly one (mirrors
- * the legacy dashboard so rays/voxels read against geometry instead of floating
- * in empty space). Returns [] when no scene anchors it.
+ * Resolve the scene-proxy backdrop (ADR 0014) for the 3D world heatmap. When a
+ * single scene/area is selected, anchor to just that area's geometry. Otherwise
+ * (the default "All scenes") render the WHOLE building — every active area's proxy
+ * merged into one backdrop (ADR 0040 §5) — so elevated levels and far areas are
+ * always present and deterministic, instead of swapping to one section at a time as
+ * the live avatar crosses boundaries. Returns [] when nothing anchors it.
  */
 async function resolveProxyMeshes(ctx: PanelContext): Promise<SceneProxyMesh[]> {
-  let sceneId = ctx.params.scene;
-  if (!sceneId && ctx.live?.enabled) sceneId = ctx.live.sceneId;
-  if (!sceneId) {
-    const scenes = await ctx.api.scenes(ctx.params).catch(() => []);
-    if (scenes.length === 1) sceneId = scenes[0]?.scene_id;
+  const sceneId = ctx.params.scene;
+  if (sceneId) {
+    const rep = await ctx.api.sceneRepresentation(sceneId).catch(() => null);
+    return rep?.proxy?.meshes ?? [];
   }
-  if (!sceneId) return [];
-  const rep = await ctx.api.sceneRepresentation(sceneId).catch(() => null);
-  return rep?.proxy?.meshes ?? [];
+  return mergeSceneProxies(ctx.api, ctx.params);
 }
 
 /** Top meshes — React/HTML list, half width. */
