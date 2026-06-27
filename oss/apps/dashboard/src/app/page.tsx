@@ -443,11 +443,7 @@ export default function Page() {
       // the revision so the backdrop effect re-merges and picks up an area that
       // just became active. Skip while a session drill-down is open — that view
       // owns its own scope and renders the whole building already.
-      if (
-        !detailOpenRef.current &&
-        event.sceneId &&
-        event.sceneId !== liveSceneIdRef.current
-      ) {
+      if (!detailOpenRef.current && event.sceneId && event.sceneId !== liveSceneIdRef.current) {
         liveSceneIdRef.current = event.sceneId;
         setLiveSceneId(event.sceneId);
         setLiveRevision((r) => r + 1);
@@ -484,16 +480,14 @@ export default function Page() {
   // every active area's proxy merged — so elevated levels and far areas are always
   // present and deterministic, instead of one section appearing at a time as the
   // live avatar crosses boundaries. The heatmap *data* still honours the filter.
-  const manualScene =
-    filters.scene && filters.scene.length > 0 ? filters.scene : undefined;
+  const manualScene = filters.scene && filters.scene.length > 0 ? filters.scene : undefined;
   useEffect(() => {
     if (status === "idle") return;
     let cancelled = false;
     void (async () => {
       const api = new CollectorApi(baseUrl, apiKey);
       const meshes = manualScene
-        ? ((await api.sceneRepresentation(manualScene).catch(() => null))?.proxy
-            ?.meshes ?? [])
+        ? ((await api.sceneRepresentation(manualScene).catch(() => null))?.proxy?.meshes ?? [])
         : await mergeSceneProxies(api, toQueryParams(filtersRef.current));
       if (!cancelled) setData((prev) => ({ ...prev, proxyMeshes: meshes }));
     })();
