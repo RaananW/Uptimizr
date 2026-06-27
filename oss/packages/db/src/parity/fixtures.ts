@@ -70,6 +70,13 @@ export const PARITY_EVENTS: AnyEvent[] = [
   ev("camera_sample", PARITY_T0 + 1_000, {
     position: [0, 0, 0],
     direction: [2, 1, 2],
+    // Projection intrinsics (#22): the box click below ASOF-joins to this sample,
+    // so its flat-pointer ray origin is unprojected onto the near plane. fov=π/2
+    // (so tan(fov/2)=1), aspect=2, near=0.1. The other two camera samples omit
+    // intrinsics, so the sphere/floor clicks stay on the camera-position fallback.
+    fov: Math.PI / 2,
+    aspect: 2,
+    near: 0.1,
     hitPoint: [0.2, 0.2, 0.2],
   }),
   ev("pointer_click", PARITY_T0 + 2_000, {

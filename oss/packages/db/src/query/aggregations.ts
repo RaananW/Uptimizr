@@ -463,11 +463,18 @@ export function buildAggregateTrajectories(
  * controllers, hands, gaze) carry their own world-space pointing ray, so when a
  * click has a `ray.origin` we use it verbatim — the controller/hand/gaze is the
  * true pointing origin, not the headset/camera. Flat pointers (mouse, touch,
- * stylus) have no native ray, so they fall back to the nearest preceding
- * `camera_sample` in the same session (the historical view-gated behavior). The
- * camera join is therefore a LEFT join so pose clicks survive even in sessions
- * that never emit a `camera_sample`; rows with neither a ray nor a camera origin
- * are dropped.
+ * stylus) have no native ray; when the ASOF-joined `camera_sample` carries the
+ * projection intrinsics (`fov`/`aspect`/`near`, #22, ADR 0043) we unproject the
+ * click's normalized `screen[x, y]` onto the camera **near plane** and use that
+ * point as the origin, so flat-pointer rays fan out across the near plane the way
+ * the clicks were actually made. The near-plane basis assumes the canonical
+ * world-up `(0, 1, 0)` and no camera roll (true for mouse/touch); a degenerate
+ * look-straight-up/down view (or any missing/zero intrinsic, e.g. legacy data)
+ * falls back to the nearest preceding `camera_sample` **position** — the
+ * historical view-gated behavior. The camera join is therefore a LEFT join so
+ * pose clicks survive even in sessions that never emit a `camera_sample`; rows
+ * with neither a ray, a reconstructable near-plane point, nor a camera origin are
+ * dropped.
  */
 export function buildClickGazeRay(
   projectId: string,
@@ -506,29 +513,66 @@ export function buildClickGazeRay(
         count() AS count
       FROM (
         SELECT
-          c.hx AS hx, c.hy AS hy, c.hz AS hz, c.mesh AS mesh,
-          CASE WHEN c.has_ray THEN c.rox WHEN m.cam_present = 1 THEN m.px END AS ox,
-          CASE WHEN c.has_ray THEN c.roy WHEN m.cam_present = 1 THEN m.py END AS oy,
-          CASE WHEN c.has_ray THEN c.roz WHEN m.cam_present = 1 THEN m.pz END AS oz
+          ja.hx AS hx, ja.hy AS hy, ja.hz AS hz, ja.mesh AS mesh,
+          CASE
+            WHEN ja.has_ray THEN ja.rox
+            WHEN ja.recon THEN ja.px + ja.dx * ja.near / ja.dlen
+              + (ja.dz / ja.hlen) * ja.off_r
+              + (-(ja.dx * ja.dy) / (ja.dlen * ja.hlen)) * ja.off_u
+            WHEN ja.cam_present = 1 THEN ja.px
+          END AS ox,
+          CASE
+            WHEN ja.has_ray THEN ja.roy
+            WHEN ja.recon THEN ja.py + ja.dy * ja.near / ja.dlen
+              + (ja.hlen / ja.dlen) * ja.off_u
+            WHEN ja.cam_present = 1 THEN ja.py
+          END AS oy,
+          CASE
+            WHEN ja.has_ray THEN ja.roz
+            WHEN ja.recon THEN ja.pz + ja.dz * ja.near / ja.dlen
+              + (-(ja.dx) / ja.hlen) * ja.off_r
+              + (-(ja.dy * ja.dz) / (ja.dlen * ja.hlen)) * ja.off_u
+            WHEN ja.cam_present = 1 THEN ja.pz
+          END AS oz
         FROM (
-          SELECT session_id, ts,
-            hit_point[1] AS hx, hit_point[2] AS hy, hit_point[3] AS hz, mesh,
-            length(ray_origin) = 3 AS has_ray,
-            ray_origin[1] AS rox, ray_origin[2] AS roy, ray_origin[3] AS roz
-          FROM events
-          WHERE project_id = ${pid}
-            AND event_type = 'pointer_click'
-            AND length(hit_point) = 3${range}${scene}${source}${session}
-        ) AS c
-        ${d.asofLeftJoin} (
-          SELECT session_id, ts, 1 AS cam_present,
-            position[1] AS px, position[2] AS py, position[3] AS pz
-          FROM events
-          WHERE project_id = ${pid}
-            AND event_type = 'camera_sample'
-            AND length(position) = 3${range}${scene}${session}
-        ) AS m
-        ON c.session_id = m.session_id AND c.ts >= m.ts
+          SELECT
+            c.hx AS hx, c.hy AS hy, c.hz AS hz, c.mesh AS mesh,
+            c.has_ray AS has_ray, c.rox AS rox, c.roy AS roy, c.roz AS roz,
+            m.cam_present AS cam_present,
+            m.px AS px, m.py AS py, m.pz AS pz,
+            m.dx AS dx, m.dy AS dy, m.dz AS dz, m.cam_near AS near,
+            sqrt(m.dx * m.dx + m.dy * m.dy + m.dz * m.dz) AS dlen,
+            sqrt(m.dx * m.dx + m.dz * m.dz) AS hlen,
+            (2 * c.sx - 1) * m.cam_near * tan(m.cam_fov / 2) * m.cam_aspect AS off_r,
+            (1 - 2 * c.sy) * m.cam_near * tan(m.cam_fov / 2) AS off_u,
+            (NOT c.has_ray) AND c.has_screen
+              AND m.cam_fov > 0 AND m.cam_aspect > 0 AND m.cam_near > 0
+              AND sqrt(m.dx * m.dx + m.dz * m.dz)
+                  > 1e-6 * sqrt(m.dx * m.dx + m.dy * m.dy + m.dz * m.dz) AS recon
+          FROM (
+            SELECT session_id, ts,
+              hit_point[1] AS hx, hit_point[2] AS hy, hit_point[3] AS hz, mesh,
+              length(ray_origin) = 3 AS has_ray,
+              ray_origin[1] AS rox, ray_origin[2] AS roy, ray_origin[3] AS roz,
+              length(screen) = 2 AS has_screen,
+              screen[1] AS sx, screen[2] AS sy
+            FROM events
+            WHERE project_id = ${pid}
+              AND event_type = 'pointer_click'
+              AND length(hit_point) = 3${range}${scene}${source}${session}
+          ) AS c
+          ${d.asofLeftJoin} (
+            SELECT session_id, ts, 1 AS cam_present,
+              position[1] AS px, position[2] AS py, position[3] AS pz,
+              direction[1] AS dx, direction[2] AS dy, direction[3] AS dz,
+              fov AS cam_fov, aspect AS cam_aspect, near AS cam_near
+            FROM events
+            WHERE project_id = ${pid}
+              AND event_type = 'camera_sample'
+              AND length(position) = 3${range}${scene}${session}
+          ) AS m
+          ON c.session_id = m.session_id AND c.ts >= m.ts
+        ) AS ja
       ) AS j
       WHERE j.ox IS NOT NULL
       GROUP BY cam_vx, cam_vy, cam_vz, hit_vx, hit_vy, hit_vz, mesh

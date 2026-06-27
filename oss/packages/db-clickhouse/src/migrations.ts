@@ -203,6 +203,20 @@ export const CLICKHOUSE_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> =
       GROUP BY project_id, event_type, day;
     `,
   },
+  // camera_sample projection intrinsics (#22): vertical FOV, viewport aspect, and
+  // near-plane distance, mirroring the DuckDB columns so the click-gaze ray
+  // aggregation can unproject a flat pointer's `screen` onto the near plane. 0
+  // when the sample omitted the intrinsic — the aggregation treats non-positive
+  // as "absent" and falls back to the camera position.
+  {
+    id: "0008_events_camera_intrinsics",
+    sql: /* sql */ `
+      ALTER TABLE events
+        ADD COLUMN IF NOT EXISTS fov    Float64 DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS aspect Float64 DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS near   Float64 DEFAULT 0;
+    `,
+  },
 ];
 
 /**

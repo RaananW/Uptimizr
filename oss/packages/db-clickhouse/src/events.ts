@@ -77,6 +77,9 @@ export async function insertEvents(
         long_frames: row.long_frames,
         dpr: row.dpr,
         render_scale: row.render_scale,
+        fov: row.fov,
+        aspect: row.aspect,
+        near: row.near,
         name: row.name,
         payload: row.payload,
       });
