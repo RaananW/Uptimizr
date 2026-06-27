@@ -43,7 +43,8 @@ than editing history.
 | [0038](./0038-funnel-step-configuration.md)                        | Configured/authored analytics are hosted-only; OSS computes funnels from steps | Accepted   |
 | [0039](./0039-viewer-configurable-panels.md)                       | Viewer-configurable panels — visibility + per-panel settings (extends 0036)    | Accepted   |
 | [0040](./0040-large-scene-spatial-resolution.md)                   | Large-scene spatial resolution (bounds-driven binning + region drill-down)     | Proposed   |
-| [0041](./0041-browser-os-performance-segment.md)                   | Browser/OS performance segment derived from the User-Agent at ingestion        | Accepted   |
+| [0041](./0041-runtime-remote-dashboard-panels.md)                  | Runtime / remote dashboard panel loading (manifest, extends 0036)              | Accepted   |
+| [0042](./0042-browser-os-performance-segment.md)                   | Browser/OS performance segment derived from the User-Agent at ingestion        | Accepted   |
 
 ## Template
 
