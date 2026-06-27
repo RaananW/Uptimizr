@@ -57,6 +57,7 @@ longer wash out the rest.
 | Method | Path                          | Purpose                                                   | Extra params                |
 | ------ | ----------------------------- | --------------------------------------------------------- | --------------------------- |
 | `GET`  | `/api/v1/perf`                | Rendering-performance summary (samples, avg/min/p50 FPS). | `session`                   |
+| `GET`  | `/api/v1/perf/by-device`      | Per-session median FPS by device class + UA-derived browser/OS. | `scene`, `session`    |
 | `GET`  | `/api/v1/perf/resources`      | GPU/memory footprint summary from `resource_sample`.      | `session`                   |
 | `GET`  | `/api/v1/perf/compile-stalls` | Shader/pipeline compile stalls.                           | `limit`, `scene`, `session` |
 | `GET`  | `/api/v1/capabilities`        | Capability fallbacks/recoveries (e.g. WebGPU→WebGL2).     | `limit`, `scene`, `session` |

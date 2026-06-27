@@ -1411,11 +1411,13 @@ export function buildJankRate(
 /**
  * FPS segmented by device class, computed **per-session then aggregated** (ADR
  * 0028 §2). Each session's median FPS is attributed to the graphics backend,
- * mobile flag, and GPU `renderer` recorded in its `session_start.device` block —
- * data already on the wire, so there is no SDK or schema change. Device fields
- * are read from the `session_start` payload JSON (they are not promoted columns)
- * and `coalesce`d to `''` when a session never reported them. `p50_fps` is the
- * median across sessions in the group of each session's median FPS.
+ * mobile flag, and GPU `renderer` recorded in its `session_start.device` block,
+ * plus the coarse `browser`/`os` families derived server-side from the
+ * User-Agent at ingestion (ADR 0041) — all data already on the wire, so there is
+ * no SDK or schema change. Device fields are read from the `session_start`
+ * payload JSON (they are not promoted columns) and `coalesce`d to `''` when a
+ * session never reported them. `p50_fps` is the median across sessions in the
+ * group of each session's median FPS.
  */
 export function buildPerfByDevice(
   projectId: string,
@@ -1430,6 +1432,8 @@ export function buildPerfByDevice(
   const engine = d.jsonText("payload", "device", "engine");
   const isMobile = d.jsonText("payload", "device", "isMobile");
   const renderer = d.jsonText("payload", "device", "renderer");
+  const browser = d.jsonText("payload", "device", "browser");
+  const os = d.jsonText("payload", "device", "os");
   return {
     query: `
       WITH session_device AS (
@@ -1437,7 +1441,9 @@ export function buildPerfByDevice(
           session_id,
           ${engine} AS engine,
           ${isMobile} AS is_mobile,
-          ${renderer} AS renderer
+          ${renderer} AS renderer,
+          ${browser} AS browser,
+          ${os} AS os
         FROM events
         WHERE project_id = ${pid} AND event_type = 'session_start'
       ),
@@ -1454,12 +1460,14 @@ export function buildPerfByDevice(
         coalesce(dev.engine, '') AS engine,
         coalesce(dev.is_mobile, '') AS is_mobile,
         coalesce(dev.renderer, '') AS renderer,
+        coalesce(dev.browser, '') AS browser,
+        coalesce(dev.os, '') AS os,
         count() AS sessions,
         sum(perf.s_samples) AS samples,
         ${d.quantile("perf.s_p50", 0.5)} AS p50_fps
       FROM session_perf perf
       LEFT JOIN session_device dev ON dev.session_id = perf.session_id
-      GROUP BY engine, is_mobile, renderer
+      GROUP BY engine, is_mobile, renderer, browser, os
       ORDER BY sessions DESC
     `,
     query_params: bag.values,

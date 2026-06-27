@@ -357,6 +357,10 @@ export interface PerfByDevice {
   engine: string;
   is_mobile: string;
   renderer: string;
+  /** Coarse browser family derived from the User-Agent at ingestion (ADR 0041). */
+  browser: string;
+  /** Coarse OS family derived from the User-Agent at ingestion (ADR 0041). */
+  os: string;
   sessions: number;
   samples: number;
   p50_fps: number;
@@ -673,13 +677,15 @@ export class CollectorApi {
     });
   }
 
-  /** FPS segmented by device class (backend / mobile / GPU renderer) (#82). */
+  /** FPS segmented by device class (backend / mobile / GPU / browser / OS) (#82, #11). */
   perfByDevice(params?: QueryParams): Promise<PerfByDevice[]> {
     return this.get<Record<string, unknown>[]>("api/v1/perf/by-device", params).then((rows) =>
       rows.map((r) => ({
         engine: String(r.engine ?? ""),
         is_mobile: String(r.is_mobile ?? ""),
         renderer: String(r.renderer ?? ""),
+        browser: String(r.browser ?? ""),
+        os: String(r.os ?? ""),
         sessions: Number(r.sessions ?? 0),
         samples: Number(r.samples ?? 0),
         p50_fps: Number(r.p50_fps ?? 0),

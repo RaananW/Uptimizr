@@ -24,6 +24,18 @@ stable frame rate, set `suppressIdlePerfSamples: true` (and tune `perfFpsThresho
 from `GET /api/v1/perf`. `asset_load` events additionally carry an optional `ttiMs` alongside
 `loadMs` / `ttffMs`.
 
+### FPS by device, browser & OS
+
+`GET /api/v1/perf/by-device` segments per-session median FPS by the `session_start.device` block —
+graphics `engine`, `isMobile`, and GPU `renderer` — plus a coarse **`browser`** and **`os`** pair.
+The browser/OS families are derived **server-side from the request User-Agent at ingestion** (e.g.
+`Chrome` / `Safari` on `Windows` / `iOS`); the raw User-Agent is never stored and no version or device
+model is retained (derived, non-PII — [ADR 0003](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0003-privacy-model.md),
+[ADR 0041](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0041-browser-os-performance-segment.md)).
+This needs **no SDK or client change** — it reuses a header the collector already receives. The
+dashboard renders it as the "FPS by device" panel with Backend / Browser / OS / Mobile / GPU columns.
+
+
 ## GPU / memory footprint (`resource_sample`) — opt-in
 
 Off by default. When `capture.resourceSample` is enabled, the connector samples the _actual

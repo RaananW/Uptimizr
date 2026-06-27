@@ -269,7 +269,11 @@ capture is capped at 50 events per session.
 ### Session context (`meta`, `sceneDescription`, `user`)
 
 `trackScene` attaches context to the one-time `session_start` event. `device` and
-`scene` are auto-detected from Babylon; you supply the rest. There are three
+`scene` are auto-detected from Babylon; you supply the rest. The collector also
+**derives a coarse `device.browser` / `device.os`** from the request User-Agent at
+ingestion (e.g. `Chrome` / `Windows`) and merges them into the `device` block — a
+non-PII, server-authoritative segment for the performance panels; the raw
+User-Agent is never stored (ADR 0003 / ADR 0041). There are three
 inputs, all optional:
 
 - **`sceneDescription`** — a free-text label for the experience, merged into the
