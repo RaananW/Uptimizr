@@ -737,7 +737,11 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   // Large scenes (ADR 0040 §5) split into sections expose `registerSceneProxies`,
   // which registers a scoped proxy per section so every walkable area has its own
   // correctly-framed backdrop; single-scene worlds use `registerSceneProxy`.
-  if (caps.sceneProxy && (instance.registerSceneProxies || instance.registerSceneProxy) && heatmapStatus) {
+  if (
+    caps.sceneProxy &&
+    (instance.registerSceneProxies || instance.registerSceneProxy) &&
+    heatmapStatus
+  ) {
     const registerSceneProxy = instance.registerSceneProxy?.bind(instance);
     const registerSceneProxies = instance.registerSceneProxies?.bind(instance);
     const runProxyScan = async (): Promise<void> => {

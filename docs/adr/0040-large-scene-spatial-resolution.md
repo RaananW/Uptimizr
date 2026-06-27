@@ -97,7 +97,7 @@ distinct or coordinate-colliding areas. Concretely:
   coordinates** (so heat must never aggregate across them). It is **not** required to make one large
   continuous space readable — §1–§4 do that automatically. This removes the implicit pressure to
   over-segment.
-- A corollary for backdrops: when a continuous space *does* self-declare sections (each tracked as its
+- A corollary for backdrops: when a continuous space _does_ self-declare sections (each tracked as its
   own `scene_id`), the connector registers a **scoped scene proxy per section** (ADR 0014) — each
   section's own geometry, not one whole-world proxy. So every area's world heatmap gets a correctly-
   framed backdrop (an elevated level shows just that level), and sections the visitor never entered
