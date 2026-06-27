@@ -146,10 +146,18 @@ function buildSlabs(): Slab[] {
   // landing) so the ramp leads all the way onto the floor instead of into a ceiling.
   slabs.push(box("tower-floor-2-w", TOWER_CX - 31, FLOOR_RISE - 0.4, 10, 8, 0.8, 90, COLOR.tower));
   slabs.push(box("tower-floor-2-e", TOWER_CX + 13, FLOOR_RISE - 0.4, 10, 44, 0.8, 90, COLOR.tower));
-  slabs.push(box("tower-floor-2-n", TOWER_CX - 18, FLOOR_RISE - 0.4, 47.5, 18, 0.8, 15, COLOR.tower));
-  slabs.push(box("tower-floor-3-w", TOWER_CX - 13, FLOOR_RISE * 2 - 0.4, 10, 44, 0.8, 90, COLOR.tower));
-  slabs.push(box("tower-floor-3-e", TOWER_CX + 31, FLOOR_RISE * 2 - 0.4, 10, 8, 0.8, 90, COLOR.tower));
-  slabs.push(box("tower-floor-3-n", TOWER_CX + 18, FLOOR_RISE * 2 - 0.4, 47.5, 18, 0.8, 15, COLOR.tower));
+  slabs.push(
+    box("tower-floor-2-n", TOWER_CX - 18, FLOOR_RISE - 0.4, 47.5, 18, 0.8, 15, COLOR.tower),
+  );
+  slabs.push(
+    box("tower-floor-3-w", TOWER_CX - 13, FLOOR_RISE * 2 - 0.4, 10, 44, 0.8, 90, COLOR.tower),
+  );
+  slabs.push(
+    box("tower-floor-3-e", TOWER_CX + 31, FLOOR_RISE * 2 - 0.4, 10, 8, 0.8, 90, COLOR.tower),
+  );
+  slabs.push(
+    box("tower-floor-3-n", TOWER_CX + 18, FLOOR_RISE * 2 - 0.4, 47.5, 18, 0.8, 15, COLOR.tower),
+  );
   for (const [cx, cz] of [
     [TOWER_CX - 32, -33],
     [TOWER_CX + 32, -33],
