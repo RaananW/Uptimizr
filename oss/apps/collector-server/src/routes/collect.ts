@@ -5,6 +5,7 @@ import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
 import type { LiveBus } from "../liveBus.js";
 import { enrichEvents } from "../enrich.js";
+import { parseClientInfo } from "../userAgent.js";
 import { dailySalt, visitorHash } from "../visitor.js";
 
 interface Options {
@@ -70,7 +71,11 @@ export const collectRoutes: FastifyPluginAsync<Options> = async (
       const ua = (request.headers["user-agent"] as string | undefined) ?? "";
       const visitorId = visitorHash(ip, ua, dailySalt(config.visitorHashSecret));
 
-      const enriched = enrichEvents(events, visitorId);
+      // Reduce the (otherwise discarded) User-Agent to a coarse, non-PII
+      // `{ browser, os }` for the performance device segment (ADR 0041); the raw
+      // UA is never stored.
+      const client = parseClientInfo(ua);
+      const enriched = enrichEvents(events, visitorId, client);
       liveBus.publish(enriched);
       await store.insertEvents(enriched);
 

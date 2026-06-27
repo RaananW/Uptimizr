@@ -788,8 +788,9 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     },
   );
 
-  // FPS by device class (#82, ADR 0028 §2) — per-session median FPS attributed to
-  // the `session_start.device` block (backend / mobile / GPU renderer).
+  // FPS by device class (#82, ADR 0028 §2; #11, ADR 0041) — per-session median FPS
+  // attributed to the `session_start.device` block (backend / mobile / GPU
+  // renderer) plus the coarse browser/OS derived from the User-Agent at ingestion.
   r.get(
     "/api/v1/perf/by-device",
     { schema: { querystring: heatmapQueryParams } },
