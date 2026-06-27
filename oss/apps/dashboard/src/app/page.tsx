@@ -474,6 +474,29 @@ export default function Page() {
     return () => clearInterval(t);
   }, [liveEnabled]);
 
+  // Keep the Scene dropdown fresh while live. The heavy aggregate refetch is
+  // throttled and skipped while a session drill-down is open (so the open view
+  // isn't reset under the user), but the lightweight scene list should still pick
+  // up areas the live visitor enters — otherwise the dropdown shows a stale
+  // subset until the next full reload (ADR 0040).
+  useEffect(() => {
+    if (!liveEnabled) return;
+    const api = new CollectorApi(baseUrl, apiKey);
+    let cancelled = false;
+    const tick = async () => {
+      const range = resolveRange(filtersRef.current);
+      const list = await api
+        .scenes({ since: range.since, until: range.until, limit: 200 })
+        .catch(() => null);
+      if (!cancelled && list) setScenes(list);
+    };
+    const t = setInterval(() => void tick(), 5_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [liveEnabled, baseUrl, apiKey]);
+
   // The 3D panels (world/gaze heatmaps, click rays) anchor their proxy geometry
   // to the scene backdrop, resolved independently of the query data (ADR 0040):
   // a pinned Scene filter shows just that area; otherwise show the WHOLE building —
