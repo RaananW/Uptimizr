@@ -79,6 +79,12 @@ complete.
 - **Tests:** Vitest for unit/integration. **Major / user-visible features also require a
   Playwright E2E** under `examples/playground/e2e/` that drives the real browser → SDK → collector
   → dashboard/replay round trip (`work-on-issue` skill, step 4).
+- **Changesets:** add a changeset (`pnpm changeset`) for any change to a publishable
+  `@uptimizr/*` package — it drives the release/version bump.
+- **Pull requests:** fill out every section of `.github/PULL_REQUEST_TEMPLATE.md` (Summary, Linked
+  issue, Type of change, Checklist, AI-assisted contribution) and tick each checklist item
+  honestly, flagging anything intentionally skipped. The `create-pr` skill reproduces the full gate
+  locally first.
 
 ## Task-specific guides
 

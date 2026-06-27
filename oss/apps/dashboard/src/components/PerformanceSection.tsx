@@ -129,7 +129,7 @@ export function PerformanceSection({ data }: { data: PerformanceData }) {
 
       <Panel
         title="FPS by device"
-        subtitle="per-session median FPS, attributed to session_start.device"
+        subtitle="per-session median FPS, by session_start.device + UA-derived browser/OS"
       >
         {byDevice.length === 0 ? (
           <p className="text-sm text-fg-muted">No device data in range.</p>
@@ -139,6 +139,8 @@ export function PerformanceSection({ data }: { data: PerformanceData }) {
               <thead className="text-xs uppercase tracking-wide text-fg-muted">
                 <tr>
                   <th className="py-1 pr-4 font-medium">Backend</th>
+                  <th className="py-1 pr-4 font-medium">Browser</th>
+                  <th className="py-1 pr-4 font-medium">OS</th>
                   <th className="py-1 pr-4 font-medium">Mobile</th>
                   <th className="py-1 pr-4 font-medium">GPU</th>
                   <th className="py-1 pr-4 text-right font-medium">Sessions</th>
@@ -148,10 +150,12 @@ export function PerformanceSection({ data }: { data: PerformanceData }) {
               <tbody className="text-fg">
                 {byDevice.map((d, i) => (
                   <tr
-                    key={`${d.engine}|${d.is_mobile}|${d.renderer}|${i}`}
+                    key={`${d.engine}|${d.browser}|${d.os}|${d.is_mobile}|${d.renderer}|${i}`}
                     className="border-t border-ink/60"
                   >
                     <td className="py-1 pr-4">{d.engine || "—"}</td>
+                    <td className="py-1 pr-4">{d.browser || "—"}</td>
+                    <td className="py-1 pr-4">{d.os || "—"}</td>
                     <td className="py-1 pr-4">{d.is_mobile === "true" ? "yes" : "no"}</td>
                     <td className="py-1 pr-4 max-w-[16rem] truncate" title={d.renderer}>
                       {d.renderer || "—"}

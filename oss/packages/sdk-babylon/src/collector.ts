@@ -371,7 +371,43 @@ interface CameraView {
   globalPosition: { x: number; y: number; z: number };
   getForwardRay(length?: number): { direction: { x: number; y: number; z: number } };
   fov?: number;
+  /** Near-plane distance (`Camera.minZ`); used to reconstruct flat-pointer ray origins (issue #22). */
+  minZ?: number;
   getTarget?: () => { x: number; y: number; z: number };
+}
+
+/**
+ * Structural view of the engine's `getAspectRatio` used to capture the viewport
+ * aspect on each `camera_sample` (issue #22). Typed structurally so the connector
+ * keeps `@babylonjs/core` a peer dependency (no runtime import).
+ */
+interface EngineWithAspectRatio {
+  getAspectRatio(viewportOwner: unknown, useScreen?: boolean): number;
+}
+
+/**
+ * Capture the camera's projection intrinsics (vertical `fov` + viewport `aspect`
+ * + near-plane `near`) when available, so flat-pointer click rays can later be
+ * unprojected onto the near plane (issue #22). Each field is omitted when the
+ * engine/camera doesn't expose a finite, positive value, keeping the sample
+ * faithful and the schema fields optional.
+ */
+function readCameraIntrinsics(
+  scene: Scene,
+  cam: Camera,
+): { fov?: number; aspect?: number; near?: number } {
+  const view = cam as unknown as CameraView;
+  const out: { fov?: number; aspect?: number; near?: number } = {};
+  if (typeof view.fov === "number" && Number.isFinite(view.fov)) out.fov = view.fov;
+  const engine = scene.getEngine() as unknown as Partial<EngineWithAspectRatio>;
+  if (typeof engine.getAspectRatio === "function") {
+    const aspect = engine.getAspectRatio(cam);
+    if (Number.isFinite(aspect) && aspect > 0) out.aspect = aspect;
+  }
+  if (typeof view.minZ === "number" && Number.isFinite(view.minZ) && view.minZ > 0) {
+    out.near = view.minZ;
+  }
+  return out;
 }
 
 /**
@@ -900,11 +936,12 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
         if (!cam) return;
         const view = cam as unknown as CameraView;
         const target = readTarget(cam);
+        const intrinsics = readCameraIntrinsics(scene, cam);
         const pose: CameraPose = {
           position: toVec3(view.globalPosition),
           direction: toVec3(view.getForwardRay().direction),
           ...(target ? { target } : {}),
-          ...(typeof view.fov === "number" ? { fov: view.fov } : {}),
+          ...intrinsics,
         };
         // Cheap main-thread idle pre-gate: keep at most one gaze pick per emitted
         // pose (and none while the view is static) by diffing against the last
@@ -923,6 +960,8 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
           direction: pose.direction,
           ...(pose.target ? { target: pose.target } : {}),
           ...(pose.fov !== undefined ? { fov: pose.fov } : {}),
+          ...(pose.aspect !== undefined ? { aspect: pose.aspect } : {}),
+          ...(pose.near !== undefined ? { near: pose.near } : {}),
           ...(gaze?.hitPoint ? { hitPoint: gaze.hitPoint } : {}),
           ...(gaze?.hitMesh ? { hitMesh: gaze.hitMesh } : {}),
         });

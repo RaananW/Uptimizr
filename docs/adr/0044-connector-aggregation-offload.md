@@ -1,4 +1,4 @@
-# ADR 0041: Connector-side aggregation offload via one engine-agnostic Aggregator
+# ADR 0044: Connector-side aggregation offload via one engine-agnostic Aggregator
 
 - **Status:** Accepted
 - **Date:** 2026-07-02

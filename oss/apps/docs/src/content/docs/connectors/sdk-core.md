@@ -70,7 +70,7 @@ pointer/keyboard observers) and the **terminal unload flush** on stop/`pagehide`
 reliability requires the page context. No new data is collected and the wire contract
 (`@uptimizr/schema`) is unchanged — worker mode is an execution-location choice only. See
 [ADR 0031](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0031-optional-worker-offload.md)
-and [ADR 0041](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0041-connector-aggregation-offload.md).
+and [ADR 0044](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0044-connector-aggregation-offload.md).
 
 ## Anonymized users (opt-in)
 

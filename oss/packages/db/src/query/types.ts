@@ -406,6 +406,10 @@ export interface PerfByDeviceRow {
   engine: string;
   is_mobile: string;
   renderer: string;
+  /** Coarse browser family derived from the User-Agent at ingestion (ADR 0041). */
+  browser: string;
+  /** Coarse OS family derived from the User-Agent at ingestion (ADR 0041). */
+  os: string;
   sessions: number;
   samples: number;
   p50_fps: number;

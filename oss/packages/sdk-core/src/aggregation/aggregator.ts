@@ -223,6 +223,8 @@ export function createAggregator(options: AggregatorOptions): Aggregator {
             direction: snapshot.direction,
             ...(snapshot.target ? { target: snapshot.target } : {}),
             ...(snapshot.fov !== undefined ? { fov: snapshot.fov } : {}),
+            ...(snapshot.aspect !== undefined ? { aspect: snapshot.aspect } : {}),
+            ...(snapshot.near !== undefined ? { near: snapshot.near } : {}),
             ...(snapshot.hitPoint ? { hitPoint: snapshot.hitPoint } : {}),
             ...(snapshot.hitMesh ? { hitMesh: snapshot.hitMesh } : {}),
           } as EventInput);

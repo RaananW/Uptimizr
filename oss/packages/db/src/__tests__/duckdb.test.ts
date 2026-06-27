@@ -236,6 +236,107 @@ describe("duckdb store", () => {
     expect(rays).toHaveLength(0);
   });
 
+  it("reconstructs the near-plane origin for a flat pointer click (#22)", async () => {
+    // The camera carries projection intrinsics, so a mouse click unprojects its
+    // off-centre `screen` onto the near plane instead of collapsing to the camera
+    // point. Expected origin computed from the same unproject the SQL applies.
+    const position: [number, number, number] = [0, 0, 0];
+    const direction: [number, number, number] = [2, 1, 2];
+    const screen: [number, number] = [0.15, 0.15];
+    const fov = Math.PI / 2;
+    const aspect = 2;
+    const near = 0.1;
+    const [dx, dy, dz] = direction;
+    const dlen = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const hlen = Math.sqrt(dx * dx + dz * dz);
+    const offR = (2 * screen[0] - 1) * near * Math.tan(fov / 2) * aspect;
+    const offU = (1 - 2 * screen[1]) * near * Math.tan(fov / 2);
+    const expected = [
+      position[0] + (dx * near) / dlen + (dz / hlen) * offR + (-(dx * dy) / (dlen * hlen)) * offU,
+      position[1] + (dy * near) / dlen + (hlen / dlen) * offU,
+      position[2] + (dz * near) / dlen + (-dx / hlen) * offR + (-(dy * dz) / (dlen * hlen)) * offU,
+    ];
+    const flatEvents: AnyEvent[] = [
+      base("camera_sample", T0 + 1_000, { position, direction, fov, aspect, near }),
+      base("pointer_click", T0 + 2_000, {
+        screen,
+        hitPoint: [5, 5, 5],
+        hitMesh: "box",
+        button: 0,
+        source: "mouse",
+      }),
+    ];
+    await insertEvents(db, flatEvents);
+    const rays = await runDuckdbQuery<{
+      origin_x: number;
+      origin_y: number;
+      origin_z: number;
+      mesh: string;
+    }>(db, buildClickGazeRay(PID, { ...RANGE, cellSize: 1 }, duckdbDialect));
+    expect(rays).toHaveLength(1);
+    expect(Number(rays[0].origin_x)).toBeCloseTo(expected[0], 9);
+    expect(Number(rays[0].origin_y)).toBeCloseTo(expected[1], 9);
+    expect(Number(rays[0].origin_z)).toBeCloseTo(expected[2], 9);
+    // The reconstructed origin must differ from the raw camera point.
+    expect(Number(rays[0].origin_x)).not.toBeCloseTo(0, 3);
+  });
+
+  it("falls back to the camera position when intrinsics are missing (#22)", async () => {
+    // No fov/aspect/near on the camera sample → the flat click keeps the legacy
+    // camera-position origin.
+    const flatEvents: AnyEvent[] = [
+      base("camera_sample", T0 + 1_000, { position: [5, 6, 7], direction: [2, 1, 2] }),
+      base("pointer_click", T0 + 2_000, {
+        screen: [0.3, 0.3],
+        hitPoint: [9, 9, 9],
+        hitMesh: "box",
+        button: 0,
+        source: "mouse",
+      }),
+    ];
+    await insertEvents(db, flatEvents);
+    const rays = await runDuckdbQuery<{
+      origin_x: number;
+      origin_y: number;
+      origin_z: number;
+    }>(db, buildClickGazeRay(PID, { ...RANGE, cellSize: 1 }, duckdbDialect));
+    expect(rays).toHaveLength(1);
+    expect(Number(rays[0].origin_x)).toBeCloseTo(5);
+    expect(Number(rays[0].origin_y)).toBeCloseTo(6);
+    expect(Number(rays[0].origin_z)).toBeCloseTo(7);
+  });
+
+  it("falls back to the camera position for a degenerate look-up/down view (#22)", async () => {
+    // Looking straight up makes the near-plane basis undefined (no roll-free right
+    // vector), so reconstruction is skipped in favour of the camera position.
+    const flatEvents: AnyEvent[] = [
+      base("camera_sample", T0 + 1_000, {
+        position: [1, 2, 3],
+        direction: [0, 1, 0],
+        fov: Math.PI / 2,
+        aspect: 1,
+        near: 0.1,
+      }),
+      base("pointer_click", T0 + 2_000, {
+        screen: [0.2, 0.8],
+        hitPoint: [9, 9, 9],
+        hitMesh: "box",
+        button: 0,
+        source: "mouse",
+      }),
+    ];
+    await insertEvents(db, flatEvents);
+    const rays = await runDuckdbQuery<{
+      origin_x: number;
+      origin_y: number;
+      origin_z: number;
+    }>(db, buildClickGazeRay(PID, { ...RANGE, cellSize: 1 }, duckdbDialect));
+    expect(rays).toHaveLength(1);
+    expect(Number(rays[0].origin_x)).toBeCloseTo(1);
+    expect(Number(rays[0].origin_y)).toBeCloseTo(2);
+    expect(Number(rays[0].origin_z)).toBeCloseTo(3);
+  });
+
   it("computes the flow heatmap", async () => {
     await insertEvents(db, EVENTS);
     const links = await runDuckdbQuery(db, buildFlowHeatmap(PID, RANGE, duckdbDialect));

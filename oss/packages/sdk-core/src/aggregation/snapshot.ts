@@ -28,6 +28,10 @@ export interface CameraSnapshot {
   direction: Vec3;
   target?: Vec3;
   fov?: number;
+  /** Viewport aspect ratio (width / height), when the connector captures it (#22). */
+  aspect?: number;
+  /** Camera near-plane distance in world units, when the connector captures it (#22). */
+  near?: number;
   /** Surface hit of the forward gaze ray, when gaze capture is on (ADR 0030). */
   hitPoint?: Vec3;
   hitMesh?: string;

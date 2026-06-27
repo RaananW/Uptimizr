@@ -269,7 +269,11 @@ capture is capped at 50 events per session.
 ### Session context (`meta`, `sceneDescription`, `user`)
 
 `trackScene` attaches context to the one-time `session_start` event. `device` and
-`scene` are auto-detected from Babylon; you supply the rest. There are three
+`scene` are auto-detected from Babylon; you supply the rest. The collector also
+**derives a coarse `device.browser` / `device.os`** from the request User-Agent at
+ingestion (e.g. `Chrome` / `Windows`) and merges them into the `device` block — a
+non-PII, server-authoritative segment for the performance panels; the raw
+User-Agent is never stored (ADR 0003 / ADR 0042). There are three
 inputs, all optional:
 
 - **`sceneDescription`** — a free-text label for the experience, merged into the
@@ -543,7 +547,7 @@ and/or raise the sampling rate; to dedupe a stable FPS, set
 | `jankFrameMs`                                                                                                   | `50`         | A rendered frame slower than this counts toward `frame_perf.longFrames`.                                                                                                                             |
 | `flushIntervalMs`                                                                                               | `5000`       | Max time between network flushes. `0` disables the timer.                                                                                                                                            |
 | `transport`                                                                                                     | beacon→fetch | Custom delivery (e.g. to observe sends).                                                                                                                                                             |
-| `offload`                                                                                                       | `main`       | `"worker"` moves per-frame aggregation (percentiles, transform decomposition, visibility bucketing, idle-diffs, gesture classification) + serialization off the render thread into an opt-in same-origin worker; engine reads and the terminal unload flush stay main-thread. Opt-in, byte-for-byte identical output, silent fallback (ADR 0031 / ADR 0041). |
+| `offload`                                                                                                       | `main`       | `"worker"` moves per-frame aggregation (percentiles, transform decomposition, visibility bucketing, idle-diffs, gesture classification) + serialization off the render thread into an opt-in same-origin worker; engine reads and the terminal unload flush stay main-thread. Opt-in, byte-for-byte identical output, silent fallback (ADR 0031 / ADR 0044). |
 | `disabled`                                                                                                      | `false`      | Collect nothing (e.g. honor Do-Not-Track).                                                                                                                                                           |
 | `debug`                                                                                                         | `false`      | Console debug logs.                                                                                                                                                                                  |
 | `sceneDescription`, `user`, `meta`                                                                              | —            | Extra `session_start` context.                                                                                                                                                                       |
@@ -1017,7 +1021,7 @@ correctly). The dashboard's 3D world heatmap also normalizes color/size to the
 | `GET`  | `/api/v1/heatmaps/gaze/stats`     | Gaze-heatmap totals (ADR 0040 §3): `{ cellSize, cells, hits }` — the gaze sibling of `/heatmaps/world/stats`.                                                                                                                                                                                                                                                                                                                       | `cellSize`, `region`, `scene`, `session`, `cameraMode`                                        |
 | `GET`  | `/api/v1/heatmaps/camera`         | View-direction heatmap (spherical bins).                                                                                                                                                                                                                                                                                                                                                                                            | `bins`, `scene`, `session`, `cameraMode`                                                      |
 | `GET`  | `/api/v1/heatmaps/position`       | Top-down floor-plan camera-position heatmap (ADR 0026): `camera_sample` positions binned on the X/Z ground plane (`gx,gz,avg_y,count`). First-person analog of the pointer heatmap.                                                                                                                                                                                                                                                 | `cellSize`, `region`, `scene`, `session`, `cameraMode`                                        |
-| `GET`  | `/api/v1/heatmaps/click-rays`     | Click rays: pose sources (XR/hand/gaze) use their own ray origin; flat pointers fall back to the nearest camera sample, per voxel/mesh.                                                                                                                                                                                                                                                                                             | `cellSize`, `scene`, `source`, `session`                                                      |
+| `GET`  | `/api/v1/heatmaps/click-rays`     | Click rays: pose sources (XR/hand/gaze) use their own ray origin; flat pointers (mouse/touch/stylus) reconstruct the ray origin by unprojecting the click's `screen` onto the camera's near plane (using the `camera_sample` `fov`/`aspect`/`near` intrinsics), falling back to the nearest camera-sample position when those intrinsics are absent or the view basis is degenerate. Per voxel/mesh.                                | `cellSize`, `scene`, `source`, `session`                                                      |
 | `GET`  | `/api/v1/heatmaps/flow`           | Aggregate gaze→mesh flow links: direction-bin to clicked-mesh counts (no timeline required). Position-aware mode (§7.8) restores the click-time camera **standpoint**: pass `groupByOrigin=true` to also bin by standpoint voxel, or `originVoxel=vx,vy,vz` to scope to one standpoint — rows then carry `origin_vx/vy/vz` and averaged `origin_x/y/z`. Most useful for first-person/walkable scenes (pair with `cameraMode`).      | `bins`, `limit`, `scene`, `session`, `cellSize`, `groupByOrigin`, `originVoxel`, `cameraMode` |
 | `GET`  | `/api/v1/meshes/top`              | Most-interacted meshes.                                                                                                                                                                                                                                                                                                                                                                                                             | `limit`, `session`                                                                            |
 | `GET`  | `/api/v1/meshes/sources`          | Part-popularity source split (#74): per `(mesh, source)` `count` — which input source (mouse/touch/XR/…) drove each mesh's interactions. Scoped to **active interactions** (`mesh_interaction` + `pointer_click`), so passive gaze hits are excluded — this diverges from `/meshes/top`, which counts every mesh-referencing event. The leaderboard reads both rank (sum across sources) and the per-row split from this one query. | `limit`, `scene`, `source`, `session`                                                         |
@@ -1208,6 +1212,43 @@ where `event.sessionId === ctx.sessionId`.
 Panels are registered at **build time** by appending to the `builtinPanels` array in
 the dashboard's `src/panels/registry.tsx`; the `PanelHost` filters by surface and each
 panel's `enabled` gate and renders the bodies into the grid — no manual placement in
-`page.tsx`. Loading panels from a remote URL at runtime is tracked for a future
-release. See the [Custom dashboard panels guide](https://uptimizr.com/docs/guides/custom-panels/)
-for a full walkthrough.
+`page.tsx`.
+
+### Loading panels at runtime (ADR 0041)
+
+The dashboard can also discover and load panels from a **remote manifest at runtime**, so a
+self-hoster adds a panel without rebuilding. It uses the same `PanelDefinition` contract — a panel
+module you can `import()` in the browser. Runtime loading is **off by default**; enable it with a
+build-time env var:
+
+```bash
+# One manifest, or a comma-separated list.
+NEXT_PUBLIC_PANELS_MANIFEST_URL="https://panels.example.com/uptimizr.panels.json"
+# Optional comma-separated allowlist of module origins.
+NEXT_PUBLIC_PANELS_ALLOWED_ORIGINS="https://panels.example.com"
+```
+
+A manifest lists panel modules and the contract major each targets
+(`PANEL_CONTRACT_VERSION` from `@uptimizr/react`):
+
+```json
+{
+  "version": 1,
+  "panels": [
+    {
+      "id": "co2-budget",
+      "url": "https://panels.example.com/co2-budget.js",
+      "contract": 1,
+      "export": "default"
+    }
+  ]
+}
+```
+
+Remote panels execute **with the dashboard's full privileges** (no iframe/worker sandbox — that
+would break the rich `PanelContext`), so only point the manifest at sources you trust; the origin
+allowlist is a guardrail, not a sandbox. Loading is resilient: an unreachable/invalid manifest, an
+incompatible `contract`, a blocked origin, a failed import, or a throwing `render` is isolated per
+panel and surfaced in a "panels failed to load" banner without breaking the grid. See the
+[Custom dashboard panels guide](https://uptimizr.com/docs/guides/custom-panels/) for a full
+walkthrough.

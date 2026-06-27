@@ -114,6 +114,8 @@ export interface CameraPose {
   direction: Vec3;
   target?: Vec3;
   fov?: number;
+  aspect?: number;
+  near?: number;
 }
 
 /** True when two poses are equal within `eps` (target/fov presence must also match). */
@@ -124,6 +126,11 @@ export function poseUnchanged(a: CameraPose, b: CameraPose, eps: number): boolea
   if (a.target && b.target && !vec3Close(a.target, b.target, eps)) return false;
   if ((a.fov === undefined) !== (b.fov === undefined)) return false;
   if (a.fov !== undefined && b.fov !== undefined && Math.abs(a.fov - b.fov) > eps) return false;
+  if ((a.aspect === undefined) !== (b.aspect === undefined)) return false;
+  if (a.aspect !== undefined && b.aspect !== undefined && Math.abs(a.aspect - b.aspect) > eps)
+    return false;
+  if ((a.near === undefined) !== (b.near === undefined)) return false;
+  if (a.near !== undefined && b.near !== undefined && Math.abs(a.near - b.near) > eps) return false;
   return true;
 }
 

@@ -213,12 +213,17 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["mesh"],
     golden: [
       {
-        cam_vx: 0,
+        // Flat-pointer near-plane reconstruction (#22): the box click ASOF-joins to
+        // the camera sample carrying intrinsics (pos [0,0,0], dir [2,1,2], fov π/2,
+        // aspect 2, near 0.1) and screen [0.15, 0.15], so its origin is unprojected
+        // onto the near plane instead of collapsing to the camera point. Verified
+        // from the unproject formula; at cellSize 1 the origin voxel is (-1, 0, 0).
+        cam_vx: -1,
         cam_vy: 0,
         cam_vz: 0,
-        origin_x: 0,
-        origin_y: 0,
-        origin_z: 0,
+        origin_x: -0.04882744092713605,
+        origin_y: 0.09932996624407775,
+        origin_z: 0.14916245780509718,
         hit_vx: 0,
         hit_vy: 0,
         hit_vz: 0,
@@ -453,10 +458,29 @@ export const PARITY_CASES: readonly ParityCase[] = [
     build: (d) => buildPerfByDevice(PID, PARITY_RANGE, d),
     sortKeys: ["engine"],
     // s1 -> webgpu (2 samples), s2 -> webgl2 (1 sample); both sessions have a
-    // single median FPS of 45. isMobile/renderer were never reported -> ''.
+    // single median FPS of 45. isMobile/renderer/browser/os were never reported
+    // -> ''.
     golden: [
-      { engine: "webgl2", is_mobile: "", renderer: "", sessions: 1, samples: 1, p50_fps: 45 },
-      { engine: "webgpu", is_mobile: "", renderer: "", sessions: 1, samples: 2, p50_fps: 45 },
+      {
+        engine: "webgl2",
+        is_mobile: "",
+        renderer: "",
+        browser: "",
+        os: "",
+        sessions: 1,
+        samples: 1,
+        p50_fps: 45,
+      },
+      {
+        engine: "webgpu",
+        is_mobile: "",
+        renderer: "",
+        browser: "",
+        os: "",
+        sessions: 1,
+        samples: 2,
+        p50_fps: 45,
+      },
     ],
   },
   {
