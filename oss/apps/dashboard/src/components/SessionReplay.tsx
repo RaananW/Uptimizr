@@ -420,25 +420,37 @@ export function SessionReplay({
           return;
         }
 
-        // Pull the registered proxy for THIS session's scene (ADR 0014) so the
-        // AABB backdrop shows whenever the replayed session's scene was
-        // registered — independent of the dashboard's scene filter. Derive the
-        // sceneId from the first event that carries one (ADR 0010).
-        let sessionSceneId: string | undefined;
+        // Pull the registered proxies for EVERY scene this session visited
+        // (ADR 0014) so the AABB backdrop covers the whole traversed space —
+        // independent of the dashboard's scene filter. A large scene splits one
+        // continuous world into per-section scenes (ADR 0040 §5), each with its
+        // own scoped proxy, and a single session commonly roams across several of
+        // them; loading only the first leaves most of the walk with no backdrop.
+        // Derive the ids from the events that carry one (ADR 0010), de-duplicated
+        // and in first-seen order.
+        const sessionSceneIds: string[] = [];
+        const seenSceneIds = new Set<string>();
         for (const e of events) {
           const sid = (e as { sceneId?: unknown }).sceneId;
-          if (typeof sid === "string" && sid) {
-            sessionSceneId = sid;
-            break;
+          if (typeof sid === "string" && sid && !seenSceneIds.has(sid)) {
+            seenSceneIds.add(sid);
+            sessionSceneIds.push(sid);
           }
         }
-        const proxyMeshes = sessionSceneId
-          ? ((
-              await new CollectorApi(baseUrl, apiKey)
-                .sceneRepresentation(sessionSceneId)
-                .catch(() => null)
-            )?.proxy?.meshes ?? [])
-          : [];
+        const proxyApi = new CollectorApi(baseUrl, apiKey);
+        const representations = await Promise.all(
+          sessionSceneIds.map((sid) => proxyApi.sceneRepresentation(sid).catch(() => null)),
+        );
+        // Merge each scene's proxy meshes, de-duplicating by name (a mesh belongs
+        // to exactly one section, so this only guards against accidental overlap).
+        const seenMeshNames = new Set<string>();
+        const proxyMeshes = representations
+          .flatMap((rep) => rep?.proxy?.meshes ?? [])
+          .filter((m) => {
+            if (seenMeshNames.has(m.name)) return false;
+            seenMeshNames.add(m.name);
+            return true;
+          });
         if (disposed) return;
 
         // Precompute camera samples and interaction rays so visualization is
