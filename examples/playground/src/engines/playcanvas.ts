@@ -9,6 +9,7 @@ import { createSceneRaycaster, scanSceneProxy, trackScene } from "@uptimizr/play
 import {
   BOX_COLORS,
   COMMON_CAPTURE_FEATURES,
+  registerSectionProxies,
   sectionAt,
   type CaptureFeature,
   type EngineCapabilities,
@@ -360,6 +361,23 @@ export function createPlayCanvasEngineModule(options: PlayCanvasEngineOptions): 
 
     const { createPlayCanvasReplayDriver } = await import("@uptimizr/replay/playcanvas");
 
+    // Shared PUT for a scanned proxy → /scenes/:id/representation (single-scene and
+    // per-section registration for large scenes).
+    const putProxy = async (
+      proxySceneId: string,
+      proxy: ReturnType<typeof scanSceneProxy>,
+    ): Promise<void> => {
+      const res = await fetch(
+        `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(proxySceneId)}/representation`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
+          body: JSON.stringify({ proxy, label: proxySceneId }),
+        },
+      );
+      if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
+    };
+
     return {
       client,
       flashMesh,
@@ -383,17 +401,20 @@ export function createPlayCanvasEngineModule(options: PlayCanvasEngineOptions): 
       },
       async registerSceneProxy(sceneId) {
         const proxy = scanSceneProxy(app, { sceneId });
-        const res = await fetch(
-          `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(sceneId)}/representation`,
-          {
-            method: "PUT",
-            headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
-            body: JSON.stringify({ proxy, label: sceneId }),
-          },
-        );
-        if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
+        await putProxy(sceneId, proxy);
         return proxy.meshCount;
       },
+      ...(setup.sections && setup.sections.length > 0
+        ? {
+            registerSceneProxies: () =>
+              registerSectionProxies({
+                scan: (options) => scanSceneProxy(app, options),
+                put: putProxy,
+                sections: setup.sections ?? [],
+                defaultSceneId: setup.defaultSceneId ?? ctx.sceneId,
+              }),
+          }
+        : {}),
       dispose() {
         if (onSectionUpdate) app.off("update", onSectionUpdate);
         setup.disposeScene?.();

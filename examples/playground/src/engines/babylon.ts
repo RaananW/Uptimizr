@@ -26,6 +26,7 @@ import { showWorldHeatmap } from "@uptimizr/heatmap/babylon";
 import {
   BOX_COLORS,
   COMMON_CAPTURE_FEATURES,
+  registerSectionProxies,
   sectionAt,
   type CaptureFeature,
   type EngineCapabilities,
@@ -284,6 +285,23 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
     // Tracks the active backdrop so loading a new one disposes the previous.
     let currentBackdrop: { dispose(): void } | null = null;
 
+    // Shared PUT for a scanned proxy → /scenes/:id/representation. Used by both the
+    // single-scene registration and the per-section registration (large scenes).
+    const putProxy = async (
+      proxySceneId: string,
+      proxy: ReturnType<typeof scanSceneProxy>,
+    ): Promise<void> => {
+      const res = await fetch(
+        `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(proxySceneId)}/representation`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
+          body: JSON.stringify({ proxy, label: proxySceneId }),
+        },
+      );
+      if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
+    };
+
     return {
       client,
       flashMesh,
@@ -338,17 +356,20 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
       },
       async registerSceneProxy(sceneId) {
         const proxy = scanSceneProxy(scene, { sceneId });
-        const res = await fetch(
-          `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(sceneId)}/representation`,
-          {
-            method: "PUT",
-            headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
-            body: JSON.stringify({ proxy, label: sceneId }),
-          },
-        );
-        if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
+        await putProxy(sceneId, proxy);
         return proxy.meshCount;
       },
+      ...(setup.sections && setup.sections.length > 0
+        ? {
+            registerSceneProxies: () =>
+              registerSectionProxies({
+                scan: (options) => scanSceneProxy(scene, options),
+                put: putProxy,
+                sections: setup.sections ?? [],
+                defaultSceneId: setup.defaultSceneId ?? sceneId,
+              }),
+          }
+        : {}),
       dispose() {
         window.removeEventListener("resize", onResize);
         currentBackdrop?.dispose();

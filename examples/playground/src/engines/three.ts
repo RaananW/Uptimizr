@@ -25,6 +25,7 @@ import { scanSceneProxy, trackScene } from "@uptimizr/three";
 import {
   BOX_COLORS,
   COMMON_CAPTURE_FEATURES,
+  registerSectionProxies,
   sectionAt,
   type CaptureFeature,
   type EngineCapabilities,
@@ -337,6 +338,23 @@ export function createThreeEngineModule(options: ThreeEngineOptions): EngineModu
 
     const { createThreeReplayDriver } = await import("@uptimizr/replay/three");
 
+    // Shared PUT for a scanned proxy → /scenes/:id/representation (single-scene and
+    // per-section registration for large scenes).
+    const putProxy = async (
+      proxySceneId: string,
+      proxy: ReturnType<typeof scanSceneProxy>,
+    ): Promise<void> => {
+      const res = await fetch(
+        `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(proxySceneId)}/representation`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
+          body: JSON.stringify({ proxy, label: proxySceneId }),
+        },
+      );
+      if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
+    };
+
     return {
       client,
       flashMesh,
@@ -363,17 +381,20 @@ export function createThreeEngineModule(options: ThreeEngineOptions): EngineModu
       },
       async registerSceneProxy(sceneId) {
         const proxy = scanSceneProxy(scene, { sceneId });
-        const res = await fetch(
-          `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(sceneId)}/representation`,
-          {
-            method: "PUT",
-            headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
-            body: JSON.stringify({ proxy, label: sceneId }),
-          },
-        );
-        if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
+        await putProxy(sceneId, proxy);
         return proxy.meshCount;
       },
+      ...(setup.sections && setup.sections.length > 0
+        ? {
+            registerSceneProxies: () =>
+              registerSectionProxies({
+                scan: (options) => scanSceneProxy(scene, options),
+                put: putProxy,
+                sections: setup.sections ?? [],
+                defaultSceneId: setup.defaultSceneId ?? ctx.sceneId,
+              }),
+          }
+        : {}),
       dispose() {
         running = false;
         window.removeEventListener("resize", onResize);

@@ -563,7 +563,14 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   setHidden("replaySection", !(hasClient && caps.replay && instance.createReplayDriver));
   setHidden("backdropSection", !(hasClient && caps.backdrop && instance.loadBackdrop));
   setHidden("heatmapSection", !(hasClient && caps.heatmap && instance.showHeatmap));
-  setHidden("proxySection", !(hasClient && caps.sceneProxy && instance.registerSceneProxy));
+  setHidden(
+    "proxySection",
+    !(
+      hasClient &&
+      caps.sceneProxy &&
+      (instance.registerSceneProxy || instance.registerSceneProxies)
+    ),
+  );
   setHidden("heatmapStatus", !(hasClient && (caps.heatmap || caps.sceneProxy)));
 
   if (!client) return; // A-Frame declarative path: nothing further to wire.
@@ -727,17 +734,28 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   }
 
   // --- Scene proxy registration (ADR 0014) -----------------------------------
-  if (caps.sceneProxy && instance.registerSceneProxy && heatmapStatus) {
-    const registerSceneProxy = instance.registerSceneProxy.bind(instance);
+  // Large scenes (ADR 0040 §5) split into sections expose `registerSceneProxies`,
+  // which registers a scoped proxy per section so every walkable area has its own
+  // correctly-framed backdrop; single-scene worlds use `registerSceneProxy`.
+  if (caps.sceneProxy && (instance.registerSceneProxies || instance.registerSceneProxy) && heatmapStatus) {
+    const registerSceneProxy = instance.registerSceneProxy?.bind(instance);
+    const registerSceneProxies = instance.registerSceneProxies?.bind(instance);
     const runProxyScan = async (): Promise<void> => {
       if (!activeApiKey) {
         heatmapStatus.textContent = "Set VITE_API_KEY to register the scene proxy.";
         return;
       }
-      heatmapStatus.textContent = `Scanning "${currentScene}" scene proxy…`;
       try {
-        const meshCount = await registerSceneProxy(currentScene);
-        heatmapStatus.textContent = `Registered proxy for "${currentScene}" (${meshCount} meshes).`;
+        if (registerSceneProxies) {
+          heatmapStatus.textContent = "Scanning section scene proxies…";
+          const results = await registerSceneProxies();
+          const meshes = results.reduce((sum, r) => sum + r.meshCount, 0);
+          heatmapStatus.textContent = `Registered ${results.length} section proxies (${meshes} meshes).`;
+        } else if (registerSceneProxy) {
+          heatmapStatus.textContent = `Scanning "${currentScene}" scene proxy…`;
+          const meshCount = await registerSceneProxy(currentScene);
+          heatmapStatus.textContent = `Registered proxy for "${currentScene}" (${meshCount} meshes).`;
+        }
       } catch (err) {
         heatmapStatus.textContent = err instanceof Error ? err.message : "Proxy scan failed.";
       }
