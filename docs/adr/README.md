@@ -45,7 +45,7 @@ than editing history.
 | [0040](./0040-large-scene-spatial-resolution.md)                   | Large-scene spatial resolution (bounds-driven binning + region drill-down)     | Proposed   |
 | [0041](./0041-runtime-remote-dashboard-panels.md)                  | Runtime / remote dashboard panel loading (manifest, extends 0036)              | Accepted   |
 | [0042](./0042-browser-os-performance-segment.md)                   | Browser/OS performance segment derived from the User-Agent at ingestion        | Accepted   |
-| [0043](./0043-near-plane-origin-for-flat-pointer-click-rays.md)    | Near-plane origin reconstruction for flat-pointer click rays                    | Accepted   |
+| [0043](./0043-near-plane-origin-for-flat-pointer-click-rays.md)    | Near-plane origin reconstruction for flat-pointer click rays                   | Accepted   |
 
 ## Template
 

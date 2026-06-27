@@ -138,8 +138,7 @@ describe("babylonCollector", () => {
 
   it("omits aspect/near when the engine/camera don't expose them (#22)", () => {
     const { scene } = makeScene();
-    const mutableCam = (scene as unknown as { activeCamera: Record<string, unknown> })
-      .activeCamera;
+    const mutableCam = (scene as unknown as { activeCamera: Record<string, unknown> }).activeCamera;
     delete mutableCam.minZ;
     (scene as unknown as { getEngine: () => Record<string, unknown> }).getEngine = () => ({
       getFps: () => 60,
