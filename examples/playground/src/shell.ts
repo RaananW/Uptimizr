@@ -67,6 +67,16 @@ export function resolveEngineId(): EngineId | null {
 }
 
 /**
+ * Resolve the SDK processing-location flag from `?offload=worker` (ADR 0031 /
+ * ADR 0041). Returns `undefined` (SDK default `"main"`) for anything else, so the
+ * default path is untouched and the e2e suite opts into the worker explicitly.
+ */
+export function resolveOffload(): "main" | "worker" | undefined {
+  const value = new URLSearchParams(location.search).get("offload");
+  return value === "worker" || value === "main" ? value : undefined;
+}
+
+/**
  * Resolve the active scene from `?scene=` (preferred), then the `?camera=`
  * back-compat alias (maps to the matching built-in scene), then localStorage,
  * then the catalog default. The scene fixes the camera mode and the collector
@@ -529,6 +539,7 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
       capture: captureState,
       sceneId: scene.id,
       cameraMode,
+      ...(resolveOffload() ? { offload: resolveOffload() } : {}),
       ...(keyBindings ? { keyBindings } : {}),
       onBoxPick: () => {
         clickCount += 1;
