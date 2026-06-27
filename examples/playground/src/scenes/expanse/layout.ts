@@ -141,9 +141,15 @@ function buildSlabs(): Slab[] {
   slabs.push(box("rail-e", 80, OVERLOOK_Y + 0.75, 210, 1, 1.5, 140, COLOR.rail));
   slabs.push(box("rail-w", -80, OVERLOOK_Y + 0.75, 210, 1, 1.5, 140, COLOR.rail));
 
-  // Tower (east): three open floors joined by internal switchback ramps.
-  slabs.push(box("tower-floor-2", TOWER_CX, FLOOR_RISE - 0.4, 10, 70, 0.8, 90, COLOR.tower));
-  slabs.push(box("tower-floor-3", TOWER_CX, FLOOR_RISE * 2 - 0.4, 10, 70, 0.8, 90, COLOR.tower));
+  // Tower (east): three open floors joined by internal switchback ramps. Each upper
+  // floor is split around an open stairwell (slot above the arriving ramp + a north
+  // landing) so the ramp leads all the way onto the floor instead of into a ceiling.
+  slabs.push(box("tower-floor-2-w", TOWER_CX - 31, FLOOR_RISE - 0.4, 10, 8, 0.8, 90, COLOR.tower));
+  slabs.push(box("tower-floor-2-e", TOWER_CX + 13, FLOOR_RISE - 0.4, 10, 44, 0.8, 90, COLOR.tower));
+  slabs.push(box("tower-floor-2-n", TOWER_CX - 18, FLOOR_RISE - 0.4, 47.5, 18, 0.8, 15, COLOR.tower));
+  slabs.push(box("tower-floor-3-w", TOWER_CX - 13, FLOOR_RISE * 2 - 0.4, 10, 44, 0.8, 90, COLOR.tower));
+  slabs.push(box("tower-floor-3-e", TOWER_CX + 31, FLOOR_RISE * 2 - 0.4, 10, 8, 0.8, 90, COLOR.tower));
+  slabs.push(box("tower-floor-3-n", TOWER_CX + 18, FLOOR_RISE * 2 - 0.4, 47.5, 18, 0.8, 15, COLOR.tower));
   for (const [cx, cz] of [
     [TOWER_CX - 32, -33],
     [TOWER_CX + 32, -33],
@@ -155,9 +161,9 @@ function buildSlabs(): Slab[] {
     );
   }
   slabs.push(rampSlab("tower-ramp-1", TOWER_CX - 18, 0, -30, FLOOR_RISE, 40, 14));
-  // L2 → L3 ramp authored low-z → high-z so it renders as a gentle slope; the height
-  // field below climbs it from the L2 (south) end up to the L3 (north) end.
-  slabs.push(rampSlab("tower-ramp-2", TOWER_CX + 18, FLOOR_RISE * 2, -30, FLOOR_RISE, 40, 14));
+  // L2 → L3 ramp climbs north (low-z L2 end up to high-z L3 landing), mirroring ramp-1
+  // so both ramps top out at their floor's north landing.
+  slabs.push(rampSlab("tower-ramp-2", TOWER_CX + 18, FLOOR_RISE, -30, FLOOR_RISE * 2, 40, 14));
 
   // Gardens (far north-west corner) — intentionally out of the way (a cold spot).
   for (let i = 0; i < 4; i += 1) {
@@ -218,9 +224,10 @@ export function floorHeightAt(x: number, z: number, currentFloorY: number): numb
   if (x >= 112 && x <= 126 && z >= -30 && z <= 40) {
     candidates.push(((z + 30) / 70) * FLOOR_RISE);
   }
-  // Tower ramp 2 (L2 → L3): 12 at the north end down to 6 at the south end.
+  // Tower ramp 2 (L2 → L3): climbs north over z ∈ [-30, 40], 6 at the south end up
+  // to 12 at the north end (mirrors ramp 1).
   if (x >= 148 && x <= 162 && z >= -30 && z <= 40) {
-    candidates.push(FLOOR_RISE + ((40 - z) / 70) * FLOOR_RISE);
+    candidates.push(FLOOR_RISE + ((z + 30) / 70) * FLOOR_RISE);
   }
 
   let best = 0;

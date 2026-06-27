@@ -191,9 +191,17 @@ function buildExpanseScene(engine: Engine, ctx: EngineMountContext): BabylonScen
   // --- Tower (east), three open floors joined by internal ramps ---------------
   const towerMat = mat(scene, "towerMat", [0.2, 0.22, 0.3]);
   const towerCx = 137;
-  // Floor slabs at y = 6 and y = 12 (ground floor uses the world ground).
-  slab(scene, "tower-floor-2", towerCx, FLOOR_RISE - 0.4, 10, 70, 0.8, 90, towerMat);
-  slab(scene, "tower-floor-3", towerCx, FLOOR_RISE * 2 - 0.4, 10, 70, 0.8, 90, towerMat);
+  // Each upper floor is split around an open stairwell so the internal ramp leads
+  // all the way onto it: an open slot above the arriving ramp (no ceiling to bonk
+  // your head on while climbing) plus a solid landing where the ramp tops out.
+  // Ground floor (L1) uses the world ground. Floor 2 (y≈6): stairwell over ramp-1
+  // in the west lane; Floor 3 (y≈12): stairwell over ramp-2 in the east lane.
+  slab(scene, "tower-floor-2-w", towerCx - 31, FLOOR_RISE - 0.4, 10, 8, 0.8, 90, towerMat);
+  slab(scene, "tower-floor-2-e", towerCx + 13, FLOOR_RISE - 0.4, 10, 44, 0.8, 90, towerMat);
+  slab(scene, "tower-floor-2-n", towerCx - 18, FLOOR_RISE - 0.4, 47.5, 18, 0.8, 15, towerMat);
+  slab(scene, "tower-floor-3-w", towerCx - 13, FLOOR_RISE * 2 - 0.4, 10, 44, 0.8, 90, towerMat);
+  slab(scene, "tower-floor-3-e", towerCx + 31, FLOOR_RISE * 2 - 0.4, 10, 8, 0.8, 90, towerMat);
+  slab(scene, "tower-floor-3-n", towerCx + 18, FLOOR_RISE * 2 - 0.4, 47.5, 18, 0.8, 15, towerMat);
   // Corner columns spanning the full height (visual framing + collision).
   for (const [cx, cz] of [
     [towerCx - 32, -33],
@@ -203,10 +211,11 @@ function buildExpanseScene(engine: Engine, ctx: EngineMountContext): BabylonScen
   ] as const) {
     slab(scene, `tower-col-${cx}-${cz}`, cx, FLOOR_RISE, cz, 2, FLOOR_RISE * 2 + 4, 2, towerMat);
   }
-  // Internal ramps: ground→L2 (rising north) and L2→L3 (rising south), offset on X
-  // so they don't overlap — a switchback the visitor climbs.
+  // Internal ramps both rise north onto their floor's landing, offset on X (ramp-1
+  // west → L2, ramp-2 east → L3): a switchback the visitor climbs through the open
+  // stairwells, all the way up to the top floor.
   ramp(scene, "tower-ramp-1", towerCx - 18, 0, -30, FLOOR_RISE, 40, 14, rampMat);
-  ramp(scene, "tower-ramp-2", towerCx + 18, FLOOR_RISE, 40, FLOOR_RISE * 2, -30, 14, rampMat);
+  ramp(scene, "tower-ramp-2", towerCx + 18, FLOOR_RISE, -30, FLOOR_RISE * 2, 40, 14, rampMat);
   landmark(scene, 6, towerCx, 0, 30, towerMat);
   landmark(scene, 7, towerCx, FLOOR_RISE, 30, towerMat);
   landmark(scene, 8, towerCx, FLOOR_RISE * 2, 30, towerMat);
