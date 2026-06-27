@@ -105,6 +105,140 @@ export interface EngineCapabilities {
   readonly sceneProxy: boolean;
 }
 
+/**
+ * One named sub-area box of a large scene (ADR 0040 §5). As the camera enters a
+ * section's axis-aligned box the connector calls `client.setScene(section.id)`, so a
+ * single continuous space is tracked as distinct, semantically-named areas you can
+ * filter/segment on. Engine-agnostic so every connector's scene setup can declare it.
+ */
+export interface SceneSection {
+  /** The `scene_id` the connector tags events with while the camera is inside. */
+  readonly id: string;
+  /** Inclusive world-space AABB `[minX, minY, minZ, maxX, maxY, maxZ]`. */
+  readonly aabb: readonly [number, number, number, number, number, number];
+}
+
+/**
+ * Resolve which section a world-space point is in: the first section whose box
+ * contains `(x, y, z)` wins (boxes are tested in order), else `fallback`. Shared by
+ * every engine module's per-frame section watcher so the containment rule is identical.
+ */
+export function sectionAt(
+  sections: readonly SceneSection[],
+  fallback: string,
+  x: number,
+  y: number,
+  z: number,
+): string {
+  for (const s of sections) {
+    const [minX, minY, minZ, maxX, maxY, maxZ] = s.aabb;
+    if (x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ) {
+      return s.id;
+    }
+  }
+  return fallback;
+}
+
+/** The slice of a scanned scene proxy {@link registerSectionProxies} reads. */
+export interface ScannedSceneProxy {
+  /** World AABB `[minX, minY, minZ, maxX, maxY, maxZ]` of every included mesh. */
+  readonly bounds: readonly number[];
+  /** Number of meshes the proxy describes. */
+  readonly meshCount: number;
+  /** Per-mesh world AABBs. */
+  readonly meshes: ReadonlyArray<{ readonly name: string; readonly aabb: readonly number[] }>;
+}
+
+/**
+ * A mesh counts as "world-spanning" (the ground plane, perimeter walls) when its
+ * footprint covers at least this fraction of a horizontal world axis. Such meshes
+ * carry no per-section signal and would blow every section's backdrop up to the
+ * whole world, so they're kept out of the scoped section proxies and instead
+ * gathered into the default/overview scene — where the floor and walls belong as
+ * orienting context (e.g. a session replay that re-drives across the whole space).
+ */
+const SECTION_PROXY_SPAN_FRACTION = 0.6;
+
+/**
+ * Register one scoped scene proxy per declared section of a large scene (ADR 0040 §5).
+ *
+ * A single continuous world is tracked as distinct, semantically-named areas via
+ * `client.setScene(...)`, but a connector only ever auto-registers ONE proxy (for the
+ * scene it mounted in), so every other section's world heatmap has no spatial backdrop
+ * and the one proxy that exists spans the entire world. This walks the scene once to
+ * read each mesh's world AABB, assigns each mesh to the section that contains its centre
+ * (via {@link sectionAt}, the same containment rule the per-frame watcher uses), routes
+ * world-spanning meshes (the ground plane, perimeter walls) to the default/overview scene,
+ * then re-scans + registers a proxy scoped to each section's own geometry. The result:
+ * every walkable area gets a correctly-framed backdrop, an elevated level shows just that
+ * level instead of the whole flat world, and the overview keeps the floor and walls.
+ *
+ * Engine-agnostic: callers pass an engine-specific `scan` (e.g. `scanSceneProxy`) and a
+ * `put` that PUTs the representation, so all three connectors share one implementation.
+ */
+export async function registerSectionProxies<T extends ScannedSceneProxy>(opts: {
+  /** Scan the live scene into a proxy, optionally filtered to the named meshes. */
+  scan: (options: { sceneId: string; includeMesh?: (name: string) => boolean }) => T;
+  /** Persist a section's scoped proxy (PUT /scenes/:id/representation). */
+  put: (sceneId: string, proxy: T) => Promise<void>;
+  readonly sections: readonly SceneSection[];
+  /** Scene id for meshes in none of the sections (the spawn/overview area). */
+  readonly defaultSceneId: string;
+}): Promise<Array<{ sceneId: string; meshCount: number }>> {
+  const { scan, put, sections, defaultSceneId } = opts;
+
+  // One full pass to read every mesh's world AABB and the world extents.
+  const full = scan({ sceneId: defaultSceneId });
+  const [wMinX, , wMinZ, wMaxX, , wMaxZ] = full.bounds;
+  const worldX = (wMaxX ?? 0) - (wMinX ?? 0);
+  const worldZ = (wMaxZ ?? 0) - (wMinZ ?? 0);
+
+  const meshesByScene = new Map<string, Set<string>>();
+  for (const mesh of full.meshes) {
+    const [aMinX, aMinY, aMinZ, aMaxX, aMaxY, aMaxZ] = mesh.aabb;
+    if (
+      aMinX === undefined ||
+      aMinY === undefined ||
+      aMinZ === undefined ||
+      aMaxX === undefined ||
+      aMaxY === undefined ||
+      aMaxZ === undefined
+    ) {
+      continue;
+    }
+    const spans =
+      (worldX > 0 && aMaxX - aMinX >= SECTION_PROXY_SPAN_FRACTION * worldX) ||
+      (worldZ > 0 && aMaxZ - aMinZ >= SECTION_PROXY_SPAN_FRACTION * worldZ);
+    // World-spanning meshes (the ground plane, perimeter walls) carry no per-section
+    // signal, so they go to the default/overview scene rather than a section box —
+    // keeping elevated sections tightly framed while the overview keeps the floor.
+    const sceneId = spans
+      ? defaultSceneId
+      : sectionAt(
+          sections,
+          defaultSceneId,
+          (aMinX + aMaxX) / 2,
+          (aMinY + aMaxY) / 2,
+          (aMinZ + aMaxZ) / 2,
+        );
+    let set = meshesByScene.get(sceneId);
+    if (!set) {
+      set = new Set<string>();
+      meshesByScene.set(sceneId, set);
+    }
+    set.add(mesh.name);
+  }
+
+  const registered: Array<{ sceneId: string; meshCount: number }> = [];
+  for (const [sceneId, names] of meshesByScene) {
+    if (names.size === 0) continue;
+    const proxy = scan({ sceneId, includeMesh: (name) => names.has(name) });
+    await put(sceneId, proxy);
+    registered.push({ sceneId, meshCount: proxy.meshCount });
+  }
+  return registered;
+}
+
 export type PointerKind = "pointer_move" | "pointer_click" | "pointer_down" | "pointer_up";
 
 /** Shell callbacks the engine's replay driver drives (cursor overlay + status). */
@@ -144,6 +278,14 @@ export interface EngineMountContext {
   onBoxPick(name: string): void;
   /** Push a line of status text into the panel (used by the declarative A-Frame path). */
   onStatus(text: string): void;
+  /**
+   * Notify the shell that the engine switched the active scene/area id via
+   * `client.setScene()` — e.g. a large multi-level scene crossing a section
+   * boundary (ADR 0010 §1 / ADR 0040 §5). The shell updates the HUD and points
+   * heatmap/proxy actions at the now-active id. Optional: scenes that never call
+   * `setScene` themselves omit it.
+   */
+  onSceneChange?(sceneId: string): void;
 }
 
 /** A live, mounted engine the shell can drive. */
@@ -164,6 +306,13 @@ export interface EngineInstance {
   showHeatmap?(sceneId: string): Promise<{ dispose(): void }>;
   /** Scan + register a scene proxy; resolves with the mesh count. */
   registerSceneProxy?(sceneId: string): Promise<number>;
+  /**
+   * Register a scoped scene proxy for every declared section of a large scene
+   * (ADR 0040 §5), so each walkable area gets its own correctly-framed backdrop
+   * instead of one whole-world proxy. Resolves with the per-section mesh counts.
+   * Only present on scenes that declare sections.
+   */
+  registerSceneProxies?(): Promise<Array<{ sceneId: string; meshCount: number }>>;
   /** Tear down the scene + connector. */
   dispose(): void;
 }

@@ -50,10 +50,12 @@ function loadCtx(opts: {
 }): {
   ctx: PanelDataContext;
   worldHeatmap: ReturnType<typeof vi.fn>;
+  worldHeatmapStats: ReturnType<typeof vi.fn>;
   scenes: ReturnType<typeof vi.fn>;
   sceneRepresentation: ReturnType<typeof vi.fn>;
 } {
   const worldHeatmap = vi.fn().mockResolvedValue(opts.voxels ?? []);
+  const worldHeatmapStats = vi.fn().mockResolvedValue({ cellSize: 0.5, cells: 0, hits: 0 });
   const scenes = vi.fn().mockResolvedValue(opts.scenes ?? []);
   const sceneRepresentation = vi
     .fn()
@@ -62,9 +64,9 @@ function loadCtx(opts: {
     surface: "overview",
     params: opts.scene ? { scene: opts.scene } : {},
     settings: { cellSize: 0.5 },
-    api: { worldHeatmap, scenes, sceneRepresentation },
+    api: { worldHeatmap, worldHeatmapStats, scenes, sceneRepresentation },
   } as unknown as PanelDataContext;
-  return { ctx, worldHeatmap, scenes, sceneRepresentation };
+  return { ctx, worldHeatmap, worldHeatmapStats, scenes, sceneRepresentation };
 }
 
 describe("builtinPanels — world-heatmap panel", () => {
@@ -89,24 +91,38 @@ describe("builtinPanels — world-heatmap panel", () => {
     expect(data.voxels).toHaveLength(1);
     expect(data.proxyMeshes).toEqual([{ name: "Floor" }]);
     expect(sceneRepresentation).toHaveBeenCalledWith("scene-a");
-    // A selected scene short-circuits the scene-list lookup.
+    // A selected scene short-circuits the whole-building scene-list lookup.
     expect(scenes).not.toHaveBeenCalled();
   });
 
-  it("falls back to the sole scene when none is selected", async () => {
-    const { ctx, sceneRepresentation } = loadCtx({
-      scenes: [{ scene_id: "only-scene" }],
-      proxyMeshes: [{ name: "Wall" }],
-    });
-    const data = (await panel?.load?.(ctx)) as { proxyMeshes: unknown[] };
-    expect(sceneRepresentation).toHaveBeenCalledWith("only-scene");
-    expect(data.proxyMeshes).toEqual([{ name: "Wall" }]);
-  });
-
-  it("draws no backdrop when the scene is ambiguous", async () => {
-    const { ctx, sceneRepresentation } = loadCtx({
+  it("merges every active scene's proxy when none is selected (ADR 0040)", async () => {
+    const { ctx, scenes, sceneRepresentation } = loadCtx({
       scenes: [{ scene_id: "a" }, { scene_id: "b" }],
     });
+    sceneRepresentation.mockImplementation((id: string) =>
+      Promise.resolve({
+        proxy: { meshes: id === "a" ? [{ name: "Floor" }] : [{ name: "TowerL2" }] },
+      }),
+    );
+    const data = (await panel?.load?.(ctx)) as { proxyMeshes: unknown[] };
+    expect(scenes).toHaveBeenCalled();
+    expect(sceneRepresentation).toHaveBeenCalledWith("a");
+    expect(sceneRepresentation).toHaveBeenCalledWith("b");
+    expect(data.proxyMeshes).toEqual([{ name: "Floor" }, { name: "TowerL2" }]);
+  });
+
+  it("de-dupes a mesh shared by two areas (a bridging ramp)", async () => {
+    const { ctx } = loadCtx({
+      scenes: [{ scene_id: "tower-l1" }, { scene_id: "tower-l2" }],
+      // Both areas register the ramp that bridges them — it must appear once.
+      proxyMeshes: [{ name: "Ramp" }],
+    });
+    const data = (await panel?.load?.(ctx)) as { proxyMeshes: unknown[] };
+    expect(data.proxyMeshes).toEqual([{ name: "Ramp" }]);
+  });
+
+  it("draws no backdrop when no scene is registered", async () => {
+    const { ctx, sceneRepresentation } = loadCtx({ scenes: [] });
     const data = (await panel?.load?.(ctx)) as { proxyMeshes: unknown[] };
     expect(sceneRepresentation).not.toHaveBeenCalled();
     expect(data.proxyMeshes).toEqual([]);

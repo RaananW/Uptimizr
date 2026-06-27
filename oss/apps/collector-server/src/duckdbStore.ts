@@ -42,7 +42,9 @@ import {
   buildTopMeshesTrend,
   buildTopInputActions,
   buildWorldHeatmap,
+  buildWorldHeatmapStats,
   buildGazeHeatmap,
+  buildGazeHeatmapStats,
   createDuckdbClient,
   duckdbDialect,
   duckdbGetSceneRepresentation,
@@ -98,6 +100,7 @@ import {
   type PositionBinRow,
   type SceneRow,
   type SessionSummaryRow,
+  type SpatialStatsRow,
   type TimeseriesBucketRow,
   type TrajectoryPointRow,
   type WorldHeatmapBinRow,
@@ -130,8 +133,22 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<HeatmapBinRow>(db, buildPointerHeatmap(projectId, opts, duckdbDialect)),
     worldHeatmap: (projectId, opts = {}) =>
       runDuckdbQuery<WorldHeatmapBinRow>(db, buildWorldHeatmap(projectId, opts, duckdbDialect)),
+    worldHeatmapStats: async (projectId, opts = {}) => {
+      const rows = await runDuckdbQuery<SpatialStatsRow>(
+        db,
+        buildWorldHeatmapStats(projectId, opts, duckdbDialect),
+      );
+      return rows[0] ?? { cells: 0, hits: 0 };
+    },
     gazeHeatmap: (projectId, opts = {}) =>
       runDuckdbQuery<WorldHeatmapBinRow>(db, buildGazeHeatmap(projectId, opts, duckdbDialect)),
+    gazeHeatmapStats: async (projectId, opts = {}) => {
+      const rows = await runDuckdbQuery<SpatialStatsRow>(
+        db,
+        buildGazeHeatmapStats(projectId, opts, duckdbDialect),
+      );
+      return rows[0] ?? { cells: 0, hits: 0 };
+    },
     cameraHeatmap: (projectId, opts = {}) =>
       runDuckdbQuery<DirectionBinRow>(
         db,

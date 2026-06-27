@@ -89,6 +89,22 @@ export interface WorldHeatmapBin {
 }
 
 /**
+ * Scene-wide totals for a spatial (world/gaze) heatmap (ADR 0040 §3). Reports the
+ * *true* occupied-cell and hit counts behind the truncated top-N voxel list, plus
+ * the effective `cellSize` the collector used (which may be derived from scene or
+ * region bounds when the caller didn't pin one). Lets the viewer label coverage,
+ * cold spots, and "showing top N of M cells". Region-aware when a region is set.
+ */
+export interface SpatialStats {
+  /** Effective voxel size (world units) the totals were computed at. */
+  cellSize: number;
+  /** Number of occupied (non-empty) cells across the whole scene/region. */
+  cells: number;
+  /** Total hits (sum of per-cell counts) across the whole scene/region. */
+  hits: number;
+}
+
+/**
  * One cell of the top-down "floor plan" camera-position heatmap (ADR 0026):
  * `camera_sample` world positions binned on the X/Z ground plane. `avg_y` is
  * the mean eye height in the cell; `count` is the number of samples.
@@ -435,6 +451,12 @@ export interface QueryParams {
   cameraMode?: "viewer" | "first-person";
   /** World-heatmap voxel size in world units. */
   cellSize?: number;
+  /**
+   * World/gaze region drill-down (ADR 0040 §4): restrict a spatial heatmap to the
+   * axis-aligned box `[minX, minY, minZ, maxX, maxY, maxZ]`. Serialized as a
+   * comma list; omit for the whole scene.
+   */
+  region?: readonly [number, number, number, number, number, number];
   /** §7.8 position-aware flow: also group links by standpoint (camera-position) voxel. */
   groupByOrigin?: boolean;
   /** §7.8 position-aware flow: restrict to clicks made from one standpoint voxel `[vx, vy, vz]`. */
@@ -730,6 +752,28 @@ export class CollectorApi {
         count: Number(r.count),
       })),
     );
+  }
+
+  /**
+   * World heatmap totals (ADR 0040 §3): the true occupied-cell and hit counts
+   * behind the truncated voxel list, plus the effective `cellSize`. Pair with
+   * {@link worldHeatmap} to label coverage and "showing top N of M cells".
+   */
+  worldHeatmapStats(params?: QueryParams): Promise<SpatialStats> {
+    return this.get<Record<string, unknown>>("api/v1/heatmaps/world/stats", params).then((r) => ({
+      cellSize: Number(r.cellSize ?? 0),
+      cells: Number(r.cells ?? 0),
+      hits: Number(r.hits ?? 0),
+    }));
+  }
+
+  /** Gaze heatmap totals (ADR 0040 §3): the gaze sibling of {@link worldHeatmapStats}. */
+  gazeHeatmapStats(params?: QueryParams): Promise<SpatialStats> {
+    return this.get<Record<string, unknown>>("api/v1/heatmaps/gaze/stats", params).then((r) => ({
+      cellSize: Number(r.cellSize ?? 0),
+      cells: Number(r.cells ?? 0),
+      hits: Number(r.hits ?? 0),
+    }));
   }
 
   /** Top-down floor-plan camera-position heatmap: where visitors stand (ADR 0026). */

@@ -29,12 +29,15 @@ describe("duckdb parity (vs golden)", () => {
     await db.close();
   });
 
-  it("covers all 47 aggregations", () => {
+  it("covers all 50 aggregations", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
       "worldHeatmap",
+      "worldHeatmapStats",
+      "worldHeatmapRegion",
       "gazeHeatmap",
+      "gazeHeatmapStats",
       "cameraDirectionHeatmap",
       "cameraPositionHeatmap",
       "sessionTrajectory",

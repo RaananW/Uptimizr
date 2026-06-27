@@ -6,6 +6,8 @@ import type { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import type { Scene } from "@babylonjs/core/scene.js";
 import type { SceneBackdrop } from "@uptimizr/replay/babylon";
 import { CollectorApi } from "@/lib/api";
+import type { SceneProxyMesh } from "@/lib/api";
+import { mergeSceneProxies } from "@/lib/sceneProxies";
 import { useLiveSession, type LiveEvent } from "@/lib/live";
 import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "@/lib/orbitZoom";
 import { Panel } from "./Panel";
@@ -21,6 +23,12 @@ const GLOW_MS = 900;
 
 /** Shared empty set so a missing `hiddenTypes` prop is referentially stable. */
 const EMPTY_HIDDEN: ReadonlySet<string> = new Set<string>();
+
+/**
+ * How often a live replay re-merges the whole-building scene proxy so sections the
+ * visitor enters after the first paint join the backdrop without a remount (ADR 0040).
+ */
+const LIVE_BACKDROP_REFRESH_MS = 4000;
 
 interface CameraSample {
   at: number;
@@ -420,25 +428,23 @@ export function SessionReplay({
           return;
         }
 
-        // Pull the registered proxy for THIS session's scene (ADR 0014) so the
-        // AABB backdrop shows whenever the replayed session's scene was
-        // registered — independent of the dashboard's scene filter. Derive the
-        // sceneId from the first event that carries one (ADR 0010).
-        let sessionSceneId: string | undefined;
+        // Show the WHOLE registered scene (every active area's proxy merged) as the
+        // backdrop — deterministic — so the full multi-level world is always present
+        // instead of appearing area-by-area as the avatar crosses invisible section
+        // boxes (ADR 0040 §5). De-dup by name guards a mesh that bridges two areas (a
+        // ramp/stairway is registered in both). Bound the area listing to the
+        // session's own time window so it covers exactly the scenes this walk touched.
+        let sinceTs = events[0]!.ts;
+        let untilTs = events[0]!.ts;
         for (const e of events) {
-          const sid = (e as { sceneId?: unknown }).sceneId;
-          if (typeof sid === "string" && sid) {
-            sessionSceneId = sid;
-            break;
-          }
+          if (e.ts < sinceTs) sinceTs = e.ts;
+          if (e.ts > untilTs) untilTs = e.ts;
         }
-        const proxyMeshes = sessionSceneId
-          ? ((
-              await new CollectorApi(baseUrl, apiKey)
-                .sceneRepresentation(sessionSceneId)
-                .catch(() => null)
-            )?.proxy?.meshes ?? [])
-          : [];
+        const proxyApi = new CollectorApi(baseUrl, apiKey);
+        const proxyMeshes = await mergeSceneProxies(proxyApi, {
+          since: sinceTs - 1,
+          until: untilTs + 1,
+        });
         if (disposed) return;
 
         // Precompute camera samples and interaction rays so visualization is
@@ -583,8 +589,14 @@ export function SessionReplay({
         };
         const labelCenters: { name: string; center: Vector3 }[] = [];
         const proxyBoxes: { setEnabled(value: boolean): void }[] = [];
-        for (const m of proxyMeshes) {
-          if (isMovingActor(m)) continue;
+        const proxyMeshNames = new Set<string>();
+        // Create one wireframe AABB box (+ floating label) for a proxy mesh, unless
+        // it is already drawn or is a moving actor (drawn as a live marker instead).
+        // Returns true when a new box was added, so the live refresh below can tell
+        // whether the label set changed.
+        const addProxyMesh = (m: SceneProxyMesh): boolean => {
+          if (proxyMeshNames.has(m.name) || isMovingActor(m)) return false;
+          proxyMeshNames.add(m.name);
           const a = m.aabb;
           const sx = Math.max(a[3] - a[0], 1e-3);
           const sy = Math.max(a[4] - a[1], 1e-3);
@@ -602,6 +614,9 @@ export function SessionReplay({
           proxyMat.alpha = 0.35;
           proxyBox.material = proxyMat;
           proxyBox.isPickable = false;
+          // If a model backdrop is loaded the wireframe boxes are hidden; keep a
+          // newly streamed box consistent with that toggle.
+          if (backdropRef.current) proxyBox.setEnabled(false);
           proxyBoxes.push(proxyBox);
           // Anchor an HTML label at the top-center of the box so it floats above
           // the wireframe without occluding it.
@@ -609,11 +624,33 @@ export function SessionReplay({
             name: m.name,
             center: new Vector3((a[0] + a[3]) / 2, a[4], (a[2] + a[5]) / 2),
           });
-        }
+          return true;
+        };
+        for (const m of proxyMeshes) addProxyMesh(m);
         labelCentersRef.current = labelCenters;
         labelElsRef.current = labelCenters.map(() => null);
         setProxyLabels(labelCenters.map((l) => l.name));
         proxyBoxesRef.current = proxyBoxes;
+
+        // A live session keeps entering new areas after this first paint, but the
+        // whole-building backdrop was fetched once above — so a section first visited
+        // later would be missing until a remount. While live, periodically re-merge
+        // every active area's proxy and add boxes for sections that just appeared.
+        // Only new boxes are added (the camera keeps following the avatar; we don't
+        // re-frame), so the backdrop fills in deterministically as the walk unfolds.
+        const refreshLiveBackdrop = async (): Promise<void> => {
+          const merged = await mergeSceneProxies(proxyApi, { since: sinceTs - 1 }).catch(
+            () => null,
+          );
+          if (disposed || !merged) return;
+          let added = false;
+          for (const m of merged) if (addProxyMesh(m)) added = true;
+          if (!added) return;
+          labelCentersRef.current = labelCenters;
+          labelElsRef.current = labelCenters.map((_, i) => labelElsRef.current[i] ?? null);
+          setProxyLabels(labelCenters.map((l) => l.name));
+          dirtyRef.current = true;
+        };
         // If a model was loaded against the previous build it is gone with the old
         // scene; the rebuilt boxes start visible (model state was reset above).
 
@@ -1176,6 +1213,7 @@ export function SessionReplay({
           }
         };
 
+        let liveBackdropTimer: ReturnType<typeof setInterval> | null = null;
         if (isLive) {
           // Live: the internal render-loop clock owns the playhead. Start pinned to
           // the live edge, following.
@@ -1190,6 +1228,11 @@ export function SessionReplay({
           setProgress(durationMs);
           setTimeline(buildTimeline(timelineEvents, baseTs, Math.max(1, durationMs)));
           redrawAt(durationMs);
+          // Keep the whole-building backdrop current as the visitor enters new areas.
+          liveBackdropTimer = setInterval(
+            () => void refreshLiveBackdrop(),
+            LIVE_BACKDROP_REFRESH_MS,
+          );
         } else {
           const driver = {
             reset() {
@@ -1373,6 +1416,7 @@ export function SessionReplay({
         setPhase("ready");
         cleanup = () => {
           window.removeEventListener("resize", onResize);
+          if (liveBackdropTimer) clearInterval(liveBackdropTimer);
           liveIngestRef.current = null;
           playerRef.current?.pause();
           frustumLine.dispose();

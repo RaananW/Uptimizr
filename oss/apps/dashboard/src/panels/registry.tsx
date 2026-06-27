@@ -33,6 +33,7 @@ import {
   CAMERA_DOME_TITLE,
   CAMERA_DOME_SUBTITLE,
 } from "@/components/CameraDome3D";
+import { mergeSceneProxies } from "@/lib/sceneProxies";
 import {
   FloorPlanHeatmapView,
   FLOOR_PLAN_TITLE,
@@ -225,20 +226,20 @@ function scoped(ctx: PanelContext): QueryParams {
 }
 
 /**
- * Resolve the scene-proxy backdrop (ADR 0014) for the 3D world heatmap: use the
- * selected scene, or fall back to the sole scene when the project has exactly
- * one (mirrors the legacy dashboard so rays/voxels read against geometry instead
- * of floating in empty space). Returns [] when no scene anchors it.
+ * Resolve the scene-proxy backdrop (ADR 0014) for the 3D world heatmap. When a
+ * single scene/area is selected, anchor to just that area's geometry. Otherwise
+ * (the default "All scenes") render the WHOLE building — every active area's proxy
+ * merged into one backdrop (ADR 0040 §5) — so elevated levels and far areas are
+ * always present and deterministic, instead of swapping to one section at a time as
+ * the live avatar crosses boundaries. Returns [] when nothing anchors it.
  */
 async function resolveProxyMeshes(ctx: PanelContext): Promise<SceneProxyMesh[]> {
-  let sceneId = ctx.params.scene;
-  if (!sceneId) {
-    const scenes = await ctx.api.scenes(ctx.params).catch(() => []);
-    if (scenes.length === 1) sceneId = scenes[0]?.scene_id;
+  const sceneId = ctx.params.scene;
+  if (sceneId) {
+    const rep = await ctx.api.sceneRepresentation(sceneId).catch(() => null);
+    return rep?.proxy?.meshes ?? [];
   }
-  if (!sceneId) return [];
-  const rep = await ctx.api.sceneRepresentation(sceneId).catch(() => null);
-  return rep?.proxy?.meshes ?? [];
+  return mergeSceneProxies(ctx.api, ctx.params);
 }
 
 /** Top meshes — React/HTML list, half width. */
@@ -497,10 +498,12 @@ const renderScalePanel = definePanel<RenderScaleTruthData>({
   render: ({ data }) => <RenderScaleTruthView data={data} />,
 });
 
-/** World (click) heatmap data: voxels + the scene-proxy backdrop. */
+/** World (click) heatmap data: voxels + the scene-proxy backdrop + scene totals. */
 interface WorldHeatmapData {
   voxels: WorldHeatmapBin[];
   proxyMeshes: SceneProxyMesh[];
+  /** Scene-wide totals (ADR 0040 §3) behind the truncated voxel list. */
+  totals: { cells: number; hits: number };
 }
 
 /**
@@ -518,17 +521,19 @@ const worldHeatmapPanel = definePanel<WorldHeatmapData, typeof WORLD_HEATMAP_SET
   clientOnly: true,
   settings: WORLD_HEATMAP_SETTINGS,
   load: async (ctx) => {
-    const [voxels, proxyMeshes] = await Promise.all([
+    const [voxels, proxyMeshes, stats] = await Promise.all([
       ctx.api.worldHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
       resolveProxyMeshes(ctx),
+      ctx.api.worldHeatmapStats({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
     ]);
-    return { voxels, proxyMeshes };
+    return { voxels, proxyMeshes, totals: { cells: stats.cells, hits: stats.hits } };
   },
   render: ({ data, ctx }) => (
     <WorldHeatmap3DView
       voxels={data.voxels}
       cellSize={ctx.settings.cellSize}
       proxyMeshes={data.proxyMeshes}
+      totals={data.totals}
     />
   ),
 });

@@ -34,5 +34,14 @@
     "engines": ["babylon", "three", "playcanvas"],
     "defaultEngine": "babylon",
     "builtin": false
+  },
+  {
+    "id": "expanse",
+    "label": "Expanse (large multi-level world)",
+    "description": "A first-person world ~10x larger than the atrium, with height differences (a ramp up to a raised overlook and a 3-floor tower) and far-apart landmarks. Walking between sections auto-switches the tracked scene id (setScene) — built to exercise ADR 0040 large-scene analytics: bounds-driven cell size, region drill-down, and coverage/cold-spots.",
+    "cameraMode": "first-person",
+    "engines": ["babylon", "three", "playcanvas"],
+    "defaultEngine": "babylon",
+    "builtin": false
   }
 ]

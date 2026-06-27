@@ -26,14 +26,21 @@ import { showWorldHeatmap } from "@uptimizr/heatmap/babylon";
 import {
   BOX_COLORS,
   COMMON_CAPTURE_FEATURES,
+  registerSectionProxies,
+  sectionAt,
   type CaptureFeature,
   type EngineCapabilities,
   type EngineId,
   type EngineInstance,
   type EngineModule,
   type EngineMountContext,
+  type SceneSection,
 } from "../engine.js";
 import { buildWalkableScene } from "./babylon-walkable.js";
+
+// Re-export so per-scene Babylon builders can import the section type alongside the
+// engine factory from this module (the canonical definition lives in engine.ts).
+export type { SceneSection };
 
 const CAPTURE_FEATURES: CaptureFeature[] = [
   ...COMMON_CAPTURE_FEATURES.slice(0, 7), // camera … contextLoss
@@ -89,6 +96,26 @@ export interface BabylonSceneSetup {
   readonly nodeSampling?: Record<string, { hz: number; include?: string[] | "*" }>;
   /** Actor name→node bindings (ADR 0033) for self-moving actors. */
   readonly actors?: Record<string, string>;
+  /**
+   * Voxel edge (world units) the in-scene heatmap overlay bins + draws with. A
+   * large scene (ADR 0040) overrides the `0.5` default so its overview heatmap
+   * stays legible instead of dissolving into sub-pixel specks. The same value is
+   * sent as the query's explicit `cellSize` so the overlay matches the server grid.
+   */
+  readonly heatmapCellSize?: number;
+  /**
+   * Self-declared sub-areas of one large scene (ADR 0040 §5). As the camera enters
+   * a section's axis-aligned box the connector calls `client.setScene(section.id)`,
+   * so the continuous space is tracked as distinct, semantically-named areas you can
+   * filter/segment on. The first matching section (or `defaultSceneId`) is active on
+   * entry. Boxes are tested in order; the first that contains the camera wins.
+   */
+  readonly sections?: readonly SceneSection[];
+  /**
+   * Scene id used while the camera is in none of the {@link sections} (and the
+   * starting id before the first match). Defaults to `ctx.sceneId`.
+   */
+  readonly defaultSceneId?: string;
 }
 
 /** Builds the Babylon scene for a mount; may load assets asynchronously. */
@@ -227,11 +254,53 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
       }
     });
 
+    // Large-scene section auto-switching (ADR 0040 §5): when the scene declares
+    // sub-area boxes, watch the camera each frame and call `setScene` as it crosses
+    // a boundary, so one continuous space is tracked as distinct, named areas. The
+    // shell mirrors the active id in the HUD via `onSceneChange`. Cheap: a handful
+    // of AABB containment tests per frame, only while sections are declared.
+    if (setup.sections && setup.sections.length > 0) {
+      const sections = setup.sections;
+      const fallbackSceneId = setup.defaultSceneId ?? sceneId;
+      const sectionFor = (p: Vector3): string =>
+        sectionAt(sections, fallbackSceneId, p.x, p.y, p.z);
+      let activeSection = sectionFor(camera.position);
+      if (activeSection !== sceneId) {
+        client.setScene(activeSection);
+        ctx.onSceneChange?.(activeSection);
+      }
+      scene.onBeforeRenderObservable.add(() => {
+        const next = sectionFor(camera.position);
+        if (next !== activeSection) {
+          activeSection = next;
+          client.setScene(next);
+          ctx.onSceneChange?.(next);
+        }
+      });
+    }
+
     // The Babylon replay driver is imported lazily so it only ships when replay runs.
     const { createBabylonReplayDriver } = await import("@uptimizr/replay/babylon");
 
     // Tracks the active backdrop so loading a new one disposes the previous.
     let currentBackdrop: { dispose(): void } | null = null;
+
+    // Shared PUT for a scanned proxy → /scenes/:id/representation. Used by both the
+    // single-scene registration and the per-section registration (large scenes).
+    const putProxy = async (
+      proxySceneId: string,
+      proxy: ReturnType<typeof scanSceneProxy>,
+    ): Promise<void> => {
+      const res = await fetch(
+        `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(proxySceneId)}/representation`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
+          body: JSON.stringify({ proxy, label: proxySceneId }),
+        },
+      );
+      if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
+    };
 
     return {
       client,
@@ -282,22 +351,25 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
           endpoint: ctx.collectorUrl,
           apiKey: ctx.apiKey,
           sceneId,
-          cellSize: 0.5,
+          cellSize: setup.heatmapCellSize ?? 0.5,
         });
       },
       async registerSceneProxy(sceneId) {
         const proxy = scanSceneProxy(scene, { sceneId });
-        const res = await fetch(
-          `${ctx.collectorUrl.replace(/\/$/, "")}/api/v1/scenes/${encodeURIComponent(sceneId)}/representation`,
-          {
-            method: "PUT",
-            headers: { "content-type": "application/json", "x-api-key": ctx.apiKey },
-            body: JSON.stringify({ proxy, label: sceneId }),
-          },
-        );
-        if (!res.ok) throw new Error(`Proxy registration failed (${res.status}).`);
+        await putProxy(sceneId, proxy);
         return proxy.meshCount;
       },
+      ...(setup.sections && setup.sections.length > 0
+        ? {
+            registerSceneProxies: () =>
+              registerSectionProxies({
+                scan: (options) => scanSceneProxy(scene, options),
+                put: putProxy,
+                sections: setup.sections ?? [],
+                defaultSceneId: setup.defaultSceneId ?? sceneId,
+              }),
+          }
+        : {}),
       dispose() {
         window.removeEventListener("resize", onResize);
         currentBackdrop?.dispose();

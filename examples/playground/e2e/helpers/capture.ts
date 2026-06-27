@@ -52,8 +52,9 @@ export async function enableAllCapture(page: Page, engineId: string): Promise<vo
 }
 
 /** Boot the playground for an engine and return its stamped session id. */
-export async function bootEngine(page: Page, engineId: string): Promise<string> {
-  await page.goto(`/?engine=${engineId}`);
+export async function bootEngine(page: Page, engineId: string, sceneId?: string): Promise<string> {
+  const query = sceneId ? `/?engine=${engineId}&scene=${sceneId}` : `/?engine=${engineId}`;
+  await page.goto(query);
   // Collector reachable (the panel's /health ping flips the dot green).
   await expect(page.locator("#connDot")).toHaveClass(/ok/);
   // The session id is stamped synchronously once the connector starts.

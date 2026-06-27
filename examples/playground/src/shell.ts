@@ -493,6 +493,18 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   const { projectId: activeProjectId, apiKey: activeApiKey } = resolveSceneProject(scene);
   requireElement("projectId", HTMLElement).textContent = activeProjectId;
 
+  // Live scene/area id (ADR 0010). It starts as the catalog scene id, but a scene
+  // can switch it at runtime via `client.setScene()` — e.g. the large multi-level
+  // "expanse" scene crossing a section boundary (ADR 0040 §5). The engine reports
+  // each switch through `onSceneChange`; the HUD readout and the heatmap/proxy
+  // actions all follow this single live value.
+  let currentScene = scene.id;
+  const setCurrentScene = (sceneId: string): void => {
+    currentScene = sceneId;
+    const el = document.getElementById("currentScene");
+    if (el) el.textContent = sceneId;
+  };
+
   // Live click counter (local) — the engine reports each demo box pick.
   let clickCount = 0;
   const clicksEl = requireElement("clicks", HTMLElement);
@@ -526,6 +538,9 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
       onStatus: (text) => {
         status.textContent = text;
       },
+      onSceneChange: (sceneId) => {
+        setCurrentScene(sceneId);
+      },
     });
   } catch (err) {
     status.textContent = err instanceof Error ? err.message : "Failed to start the engine.";
@@ -548,7 +563,14 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   setHidden("replaySection", !(hasClient && caps.replay && instance.createReplayDriver));
   setHidden("backdropSection", !(hasClient && caps.backdrop && instance.loadBackdrop));
   setHidden("heatmapSection", !(hasClient && caps.heatmap && instance.showHeatmap));
-  setHidden("proxySection", !(hasClient && caps.sceneProxy && instance.registerSceneProxy));
+  setHidden(
+    "proxySection",
+    !(
+      hasClient &&
+      caps.sceneProxy &&
+      (instance.registerSceneProxy || instance.registerSceneProxies)
+    ),
+  );
   setHidden("heatmapStatus", !(hasClient && (caps.heatmap || caps.sceneProxy)));
 
   if (!client) return; // A-Frame declarative path: nothing further to wire.
@@ -558,13 +580,13 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   if (caps.capturePanel) buildCapturePanel(engine, captureState);
 
   // --- Scene/area switching (ADR 0010) ---------------------------------------
-  let currentScene = scene.id;
   if (caps.sceneSwitch) {
     const currentSceneEl = requireElement("currentScene", HTMLElement);
     currentSceneEl.textContent = currentScene;
     // The lobby/gallery sub-area switcher only applies to the built-in viewer
     // scene; first-person is a single traversable area, and custom scenes don't
-    // ship the lobby/gallery sub-areas — hide the buttons in those cases.
+    // ship the lobby/gallery sub-areas — hide the buttons in those cases. (Large
+    // first-person scenes switch areas automatically as you walk; see ADR 0040.)
     const firstPerson = cameraMode === "first-person";
     const subAreas = !firstPerson && scene.builtin && scene.id === "lobby";
     setHidden("sceneSwitcher", !subAreas);
@@ -572,8 +594,7 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
       const switchScene = (sceneId: string): void => {
         if (sceneId === currentScene) return;
         client.setScene(sceneId);
-        currentScene = sceneId;
-        currentSceneEl.textContent = sceneId;
+        setCurrentScene(sceneId);
       };
       for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-scene]")) {
         button.addEventListener("click", () => switchScene(button.dataset.scene ?? "lobby"));
@@ -713,17 +734,32 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   }
 
   // --- Scene proxy registration (ADR 0014) -----------------------------------
-  if (caps.sceneProxy && instance.registerSceneProxy && heatmapStatus) {
-    const registerSceneProxy = instance.registerSceneProxy.bind(instance);
+  // Large scenes (ADR 0040 §5) split into sections expose `registerSceneProxies`,
+  // which registers a scoped proxy per section so every walkable area has its own
+  // correctly-framed backdrop; single-scene worlds use `registerSceneProxy`.
+  if (
+    caps.sceneProxy &&
+    (instance.registerSceneProxies || instance.registerSceneProxy) &&
+    heatmapStatus
+  ) {
+    const registerSceneProxy = instance.registerSceneProxy?.bind(instance);
+    const registerSceneProxies = instance.registerSceneProxies?.bind(instance);
     const runProxyScan = async (): Promise<void> => {
       if (!activeApiKey) {
         heatmapStatus.textContent = "Set VITE_API_KEY to register the scene proxy.";
         return;
       }
-      heatmapStatus.textContent = `Scanning "${currentScene}" scene proxy…`;
       try {
-        const meshCount = await registerSceneProxy(currentScene);
-        heatmapStatus.textContent = `Registered proxy for "${currentScene}" (${meshCount} meshes).`;
+        if (registerSceneProxies) {
+          heatmapStatus.textContent = "Scanning section scene proxies…";
+          const results = await registerSceneProxies();
+          const meshes = results.reduce((sum, r) => sum + r.meshCount, 0);
+          heatmapStatus.textContent = `Registered ${results.length} section proxies (${meshes} meshes).`;
+        } else if (registerSceneProxy) {
+          heatmapStatus.textContent = `Scanning "${currentScene}" scene proxy…`;
+          const meshCount = await registerSceneProxy(currentScene);
+          heatmapStatus.textContent = `Registered proxy for "${currentScene}" (${meshCount} meshes).`;
+        }
       } catch (err) {
         heatmapStatus.textContent = err instanceof Error ? err.message : "Proxy scan failed.";
       }

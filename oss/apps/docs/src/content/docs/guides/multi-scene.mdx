@@ -107,6 +107,23 @@ Omit the filter to see the whole session across all scenes, and use `/api/v1/sce
 distinct scenes that have activity. See the [query endpoints](/docs/api/query/) for the full
 parameter list.
 
+## In the dashboard
+
+The 3D panels (world heatmap, gaze heatmap, click rays) draw your scene geometry as a backdrop. By
+default — with the **Scene** filter on "All scenes" — the dashboard shows the **whole building**: it
+merges every active section's scoped proxy into one backdrop, so every level and far-flung area is
+present at once. Pick the **Scene** dropdown in the filter bar to focus a single section — that
+anchors the backdrop to just that area's geometry and scopes the heatmap data to it.
+
+Showing the whole building is **deterministic**: the full multi-level world renders immediately,
+rather than sections appearing one at a time as a live visitor crosses boundaries. When the **live**
+layer is on, crossing into a newly-active section simply refreshes the merge so the new area joins
+the backdrop promptly; the heatmap data stays across all scenes, so the aggregate isn't re-scoped
+underneath you. [Session replay](/docs/guides/replay/) follows the same rule — it renders the whole
+building for the session's time window so the entire walkthrough plays against full geometry. A mesh
+that bridges two areas (a ramp or stairway) belongs to one section's proxy but is always visible in
+the merged whole-building view.
+
 ## Replay across scenes
 
 Because the transitions are recorded as ordered `scene_change` markers in the same stream, [session

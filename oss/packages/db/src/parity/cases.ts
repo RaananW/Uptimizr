@@ -59,7 +59,9 @@ import {
   buildTopMeshesBySource,
   buildTopMeshesTrend,
   buildWorldHeatmap,
+  buildWorldHeatmapStats,
   buildGazeHeatmap,
+  buildGazeHeatmapStats,
 } from "../query/aggregations.js";
 import type { Dialect } from "../query/dialect.js";
 import type { QuerySpec } from "../query/types.js";
@@ -119,6 +121,26 @@ export const PARITY_CASES: readonly ParityCase[] = [
     ],
   },
   {
+    // World heatmap totals (ADR 0040 §3): three occupied voxels above hold 4 hits
+    // (1 + 2 + 1). Computed with no LIMIT, so cells/hits are the true scene totals.
+    name: "worldHeatmapStats",
+    build: (d) => buildWorldHeatmapStats(PID, { ...PARITY_RANGE, cellSize: 1 }, d),
+    sortKeys: ["cells"],
+    golden: [{ cells: 3, hits: 4 }],
+  },
+  {
+    // Region drill-down (ADR 0040 §4): the AABB [0.5,0.5,0.5 .. 6,6,6] keeps the
+    // [1,1,1] (x2) and [5,5,5] world hits but excludes [0.2,0.2,0.2].
+    name: "worldHeatmapRegion",
+    build: (d) =>
+      buildWorldHeatmap(PID, { ...PARITY_RANGE, cellSize: 1, region: [0.5, 0.5, 0.5, 6, 6, 6] }, d),
+    sortKeys: ["vx", "vy", "vz"],
+    golden: [
+      { vx: 1, vy: 1, vz: 1, count: 2 },
+      { vx: 5, vy: 5, vz: 5, count: 1 },
+    ],
+  },
+  {
     // Gaze heatmap (ADR 0030): voxel-binned `camera_sample.hitPoint`. Three camera
     // samples carry a gaze hit ([0.2,0.2,0.2], [1,1,1], [5,5,5]); at cellSize 1
     // they fall in three distinct voxels. Hand-verified from the fixtures.
@@ -130,6 +152,13 @@ export const PARITY_CASES: readonly ParityCase[] = [
       { vx: 1, vy: 1, vz: 1, count: 1 },
       { vx: 5, vy: 5, vz: 5, count: 1 },
     ],
+  },
+  {
+    // Gaze totals (ADR 0040 §3): three occupied gaze voxels, one hit each → 3 hits.
+    name: "gazeHeatmapStats",
+    build: (d) => buildGazeHeatmapStats(PID, { ...PARITY_RANGE, cellSize: 1 }, d),
+    sortKeys: ["cells"],
+    golden: [{ cells: 3, hits: 3 }],
   },
   {
     name: "cameraDirectionHeatmap",

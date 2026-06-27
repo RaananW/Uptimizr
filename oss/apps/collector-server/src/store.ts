@@ -42,6 +42,7 @@ import type {
   ResolvedApiKey,
   StabilityCountRow,
   RangeOptions,
+  RegionOptions,
   SceneOptions,
   SceneRepresentation,
   SceneRepresentationSummary,
@@ -50,6 +51,7 @@ import type {
   SessionOptions,
   SessionMeta,
   SessionSummaryRow,
+  SpatialStatsRow,
   TimeseriesBucketRow,
   TimeseriesOptions,
   TrajectoryPointRow,
@@ -94,8 +96,22 @@ export interface CollectorStore {
     opts?: RangeOptions &
       SceneOptions &
       SourceOptions &
+      RegionOptions &
       CameraModeOptions & { cellSize?: number; limit?: number },
   ): Promise<WorldHeatmapBinRow[]>;
+  /**
+   * Scene-wide totals for the world heatmap (ADR 0040 §3): true occupied-cell and
+   * hit counts behind the truncated top-N voxels (no `LIMIT`), so the viewer can
+   * report coverage/cold-spots and "showing top N of M cells". Region-aware.
+   */
+  worldHeatmapStats(
+    projectId: string,
+    opts?: RangeOptions &
+      SceneOptions &
+      SourceOptions &
+      RegionOptions &
+      CameraModeOptions & { cellSize?: number },
+  ): Promise<SpatialStatsRow>;
   /**
    * World-space (3D) gaze heatmap (ADR 0030): voxel-binned camera-pose gaze
    * surface hits (`camera_sample.hitPoint`). The "what did people actually look
@@ -107,8 +123,18 @@ export interface CollectorStore {
     opts?: RangeOptions &
       SceneOptions &
       SessionOptions &
+      RegionOptions &
       CameraModeOptions & { cellSize?: number; limit?: number },
   ): Promise<WorldHeatmapBinRow[]>;
+  /** Scene-wide totals for the gaze heatmap (ADR 0040 §3); region-aware, no `LIMIT`. */
+  gazeHeatmapStats(
+    projectId: string,
+    opts?: RangeOptions &
+      SceneOptions &
+      SessionOptions &
+      RegionOptions &
+      CameraModeOptions & { cellSize?: number },
+  ): Promise<SpatialStatsRow>;
   cameraHeatmap(
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions & CameraModeOptions & { bins?: number },
@@ -123,6 +149,7 @@ export interface CollectorStore {
     opts?: RangeOptions &
       SceneOptions &
       SessionOptions &
+      RegionOptions &
       CameraModeOptions & { cellSize?: number; limit?: number },
   ): Promise<PositionBinRow[]>;
   /** One session's ordered walked path (ADR 0026): camera positions, oldest first. */

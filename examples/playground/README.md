@@ -21,6 +21,7 @@ Built-in scenes:
 | Atrium   | `atrium`   | first-person   | babylon, three, playcanvas                            |
 | Showcase | `showcase` | viewer (orbit) | babylon, three, playcanvas                            |
 | Gallery  | `gallery`  | first-person   | babylon, three, playcanvas                            |
+| Expanse  | `expanse`  | first-person   | babylon, three, playcanvas                            |
 
 `lobby` and `atrium` are synthetic demo scenes (procedural boxes / a room).
 **`showcase` and `gallery` load real glTF models** to exercise the connectors
@@ -30,6 +31,25 @@ against production-like assets:
   `ToyCar`), for inspecting a detailed PBR asset.
 - **Gallery** — a first-person walkable room with three real glTF models (Khronos
   `ToyCar`, `Fox`, `GlamVelvetSofa`) on pedestals; walk up and pick the exhibits.
+- **Expanse** — a deliberately **large** (~360 × 560 world units, ≈10× the atrium),
+  walkable, **multi-level** world built to exercise large-scene analytics
+  ([ADR 0040](../../docs/adr/0040-large-scene-spatial-resolution.md)). It has real
+  vertical traversal — a ramp up to a raised overlook terrace and a three-floor
+  tower joined by internal ramps — with landmarks scattered far apart and an
+  out-of-the-way "gardens" corner that stays cold unless sought out (so coverage /
+  cold-spot signals are meaningful). Walking between areas **auto-switches the
+  tracked `scene_id`** via `setScene` (plaza → ramp → overlook → tower floors →
+  gardens; ADR 0040 §5), so one continuous space is captured as distinct, named
+  sub-areas you can filter and segment on. Registering the scene proxy scopes **one
+  proxy per section** (each section's own geometry, not a single whole-world proxy),
+  so every area's world heatmap gets a correctly-framed backdrop — an elevated level
+  shows just that level — and its registered (large) bounds drive a coarse default
+  voxel size (§1). A hands-on test bed for the bounds-driven cell size, region
+  drill-down, and coverage features. Built for **Babylon, three.js and
+  PlayCanvas**: the three connectors share one layout (`src/scenes/expanse/layout.ts`
+  — geometry, an analytic floor-height field the first-person controller samples to
+  climb the ramp/overlook/tower, and the section boxes), so every engine walks the
+  same multi-level world and exercises the identical large-scene path.
 
 Both reuse the same shared connector wiring as the demo scenes via each engine's
 `create<Engine>EngineModule` factory — only the model loading/placement is custom
@@ -95,9 +115,10 @@ read-only indicator:
 
 - **Viewer (orbit)** — the `lobby` / `showcase` scenes: an arc-rotate camera framing
   a model (`cameraType: "arc-rotate"`).
-- **First-person (walk)** — the `atrium` / `gallery` scenes: a larger **walkable**
-  space (room, walls, item pedestals, an ambient NPC) traversed with **WASD** (Babylon)
-  or pointer-lock + WASD (three / PlayCanvas), using a free camera (`cameraType: "free"`).
+- **First-person (walk)** — the `atrium` / `gallery` / `expanse` scenes: a larger **walkable**
+  space (room, walls, item pedestals, an ambient NPC; or, for `expanse`, a large multi-level
+  world) traversed with **WASD** (Babylon) or pointer-lock + WASD (three / PlayCanvas), using a
+  free camera (`cameraType: "free"`).
 
 For back-compat, `?camera=viewer|first-person` (with no `?scene=`) still selects the
 matching built-in scene. First-person scenes drive the dashboard's floor-plan
@@ -182,5 +203,14 @@ Three specs cover the stack:
   `cameraType: "free"` label, the floor-plan position heatmap, the session's
   walked-path trajectory, and that the camera-mode filter lists it under
   first-person but not viewer.
+- **`large-scene.spec.ts` / `expanse.spec.ts`** — the large-scene path (ADR 0040).
+  `large-scene` drives a Babylon session and exercises the world-heatmap **stats**
+  (true cell/hit totals behind the truncated voxel list), **region** AABB
+  drill-down, and a derived `cellSize`. `expanse` boots the large multi-level
+  **Expanse** scene **on each engine that builds it (Babylon, three.js, PlayCanvas)**
+  and asserts its section auto-switching (the spawn tracks as `expanse-plaza`), that
+  registering scopes **one proxy per section** (each stored with its own tower/overlook-
+  tight bounds, not the whole world), and that the registered large bounds drive a
+  **coarse** bounds-driven cell size when `cellSize` is omitted.
 
 WebXR / immersive events are intentionally out of scope.
