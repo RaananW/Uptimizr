@@ -1229,7 +1229,14 @@ A manifest lists panel modules and the contract major each targets
 ```json
 {
   "version": 1,
-  "panels": [{ "id": "co2-budget", "url": "https://panels.example.com/co2-budget.js", "contract": 1, "export": "default" }]
+  "panels": [
+    {
+      "id": "co2-budget",
+      "url": "https://panels.example.com/co2-budget.js",
+      "contract": 1,
+      "export": "default"
+    }
+  ]
 }
 ```
 

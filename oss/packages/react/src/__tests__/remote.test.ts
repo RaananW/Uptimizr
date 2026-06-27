@@ -21,7 +21,9 @@ const validPanel: PanelDefinition<unknown> = {
 function manifest(overrides: Partial<PanelManifest["panels"][number]> = {}): PanelManifest {
   return {
     version: 1,
-    panels: [{ url: "https://panels.example.com/demo.js", contract: PANEL_CONTRACT_VERSION, ...overrides }],
+    panels: [
+      { url: "https://panels.example.com/demo.js", contract: PANEL_CONTRACT_VERSION, ...overrides },
+    ],
   };
 }
 
@@ -187,7 +189,9 @@ describe("fetchPanelManifest", () => {
   });
 
   it("returns a manifest-invalid error on a bad shape", async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ nope: true }), { status: 200 }));
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ nope: true }), { status: 200 }),
+    );
     const result = await fetchPanelManifest("https://example.com/m.json", {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });

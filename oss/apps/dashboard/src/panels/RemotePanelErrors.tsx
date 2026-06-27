@@ -31,7 +31,10 @@ export function RemotePanelErrors({ errors }: { errors: RemotePanelError[] }) {
         {errors.map((err, i) => (
           <li key={`${err.source}-${i}`} className="font-mono">
             <span className="text-fg">{err.source}</span>
-            <span className="text-fg-muted"> — [{err.code}] {err.message}</span>
+            <span className="text-fg-muted">
+              {" "}
+              — [{err.code}] {err.message}
+            </span>
           </li>
         ))}
       </ul>

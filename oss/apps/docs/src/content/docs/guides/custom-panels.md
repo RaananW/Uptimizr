@@ -248,13 +248,13 @@ with a clear error instead of failing in subtle ways:
 }
 ```
 
-| Field      | Meaning                                                                        |
-| ---------- | ------------------------------------------------------------------------------ |
-| `version`  | Manifest format version (currently `1`).                                       |
-| `url`      | Fully-qualified URL of an ES module that exports a `PanelDefinition`.          |
-| `contract` | Panel-contract major the module targets; must equal the dashboard's version.   |
-| `export`   | Named export to read the definition from. Defaults to `default`.               |
-| `id`       | Optional label for diagnostics.                                                |
+| Field      | Meaning                                                                      |
+| ---------- | ---------------------------------------------------------------------------- |
+| `version`  | Manifest format version (currently `1`).                                     |
+| `url`      | Fully-qualified URL of an ES module that exports a `PanelDefinition`.        |
+| `contract` | Panel-contract major the module targets; must equal the dashboard's version. |
+| `export`   | Named export to read the definition from. Defaults to `default`.             |
+| `id`       | Optional label for diagnostics.                                              |
 
 The dashboard exposes its current contract major as `PANEL_CONTRACT_VERSION` from
 `@uptimizr/react` — build your panel against it and set `contract` to the same number.
