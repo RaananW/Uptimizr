@@ -109,6 +109,15 @@ for (const engine of ["babylon", "three", "playcanvas"] as const) {
     //    frames above the ground floor instead of dropping to y ≈ 0.
     const overlook = await getRepresentation(request, "expanse-overlook");
     expect(overlook!.bounds![1], "overlook is framed above the ground floor").toBeGreaterThan(5);
+    // …while the overview scene (the spawn/plaza area) owns the world-spanning
+    //    ground plane and perimeter walls, so a session replay re-driving across the
+    //    whole space keeps its floor/walls as orienting context, not floating boxes.
+    const plaza = await getRepresentation(request, "expanse-plaza");
+    const [pMinX, , pMinZ, pMaxX, , pMaxZ] = plaza!.bounds!;
+    expect(
+      Math.max(pMaxX - pMinX, pMaxZ - pMinZ),
+      "overview scene spans the world (owns the floor + perimeter walls)",
+    ).toBeGreaterThan(300);
 
     // 5) With the (large) section bounds registered, the stats endpoint derives a
     //    coarse cell size from them when `cellSize` is omitted (§1) — an order of

@@ -153,7 +153,9 @@ export interface ScannedSceneProxy {
  * A mesh counts as "world-spanning" (the ground plane, perimeter walls) when its
  * footprint covers at least this fraction of a horizontal world axis. Such meshes
  * carry no per-section signal and would blow every section's backdrop up to the
- * whole world, so they're left out of the scoped section proxies.
+ * whole world, so they're kept out of the scoped section proxies and instead
+ * gathered into the default/overview scene — where the floor and walls belong as
+ * orienting context (e.g. a session replay that re-drives across the whole space).
  */
 const SECTION_PROXY_SPAN_FRACTION = 0.6;
 
@@ -165,10 +167,11 @@ const SECTION_PROXY_SPAN_FRACTION = 0.6;
  * scene it mounted in), so every other section's world heatmap has no spatial backdrop
  * and the one proxy that exists spans the entire world. This walks the scene once to
  * read each mesh's world AABB, assigns each mesh to the section that contains its centre
- * (via {@link sectionAt}, the same containment rule the per-frame watcher uses), drops
- * world-spanning meshes, then re-scans + registers a proxy scoped to each section's own
- * geometry. The result: every walkable area gets a correctly-framed backdrop, and an
- * elevated level shows just that level instead of the whole flat world.
+ * (via {@link sectionAt}, the same containment rule the per-frame watcher uses), routes
+ * world-spanning meshes (the ground plane, perimeter walls) to the default/overview scene,
+ * then re-scans + registers a proxy scoped to each section's own geometry. The result:
+ * every walkable area gets a correctly-framed backdrop, an elevated level shows just that
+ * level instead of the whole flat world, and the overview keeps the floor and walls.
  *
  * Engine-agnostic: callers pass an engine-specific `scan` (e.g. `scanSceneProxy`) and a
  * `put` that PUTs the representation, so all three connectors share one implementation.
@@ -206,14 +209,18 @@ export async function registerSectionProxies<T extends ScannedSceneProxy>(opts: 
     const spans =
       (worldX > 0 && aMaxX - aMinX >= SECTION_PROXY_SPAN_FRACTION * worldX) ||
       (worldZ > 0 && aMaxZ - aMinZ >= SECTION_PROXY_SPAN_FRACTION * worldZ);
-    if (spans) continue;
-    const sceneId = sectionAt(
-      sections,
-      defaultSceneId,
-      (aMinX + aMaxX) / 2,
-      (aMinY + aMaxY) / 2,
-      (aMinZ + aMaxZ) / 2,
-    );
+    // World-spanning meshes (the ground plane, perimeter walls) carry no per-section
+    // signal, so they go to the default/overview scene rather than a section box —
+    // keeping elevated sections tightly framed while the overview keeps the floor.
+    const sceneId = spans
+      ? defaultSceneId
+      : sectionAt(
+          sections,
+          defaultSceneId,
+          (aMinX + aMaxX) / 2,
+          (aMinY + aMaxY) / 2,
+          (aMinZ + aMaxZ) / 2,
+        );
     let set = meshesByScene.get(sceneId);
     if (!set) {
       set = new Set<string>();
