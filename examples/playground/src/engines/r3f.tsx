@@ -32,6 +32,7 @@ function Telemetry({
     projectId: ctx.projectId,
     endpoint: ctx.collectorUrl,
     transport: ctx.transport,
+    ...(ctx.offload ? { offload: ctx.offload } : {}),
     sampling: { camera: 10, pointerMove: 30 },
     capture: toThreeCapture(ctx.capture),
     ...(ctx.keyBindings ? { keyBindings: ctx.keyBindings } : {}),

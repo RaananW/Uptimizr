@@ -1,16 +1,20 @@
 import type { AppBase, BoundingBox, Entity } from "playcanvas";
 import type {
+  AggregatorConfig,
   CameraGestureSample,
+  CameraPose,
   Collector,
   CollectorContext,
   CollectorHandle,
+  NodeSample,
   NodeSamplingConfig,
   ResolvedCadence,
   SampleRate,
   SamplingProfile,
+  VisibilityMeshObservation,
 } from "@uptimizr/sdk-core";
 import {
-  classifyCameraGesture,
+  poseUnchanged,
   resolveCadence,
   toCanonicalDirection,
   toCanonicalPosition,
@@ -102,45 +106,14 @@ function isPointerLocked(getCanvas: () => unknown): boolean {
 
 type Vec3T = [number, number, number];
 
-function vec3Close(a: Vec3T, b: Vec3T, eps: number): boolean {
-  return (
-    Math.abs(a[0] - b[0]) <= eps && Math.abs(a[1] - b[1]) <= eps && Math.abs(a[2] - b[2]) <= eps
-  );
-}
-
-interface CameraPose {
-  position: Vec3T;
-  direction: Vec3T;
-  fov?: number;
-}
-
-/** True when two poses are equal within `eps`. */
-function poseUnchanged(a: CameraPose, b: CameraPose, eps: number): boolean {
-  if (!vec3Close(a.position, b.position, eps)) return false;
-  if (!vec3Close(a.direction, b.direction, eps)) return false;
-  if ((a.fov === undefined) !== (b.fov === undefined)) return false;
-  if (a.fov !== undefined && b.fov !== undefined && Math.abs(a.fov - b.fov) > eps) return false;
-  return true;
-}
-
 function sub3(a: Vec3T, b: Vec3T): Vec3T {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 }
 function dot3(a: Vec3T, b: Vec3T): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
-function len3(a: Vec3T): number {
-  return Math.hypot(a[0], a[1], a[2]);
-}
 
 type Quat = [number, number, number, number];
-
-/** A captured world transform for a scene actor (`node_transform`, ADR 0027). */
-interface NodeSample {
-  position: Vec3;
-  rotation: Quat;
-  scale?: Vec3;
-}
 
 /**
  * Structural view of a PlayCanvas graph node we read a world transform from. We
@@ -264,22 +237,6 @@ function readNodeTransform(node: WorldTransformEntity, scaleEps: number): NodeSa
   return sample;
 }
 
-/** True when two node samples are equal within `eps` (scale presence must also match). */
-function nodeSampleUnchanged(a: NodeSample, b: NodeSample, eps: number): boolean {
-  if (!vec3Close(a.position, b.position, eps)) return false;
-  if (
-    Math.abs(a.rotation[0] - b.rotation[0]) > eps ||
-    Math.abs(a.rotation[1] - b.rotation[1]) > eps ||
-    Math.abs(a.rotation[2] - b.rotation[2]) > eps ||
-    Math.abs(a.rotation[3] - b.rotation[3]) > eps
-  ) {
-    return false;
-  }
-  if ((a.scale === undefined) !== (b.scale === undefined)) return false;
-  if (a.scale && b.scale && !vec3Close(a.scale, b.scale, eps)) return false;
-  return true;
-}
-
 /** Minimal structural view of the scene-graph lookup used to resolve a named actor. */
 interface ActorLookupRoot {
   findByName?: (name: string) => unknown;
@@ -397,16 +354,6 @@ function readPlayCanvasBoneTransform(bone: BoneGraphNode, scaleEps: number): Nod
   return sample;
 }
 
-/** Round an AABB to mm precision so tiny float jitter doesn't re-send the box. */
-function roundAabb(b: Aabb): Aabb {
-  return b.map((v) => Math.round(v * 1000) / 1000) as Aabb;
-}
-/** True when two AABBs match within `eps` on every axis. */
-function aabbClose(a: Aabb, b: Aabb, eps: number): boolean {
-  for (let i = 0; i < 6; i++) if (Math.abs((a[i] ?? 0) - (b[i] ?? 0)) > eps) return false;
-  return true;
-}
-
 /** Structural view of a PlayCanvas mesh instance we read for visibility. */
 interface MeshInstanceVisView {
   visible?: boolean;
@@ -476,14 +423,6 @@ function readWorldBounds(node: RenderableNodeView): WorldBounds | null {
  */
 function sphereInFront(center: Vec3T, radius: number, camPos: Vec3T, forward: Vec3T): boolean {
   return dot3(sub3(center, camPos), forward) + radius > 0;
-}
-
-/** Per-object visibility accumulator for the current window (mirrors Babylon). */
-interface VisibilityAccumulator {
-  visibleMs: number;
-  centeredMs: number;
-  maxScreenFraction: number;
-  bounds?: Aabb;
 }
 
 /** Which signals the collector captures. All default to `true`. */
@@ -876,6 +815,17 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
     name: "playcanvas",
     start(ctx: CollectorContext): CollectorHandle {
       const appView = app as unknown as AppView;
+      // The engine-agnostic aggregator (#10): the connector reads live engine
+      // state into plain-number snapshot DTOs and hands them here; the
+      // offload-eligible math (matrix-free decompose idle-diffs, visibility
+      // bucketing, gesture classification) runs main-thread by default or inside
+      // the offload worker, behind the client `offload` flag.
+      const aggregatorConfig: AggregatorConfig = {
+        perf: { suppressIdle: suppressIdlePerfSamples, fpsThreshold: perfFpsThreshold },
+        node: { suppressIdle: suppressIdleSamples },
+        visibility: { centeredCos: visCenteredCos, boundingBox: visBoundingBox, boundsEps: 1e-3 },
+      };
+      const snapshot = ctx.createAggregation(aggregatorConfig);
       const timers: ReturnType<typeof setInterval>[] = [];
       const domListeners: Array<{
         target: EventTargetView;
@@ -890,7 +840,6 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
 
       let lastPointerMove = 0;
       let lastPose: CameraPose | undefined;
-      let lastFps: number | undefined;
       // camera_gesture (ADR 0025) bracket state: the camera snapshot at
       // pointer-down, diffed against pointer-up to classify the navigation.
       let gestureStart: { sample: CameraGestureSample; ts: number; source?: InputSource } | null =
@@ -945,8 +894,8 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
           ? (toCanonicalPosition(gazeHit.point, "right") as Vec3T)
           : undefined;
         const hitMesh = gazeHit && gazeHit.name ? gazeHit.name : undefined;
-        ctx.emit({
-          type: "camera_sample",
+        snapshot({
+          channel: "camera",
           position: pose.position,
           direction: pose.direction,
           ...(pose.fov !== undefined ? { fov: pose.fov } : {}),
@@ -977,15 +926,11 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
       const samplePerf = () => {
         const fps = readFps();
         if (fps <= 0) return;
-        if (
-          suppressIdlePerfSamples &&
-          lastFps !== undefined &&
-          Math.abs(fps - lastFps) <= perfFpsThreshold
-        ) {
-          return;
-        }
-        lastFps = fps;
-        ctx.emit({ type: "frame_perf", fps });
+        // Hand the engine FPS read to the aggregator; it owns the idle-diff (and,
+        // for engines that supply a frame-time window, the percentiles/longFrames).
+        // PlayCanvas exposes only an averaged FPS, so the window stays empty and the
+        // aggregator emits `frame_perf` with `fps` alone — byte-for-byte unchanged.
+        snapshot({ channel: "perf", frameTimes: new Float32Array(0), fps, jankFrameMs: 0 });
       };
 
       // Drive a continuous channel either on a timer (fixed interval) or once per
@@ -1025,10 +970,12 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
         // actor gets its own cadence-driven sampler: resolve the node (lazily —
         // resolvers handle load order), refuse cameras (the visitor camera is
         // already `camera_sample`; "events live once"), read the WORLD transform,
-        // convert it to the canonical frame, and emit. Idle suppression skips
-        // samples where the transform is unchanged so a static actor costs nothing.
+        // convert it to the canonical frame, and hand the decomposed sample to the
+        // aggregator. PlayCanvas applies a right-handed→canonical conversion (ADR
+        // 0018), so we pass the already-decomposed sample (never the raw matrix
+        // path); the aggregator owns the idle-diff so a static actor stays off the
+        // wire (#10).
         const root = appView.root as unknown as ActorLookupRoot;
-        const lastNodeSample = new Map<string, NodeSample>();
         const refusedCamera = new Set<string>();
         for (const id of actorIds) {
           const actor = actorMap[id]!;
@@ -1052,47 +999,27 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
               }
               return;
             }
-            const sample = readNodeTransform(node, cameraEpsilon);
-            const prev = lastNodeSample.get(id);
-            if (
-              !(suppressIdleSamples && prev && nodeSampleUnchanged(prev, sample, cameraEpsilon))
-            ) {
-              lastNodeSample.set(id, sample);
-              ctx.emit({
-                type: "node_transform",
-                nodeId: id,
-                position: sample.position,
-                rotation: sample.rotation,
-                ...(sample.scale ? { scale: sample.scale } : {}),
-              });
-            }
-            // Subtree descendants (ADR 0033): walk the bounded hierarchy and emit
-            // each kept node's WORLD transform with its `childPath`. Idle
-            // suppression is keyed per (actor, childPath) so a static part costs
-            // nothing on the wire.
+            snapshot({
+              channel: "node",
+              nodeId: id,
+              decomposed: readNodeTransform(node, cameraEpsilon),
+              scaleEps: cameraEpsilon,
+            });
+            // Subtree descendants (ADR 0033): walk the bounded hierarchy and hand
+            // each kept node's WORLD transform with its `childPath` to the
+            // aggregator, which idle-diffs per (actor, childPath) so a static part
+            // costs nothing on the wire.
             if (subtree) {
               for (const { childPath, node: child } of collectSubtree(
                 node as WorldTransformEntity,
                 subtree,
               )) {
-                const childSample = readNodeTransform(child, cameraEpsilon);
-                const key = `${id}\u0000${childPath}`;
-                const childPrev = lastNodeSample.get(key);
-                if (
-                  suppressIdleSamples &&
-                  childPrev &&
-                  nodeSampleUnchanged(childPrev, childSample, cameraEpsilon)
-                ) {
-                  continue;
-                }
-                lastNodeSample.set(key, childSample);
-                ctx.emit({
-                  type: "node_transform",
+                snapshot({
+                  channel: "node",
                   nodeId: id,
                   childPath,
-                  position: childSample.position,
-                  rotation: childSample.rotation,
-                  ...(childSample.scale ? { scale: childSample.scale } : {}),
+                  decomposed: readNodeTransform(child, cameraEpsilon),
+                  scaleEps: cameraEpsilon,
                 });
               }
             }
@@ -1106,11 +1033,13 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
         // Skeleton bone capture (`node_transform` + `boneId`, ADR 0027 Tier 2).
         // For each declared skinned actor, resolve its skeleton bones (by the
         // configured allowlist or "*"), then sample each bone's skeleton-LOCAL
-        // pose at the actor's cadence. Per-bone idle suppression keeps a still
-        // rig free. The local frame is parent-relative, so motion replays onto a
-        // differently-placed instance of the same rig (ADR 0027).
+        // pose at the actor's cadence and hand the decomposed sample to the
+        // aggregator (which idle-diffs per (actor, bone), #10). PlayCanvas reads
+        // the local TRS via `getLocal*` and applies the canonical conversion (ADR
+        // 0018), so — like nodes — we pass the decomposed sample, never the raw
+        // matrix path. The local frame is parent-relative, so motion replays onto
+        // a differently-placed instance of the same rig (ADR 0027).
         const root = appView.root as unknown as ActorLookupRoot;
-        const lastBoneSample = new Map<string, NodeSample>();
         const warnedNoSkeleton = new Set<string>();
         for (const id of boneActorIds) {
           const actor = actorMap[id]!;
@@ -1136,19 +1065,12 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
               if (typeof boneName !== "string") continue;
               const sample = readPlayCanvasBoneTransform(bone, cameraEpsilon);
               if (!sample) continue;
-              const key = `${id}\u0000${boneName}`;
-              const prev = lastBoneSample.get(key);
-              if (suppressIdleSamples && prev && nodeSampleUnchanged(prev, sample, cameraEpsilon)) {
-                continue;
-              }
-              lastBoneSample.set(key, sample);
-              ctx.emit({
-                type: "node_transform",
+              snapshot({
+                channel: "node",
                 nodeId: id,
                 boneId: boneName,
-                position: sample.position,
-                rotation: sample.rotation,
-                ...(sample.scale ? { scale: sample.scale } : {}),
+                decomposed: sample,
+                scaleEps: cameraEpsilon,
               });
             }
           };
@@ -1158,14 +1080,12 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
       }
 
       // --- Per-object dwell (`mesh_visibility`, #37) ---
-      // Accumulate on-screen / near-centre time per object every engine frame
-      // (frameend pauses when the tab is hidden — like Babylon's onBeforeRender),
-      // then flush one bucketed summary per object per window (ADR 0012).
+      // Each engine frame we read which tracked objects are on-screen (the engine
+      // bounds/frustum reads must stay main-thread) and hand the raw per-tick
+      // observations to the aggregator; it owns the dwell/centred/screen-fraction
+      // bucketing and the per-window flush (ADR 0012, #10). `frameend` pauses when
+      // the tab is hidden — like Babylon's onBeforeRender.
       if (want.meshVisibility) {
-        const accum = new Map<string, VisibilityAccumulator>();
-        // Last AABB sent per mesh, so a static box is sent once then suppressed.
-        const sentBounds = new Map<string, Aabb>();
-        const boundsEps = 1e-3;
         let lastVisTime = ctx.now();
 
         const sampleVisibility = () => {
@@ -1179,12 +1099,13 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
           const cf = camView.forward;
           const camPos: Vec3T = [cp.x, cp.y, cp.z];
           const forward: Vec3T = [cf.x, cf.y, cf.z];
-          const fwdLen = len3(forward) || 1;
-          // Half vertical FOV in radians; fall back for ortho / missing fov.
-          const vfov = verticalFovRad(camView.camera);
-          const halfFov = vfov !== undefined ? vfov / 2 : 0.4;
+          // Vertical FOV in radians; `0` lets the aggregator apply its `0.8`
+          // default (→ half-FOV `0.4`), matching the previous ortho/missing-fov
+          // fallback.
+          const fov = verticalFovRad(camView.camera) ?? 0;
 
           let tracked = 0;
+          const observations: VisibilityMeshObservation[] = [];
           appView.root?.forEach?.((raw) => {
             const node = raw as RenderableNodeView;
             if (meshInstancesOf(node).length === 0) return;
@@ -1202,53 +1123,41 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
             if (!sphereInFront(bounds.center, bounds.radius, camPos, forward)) {
               return;
             }
-            const toCenter = sub3(bounds.center, camPos);
-            const dist = len3(toCenter) || 1e-6;
-            const cosAngle = dot3(toCenter, forward) / (dist * fwdLen);
-            const screenFraction = clamp01(Math.atan2(bounds.radius, dist) / (halfFov || 1e-6));
-
-            let entry = accum.get(name);
-            if (!entry) {
-              entry = { visibleMs: 0, centeredMs: 0, maxScreenFraction: 0 };
-              accum.set(name, entry);
-            }
-            entry.visibleMs += stepMs;
-            if (cosAngle >= visCenteredCos) entry.centeredMs += stepMs;
-            if (screenFraction > entry.maxScreenFraction) entry.maxScreenFraction = screenFraction;
-            if (visBoundingBox) {
-              // Canonical frame negates Z (right-handed PlayCanvas → canonical),
-              // which swaps the Z min/max — match hitPoint / camera_sample (ADR 0018).
-              const [aMinX, aMinY, aMinZ, aMaxX, aMaxY, aMaxZ] = bounds.aabb;
-              entry.bounds = [aMinX, aMinY, -aMaxZ, aMaxX, aMaxY, -aMinZ];
-            }
+            observations.push({
+              mesh: name,
+              center: bounds.center,
+              radius: bounds.radius,
+              // Ride the world AABB along only when bounds capture is on (#53). The
+              // canonical frame negates Z (right-handed PlayCanvas → canonical),
+              // swapping the Z min/max — match hitPoint / camera_sample (ADR 0018);
+              // the aggregator dedupes/rounds it across the window.
+              ...(visBoundingBox
+                ? {
+                    aabb: [
+                      bounds.aabb[0],
+                      bounds.aabb[1],
+                      -bounds.aabb[5],
+                      bounds.aabb[3],
+                      bounds.aabb[4],
+                      -bounds.aabb[2],
+                    ] as [number, number, number, number, number, number],
+                  }
+                : {}),
+            });
+          });
+          if (observations.length === 0) return;
+          snapshot({
+            channel: "visibilityTick",
+            stepMs,
+            camPos,
+            // Pass the raw (un-normalized) forward; the aggregator normalizes.
+            forward,
+            fov,
+            meshes: observations,
           });
         };
 
-        const flushVisibility = () => {
-          for (const [mesh, entry] of accum) {
-            if (entry.visibleMs <= 0) continue;
-            let bounds: Aabb | undefined;
-            if (entry.bounds) {
-              const rounded = roundAabb(entry.bounds);
-              const prev = sentBounds.get(mesh);
-              if (!prev || !aabbClose(prev, rounded, boundsEps)) {
-                bounds = rounded;
-                sentBounds.set(mesh, rounded);
-              }
-            }
-            ctx.emit({
-              type: "mesh_visibility",
-              mesh,
-              visibleMs: Math.round(entry.visibleMs),
-              ...(entry.centeredMs > 0 ? { centeredMs: Math.round(entry.centeredMs) } : {}),
-              ...(entry.maxScreenFraction > 0
-                ? { maxScreenFraction: entry.maxScreenFraction }
-                : {}),
-              ...(bounds ? { bounds } : {}),
-            });
-          }
-          accum.clear();
-        };
+        const flushVisibility = () => snapshot({ channel: "visibilityFlush" });
 
         // Sample every frame; flush on the window timer + once on stop (trailing).
         frameCallbacks.push(sampleVisibility);
@@ -1328,8 +1237,8 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
         if (hoverMesh !== undefined && !hoverActed) {
           const dwellMs = now - hoverStartMs;
           if (dwellMs >= hoverMinDwellMs) {
-            ctx.emit({
-              type: "hover_dwell",
+            snapshot({
+              channel: "hover",
               mesh: hoverMesh,
               dwellMs,
               ...(hoverSource ? { source: hoverSource } : {}),
@@ -1468,18 +1377,14 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
           const opened = gestureStart;
           gestureStart = null;
           if (!opened) return;
-          const classified = classifyCameraGesture(opened.sample, readGestureSample(), {
-            sensitivity: cameraGestureSensitivity,
-          });
-          if (!classified) return;
-          ctx.emit({
-            type: "camera_gesture",
-            kind: classified.kind,
+          // Hand the start→end bracket to the aggregator; the (pure) classification
+          // math runs there, main-thread or in the worker (#10).
+          snapshot({
+            channel: "gesture",
+            start: opened.sample,
+            end: readGestureSample(),
             durationMs: Math.max(0, Math.round(ctx.now() - opened.ts)),
-            ...(classified.orbitDeg !== undefined ? { orbitDeg: classified.orbitDeg } : {}),
-            ...(classified.rollDeg !== undefined ? { rollDeg: classified.rollDeg } : {}),
-            ...(classified.zoomRatio !== undefined ? { zoomRatio: classified.zoomRatio } : {}),
-            ...(classified.panDist !== undefined ? { panDist: classified.panDist } : {}),
+            options: { sensitivity: cameraGestureSensitivity },
             ...(opened.source ? { source: opened.source } : {}),
           });
         };

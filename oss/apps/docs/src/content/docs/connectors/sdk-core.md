@@ -40,12 +40,37 @@ await client.stop("manual");
 | `flushIntervalMs` | `5000`         | Max time between flushes (`0` disables the timer).                           |
 | `beforeSend`      | —              | Per-event hook; return `null` to drop. Runs after the envelope is filled in. |
 | `transport`       | beacon → fetch | Custom delivery (e.g. to observe sends).                                     |
-| `offload`         | `main`         | Run batching on the main thread or a worker.                                 |
+| `offload`         | `main`         | Run aggregation + batching on the main thread or an opt-in worker.           |
 | `disabled`        | `false`        | Collect nothing (e.g. honor Do-Not-Track).                                   |
 
 `beforeSend` runs on every event after the envelope is filled in; use it to redact fields or sample
 a noisy channel. It is **not** exposed through `trackScene` — reach for the custom-client path when
 you need it.
+
+## Worker offload (opt-in)
+
+`offload: "worker"` moves the SDK's **processing** phase off the render thread into a same-origin
+module worker; `offload: "main"` (the default) keeps everything synchronous and is byte-for-byte
+identical. Worker mode is purely a performance valve — correctness never depends on it, and it
+silently falls back to the main thread where workers are unavailable (older embeds, restrictive CSP,
+SSR, tests).
+
+What moves to the worker when enabled:
+
+- **Per-frame aggregation** — frame-time percentiles (p95/p99 + long-frame counts), node/bone
+  matrix→position/quaternion/scale decomposition, mesh-visibility bucketing, transform idle-diffing,
+  and camera-gesture classification. Connectors read live engine state into plain-number snapshots
+  on the main thread (the only place engine state is reachable) and hand them to the aggregator,
+  which finalizes the events in the worker.
+- **Serialization + steady-state dispatch** — `JSON.stringify` and the `fetch`/`sendBeacon` for
+  ordinary batches.
+
+What always stays on the main thread: reading engine state (frustum tests, bounds, gaze rays, FPS,
+pointer/keyboard observers) and the **terminal unload flush** on stop/`pagehide`, whose `sendBeacon`
+reliability requires the page context. No new data is collected and the wire contract
+(`@uptimizr/schema`) is unchanged — worker mode is an execution-location choice only. See
+[ADR 0031](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0031-optional-worker-offload.md)
+and [ADR 0044](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0044-connector-aggregation-offload.md).
 
 ## Anonymized users (opt-in)
 

@@ -13,6 +13,9 @@ import type {
   SessionUser,
 } from "@uptimizr/schema";
 
+import type { AggregatorConfig } from "./aggregation/aggregator.js";
+import type { Snapshot } from "./aggregation/snapshot.js";
+
 /**
  * Envelope fields the client fills in automatically. Collectors and callers only
  * provide the event `type` and its payload — never these.
@@ -100,6 +103,19 @@ export interface CollectorContext {
   reportCapabilityChange(change: CapabilityChangeReport): void;
   /** Switch the active scene/area (ADR 0010); emits a `scene_change` marker. */
   setScene(sceneId: string): void;
+  /**
+   * Register an aggregation channel for the offload-eligible per-frame math
+   * (ADR 0031 follow-up, #10) and obtain a `snapshot` emitter. A connector calls
+   * this once at start with its resolved capture config; per frame it then hands
+   * raw, plain-number {@link Snapshot} DTOs to the returned function instead of
+   * aggregating inline. The client routes them to a main-thread or worker-resident
+   * {@link Aggregator} per the `offload` config; finalized events are always
+   * emitted (and queued/flushed) on the main thread.
+   *
+   * High-volume channels (node/bone matrices, visibility ticks) are
+   * typed-array-backed so they move to the worker zero-copy.
+   */
+  createAggregation(config: AggregatorConfig): (snapshot: Snapshot) => void;
   /** Current timestamp in epoch ms (overridable for testing). */
   now(): number;
 }
