@@ -37,6 +37,13 @@ embedded DuckDB store.
 - Update or add docs/ADRs when behavior or decisions change.
 - Reflect any new feature/option/event/endpoint in the public docs site (`oss/apps/docs`) and
   `docs/integration.md` in the same change.
+- Add a **changeset** (`pnpm changeset`) for any change to a publishable `@uptimizr/*` package, and
+  add/extend a **Playwright E2E** under `examples/playground/e2e/` for any user-visible or
+  full-stack change (capture → collector → dashboard/replay), per the `work-on-issue` skill.
+- When opening a pull request, populate every section of `.github/PULL_REQUEST_TEMPLATE.md`
+  (Summary, Linked issue, Type of change, Checklist, AI-assisted contribution) and tick each
+  checklist item honestly — call out anything intentionally skipped. The `create-pr` skill walks
+  the full gate.
 - Use Conventional Commits.
 - Prefer editing existing files; don't create one-off markdown summaries.
 
