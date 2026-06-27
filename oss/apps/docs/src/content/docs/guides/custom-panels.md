@@ -209,8 +209,98 @@ The host (`PanelHost`) filters the array by the active surface and each panel's 
 then renders the bodies into the grid. There is nothing else to wire up — no manual placement in
 `page.tsx`.
 
-:::note
-Panels are registered at build time today. Loading panels from a remote URL or a plugin manifest at
-runtime is tracked for a future release; the contract is designed so that path can be added without
-changing existing panels.
+## Loading panels at runtime
+
+Build-time registration is the simplest path, but a self-hoster can also load panels from a
+**remote manifest at runtime** — no dashboard rebuild required (ADR 0041). The runtime path uses
+the exact same `PanelDefinition` contract; a panel module you can `import()` in the browser is a
+panel the dashboard can load.
+
+Runtime loading is **off by default**. Point the dashboard at one or more manifests with a
+build-time env var:
+
+```bash
+# One manifest, or a comma-separated list.
+NEXT_PUBLIC_PANELS_MANIFEST_URL="https://panels.example.com/uptimizr.panels.json"
+
+# Optional allowlist of module origins (comma-separated). When set, only module
+# URLs whose origin is listed are imported.
+NEXT_PUBLIC_PANELS_ALLOWED_ORIGINS="https://panels.example.com"
+```
+
+### The manifest
+
+A manifest is a small JSON document listing the panel modules to load. Each entry declares the
+**panel-contract major** it was built against (`contract`), so an incompatible panel is rejected
+with a clear error instead of failing in subtle ways:
+
+```json
+{
+  "version": 1,
+  "panels": [
+    {
+      "id": "co2-budget",
+      "url": "https://panels.example.com/co2-budget.js",
+      "contract": 1,
+      "export": "default"
+    }
+  ]
+}
+```
+
+| Field      | Meaning                                                                        |
+| ---------- | ------------------------------------------------------------------------------ |
+| `version`  | Manifest format version (currently `1`).                                       |
+| `url`      | Fully-qualified URL of an ES module that exports a `PanelDefinition`.          |
+| `contract` | Panel-contract major the module targets; must equal the dashboard's version.   |
+| `export`   | Named export to read the definition from. Defaults to `default`.               |
+| `id`       | Optional label for diagnostics.                                                |
+
+The dashboard exposes its current contract major as `PANEL_CONTRACT_VERSION` from
+`@uptimizr/react` — build your panel against it and set `contract` to the same number.
+
+### Building a remote panel module
+
+A remote panel is just a `PanelDefinition` shipped as an ES module. Author it exactly like a
+built-in one and export it (here as the default export):
+
+```ts
+// co2-budget.ts → bundled to co2-budget.js
+import { definePanel } from "@uptimizr/react";
+
+export default definePanel<number>({
+  id: "co2-budget",
+  title: "Render energy budget",
+  load: (ctx) => ctx.api.perfDistribution(ctx.params).then(estimateCo2),
+  render: ({ data }) => <Budget grams={data} />,
+});
+```
+
+Bundle it to a single ES module hosted at the `url` in your manifest. The dashboard imports it in
+the browser at runtime and merges it into the grid alongside the built-ins.
+
+### Trust model
+
+:::caution
+Remote panels execute **inside the dashboard with full privileges** — the same access to the
+React tree, the collector API client, the live SSE layer, and host actions that a built-in panel
+has. There is no iframe/worker sandbox (that would break the rich `PanelContext` every panel
+relies on). **Only point `NEXT_PUBLIC_PANELS_MANIFEST_URL` at sources you trust**, and prefer
+serving panel modules from an origin you control. `NEXT_PUBLIC_PANELS_ALLOWED_ORIGINS` is a
+guardrail — it restricts which origins modules may load from — not a sandbox.
 :::
+
+### Error handling
+
+Runtime loading never breaks the grid. Each manifest and each panel is loaded independently, and
+failures are isolated and surfaced in a dismissible **"panels failed to load"** banner:
+
+- An unreachable or malformed manifest is reported and skipped.
+- A panel whose declared `contract` doesn't match the dashboard is rejected as incompatible.
+- A module URL outside the configured allowlist is blocked.
+- A module that fails to import, is missing its export, or doesn't export a valid
+  `PanelDefinition` is reported — the other panels still load.
+- A duplicate `id` (clashing with a built-in or another remote panel) is ignored; the existing
+  panel wins.
+- Even a panel that throws while **rendering** is caught per-panel: it shows an inline error in
+  its own card instead of crashing the dashboard.
