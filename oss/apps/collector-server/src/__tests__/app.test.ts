@@ -267,7 +267,9 @@ describe("collector app", () => {
       payload: { schemaVersion: "1.0", events: [sessionStart()] },
     });
     expect(res.statusCode).toBe(200);
-    const inserted = store.inserted[0]! as AnyEvent & { device?: { browser?: string; os?: string } };
+    const inserted = store.inserted[0]! as AnyEvent & {
+      device?: { browser?: string; os?: string };
+    };
     expect(inserted.device?.browser).toBe("Safari");
     expect(inserted.device?.os).toBe("macOS");
     await app.close();

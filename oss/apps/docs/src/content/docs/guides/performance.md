@@ -35,7 +35,6 @@ model is retained (derived, non-PII — [ADR 0003](https://github.com/RaananW/Up
 This needs **no SDK or client change** — it reuses a header the collector already receives. The
 dashboard renders it as the "FPS by device" panel with Backend / Browser / OS / Mobile / GPU columns.
 
-
 ## GPU / memory footprint (`resource_sample`) — opt-in
 
 Off by default. When `capture.resourceSample` is enabled, the connector samples the _actual
