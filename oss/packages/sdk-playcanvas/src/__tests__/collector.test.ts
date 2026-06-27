@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppBase, Entity } from "playcanvas";
-import type { CollectorContext, EventInput } from "@uptimizr/sdk-core";
+import type { AggregatorConfig, CollectorContext, EventInput, Snapshot } from "@uptimizr/sdk-core";
+import { createAggregator } from "@uptimizr/sdk-core";
 import { playcanvasCollector } from "../collector.js";
 import type { RaycastProbe } from "../raycast.js";
 
@@ -143,6 +144,13 @@ function makeCtx(now = { value: 1000 }) {
         ...(typeof opts.pressed === "boolean" ? { pressed: opts.pressed } : {}),
       } as EventInput),
     setScene: () => {},
+    createAggregation: (config: AggregatorConfig) => {
+      // Mirror production: snapshots flow through a real main-thread aggregator
+      // whose finalized events land in the same `events` sink, so the existing
+      // event-shape assertions exercise the snapshot → aggregator → emit path.
+      const aggregator = createAggregator({ ...config, emit: (e) => events.push(e) });
+      return (s: Snapshot) => aggregator.ingest(s);
+    },
     now: () => now.value,
   } satisfies CollectorContext;
   return { ctx, events, now };
