@@ -12,12 +12,7 @@ import {
   length3,
   type NodeSample,
 } from "./math.js";
-import type {
-  NodeSnapshot,
-  PerfSnapshot,
-  Snapshot,
-  VisibilityTickSnapshot,
-} from "./snapshot.js";
+import type { NodeSnapshot, PerfSnapshot, Snapshot, VisibilityTickSnapshot } from "./snapshot.js";
 
 /**
  * Serializable per-channel configuration for the {@link Aggregator}, mirroring the

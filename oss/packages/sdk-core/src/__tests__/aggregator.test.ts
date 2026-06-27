@@ -18,7 +18,11 @@ function collect(): { agg: Aggregator; events: EventInput[] } {
     emit: (e) => events.push(e),
     perf: { suppressIdle: false, fpsThreshold: 1 },
     node: { suppressIdle: true },
-    visibility: { centeredCos: Math.cos((12 * Math.PI) / 180), boundingBox: false, boundsEps: 1e-3 },
+    visibility: {
+      centeredCos: Math.cos((12 * Math.PI) / 180),
+      boundingBox: false,
+      boundsEps: 1e-3,
+    },
   });
   return { agg, events };
 }
@@ -116,13 +120,20 @@ describe("aggregator: node channel", () => {
     const snap = {
       channel: "node" as const,
       nodeId: "hero",
-      decomposed: { position: [1, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number] },
+      decomposed: {
+        position: [1, 0, 0] as [number, number, number],
+        rotation: [0, 0, 0, 1] as [number, number, number, number],
+      },
       scaleEps: 1e-3,
     };
     agg.ingest(snap);
     agg.ingest(snap); // unchanged → suppressed
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ type: "node_transform", nodeId: "hero", position: [1, 0, 0] });
+    expect(events[0]).toMatchObject({
+      type: "node_transform",
+      nodeId: "hero",
+      position: [1, 0, 0],
+    });
     expect(events[0]).not.toHaveProperty("scale");
     expectValid(events[0]!);
   });
@@ -143,7 +154,10 @@ describe("aggregator: node channel", () => {
   it("keys idle state separately per childPath and bone", () => {
     const { agg, events } = collect();
     const base = { channel: "node" as const, nodeId: "a", scaleEps: 1e-3 };
-    const t = { position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number] };
+    const t = {
+      position: [0, 0, 0] as [number, number, number],
+      rotation: [0, 0, 0, 1] as [number, number, number, number],
+    };
     agg.ingest({ ...base, decomposed: t });
     agg.ingest({ ...base, childPath: "arm", decomposed: t });
     agg.ingest({ ...base, boneId: "hand", decomposed: t });
@@ -180,7 +194,11 @@ describe("aggregator: visibility channel", () => {
     const events: EventInput[] = [];
     const agg = createAggregator({
       emit: (e) => events.push(e),
-      visibility: { centeredCos: Math.cos((12 * Math.PI) / 180), boundingBox: true, boundsEps: 1e-3 },
+      visibility: {
+        centeredCos: Math.cos((12 * Math.PI) / 180),
+        boundingBox: true,
+        boundsEps: 1e-3,
+      },
     });
     const tick = () =>
       agg.ingest({
@@ -239,7 +257,12 @@ describe("aggregator: gesture + hover channels", () => {
   it("passes a hover episode through as hover_dwell", () => {
     const { agg, events } = collect();
     agg.ingest({ channel: "hover", mesh: "lamp", dwellMs: 700, source: "mouse" });
-    expect(events[0]).toMatchObject({ type: "hover_dwell", mesh: "lamp", dwellMs: 700, source: "mouse" });
+    expect(events[0]).toMatchObject({
+      type: "hover_dwell",
+      mesh: "lamp",
+      dwellMs: 700,
+      source: "mouse",
+    });
     expectValid(events[0]!);
   });
 });
@@ -247,7 +270,10 @@ describe("aggregator: gesture + hover channels", () => {
 describe("aggregator: reset", () => {
   it("clears windowed and idle state", () => {
     const { agg, events } = collect();
-    const t = { position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number] };
+    const t = {
+      position: [0, 0, 0] as [number, number, number],
+      rotation: [0, 0, 0, 1] as [number, number, number, number],
+    };
     agg.ingest({ channel: "node", nodeId: "x", decomposed: t, scaleEps: 1e-3 });
     agg.reset();
     agg.ingest({ channel: "node", nodeId: "x", decomposed: t, scaleEps: 1e-3 }); // after reset → not suppressed

@@ -2,10 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 
 import { createAggregator } from "../aggregation/aggregator.js";
 import type { Snapshot } from "../aggregation/snapshot.js";
-import {
-  createMainSink,
-  createWorkerAggregationSink,
-} from "../aggregationSink.js";
+import { createMainSink, createWorkerAggregationSink } from "../aggregationSink.js";
 import type { WorkerLike } from "../processor.js";
 import type { EventInput } from "../types.js";
 

@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Camera, Scene, WebGLRenderer } from "three";
-import type {
-  AggregatorConfig,
-  CollectorContext,
-  EventInput,
-  Snapshot,
-} from "@uptimizr/sdk-core";
+import type { AggregatorConfig, CollectorContext, EventInput, Snapshot } from "@uptimizr/sdk-core";
 import { createAggregator } from "@uptimizr/sdk-core";
 import { threeCollector } from "../collector.js";
 import type { RaycastProbe } from "../raycast.js";

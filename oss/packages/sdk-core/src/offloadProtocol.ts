@@ -97,7 +97,4 @@ export interface WorkerUnloadDoneMessage {
 }
 
 /** Messages the worker sends back to the main thread. */
-export type WorkerOutbound =
-  | WorkerResultMessage
-  | WorkerEventsMessage
-  | WorkerUnloadDoneMessage;
+export type WorkerOutbound = WorkerResultMessage | WorkerEventsMessage | WorkerUnloadDoneMessage;

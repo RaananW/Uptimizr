@@ -962,7 +962,14 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
             });
           }
           if (observations.length === 0) return;
-          snapshot({ channel: "visibilityTick", stepMs, camPos, forward, fov, meshes: observations });
+          snapshot({
+            channel: "visibilityTick",
+            stepMs,
+            camPos,
+            forward,
+            fov,
+            meshes: observations,
+          });
         };
 
         const flushVisibility = () => snapshot({ channel: "visibilityFlush" });

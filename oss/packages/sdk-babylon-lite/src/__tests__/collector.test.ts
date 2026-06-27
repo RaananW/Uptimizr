@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Camera, SceneContext } from "@babylonjs/lite";
-import type {
-  AggregatorConfig,
-  CollectorContext,
-  EventInput,
-  Snapshot,
-} from "@uptimizr/sdk-core";
+import type { AggregatorConfig, CollectorContext, EventInput, Snapshot } from "@uptimizr/sdk-core";
 import { createAggregator } from "@uptimizr/sdk-core";
 import { liteCollector } from "../collector.js";
 import type { LitePickProbe } from "../picker.js";

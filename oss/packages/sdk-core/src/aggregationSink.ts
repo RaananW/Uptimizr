@@ -1,10 +1,6 @@
 import type { Aggregator, AggregatorConfig } from "./aggregation/aggregator.js";
 import { collectSnapshotTransferables, type Snapshot } from "./aggregation/snapshot.js";
-import {
-  defaultWorkerFactory,
-  type WorkerFactory,
-  type WorkerLike,
-} from "./processor.js";
+import { defaultWorkerFactory, type WorkerFactory, type WorkerLike } from "./processor.js";
 import type { EventInput } from "./types.js";
 import type {
   WorkerAggInitMessage,

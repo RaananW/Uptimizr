@@ -33,8 +33,4 @@ export {
   dot3,
   length3,
 } from "./math.js";
-export type {
-  VisibilityContribution,
-  CameraPose,
-  NodeSample,
-} from "./math.js";
+export type { VisibilityContribution, CameraPose, NodeSample } from "./math.js";
