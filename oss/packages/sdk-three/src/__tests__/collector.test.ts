@@ -931,20 +931,33 @@ describe("threeCollector — WebGPU device.lost → graphics_diagnostic (#20)", 
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  /** A WebGPURenderer whose `backend.device.lost` promise resolves on `lose(...)`. */
-  function makeWebGpuRenderer(canvas: ReturnType<typeof makeCanvas>) {
+  /**
+   * A WebGPURenderer whose `backend.device.lost` promise resolves on `lose(...)`.
+   * Pass `deferDevice: true` to start with `backend.device` undefined (mirrors
+   * WebGPURenderer's async `init()`) and attach it later via `provideDevice()`.
+   */
+  function makeWebGpuRenderer(
+    canvas: ReturnType<typeof makeCanvas>,
+    opts: { deferDevice?: boolean } = {},
+  ) {
     let resolveLost!: (info: { reason?: string; message?: string }) => void;
     const lost = new Promise<{ reason?: string; message?: string }>((r) => {
       resolveLost = r;
     });
+    const backend: { device?: { lost: Promise<{ reason?: string; message?: string }> } } = {
+      device: opts.deferDevice ? undefined : { lost },
+    };
     const renderer = {
       domElement: canvas,
       isWebGPURenderer: true,
       info: { render: { frame: 0, triangles: 0 } },
-      backend: { device: { lost } },
+      backend,
     } as unknown as WebGLRenderer;
     return {
       renderer,
+      provideDevice: () => {
+        backend.device = { lost };
+      },
       lose: async (info: { reason?: string; message?: string }) => {
         resolveLost(info);
         await Promise.resolve();
@@ -1015,6 +1028,29 @@ describe("threeCollector — WebGPU device.lost → graphics_diagnostic (#20)", 
     handle.stop();
     await lose({ reason: "unknown" });
     expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+
+  it("wires device.lost even when the device initializes asynchronously after start()", async () => {
+    const { renderer, provideDevice, lose } = makeWebGpuRenderer(makeCanvas(), {
+      deferDevice: true,
+    });
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+
+    // Device not ready yet at start() — the loss must not be missed.
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+
+    provideDevice();
+    await vi.advanceTimersByTimeAsync(300);
+    await lose({ reason: "unknown", message: "late device removed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      severity: "fatal",
+      category: "device-lost",
+      backend: "webgpu",
+    });
+    handle.stop();
   });
 
   it("is a no-op on a WebGL renderer (no device-lost concept)", async () => {

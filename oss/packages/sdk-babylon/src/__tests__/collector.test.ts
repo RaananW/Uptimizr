@@ -1014,13 +1014,17 @@ describe("babylonCollector — WebGPU device.lost → graphics_diagnostic (#20)"
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  /** A WebGPU scene whose engine `_device.lost` promise resolves on `lose(...)`. */
-  function makeWebGpuScene() {
+  /**
+   * A WebGPU scene whose engine `_device.lost` promise resolves on `lose(...)`.
+   * Pass `deferDevice: true` to start with `_device` undefined (mirrors Babylon's
+   * async `initAsync`) and attach it later via the returned `provideDevice()`.
+   */
+  function makeWebGpuScene(opts: { deferDevice?: boolean } = {}) {
     let resolveLost!: (info: { reason?: string; message?: string }) => void;
     const lost = new Promise<{ reason?: string; message?: string }>((r) => {
       resolveLost = r;
     });
-    const engine = {
+    const engine: Record<string, unknown> = {
       getFps: () => 60,
       getRenderWidth: () => 800,
       getRenderHeight: () => 600,
@@ -1030,7 +1034,7 @@ describe("babylonCollector — WebGPU device.lost → graphics_diagnostic (#20)"
       onContextRestoredObservable: new FakeObservable<unknown>(),
       onBeforeShaderCompilationObservable: new FakeObservable<unknown>(),
       onAfterShaderCompilationObservable: new FakeObservable<unknown>(),
-      _device: { lost },
+      _device: opts.deferDevice ? undefined : { lost },
     };
     const scene = {
       activeCamera: {
@@ -1047,6 +1051,9 @@ describe("babylonCollector — WebGPU device.lost → graphics_diagnostic (#20)"
     };
     return {
       scene: scene as unknown as Scene,
+      provideDevice: () => {
+        engine._device = { lost };
+      },
       lose: async (info: { reason?: string; message?: string }) => {
         resolveLost(info);
         await Promise.resolve();
@@ -1109,6 +1116,28 @@ describe("babylonCollector — WebGPU device.lost → graphics_diagnostic (#20)"
     handle.stop();
     await lose({ reason: "unknown" });
     expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+
+  it("wires device.lost even when the device initializes asynchronously after start()", async () => {
+    const { scene, provideDevice, lose } = makeWebGpuScene({ deferDevice: true });
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    // Device not ready yet at start() — the loss must not be missed.
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+
+    provideDevice();
+    await vi.advanceTimersByTimeAsync(300);
+    await lose({ reason: "unknown", message: "late device removed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      severity: "fatal",
+      category: "device-lost",
+      backend: "webgpu",
+    });
+    handle.stop();
   });
 
   it("is a no-op on a WebGL engine (no device-lost concept)", async () => {
