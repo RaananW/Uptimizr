@@ -27,7 +27,8 @@ applyTo: "**"
 - Run tasks from the repo root via Turborepo (`pnpm build`, `pnpm lint`, etc.), not by cd-ing
   into packages, unless debugging a single package.
 - Before completing a change, run `pnpm lint typecheck build` (and `test` where relevant).
-- Keep changes within a phase (see `docs/phases`). Don't scaffold Phase 2 code during Phase 1.
+- Keep changes within scope (see `docs/phases`). Don't scaffold proprietary/hosted-only features
+  into the self-contained OSS collector.
 - Document as you build: any new feature, option, event, endpoint, or user-visible improvement must
   reach the public docs site (`oss/apps/docs`) and the SDK/API reference (`docs/integration.md`)
   where applicable, in the same change. A feature isn't done until it's documented.

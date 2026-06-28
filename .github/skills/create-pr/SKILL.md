@@ -32,7 +32,7 @@ The PR workflow (`.github/workflows/pr.yml`) has six gates; CodeQL runs separate
 - One change → one focused branch/PR. Branch from up-to-date `main`:
   `git switch main && git pull && git switch -c <type>/<short-slug>`
   (e.g. `feat/mcp-server`, `fix/pointer-throttle`, `docs/og-card`). Never open a PR from `main`.
-- Keep the diff in scope: no drive-by refactors, no Phase 2 scope creep, no stray files. Review it:
+- Keep the diff in scope: no drive-by refactors, no out-of-scope scope creep, no stray files. Review it:
   `git --no-pager diff main...HEAD`.
 
 ## 2. Add a changeset (always required)

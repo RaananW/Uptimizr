@@ -24,7 +24,8 @@ embedded DuckDB store.
    boundary.
 5. **Thin backends:** keep logic in framework-agnostic packages. Fastify is the Phase 1 API
    framework. (ADR 0005)
-6. **Respect phases:** don't implement Phase 2 features in Phase 1. See `docs/phases`.
+6. **Respect the OSS boundary:** the OSS collector is self-contained — don't implement
+   proprietary/hosted-only features here. See `docs/phases`.
 7. **Document decisions** as new ADRs; never edit historical ADRs.
 8. **Every feature reaches the docs:** any new feature, option, event, endpoint, or user-visible
    improvement must be documented in the same change — update the public docs site

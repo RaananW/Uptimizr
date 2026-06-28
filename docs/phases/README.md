@@ -3,11 +3,11 @@
 Uptimizr is built in phases. Each phase has its own document with goals, steps, deliverables,
 and verification criteria.
 
-| Phase                                  | Focus                                                                                                                           | Status      |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| [Phase 0](./phase-0-foundation.md)     | Repo foundation, docs, ADRs, agent tooling, CI                                                                                  | In progress |
-| [Phase 1](./phase-1-oss-mvp.md)        | OSS collector: schema, SDK, multi-engine connectors (Babylon, three.js, PlayCanvas, R3F, A-Frame), ingestion, dashboard, replay | Planned     |
-| [Phase 1.5](./phase-1.5-public-web.md) | Public OSS web presence: `uptimizr.com` marketing site + `uptimizr.com/docs` developer docs (no hosting messaging)              | Planned     |
+| Phase                                  | Focus                                                                                                                           | Status  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| [Phase 0](./phase-0-foundation.md)     | Repo foundation, docs, ADRs, agent tooling, CI                                                                                  | Done    |
+| [Phase 1](./phase-1-oss-mvp.md)        | OSS collector: schema, SDK, multi-engine connectors (Babylon, three.js, PlayCanvas, R3F, A-Frame), ingestion, dashboard, replay | Done    |
+| [Phase 1.5](./phase-1.5-public-web.md) | Public OSS web presence: `uptimizr.com` marketing site + `uptimizr.com/docs` developer docs (no hosting messaging)              | Planned |
 
 Build order: **Phase 0 → Phase 1 → Phase 1.5.** No feature code lands before Phase 0 is
 complete. Phase 1.5 is OSS-only public web (marketing + docs) and depends on Phase 1's surfaces
