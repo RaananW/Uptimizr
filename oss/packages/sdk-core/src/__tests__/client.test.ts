@@ -63,6 +63,18 @@ describe("UptimizrClient", () => {
     expect(m.batches).toHaveLength(0);
   });
 
+  it("defaults captureGraphicsDiagnostics to false (opt-in, ADR 0021)", () => {
+    const m = mockTransport();
+    const client = new UptimizrClient(baseConfig(m.transport));
+    expect(client.config.captureGraphicsDiagnostics).toBe(false);
+
+    const optedIn = new UptimizrClient({
+      ...baseConfig(m.transport),
+      captureGraphicsDiagnostics: true,
+    });
+    expect(optedIn.config.captureGraphicsDiagnostics).toBe(true);
+  });
+
   it("auto-flushes when the batch size threshold is reached", async () => {
     const m = mockTransport();
     const client = new UptimizrClient({ ...baseConfig(m.transport), batchSize: 2 });

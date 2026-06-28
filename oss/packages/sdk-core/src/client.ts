@@ -51,6 +51,7 @@ function resolveConfig(config: UptimizrConfig): ResolvedConfig {
     captureLifecycle: config.captureLifecycle ?? true,
     resizeDebounceMs: config.resizeDebounceMs ?? DEFAULTS.resizeDebounceMs,
     captureErrors: config.captureErrors ?? false,
+    captureGraphicsDiagnostics: config.captureGraphicsDiagnostics ?? false,
     debug: config.debug ?? false,
   };
 }

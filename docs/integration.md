@@ -208,16 +208,17 @@ So the timeline reflects everything happening around the scene — not just came
 and pointer activity — the SDK also records these discrete lifecycle events
 (privacy-safe: dimensions, booleans, and enum states only):
 
-| Event               | Source              | When                                                                                |
-| ------------------- | ------------------- | ----------------------------------------------------------------------------------- |
-| `viewport_resize`   | `sdk-core`          | Window resized (debounced) + once at session start.                                 |
-| `focus_change`      | `sdk-core`          | Window gained/lost focus (`{ focused }`).                                           |
-| `visibility_change` | `sdk-core`          | Tab shown/hidden (`{ state: "visible" \| "hidden" }`).                              |
-| `context_lost`      | `@uptimizr/babylon` | Engine lost its GPU context (rendering suspended).                                  |
-| `context_restored`  | `@uptimizr/babylon` | Engine recovered its GPU context.                                                   |
-| `compile_stall`     | `@uptimizr/babylon` | Main-thread shader/pipeline compilation hitch (`durationMs`, `phase`).              |
-| `capability_change` | _app-reported_      | Fallback/recovery transition (`kind`, `from`, `to`, `reason`) — e.g. WebGPU→WebGL2. |
-| `runtime_error`     | `sdk-core`          | Uncaught JS error / unhandled promise rejection (opt-in).                           |
+| Event                 | Source              | When                                                                                                  |
+| --------------------- | ------------------- | ----------------------------------------------------------------------------------------------------- |
+| `viewport_resize`     | `sdk-core`          | Window resized (debounced) + once at session start.                                                   |
+| `focus_change`        | `sdk-core`          | Window gained/lost focus (`{ focused }`).                                                             |
+| `visibility_change`   | `sdk-core`          | Tab shown/hidden (`{ state: "visible" \| "hidden" }`).                                                |
+| `context_lost`        | `@uptimizr/babylon` | Engine lost its GPU context (rendering suspended).                                                    |
+| `context_restored`    | `@uptimizr/babylon` | Engine recovered its GPU context.                                                                     |
+| `compile_stall`       | `@uptimizr/babylon` | Main-thread shader/pipeline compilation hitch (`durationMs`, `phase`).                                |
+| `capability_change`   | _app-reported_      | Fallback/recovery transition (`kind`, `from`, `to`, `reason`) — e.g. WebGPU→WebGL2.                   |
+| `runtime_error`       | `sdk-core`          | Uncaught JS error / unhandled promise rejection (opt-in).                                             |
+| `graphics_diagnostic` | engine connector    | Opt-in GPU-health signal — errors, shader-compile failures, context loss, `uncapturederror` (opt-in). |
 
 The generic browser events are captured by `sdk-core` and controlled by
 `captureLifecycle` (default `true`); `viewport_resize` is debounced by
@@ -265,6 +266,38 @@ Error payloads can carry user data (messages, stack frames, URLs), so capture is
 browser. To limit
 noisy loops, consecutive identical `message`+`stack` errors are de-duplicated and
 capture is capped at 50 events per session.
+
+#### Engine diagnostics (opt-in)
+
+`graphics_diagnostic` capture is **off by default** and gated by
+`captureGraphicsDiagnostics` ([ADR 0021](./adr/0021-graphics-backend-and-engine-diagnostics.md)).
+It carries engine-authored GPU-health signals — GPU errors/warnings, shader-compile/link
+failures, richer context-loss reasons, WebGPU `uncapturederror`, and sampled
+`gl.getError()` — in one engine-agnostic shape:
+
+```jsonc
+{
+  "type": "graphics_diagnostic",
+  "severity": "error", // info | warning | error | fatal
+  "category": "validation", // context-loss | validation | out-of-memory | shader-compile | device-lost | fallback
+  "backend": "webgpu", // optional; reuses the graphics.api enum
+  "message": "…", // optional, ≤ 1024 chars
+  "code": "…", // optional, ≤ 64 chars (e.g. GL error / GPUError subtype)
+  "count": 12, // optional: present ⇒ per-session rollup of N incidents; absent ⇒ one discrete marker
+}
+```
+
+Like error capture, the text can leak application IP (shader source, driver
+strings), so it is opt-in and **not auto-redacted** — sanitize via
+[`beforeSend`](#advanced-setup-custom-client-beforesend). The default emission is a
+rate-limited **per-session rollup** (`count` + first `message`) so an error storm can't
+flood ingestion; discrete markers are the high-fidelity opt-in. `context_lost` /
+`context_restored` are exempt and stay always-on, and the `fallback` category stays in the
+app-reported `capability_change` event (it is reserved here, never emitted by a connector).
+
+> Capture wiring per signal (WebGPU `device.lost`, `uncapturederror`, context-creation
+> failure, shader-compile failures) lands incrementally in the engine connectors; this
+> release defines the event contract and the `captureGraphicsDiagnostics` flag.
 
 ### Session context (`meta`, `sceneDescription`, `user`)
 
@@ -540,6 +573,7 @@ and/or raise the sampling rate; to dedupe a stable FPS, set
 | `captureLifecycle`                                                                                              | `true`       | Emit `viewport_resize` / `focus_change` / `visibility_change`.                                                                                                                                                                                                                                                                                               |
 | `resizeDebounceMs`                                                                                              | `250`        | Debounce window for `viewport_resize`.                                                                                                                                                                                                                                                                                                                       |
 | `captureErrors`                                                                                                 | `false`      | Opt-in `runtime_error` capture (ADR 0013); not auto-redacted.                                                                                                                                                                                                                                                                                                |
+| `captureGraphicsDiagnostics`                                                                                    | `false`      | Opt-in engine `graphics_diagnostic` capture (ADR 0021); not auto-redacted. Gates GPU-health signals; `context_lost`/`context_restored` stay always-on.                                                                                                                                                                                                       |
 | `meshVisibility`                                                                                                | _off_        | Opt-in object-dwell capture (`mesh_visibility`, ADR 0003). Pass an options object to enable; off by default for privacy. See below.                                                                                                                                                                                                                          |
 | `hoverDwell`                                                                                                    | _off_        | Opt-in hover-hesitation capture (`hover_dwell`, ADR 0003). Enable `capture.hoverDwell` and (optionally) pass an options object; off by default for privacy. See below.                                                                                                                                                                                       |
 | `resourceSample`                                                                                                | _off_        | Opt-in GPU/memory footprint capture (`resource_sample`, ADR 0003). Enable `capture.resourceSample` and (optionally) pass a `resourceSample` options object; off by default. See below.                                                                                                                                                                       |
