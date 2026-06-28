@@ -21,7 +21,8 @@ import type {
   SamplingProfile,
   VisibilityMeshObservation,
 } from "@uptimizr/sdk-core";
-import { poseUnchanged, resolveCadence } from "@uptimizr/sdk-core";
+import { poseUnchanged, resolveCadence, wireGpuDeviceLost } from "@uptimizr/sdk-core";
+import type { GpuDeviceLostLike } from "@uptimizr/sdk-core";
 import type { Aabb, InputSource } from "@uptimizr/schema";
 import { resolveTrackedCamera } from "./scene.js";
 import { clamp01, toVec3, toQuat } from "./vec.js";
@@ -503,6 +504,18 @@ interface EngineWithContextObservables {
 }
 
 /**
+ * Structural view of a Babylon WebGPU engine's underlying `GPUDevice`. Babylon's
+ * `WebGPUEngine` keeps the device on the internal `_device` field; we read it
+ * structurally (it isn't on the public surface and differs from the WebGL engine)
+ * to keep `@babylonjs/core` a peer dependency. `isWebGPU` gates the read so the
+ * WebGL engine — which has no device-lost concept — is never touched.
+ */
+interface EngineWithWebGpuDevice {
+  isWebGPU?: boolean;
+  _device?: GpuDeviceLostLike;
+}
+
+/**
  * Structural view of the engine's shader-compilation observables (#42). Babylon
  * raises `onBeforeShaderCompilationObservable` just before, and
  * `onAfterShaderCompilationObservable` just after, it compiles a shader on the
@@ -912,6 +925,9 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
       const renderObservers: Array<() => void> = [];
       let pointerObserver: Observer<PointerInfo> | null = null;
       let keyboardObserver: Observer<KeyboardInfo> | null = null;
+      // device.lost is a one-shot promise that can't be unsubscribed; this flag
+      // lets us suppress a late-resolving emit after the collector has stopped.
+      let stopped = false;
       let lastPointerMove = 0;
       // camera_gesture (ADR 0025) bracket state: the camera snapshot taken at
       // pointer-down, the time it opened, and the input source — diffed against
@@ -1419,6 +1435,16 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
         }
       }
 
+      // WebGPU device loss → `graphics_diagnostic` (`category: device-lost`, ADR
+      // 0021 part 2). Opt-in: only wired when `captureGraphicsDiagnostics` is on
+      // (the helper enforces the gate). We read the device structurally and only
+      // when the engine is WebGPU — WebGL has no device-lost concept (its context
+      // loss is already covered by `context_lost` above), so it stays a no-op.
+      const gpuEngine = scene.getEngine() as unknown as EngineWithWebGpuDevice;
+      if (gpuEngine.isWebGPU) {
+        wireGpuDeviceLost(ctx, gpuEngine._device, () => !stopped);
+      }
+
       // Shader / pipeline compile stalls (#42). Babylon raises a before/after
       // pair around each main-thread shader compilation; we time the outermost
       // span (compiles can nest) and emit one `compile_stall` per span. Accessed
@@ -1509,6 +1535,7 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
 
       return {
         stop() {
+          stopped = true;
           for (const t of timers) clearInterval(t);
           for (const detach of renderObservers) detach();
           renderObservers.length = 0;

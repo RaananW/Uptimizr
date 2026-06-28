@@ -57,6 +57,8 @@ export type {
   NodeSample,
 } from "./aggregation/index.js";
 export { xrSource, xrHandedness } from "./xrInput.js";
+export { wireGpuDeviceLost } from "./graphicsDiagnostics.js";
+export type { GpuDeviceLostLike, GpuDeviceLostInfoLike } from "./graphicsDiagnostics.js";
 
 export type {
   Collector,

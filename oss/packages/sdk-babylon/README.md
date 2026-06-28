@@ -130,6 +130,22 @@ perf/visual-fidelity variance across the user base.
 client.reportCapabilityChange({ kind: "graphics-backend", from: "webgpu", to: "webgl2" });
 ```
 
+### Engine diagnostics: WebGPU `device.lost` (`graphics_diagnostic`, #20)
+
+When the client is created with `captureGraphicsDiagnostics: true` (off by default),
+the connector subscribes to the WebGPU `GPUDevice.lost` promise and emits one
+`graphics_diagnostic` with `category: "device-lost"` and `backend: "webgpu"`. Severity is
+`info` for a requested loss (`reason: "destroyed"`) and `fatal` for an unrequested one;
+the optional `message` is length-capped and passes through `beforeSend` for redaction.
+
+This is opt-in (the text can carry driver detail) and engine-parity with the three
+connector. **WebGL is a no-op** — it has no device-lost concept, and its interruption is
+the always-on `context_lost` event above.
+
+```ts
+const client = new UptimizrClient({ projectId, endpoint, captureGraphicsDiagnostics: true });
+```
+
 ## Standalone bundle (drop into the Babylon Playground)
 
 Because every `@babylonjs/core` import in this package is a **type-only** import,

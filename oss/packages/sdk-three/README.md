@@ -174,6 +174,15 @@ boundary so the emitted events are identical:
   `client.reportCapabilityChange({ kind, from?, to?, reason? })` (sdk-core). The
   raw GPU lifecycle (`context_lost` / `context_restored`) is still captured by the
   connector; `capability_change` is the higher-level companion.
+- **Engine diagnostics — WebGPU `device.lost` (`graphics_diagnostic`, #20):**
+  opt-in via `captureGraphicsDiagnostics: true` on the client (off by default). On a
+  `WebGPURenderer`, the connector subscribes to `renderer.backend.device.lost` and
+  emits one `graphics_diagnostic` with `category: "device-lost"` and
+  `backend: "webgpu"` — `severity` is `info` for a requested loss
+  (`reason: "destroyed"`) and `fatal` otherwise; the optional length-capped `message`
+  runs through `beforeSend`. Engine-parity with the Babylon connector. A
+  `WebGLRenderer` is a **no-op** (no device-lost concept; its interruption is the
+  always-on `context_lost`).
 
 ## License
 

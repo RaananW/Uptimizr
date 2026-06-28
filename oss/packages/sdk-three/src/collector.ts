@@ -19,8 +19,11 @@ import {
   toCanonicalDirection,
   toCanonicalPosition,
   toCanonicalQuat,
+  wireGpuDeviceLost,
 } from "@uptimizr/sdk-core";
+import type { GpuDeviceLostLike } from "@uptimizr/sdk-core";
 import type { Aabb, InputSource, Vec3 } from "@uptimizr/schema";
+import { isWebGpu } from "./renderer.js";
 import { clamp01 } from "./vec.js";
 import { createGazeRaycaster, createSceneRaycaster } from "./raycast.js";
 import type { GazeProbe, GazeProbeOptions, RaycastHit, RaycastProbe } from "./raycast.js";
@@ -84,6 +87,16 @@ interface CameraWorldView {
 /** Structural view of `renderer.info.render.frame` (a monotonic frame counter). */
 interface RendererInfoView {
   info?: { render?: { frame?: number; triangles?: number } };
+}
+
+/**
+ * Structural view of a three `WebGPURenderer`'s backend and its `GPUDevice`.
+ * three keeps the device on `renderer.backend.device`; we read it structurally
+ * (it isn't on the public renderer surface and only exists on the WebGPU backend)
+ * to keep `three` a peer dependency and stay version-tolerant.
+ */
+interface RendererBackendDeviceView {
+  backend?: { device?: GpuDeviceLostLike };
 }
 
 /** Structural view of the renderer's canvas (`renderer.domElement`). */
@@ -1559,6 +1572,16 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
       if (want.contextLoss) {
         addListener("webglcontextlost", () => ctx.emit({ type: "context_lost" }));
         addListener("webglcontextrestored", () => ctx.emit({ type: "context_restored" }));
+      }
+
+      // WebGPU device loss → `graphics_diagnostic` (`category: device-lost`, ADR
+      // 0021 part 2). Opt-in: only wired when `captureGraphicsDiagnostics` is on
+      // (the helper enforces the gate). We read the device structurally and only
+      // on a `WebGPURenderer` — a `WebGLRenderer` has no device-lost concept (its
+      // context loss is the `webglcontextlost` event above), so it stays a no-op.
+      if (isWebGpu(renderer)) {
+        const device = (renderer as unknown as RendererBackendDeviceView).backend?.device;
+        wireGpuDeviceLost(ctx, device, () => !disposed);
       }
 
       // GPU / memory footprint (`resource_sample`, #44). A low-rate timer samples

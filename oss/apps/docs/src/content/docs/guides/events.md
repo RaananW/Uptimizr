@@ -90,8 +90,12 @@ you opt in and redact via `beforeSend`. The default emission is a rate-limited p
 an error storm can't flood ingestion. `context_lost` / `context_restored` are exempt and stay
 always-on; engine-driven backend fallback stays in `capability_change` above.
 
-> This release defines the event contract and the opt-in flag; per-signal capture wiring lands
-> incrementally in the engine connectors.
+> **Wired today:** WebGPU `device.lost` → `graphics_diagnostic` (`category: device-lost`) in the
+> Babylon (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors. `severity` is `info` for a
+> requested loss (`reason: "destroyed"`) and `fatal` for an unrequested one; the optional `message`
+> is length-capped and runs through `beforeSend`. WebGL renderers are a no-op (their interruption is
+> the always-on `context_lost`). Other signals (`uncapturederror`, context-creation failure,
+> shader-compile failures) land incrementally in later releases.
 
 ## Changing scenes / levels (`setScene`)
 
