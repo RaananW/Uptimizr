@@ -1,5 +1,20 @@
 # @uptimizr/example-playground
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies [76a8060]
+- Updated dependencies [32248e0]
+  - @uptimizr/sdk-core@0.2.0
+  - @uptimizr/babylon@0.2.0
+  - @uptimizr/babylon-lite@0.1.3
+  - @uptimizr/three@0.1.3
+  - @uptimizr/playcanvas@0.1.3
+  - @uptimizr/replay@0.2.1
+  - @uptimizr/aframe@0.1.3
+  - @uptimizr/r3f@0.1.3
+
 ## 0.0.4
 
 ### Patch Changes
