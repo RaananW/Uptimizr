@@ -16,6 +16,7 @@ import {
   buildFunnel,
   buildGazeHeatmap,
   buildGazeHeatmapStats,
+  buildGraphicsDiagnosticCounts,
   buildHoverDwell,
   buildInteractionsBySource,
   buildJankRate,
@@ -218,6 +219,7 @@ export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/perf/resource-percentiles": (pid, o) => buildResourcePercentiles(pid, o, duckdbDialect),
   "/api/v1/perf/stability": (pid, o) => buildStabilityCounts(pid, o, duckdbDialect),
   "/api/v1/capabilities": (pid, o) => buildCapabilityChanges(pid, o, duckdbDialect),
+  "/api/v1/graphics-diagnostics": (pid, o) => buildGraphicsDiagnosticCounts(pid, o, duckdbDialect),
   "/api/v1/camera-gestures": (pid, o) => buildCameraGestures(pid, o, duckdbDialect),
   "/api/v1/coverage": (pid, o) => buildSceneCoverage(pid, o, duckdbDialect),
   "/api/v1/camera/distance": (pid, o, sp) =>

@@ -173,6 +173,29 @@ describe("CollectorApi", () => {
       max_ms: 1200,
     });
   });
+
+  it("coerces graphics-diagnostic counts and hits the graphics-diagnostics endpoint (#16)", async () => {
+    const fetchMock = mockFetch([
+      { severity: "fatal", category: "device-lost", backend: "webgpu", incidents: "2" },
+      { severity: "error", category: "shader-compile", backend: null, incidents: "1" },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.graphicsDiagnosticCounts({ scene: "s", session: "s1" });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe(
+      "http://localhost:4318/api/v1/graphics-diagnostics",
+    );
+    expect(parsed.searchParams.get("scene")).toBe("s");
+    expect(parsed.searchParams.get("session")).toBe("s1");
+    expect(rows).toEqual([
+      { severity: "fatal", category: "device-lost", backend: "webgpu", incidents: 2 },
+      // A null backend coerces to "" (unknown).
+      { severity: "error", category: "shader-compile", backend: "", incidents: 1 },
+    ]);
+  });
 });
 
 describe("CollectorApi live (ADR 0032)", () => {

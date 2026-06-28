@@ -90,6 +90,11 @@ you opt in and redact via `beforeSend`. The default emission is a rate-limited p
 an error storm can't flood ingestion. `context_lost` / `context_restored` are exempt and stay
 always-on; engine-driven backend fallback stays in `capability_change` above.
 
+Once captured, these incidents surface in the dashboard's **Engine diagnostics** panel — counts by
+severity, category, and backend — backed by `GET /api/v1/graphics-diagnostics`, which folds discrete
+markers and per-session rollups into one honest total. With capture off, the panel shows an explicit
+opt-in empty state rather than reading as broken.
+
 > **Wired today:** WebGPU `device.lost` → `graphics_diagnostic` (`category: device-lost`) in the
 > Babylon (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors. `severity` is `info` for a
 > requested loss (`reason: "destroyed"`) and `fatal` for an unrequested one; the optional `message`

@@ -1155,6 +1155,53 @@ export function buildStabilityCounts(
 }
 
 /**
+ * Opt-in engine-diagnostic counts from `graphics_diagnostic` (ADR 0021 part 2):
+ * the fully-crossed `(severity, category, backend)` group with the total incident
+ * count per cell, so the dashboard can derive the by-category, by-severity, and
+ * by-backend breakdowns from a single query by summing.
+ *
+ * The diagnostic fields ride in the `payload` JSON (they are not promoted
+ * columns, per ADR 0004 — nothing is promoted unless an aggregation needs it),
+ * so `severity` / `category` / `backend` are read with `jsonText` and `backend`
+ * `coalesce`s to `''` ("unknown") when the connector omitted it.
+ *
+ * **Rollup-or-marker (ADR 0021 decision 4).** Each event carries *either* one
+ * discrete incident (no `count`) *or* a per-session rollup (`count = N`). The
+ * incident total is `sum(coalesce(count, 1))`, so a marker folds in as 1 and a
+ * rollup as N — markers and rollups land in the same counters. Capture is off by
+ * default, so the common case is an empty result.
+ */
+export function buildGraphicsDiagnosticCounts(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions,
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const severity = d.jsonText("payload", "severity");
+  const category = d.jsonText("payload", "category");
+  const backend = d.jsonText("payload", "backend");
+  const count = d.jsonInt("payload", "count");
+  return {
+    query: `
+      SELECT
+        ${severity} AS severity,
+        ${category} AS category,
+        coalesce(${backend}, '') AS backend,
+        sum(coalesce(${count}, 1)) AS incidents
+      FROM events
+      WHERE project_id = ${pid} AND event_type = 'graphics_diagnostic'${range}${scene}${session}
+      GROUP BY severity, category, backend
+      ORDER BY incidents DESC
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * Capability / fidelity transitions from `capability_change` (#49, design §E):
  * per (kind, from, to), how many times the app reported that fallback or
  * recovery. Explains perf / visual-fidelity variance across the user base (e.g.

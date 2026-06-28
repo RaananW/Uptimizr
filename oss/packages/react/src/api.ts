@@ -393,6 +393,19 @@ export interface StabilityCounts {
   incidents: number;
 }
 
+/**
+ * Opt-in engine-diagnostic counts (ADR 0021 part 2): one row per crossed
+ * `(severity, category, backend)` cell with the rollup-aware incident total. The
+ * dashboard folds these into the by-category, by-severity, and by-backend
+ * breakdowns. `backend` is `""` when the connector didn't report one.
+ */
+export interface GraphicsDiagnosticCount {
+  severity: string;
+  category: string;
+  backend: string;
+  incidents: number;
+}
+
 /** Coarse per-session descriptor (from the session's `session_start` event). */
 export interface SessionMeta {
   sessionId: string;
@@ -734,6 +747,22 @@ export class CollectorApi {
         incidents: Number(r.incidents ?? 0),
       };
     });
+  }
+
+  /**
+   * Opt-in engine-diagnostic counts (#16, ADR 0021 part 2): `graphics_diagnostic`
+   * incidents crossed by `(severity, category, backend)`, folding markers and
+   * per-session rollups. Off by default, so an empty array is the clean case.
+   */
+  graphicsDiagnosticCounts(params?: QueryParams): Promise<GraphicsDiagnosticCount[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/graphics-diagnostics", params).then((rows) =>
+      rows.map((r) => ({
+        severity: String(r.severity ?? ""),
+        category: String(r.category ?? ""),
+        backend: String(r.backend ?? ""),
+        incidents: Number(r.incidents ?? 0),
+      })),
+    );
   }
 
   /** World-space (3D) pointer heatmap voxels. */

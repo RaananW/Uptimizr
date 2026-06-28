@@ -189,14 +189,26 @@ export async function readSessionEvents(
   request: APIRequestContext,
   sessionId: string,
 ): Promise<CapturedEvent[]> {
-  const res = await request.get(`${COLLECTOR_URL}/api/v1/sessions/${sessionId}/events`, {
-    headers: { "x-api-key": API_KEY },
-  });
-  expect(
-    res.ok(),
-    `events read for ${sessionId} should succeed (got ${res.status()}: ${await res.text()})`,
-  ).toBeTruthy();
-  return (await res.json()) as CapturedEvent[];
+  // The collector enforces a per-client read rate limit; under a busy serial run
+  // (dashboard query waves + sibling specs) a burst can 429 transiently. Honour the
+  // limiter's retry window and back off rather than failing the round trip outright.
+  for (let attempt = 0; ; attempt++) {
+    const res = await request.get(`${COLLECTOR_URL}/api/v1/sessions/${sessionId}/events`, {
+      headers: { "x-api-key": API_KEY },
+    });
+    if (res.status() === 429 && attempt < 5) {
+      const retryAfter = Number(res.headers()["retry-after"]);
+      await new Promise((r) =>
+        setTimeout(r, Number.isFinite(retryAfter) ? retryAfter * 1000 : 2000),
+      );
+      continue;
+    }
+    expect(
+      res.ok(),
+      `events read for ${sessionId} should succeed (got ${res.status()}: ${await res.text()})`,
+    ).toBeTruthy();
+    return (await res.json()) as CapturedEvent[];
+  }
 }
 
 /**

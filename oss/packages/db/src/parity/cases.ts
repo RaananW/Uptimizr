@@ -50,6 +50,7 @@ import {
   buildPerfByScene,
   buildResourcePercentiles,
   buildStabilityCounts,
+  buildGraphicsDiagnosticCounts,
   buildPointerHeatmap,
   buildSceneCoverage,
   buildSessionTrajectory,
@@ -520,6 +521,16 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["incidents"],
     // No context_lost / compile_stall fixtures: all counts coalesce to 0.
     golden: [{ context_losses: 0, compile_stalls: 0, incidents: 0 }],
+  },
+  {
+    name: "graphicsDiagnosticCounts",
+    build: (d) => buildGraphicsDiagnosticCounts(PID, PARITY_RANGE, d),
+    sortKeys: ["severity", "category", "backend"],
+    // No graphics_diagnostic fixtures in the parity set (capture is off by
+    // default), so the crossed roll-up is empty. Validates the JSON extraction,
+    // the nullable-int `count` coalesce, and the GROUP/ORDER render identically on
+    // both engines (#16).
+    golden: [],
   },
   {
     name: "deadClicks",

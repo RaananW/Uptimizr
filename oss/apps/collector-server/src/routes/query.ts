@@ -836,6 +836,20 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     },
   );
 
+  // Opt-in engine diagnostics (#16, ADR 0021 part 2) — `graphics_diagnostic`
+  // incident counts crossed by (severity, category, backend) over the range,
+  // folding discrete markers and per-session rollups into the same counters.
+  // Capture is off by default, so an empty result is the common (clean) case.
+  r.get(
+    "/api/v1/graphics-diagnostics",
+    { schema: { querystring: heatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.graphicsDiagnosticCounts(projectId, req.query);
+    },
+  );
+
   // Capability changes (#49) — per-transition fallback/recovery counts (e.g. how
   // many sessions fell back WebGPU→WebGL2); explains perf / visual-fidelity
   // variance across the user base. App-reported via reportCapabilityChange.

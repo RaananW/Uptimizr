@@ -18,17 +18,17 @@ the [overview](/docs/api/overview/) for auth and parameter units.
 
 ## Heatmaps
 
-| Method | Path                          | Purpose                                                                                                                                        | Extra params                                                                                  |
-| ------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/v1/heatmaps/pointer`    | 2D pointer heatmap bins.                                                                                                                       | `bins`, `scene`, `source`, `session`, `cameraMode`                                            |
-| `GET`  | `/api/v1/heatmaps/world`      | 3D world-space pointer heatmap. Omit `cellSize` to auto-size from scene/region bounds (ADR 0040).                                              | `cellSize`, `region`, `scene`, `source`, `cameraMode`                                         |
-| `GET`  | `/api/v1/heatmaps/world/stats`| World-heatmap totals: `{ cellSize, cells, hits }` — true occupied-cell + hit counts behind the truncated voxel list (ADR 0040).                | `cellSize`, `region`, `scene`, `source`, `cameraMode`                                         |
-| `GET`  | `/api/v1/heatmaps/gaze`       | 3D world-space **gaze** heatmap (requires `capture.gaze`).                                                                                     | `cellSize`, `region`, `scene`, `session`, `cameraMode`                                        |
-| `GET`  | `/api/v1/heatmaps/gaze/stats` | Gaze-heatmap totals: `{ cellSize, cells, hits }` (ADR 0040).                                                                                   | `cellSize`, `region`, `scene`, `session`, `cameraMode`                                        |
-| `GET`  | `/api/v1/heatmaps/camera`     | View-direction heatmap (spherical bins).                                                                                                       | `bins`, `scene`, `session`, `cameraMode`                                                      |
-| `GET`  | `/api/v1/heatmaps/position`   | Top-down floor-plan camera-position heatmap.                                                                                                   | `cellSize`, `region`, `scene`, `session`, `cameraMode`                                        |
-| `GET`  | `/api/v1/heatmaps/click-rays` | Click rays per voxel/mesh. Flat pointers reconstruct the ray origin on the camera near plane (ADR 0043).                                                                                                                     | `cellSize`, `scene`, `source`, `session`                                                      |
-| `GET`  | `/api/v1/heatmaps/flow`       | Gaze→mesh flow links. Position-aware mode (`groupByOrigin`/`originVoxel`) bins by click-time camera **standpoint** — best for walkable scenes. | `bins`, `limit`, `scene`, `session`, `cellSize`, `groupByOrigin`, `originVoxel`, `cameraMode` |
+| Method | Path                           | Purpose                                                                                                                                        | Extra params                                                                                  |
+| ------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/v1/heatmaps/pointer`     | 2D pointer heatmap bins.                                                                                                                       | `bins`, `scene`, `source`, `session`, `cameraMode`                                            |
+| `GET`  | `/api/v1/heatmaps/world`       | 3D world-space pointer heatmap. Omit `cellSize` to auto-size from scene/region bounds (ADR 0040).                                              | `cellSize`, `region`, `scene`, `source`, `cameraMode`                                         |
+| `GET`  | `/api/v1/heatmaps/world/stats` | World-heatmap totals: `{ cellSize, cells, hits }` — true occupied-cell + hit counts behind the truncated voxel list (ADR 0040).                | `cellSize`, `region`, `scene`, `source`, `cameraMode`                                         |
+| `GET`  | `/api/v1/heatmaps/gaze`        | 3D world-space **gaze** heatmap (requires `capture.gaze`).                                                                                     | `cellSize`, `region`, `scene`, `session`, `cameraMode`                                        |
+| `GET`  | `/api/v1/heatmaps/gaze/stats`  | Gaze-heatmap totals: `{ cellSize, cells, hits }` (ADR 0040).                                                                                   | `cellSize`, `region`, `scene`, `session`, `cameraMode`                                        |
+| `GET`  | `/api/v1/heatmaps/camera`      | View-direction heatmap (spherical bins).                                                                                                       | `bins`, `scene`, `session`, `cameraMode`                                                      |
+| `GET`  | `/api/v1/heatmaps/position`    | Top-down floor-plan camera-position heatmap.                                                                                                   | `cellSize`, `region`, `scene`, `session`, `cameraMode`                                        |
+| `GET`  | `/api/v1/heatmaps/click-rays`  | Click rays per voxel/mesh. Flat pointers reconstruct the ray origin on the camera near plane (ADR 0043).                                       | `cellSize`, `scene`, `source`, `session`                                                      |
+| `GET`  | `/api/v1/heatmaps/flow`        | Gaze→mesh flow links. Position-aware mode (`groupByOrigin`/`originVoxel`) bins by click-time camera **standpoint** — best for walkable scenes. | `bins`, `limit`, `scene`, `session`, `cellSize`, `groupByOrigin`, `originVoxel`, `cameraMode` |
 
 For **large scenes** (ADR 0040): leave `cellSize` off and the collector derives a
 sensible voxel size from the scene's registered world bounds — or from a
@@ -54,13 +54,14 @@ longer wash out the rest.
 
 ## Performance
 
-| Method | Path                          | Purpose                                                   | Extra params                |
-| ------ | ----------------------------- | --------------------------------------------------------- | --------------------------- |
-| `GET`  | `/api/v1/perf`                | Rendering-performance summary (samples, avg/min/p50 FPS). | `session`                   |
-| `GET`  | `/api/v1/perf/by-device`      | Per-session median FPS by device class + UA-derived browser/OS. | `scene`, `session`    |
-| `GET`  | `/api/v1/perf/resources`      | GPU/memory footprint summary from `resource_sample`.      | `session`                   |
-| `GET`  | `/api/v1/perf/compile-stalls` | Shader/pipeline compile stalls.                           | `limit`, `scene`, `session` |
-| `GET`  | `/api/v1/capabilities`        | Capability fallbacks/recoveries (e.g. WebGPU→WebGL2).     | `limit`, `scene`, `session` |
+| Method | Path                           | Purpose                                                                                                                                                                                        | Extra params                |
+| ------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `GET`  | `/api/v1/perf`                 | Rendering-performance summary (samples, avg/min/p50 FPS).                                                                                                                                      | `session`                   |
+| `GET`  | `/api/v1/perf/by-device`       | Per-session median FPS by device class + UA-derived browser/OS.                                                                                                                                | `scene`, `session`          |
+| `GET`  | `/api/v1/perf/resources`       | GPU/memory footprint summary from `resource_sample`.                                                                                                                                           | `session`                   |
+| `GET`  | `/api/v1/perf/compile-stalls`  | Shader/pipeline compile stalls.                                                                                                                                                                | `limit`, `scene`, `session` |
+| `GET`  | `/api/v1/capabilities`         | Capability fallbacks/recoveries (e.g. WebGPU→WebGL2).                                                                                                                                          | `limit`, `scene`, `session` |
+| `GET`  | `/api/v1/graphics-diagnostics` | Opt-in GPU-health incidents from `graphics_diagnostic`: per `(severity, category, backend)` count, folding markers + rollups (ADR 0021). Empty unless `captureGraphicsDiagnostics` is enabled. | `scene`, `session`          |
 
 ## Navigation & XR
 
