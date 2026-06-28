@@ -38,6 +38,22 @@ export function isWebGpu(renderer: unknown): boolean {
   return (renderer as RendererContextView).isWebGPURenderer === true;
 }
 
+/**
+ * True when a `WebGLRenderer` could not obtain a GL context — `getContext()`
+ * returns null. WebGPU renderers have no `getContext` and are never flagged here
+ * (a failed adapter surfaces as device-lost). Best-effort: any throw is treated as
+ * a present context so we never false-positive a creation failure.
+ */
+export function lacksGlContext(renderer: unknown): boolean {
+  const view = renderer as RendererContextView;
+  if (view.isWebGPURenderer || typeof view.getContext !== "function") return false;
+  try {
+    return view.getContext() == null;
+  } catch {
+    return false;
+  }
+}
+
 /** Read `capabilities.maxTextureSize`, when exposed. */
 export function maxTextureSize(renderer: unknown): number | undefined {
   const caps = (renderer as RendererContextView).capabilities;

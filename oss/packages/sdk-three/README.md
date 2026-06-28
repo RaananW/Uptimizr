@@ -189,6 +189,12 @@ boundary so the emitted events are identical:
   `count: N` + first `message`, flushed on an interval and on dispose — never N events.
   Subtype maps to `out-of-memory` (`GPUOutOfMemoryError`, `severity: error`) or
   `validation` (`severity: warning`); `message` is length-capped via `beforeSend`. WebGL no-op.
+- **Engine diagnostics — context-creation failure (`graphics_diagnostic`, #18):**
+  also opt-in via `captureGraphicsDiagnostics: true`. At init the connector checks whether
+  the renderer obtained a GL context (`getContext()` returns null on failure) and, if not,
+  emits **one** `graphics_diagnostic` with `category: "context-loss"`, `severity: "fatal"`,
+  and `backend: "unknown"`. It fires before the first flush yet queues in order after
+  `session_start`, so the decisive marker always lands.
 
 ## License
 

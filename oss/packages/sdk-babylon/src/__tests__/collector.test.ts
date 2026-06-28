@@ -1234,6 +1234,47 @@ describe("babylonCollector — WebGPU uncapturederror rollup → graphics_diagno
   });
 });
 
+describe("babylonCollector — context-creation failure → graphics_diagnostic (#18)", () => {
+  /** A WebGL engine that failed to obtain a context (webGLVersion 0). */
+  function makeFailedScene() {
+    const { scene, engine } = makeScene();
+    (engine as { webGLVersion: number }).webGLVersion = 0;
+    return { scene, engine };
+  }
+
+  it("emits nothing when captureGraphicsDiagnostics is off", () => {
+    const { scene } = makeFailedScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: false });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+
+  it("emits exactly one fatal context-loss marker when the GL context is missing", () => {
+    const { scene } = makeFailedScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toEqual({
+      type: "graphics_diagnostic",
+      severity: "fatal",
+      category: "context-loss",
+      backend: "unknown",
+    });
+    handle.stop();
+  });
+
+  it("does not fire on a healthy WebGL engine", () => {
+    const { scene } = makeScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+});
+
 describe("babylonCollector — scene actors / node_transform (ADR 0027 Tier 1)", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

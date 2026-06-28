@@ -26,6 +26,7 @@ import {
   resolveCadence,
   wireGpuDeviceLost,
   wireGpuUncapturedError,
+  wireContextCreationFailure,
 } from "@uptimizr/sdk-core";
 import type { GpuDeviceErrorTargetLike, GpuDeviceLostLike } from "@uptimizr/sdk-core";
 import type { Aabb, InputSource } from "@uptimizr/schema";
@@ -518,6 +519,8 @@ interface EngineWithContextObservables {
 interface EngineWithWebGpuDevice {
   isWebGPU?: boolean;
   _device?: GpuDeviceLostLike;
+  /** WebGL major version (1 or 2); `0`/undefined when no GL context was obtained. */
+  webGLVersion?: number;
 }
 
 /**
@@ -1469,6 +1472,16 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
           () => !stopped,
         );
       }
+
+      // Context-creation failure → `graphics_diagnostic` (`category: context-loss`,
+      // `severity: fatal`, ADR 0021 part 2 / #18). Opt-in; the helper enforces the
+      // gate. A WebGPU engine that reached `start()` already has its adapter (a
+      // failed adapter surfaces as device-lost above), so this only fires for the
+      // WebGL path: a missing GL context (`webGLVersion` 0 / no `_gl`) means the
+      // engine could not obtain a usable backend. Backend stays `unknown` since
+      // there's nothing to introspect once context creation failed.
+      const noWebGlContext = !gpuEngine.isWebGPU && !gpuEngine.webGLVersion;
+      wireContextCreationFailure(ctx, { failed: noWebGlContext });
 
       // Shader / pipeline compile stalls (#42). Babylon raises a before/after
       // pair around each main-thread shader compilation; we time the outermost

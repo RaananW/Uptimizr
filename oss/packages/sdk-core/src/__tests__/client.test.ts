@@ -202,6 +202,32 @@ describe("UptimizrClient", () => {
     expect(types).toContain("session_end");
   });
 
+  it("queues + flushes a context-creation marker emitted at collector init (#18)", async () => {
+    const m = mockTransport();
+    // A connector that detects a failed context and emits before any transport
+    // round-trip — the marker must still land, ordered after session_start.
+    const collector: Collector = {
+      name: "context-fail",
+      start: (ctx) => {
+        ctx.emit({
+          type: "graphics_diagnostic",
+          severity: "fatal",
+          category: "context-loss",
+          backend: "unknown",
+        });
+      },
+    };
+    const client = new UptimizrClient({
+      ...baseConfig(m.transport),
+      captureGraphicsDiagnostics: true,
+    }).use(collector);
+    client.start();
+    await client.flush();
+
+    const types = m.batches.flatMap((b) => b.events.map((e) => e.type));
+    expect(types).toEqual(["session_start", "graphics_diagnostic"]);
+  });
+
   it("setScene emits a scene_change marker and stamps sceneId on later events", async () => {
     const m = mockTransport();
     const client = new UptimizrClient(baseConfig(m.transport));
