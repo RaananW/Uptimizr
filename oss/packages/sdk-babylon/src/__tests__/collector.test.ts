@@ -77,10 +77,10 @@ function makeScene() {
   };
 }
 
-function makeCtx(now = { value: 1000 }) {
+function makeCtx(now = { value: 1000 }, config: Record<string, unknown> = {}) {
   const events: EventInput[] = [];
   const ctx = {
-    config: {} as never,
+    config: config as never,
     sessionId: "s1",
     emit: (e: EventInput) => events.push(e),
     track: () => {},
@@ -1006,6 +1006,120 @@ describe("babylonCollector sampling profile (ADR 0012)", () => {
 
     (engine.onContextLostObservable as FakeObservable<unknown>).trigger({});
     expect(events.some((e) => e.type === "context_lost")).toBe(false);
+    handle.stop();
+  });
+});
+
+describe("babylonCollector — WebGPU device.lost → graphics_diagnostic (#20)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** A WebGPU scene whose engine `_device.lost` promise resolves on `lose(...)`. */
+  function makeWebGpuScene() {
+    let resolveLost!: (info: { reason?: string; message?: string }) => void;
+    const lost = new Promise<{ reason?: string; message?: string }>((r) => {
+      resolveLost = r;
+    });
+    const engine = {
+      getFps: () => 60,
+      getRenderWidth: () => 800,
+      getRenderHeight: () => 600,
+      isWebGPU: true,
+      getAspectRatio: () => 800 / 600,
+      onContextLostObservable: new FakeObservable<unknown>(),
+      onContextRestoredObservable: new FakeObservable<unknown>(),
+      onBeforeShaderCompilationObservable: new FakeObservable<unknown>(),
+      onAfterShaderCompilationObservable: new FakeObservable<unknown>(),
+      _device: { lost },
+    };
+    const scene = {
+      activeCamera: {
+        globalPosition: { x: 0, y: 0, z: 0 },
+        getForwardRay: () => ({ direction: { x: 0, y: 0, z: 1 } }),
+        getTarget: () => ({ x: 0, y: 0, z: 0 }),
+      },
+      pointerX: 0,
+      pointerY: 0,
+      onPointerObservable: new FakeObservable<unknown>(),
+      onKeyboardObservable: new FakeObservable<unknown>(),
+      onBeforeRenderObservable: new FakeObservable<unknown>(),
+      getEngine: () => engine,
+    };
+    return {
+      scene: scene as unknown as Scene,
+      lose: async (info: { reason?: string; message?: string }) => {
+        resolveLost(info);
+        await Promise.resolve();
+        await Promise.resolve();
+      },
+    };
+  }
+
+  it("emits nothing when captureGraphicsDiagnostics is off", async () => {
+    const { scene, lose } = makeWebGpuScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: false });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    await lose({ reason: "unknown", message: "boom" });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+
+  it("emits exactly one fatal device-lost diagnostic when enabled", async () => {
+    const { scene, lose } = makeWebGpuScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    await lose({ reason: "unknown", message: "device removed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toEqual({
+      type: "graphics_diagnostic",
+      severity: "fatal",
+      category: "device-lost",
+      backend: "webgpu",
+      message: "device removed",
+    });
+    handle.stop();
+  });
+
+  it("maps reason 'destroyed' to info severity", async () => {
+    const { scene, lose } = makeWebGpuScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    await lose({ reason: "destroyed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      severity: "info",
+      category: "device-lost",
+      backend: "webgpu",
+    });
+    handle.stop();
+  });
+
+  it("does not emit after the collector has stopped", async () => {
+    const { scene, lose } = makeWebGpuScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    handle.stop();
+    await lose({ reason: "unknown" });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+
+  it("is a no-op on a WebGL engine (no device-lost concept)", async () => {
+    const { scene, engine } = makeScene(); // WebGL engine, no `_device`
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    // Even a WebGL context loss does not produce a graphics_diagnostic.
+    (engine.onContextLostObservable as FakeObservable<unknown>).trigger({});
+    await Promise.resolve();
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
     handle.stop();
   });
 });

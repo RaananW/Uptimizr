@@ -108,10 +108,10 @@ function makeMeshScene(meshes: unknown[]): Scene {
   } as unknown as Scene;
 }
 
-function makeCtx(now = { value: 1000 }) {
+function makeCtx(now = { value: 1000 }, config: Record<string, unknown> = {}) {
   const events: EventInput[] = [];
   const ctx = {
-    config: {} as never,
+    config: config as never,
     sessionId: "s1",
     emit: (e: EventInput) => events.push(e),
     track: () => {},
@@ -923,6 +923,108 @@ describe("threeCollector", () => {
     canvas.dispatch("pointermove", { clientX: 400, clientY: 300 });
 
     expect(events.some((e) => e.type === "hover_dwell")).toBe(false);
+    handle.stop();
+  });
+});
+
+describe("threeCollector — WebGPU device.lost → graphics_diagnostic (#20)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** A WebGPURenderer whose `backend.device.lost` promise resolves on `lose(...)`. */
+  function makeWebGpuRenderer(canvas: ReturnType<typeof makeCanvas>) {
+    let resolveLost!: (info: { reason?: string; message?: string }) => void;
+    const lost = new Promise<{ reason?: string; message?: string }>((r) => {
+      resolveLost = r;
+    });
+    const renderer = {
+      domElement: canvas,
+      isWebGPURenderer: true,
+      info: { render: { frame: 0, triangles: 0 } },
+      backend: { device: { lost } },
+    } as unknown as WebGLRenderer;
+    return {
+      renderer,
+      lose: async (info: { reason?: string; message?: string }) => {
+        resolveLost(info);
+        await Promise.resolve();
+        await Promise.resolve();
+      },
+    };
+  }
+
+  function start(renderer: WebGLRenderer, config: Record<string, unknown>) {
+    const { ctx, events } = makeCtx(undefined, config);
+    const handle = threeCollector({
+      scene: emptyScene,
+      camera: makeCamera(),
+      renderer,
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+    return { events, handle };
+  }
+
+  it("emits nothing when captureGraphicsDiagnostics is off", async () => {
+    const { renderer, lose } = makeWebGpuRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: false });
+
+    await lose({ reason: "unknown", message: "boom" });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+
+  it("emits exactly one fatal device-lost diagnostic when enabled", async () => {
+    const { renderer, lose } = makeWebGpuRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+
+    await lose({ reason: "unknown", message: "device removed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toEqual({
+      type: "graphics_diagnostic",
+      severity: "fatal",
+      category: "device-lost",
+      backend: "webgpu",
+      message: "device removed",
+    });
+    handle.stop();
+  });
+
+  it("maps reason 'destroyed' to info severity", async () => {
+    const { renderer, lose } = makeWebGpuRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+
+    await lose({ reason: "destroyed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      severity: "info",
+      category: "device-lost",
+      backend: "webgpu",
+    });
+    handle.stop();
+  });
+
+  it("does not emit after the collector has stopped", async () => {
+    const { renderer, lose } = makeWebGpuRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+
+    handle.stop();
+    await lose({ reason: "unknown" });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+
+  it("is a no-op on a WebGL renderer (no device-lost concept)", async () => {
+    const canvas = makeCanvas();
+    const { events, handle } = start(makeRenderer(canvas), { captureGraphicsDiagnostics: true });
+
+    // A WebGL context loss is a context_lost, never a graphics_diagnostic.
+    canvas.dispatch("webglcontextlost", {});
+    await Promise.resolve();
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
     handle.stop();
   });
 });
