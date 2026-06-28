@@ -195,3 +195,153 @@ describe("wireGpuDeviceLost", () => {
     expect(events).toHaveLength(0);
   });
 });
+
+import { wireGpuUncapturedError } from "../graphicsDiagnostics.js";
+
+class GPUValidationError {
+  constructor(public message: string) {}
+}
+class GPUOutOfMemoryError {
+  constructor(public message: string) {}
+}
+
+/** A device that records its `uncapturederror` listener so tests can fire errors. */
+function makeErrorDevice() {
+  let handler: ((e: { error?: unknown }) => void) | undefined;
+  return {
+    device: {
+      addEventListener: (_t: string, h: (e: { error?: unknown }) => void) => (handler = h),
+      removeEventListener: () => (handler = undefined),
+    },
+    fire: (error: unknown) => handler?.({ error }),
+  };
+}
+
+describe("wireGpuUncapturedError", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("emits nothing when the opt-in flag is off", () => {
+    const { ctx, events } = makeCtx(false);
+    const { device, fire } = makeErrorDevice();
+    const stop = wireGpuUncapturedError(
+      ctx,
+      () => device,
+      () => true,
+    );
+    fire(new GPUValidationError("boom"));
+    stop();
+    expect(events).toHaveLength(0);
+  });
+
+  it("collapses a burst into ONE bounded rollup with count, not N events", () => {
+    const { ctx, events } = makeCtx(true);
+    const { device, fire } = makeErrorDevice();
+    const stop = wireGpuUncapturedError(
+      ctx,
+      () => device,
+      () => true,
+    );
+    for (let i = 0; i < 50; i++) fire(new GPUValidationError(`err ${i}`));
+    stop();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual({
+      type: "graphics_diagnostic",
+      severity: "warning",
+      category: "validation",
+      backend: "webgpu",
+      count: 50,
+      message: "err 0",
+    });
+  });
+
+  it("maps GPUOutOfMemoryError to out-of-memory/error, keeping the first message", () => {
+    const { ctx, events } = makeCtx(true);
+    const { device, fire } = makeErrorDevice();
+    const stop = wireGpuUncapturedError(
+      ctx,
+      () => device,
+      () => true,
+    );
+    fire(new GPUValidationError("v"));
+    fire(new GPUOutOfMemoryError("oom"));
+    stop();
+    expect(events[0]).toMatchObject({
+      category: "out-of-memory",
+      severity: "error",
+      count: 2,
+      message: "v",
+    });
+  });
+
+  it("truncates the first message to the schema cap (1024)", () => {
+    const { ctx, events } = makeCtx(true);
+    const { device, fire } = makeErrorDevice();
+    const stop = wireGpuUncapturedError(
+      ctx,
+      () => device,
+      () => true,
+    );
+    fire(new GPUValidationError("x".repeat(5000)));
+    stop();
+    expect((events[0] as { message: string }).message).toHaveLength(1024);
+  });
+
+  it("flushes on a mid-session interval", async () => {
+    const { ctx, events } = makeCtx(true);
+    const { device, fire } = makeErrorDevice();
+    wireGpuUncapturedError(
+      ctx,
+      () => device,
+      () => true,
+      { flushIntervalMs: 1000 },
+    );
+    fire(new GPUValidationError("a"));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ count: 1 });
+  });
+
+  it("flushes the remaining rollup on stop", () => {
+    const { ctx, events } = makeCtx(true);
+    const { device, fire } = makeErrorDevice();
+    const stop = wireGpuUncapturedError(
+      ctx,
+      () => device,
+      () => true,
+      { flushIntervalMs: 999999 },
+    );
+    fire(new GPUValidationError("a"));
+    expect(events).toHaveLength(0);
+    stop();
+    expect(events).toHaveLength(1);
+  });
+
+  it("no-ops on WebGL (no device ever appears)", async () => {
+    const { ctx, events } = makeCtx(true);
+    const stop = wireGpuUncapturedError(
+      ctx,
+      () => undefined,
+      () => true,
+      { maxAttempts: 3, intervalMs: 10 },
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    stop();
+    expect(events).toHaveLength(0);
+  });
+
+  it("ignores errors after teardown (isActive false)", () => {
+    const { ctx, events } = makeCtx(true);
+    const { device, fire } = makeErrorDevice();
+    let active = true;
+    const stop = wireGpuUncapturedError(
+      ctx,
+      () => device,
+      () => active,
+    );
+    active = false;
+    fire(new GPUValidationError("late"));
+    stop();
+    expect(events).toHaveLength(0);
+  });
+});

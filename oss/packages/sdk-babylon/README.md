@@ -146,6 +146,16 @@ the always-on `context_lost` event above.
 const client = new UptimizrClient({ projectId, endpoint, captureGraphicsDiagnostics: true });
 ```
 
+### Engine diagnostics: WebGPU `uncapturederror` (rate-limited rollup, #19)
+
+Also under `captureGraphicsDiagnostics`, the connector listens for WebGPU
+`uncapturederror` on the device and aggregates them into a **rate-limited per-session
+rollup**: a burst of errors becomes a single `graphics_diagnostic` with `count: N` plus the
+first `message`, flushed on an interval and on `stop()` — never N events, so a storm can't
+flood ingestion. Subtype maps to `category: "out-of-memory"` (`GPUOutOfMemoryError`,
+`severity: error`) or `category: "validation"` (`severity: warning`); `message` is
+length-capped and runs through `beforeSend`. **WebGL is a no-op.**
+
 ## Standalone bundle (drop into the Babylon Playground)
 
 Because every `@babylonjs/core` import in this package is a **type-only** import,

@@ -1080,6 +1080,63 @@ describe("threeCollector — WebGPU device.lost → graphics_diagnostic (#20)", 
   });
 });
 
+describe("threeCollector — WebGPU uncapturederror rollup → graphics_diagnostic (#19)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function makeWebGpuErrorRenderer(canvas: ReturnType<typeof makeCanvas>) {
+    let handler: ((e: { error?: unknown }) => void) | undefined;
+    const device = {
+      lost: new Promise(() => {}),
+      addEventListener: (_t: string, h: (e: { error?: unknown }) => void) => (handler = h),
+      removeEventListener: () => (handler = undefined),
+    };
+    const renderer = {
+      domElement: canvas,
+      isWebGPURenderer: true,
+      info: { render: { frame: 0, triangles: 0 } },
+      backend: { device },
+    } as unknown as WebGLRenderer;
+    return { renderer, fire: (error: unknown) => handler?.({ error }) };
+  }
+
+  function start(renderer: WebGLRenderer, config: Record<string, unknown>) {
+    const { ctx, events } = makeCtx(undefined, config);
+    const handle = threeCollector({
+      scene: emptyScene,
+      camera: makeCamera(),
+      renderer,
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+    return { events, handle };
+  }
+
+  it("collapses a burst into one rollup on stop, not N events", () => {
+    const { renderer, fire } = makeWebGpuErrorRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+    for (let i = 0; i < 30; i++)
+      fire({ message: `e${i}`, constructor: { name: "GPUValidationError" } });
+    handle.stop();
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      category: "validation",
+      count: 30,
+      backend: "webgpu",
+      message: "e0",
+    });
+  });
+
+  it("emits nothing when the flag is off", () => {
+    const { renderer, fire } = makeWebGpuErrorRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: false });
+    fire({ message: "x", constructor: { name: "GPUValidationError" } });
+    handle.stop();
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+});
+
 describe("threeCollector — scene actors / node_transform (ADR 0027 Tier 1)", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

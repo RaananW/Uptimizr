@@ -57,11 +57,14 @@ export type {
   NodeSample,
 } from "./aggregation/index.js";
 export { xrSource, xrHandedness } from "./xrInput.js";
-export { wireGpuDeviceLost } from "./graphicsDiagnostics.js";
+export { wireGpuDeviceLost, wireGpuUncapturedError } from "./graphicsDiagnostics.js";
 export type {
   GpuDeviceLostLike,
   GpuDeviceLostInfoLike,
   WireGpuDeviceLostOptions,
+  GpuErrorLike,
+  GpuDeviceErrorTargetLike,
+  WireGpuUncapturedErrorOptions,
 } from "./graphicsDiagnostics.js";
 
 export type {
