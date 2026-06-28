@@ -1140,6 +1140,20 @@ describe("babylonCollector — WebGPU device.lost → graphics_diagnostic (#20)"
     handle.stop();
   });
 
+  it("never wires device.lost if the collector is stopped before the device appears", async () => {
+    const { scene, provideDevice, lose } = makeWebGpuScene({ deferDevice: true });
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    // Tear down before the async WebGPU device ever initializes.
+    handle.stop();
+    provideDevice();
+    await vi.advanceTimersByTimeAsync(2000);
+    await lose({ reason: "unknown", message: "too late" });
+
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+
   it("is a no-op on a WebGL engine (no device-lost concept)", async () => {
     const { scene, engine } = makeScene(); // WebGL engine, no `_device`
     const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });

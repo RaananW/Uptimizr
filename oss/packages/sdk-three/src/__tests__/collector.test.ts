@@ -1053,6 +1053,21 @@ describe("threeCollector — WebGPU device.lost → graphics_diagnostic (#20)", 
     handle.stop();
   });
 
+  it("never wires device.lost if the renderer is disposed before the device appears", async () => {
+    const { renderer, provideDevice, lose } = makeWebGpuRenderer(makeCanvas(), {
+      deferDevice: true,
+    });
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+
+    // Tear down before the async WebGPU device ever initializes.
+    handle.stop();
+    provideDevice();
+    await vi.advanceTimersByTimeAsync(2000);
+    await lose({ reason: "unknown", message: "too late" });
+
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+
   it("is a no-op on a WebGL renderer (no device-lost concept)", async () => {
     const canvas = makeCanvas();
     const { events, handle } = start(makeRenderer(canvas), { captureGraphicsDiagnostics: true });
