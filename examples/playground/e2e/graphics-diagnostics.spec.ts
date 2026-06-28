@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import { API_KEY, COLLECTOR_URL, DASHBOARD_URL, PROJECT_ID } from "./constants.js";
-import { bootEngine, driveInteractions, waitForEventTypes } from "./helpers/capture.js";
+import { waitForEventTypes } from "./helpers/capture.js";
 
 /**
  * Full-stack spec for the opt-in engine-diagnostics panel (#16, ADR 0021 part 2).
@@ -9,10 +9,13 @@ import { bootEngine, driveInteractions, waitForEventTypes } from "./helpers/capt
  * `graphics_diagnostic` capture is **off by default**, so the realistic browser
  * run produces none — the panel must show its explicit opt-in empty state rather
  * than reading as broken. We can't deterministically trigger a real WebGPU device
- * loss in the headless WebGL runner, so the populated case is seeded by POSTing a
- * couple of diagnostics (two discrete markers + one per-session rollup) straight
- * to the collector's public ingest endpoint — exercising the same
- * capture → collector → DuckDB → query API → dashboard path the SDK would.
+ * loss in the headless WebGL runner, so the populated case is seeded by a single
+ * batched POST of three diagnostics (two discrete markers + one per-session rollup)
+ * straight to the collector's public ingest endpoint — exercising the same
+ * collector → DuckDB → query API → dashboard path the SDK would. We deliberately do
+ * NOT drive a real engine session here: a full capture run floods the shared ingest
+ * rate-limiter and starves sibling specs that sort after this one, so seeding stays
+ * to one POST.
  */
 
 /** Seed `graphics_diagnostic` events for `sessionId` via the public ingest API. */
@@ -88,13 +91,12 @@ test("engine-diagnostics panel renders counts by severity/category/backend when 
   page,
   request,
 }) => {
-  const sessionId = await bootEngine(page, "babylon");
-  await driveInteractions(page);
-  await waitForEventTypes(request, sessionId, ["session_start"]);
-
-  // Seed diagnostics for the live session, then wait for them to land.
+  // Pure-ingest seed (one batched POST) — no engine session, so we don't flood the
+  // shared rate-limiter. The synthetic session shows up via listSessions, so the
+  // dashboard reaches its ready state and the panel renders the seeded counts.
+  const sessionId = `e2e-diag-${Date.now()}`;
   await seedDiagnostics(request, sessionId);
-  await waitForEventTypes(request, sessionId, ["session_start", "graphics_diagnostic"]);
+  await waitForEventTypes(request, sessionId, ["graphics_diagnostic"]);
 
   await loadDashboard(page);
 
