@@ -67,6 +67,14 @@ export interface Dialect {
    * Path components are trusted compile-time constants, never user input.
    */
   jsonText(column: string, ...path: string[]): string;
+  /**
+   * Extract a nested **nullable integer** value from a JSON text column by key
+   * path, e.g. `jsonInt("payload", "count")`. Returns NULL when the key is absent
+   * or not integer-coercible, so callers can `coalesce(..., default)`. Used for
+   * numeric fields that are not promoted to dedicated columns (they live only in
+   * the `payload` JSON). Path components are trusted compile-time constants.
+   */
+  jsonInt(column: string, ...path: string[]): string;
   // --- rollup merge combinators (AggregatingMergeTree on ClickHouse) ---
   countMerge(stateExpr: string): string;
   avgMerge(stateExpr: string): string;

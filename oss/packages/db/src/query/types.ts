@@ -442,6 +442,18 @@ export interface StabilityCountRow {
   incidents: number;
 }
 
+/**
+ * Opt-in engine-diagnostic counts (ADR 0021 part 2): the crossed
+ * `(severity, category, backend)` group with the rollup-aware incident total.
+ * `backend` is `''` when the connector omitted it.
+ */
+export interface GraphicsDiagnosticCountRow {
+  severity: string;
+  category: string;
+  backend: string;
+  incidents: number;
+}
+
 export interface PerfDailyRow {
   day: string;
   samples: number;

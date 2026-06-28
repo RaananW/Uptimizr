@@ -41,6 +41,7 @@ import type {
   AggregateTrajectoryPointRow,
   ResolvedApiKey,
   StabilityCountRow,
+  GraphicsDiagnosticCountRow,
   RangeOptions,
   RegionOptions,
   SceneOptions,
@@ -371,6 +372,15 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions,
   ): Promise<StabilityCountRow[]>;
+  /**
+   * Opt-in engine diagnostics (#16, ADR 0021 part 2): `graphics_diagnostic`
+   * incident counts crossed by `(severity, category, backend)` over the range,
+   * folding discrete markers and per-session rollups into the same counters.
+   */
+  graphicsDiagnosticCounts(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions,
+  ): Promise<GraphicsDiagnosticCountRow[]>;
   /**
    * Scene coverage / dead zones (derived, scene-metrics §B): occupied
    * camera-position voxels. Coverage % is computed by the consumer against the

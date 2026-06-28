@@ -102,6 +102,12 @@ export const clickhouseDialect: Dialect = {
     const keys = path.map((p) => `'${p}'`).join(", ");
     return `JSONExtractString(${column}, ${keys})`;
   },
+  jsonInt(column, ...path) {
+    // `Nullable(Int64)` makes an absent / non-integer key yield NULL (parity with
+    // DuckDB's TRY_CAST), so callers coalesce to their own default.
+    const keys = path.map((p) => `'${p}'`).join(", ");
+    return `JSONExtract(${column}, ${keys}, 'Nullable(Int64)')`;
+  },
   // Single-tenant rollups are plain views (pre-grouped by day), so each group has
   // exactly one source row and the "merge" of a single precomputed value is a
   // plain pass-through aggregate. (AggregatingMergeTree `-Merge` combinators are

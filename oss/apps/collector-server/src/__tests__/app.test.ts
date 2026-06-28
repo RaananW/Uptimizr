@@ -144,6 +144,10 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
       },
     ],
     stabilityCounts: async () => [{ context_losses: 1, compile_stalls: 2, incidents: 3 }],
+    graphicsDiagnosticCounts: async () => [
+      { severity: "fatal", category: "device-lost", backend: "webgpu", incidents: 2 },
+      { severity: "warning", category: "validation", backend: "webgl2", incidents: 5 },
+    ],
     sceneCoverage: async () => [{ vx: 0, vy: 0, vz: 0, count: 3 }],
     cameraDistance: async () => [{ bucket: 2, count: 4 }],
     navigationStats: async () => [
@@ -1008,6 +1012,25 @@ describe("collector app", () => {
     });
     expect(stability.statusCode).toBe(200);
     expect(stability.json()).toEqual([{ context_losses: 1, compile_stalls: 2, incidents: 3 }]);
+    await app.close();
+  });
+
+  it("returns graphics_diagnostic counts by severity/category/backend for a valid API key (#16)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/graphics-diagnostics?scene=lobby&session=s1",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      { severity: "fatal", category: "device-lost", backend: "webgpu", incidents: 2 },
+      { severity: "warning", category: "validation", backend: "webgl2", incidents: 5 },
+    ]);
+
+    // A read API key is still required (parity with the other query endpoints).
+    const noKey = await app.inject({ method: "GET", url: "/api/v1/graphics-diagnostics" });
+    expect(noKey.statusCode).toBe(401);
     await app.close();
   });
 

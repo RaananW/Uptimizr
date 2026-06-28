@@ -14,6 +14,7 @@ import {
   type CoverageVoxel,
   type DirectionBin,
   type EventTypeCount,
+  type GraphicsDiagnosticCount,
   type InteractionSource,
   type NavigationStat,
   type PerfSummary,
@@ -48,6 +49,7 @@ import { InputSourceBreakdown } from "@/components/InputSourceBreakdown";
 import { PerfSummaryPanel } from "@/components/PerfSummaryPanel";
 import { PerformanceSection, type PerformanceData } from "@/components/PerformanceSection";
 import { SceneHealth } from "@/components/SceneHealth";
+import { GraphicsDiagnostics } from "@/components/GraphicsDiagnostics";
 import { SceneMetrics } from "@/components/SceneMetrics";
 import { SceneSelector, type SceneMeta } from "@/components/SceneSelector";
 import { SessionsTable } from "@/components/SessionsTable";
@@ -89,6 +91,7 @@ interface Dashboard {
   proxyMeshes: SceneProxyMesh[];
   timeseries: TimeseriesBucket[];
   counts: EventTypeCount[];
+  diagnostics: GraphicsDiagnosticCount[];
   coverage: CoverageVoxel[];
   distance: CameraDistanceBucket[];
   navigation: NavigationStat[];
@@ -119,6 +122,7 @@ const EMPTY: Dashboard = {
   proxyMeshes: [],
   timeseries: [],
   counts: [],
+  diagnostics: [],
   coverage: [],
   distance: [],
   navigation: [],
@@ -293,6 +297,7 @@ export default function Page() {
           sceneList,
           timeseries,
           counts,
+          diagnostics,
           coverage,
           distance,
           navigation,
@@ -312,6 +317,7 @@ export default function Page() {
             interval: intervalSec,
           }),
           api.eventCounts({ since: range.since, until: range.until, scene: params.scene }),
+          api.graphicsDiagnosticCounts({ ...params, source: undefined }),
           api.coverage({ ...params, source: undefined, cellSize: COVERAGE_CELL_SIZE }),
           api.cameraDistance({ ...params, source: undefined, bucketSize: DISTANCE_BUCKET_SIZE }),
           api.navigation({ ...params, source: undefined }),
@@ -377,6 +383,7 @@ export default function Page() {
           proxyMeshes: prev.proxyMeshes,
           timeseries,
           counts,
+          diagnostics,
           coverage,
           distance,
           navigation,
@@ -961,6 +968,9 @@ export default function Page() {
           </div>
           <div className="lg:col-span-2">
             <SceneHealth counts={data.counts} perf={data.perf} />
+          </div>
+          <div className="lg:col-span-2">
+            <GraphicsDiagnostics rows={data.diagnostics} />
           </div>
           <div className="lg:col-span-2">
             <SceneMetrics

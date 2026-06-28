@@ -18,6 +18,7 @@ import {
   buildResourceSummary,
   buildResourcePercentiles,
   buildStabilityCounts,
+  buildGraphicsDiagnosticCounts,
   buildCapabilityChanges,
   buildNavigationStats,
   buildXrRotationRate,
@@ -902,6 +903,56 @@ describe("duckdb store", () => {
     expect(Number(stab.context_losses)).toBe(1);
     expect(Number(stab.compile_stalls)).toBe(2);
     expect(Number(stab.incidents)).toBe(3);
+  });
+
+  it("counts graphics_diagnostic incidents by severity/category/backend, folding rollups and markers (#16)", async () => {
+    await insertEvents(db, [
+      // Two discrete device-lost markers (no `count`) on WebGPU: fold in as 1 each.
+      base("graphics_diagnostic", T0 + 1_000, {
+        severity: "fatal",
+        category: "device-lost",
+        backend: "webgpu",
+      }),
+      base("graphics_diagnostic", T0 + 2_000, {
+        severity: "fatal",
+        category: "device-lost",
+        backend: "webgpu",
+      }),
+      // A per-session rollup of 5 validation warnings on WebGL2: folds in as 5.
+      base("graphics_diagnostic", T0 + 3_000, {
+        severity: "warning",
+        category: "validation",
+        backend: "webgl2",
+        count: 5,
+      }),
+      // A diagnostic with no backend: groups under '' (unknown).
+      base("graphics_diagnostic", T0 + 4_000, {
+        severity: "error",
+        category: "shader-compile",
+      }),
+    ]);
+    const rows = await runDuckdbQuery<{
+      severity: string;
+      category: string;
+      backend: string;
+      incidents: number;
+    }>(db, buildGraphicsDiagnosticCounts(PID, RANGE, duckdbDialect));
+
+    const cell = (severity: string, category: string, backend: string) =>
+      rows.find((r) => r.severity === severity && r.category === category && r.backend === backend);
+
+    // Two markers fold into a single (fatal, device-lost, webgpu) cell with count 2.
+    expect(Number(cell("fatal", "device-lost", "webgpu")!.incidents)).toBe(2);
+    // The rollup of 5 lands as 5, not 1.
+    expect(Number(cell("warning", "validation", "webgl2")!.incidents)).toBe(5);
+    // The backend-less diagnostic groups under '' (unknown).
+    expect(Number(cell("error", "shader-compile", "")!.incidents)).toBe(1);
+    expect(rows).toHaveLength(3);
+
+    // Derived breakdowns (what the dashboard folds): by-category, by-severity,
+    // by-backend all sum to the same grand total of 8 incidents.
+    const total = rows.reduce((n, r) => n + Number(r.incidents), 0);
+    expect(total).toBe(8);
   });
 
   it("lists distinct scenes, a time-series, and event-type counts", async () => {
