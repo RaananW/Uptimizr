@@ -77,6 +77,22 @@ client.reportCapabilityChange({ kind: "quality", from: "high", to: "low", reason
 This pairs with the raw [`context_lost` / `context_restored`](/docs/guides/sessions/#engine--browser-lifecycle-events)
 events — it's the higher-level "what we ran as" signal. Read the rollup from `GET /api/v1/capabilities`.
 
+## Engine diagnostics (opt-in GPU health)
+
+`graphics_diagnostic` carries engine-authored GPU-health signals — GPU errors/warnings,
+shader-compile/link failures, richer context-loss reasons, WebGPU `uncapturederror`, and sampled
+`gl.getError()` — in one engine-agnostic shape (`severity`, `category`, optional `backend`,
+length-capped `message`/`code`, and a `count` rollup-or-marker discriminator).
+
+It is **off by default** and gated by the `captureGraphicsDiagnostics`
+[option](/docs/guides/configuration/) — like `runtime_error`, the text can leak application IP, so
+you opt in and redact via `beforeSend`. The default emission is a rate-limited per-session rollup so
+an error storm can't flood ingestion. `context_lost` / `context_restored` are exempt and stay
+always-on; engine-driven backend fallback stays in `capability_change` above.
+
+> This release defines the event contract and the opt-in flag; per-signal capture wiring lands
+> incrementally in the engine connectors.
+
 ## Changing scenes / levels (`setScene`)
 
 A single session can span multiple scenes, areas, or levels — game levels, a viewer swapping models,

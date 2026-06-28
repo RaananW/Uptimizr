@@ -196,6 +196,19 @@ export interface UptimizrConfig {
    * at most 50 are emitted per session.
    */
   captureErrors?: boolean;
+  /**
+   * Capture opt-in **engine diagnostics** (GPU-health signals) as
+   * `graphics_diagnostic` events — GPU errors/warnings, shader-compile failures,
+   * richer context-loss reasons, WebGPU `uncapturederror`, and sampled
+   * `gl.getError()` (ADR 0021 part 2). **Off by default**, mirroring
+   * `captureErrors`: the signals can be high-volume and their text can leak
+   * application IP, so the deployer opts in and redacts via `beforeSend`.
+   *
+   * This is the single shared gate the engine connectors read to decide whether to
+   * wire their backend-specific capture. It does **not** affect `context_lost` /
+   * `context_restored`, which are always-on and exempt from the opt-in.
+   */
+  captureGraphicsDiagnostics?: boolean;
   /** Emit debug logs to the console. */
   debug?: boolean;
 }
@@ -213,6 +226,7 @@ export interface ResolvedConfig {
   captureLifecycle: boolean;
   resizeDebounceMs: number;
   captureErrors: boolean;
+  captureGraphicsDiagnostics: boolean;
   debug: boolean;
 }
 

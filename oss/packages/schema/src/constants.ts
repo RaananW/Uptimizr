@@ -50,6 +50,7 @@ export const EVENT_TYPES = [
   "focus_change",
   "context_lost",
   "context_restored",
+  "graphics_diagnostic",
   "runtime_error",
   "input_action",
   "custom",
