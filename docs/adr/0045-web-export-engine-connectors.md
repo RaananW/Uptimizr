@@ -70,10 +70,10 @@ it reads the engine's own camera/raycast/perf and calls a tiny, versioned JS API
 
 ### 3. Two tiers of capture — what is free vs. what needs the bridge
 
-| Capability | Source | Engine bridge needed? |
-| --- | --- | --- |
-| Pointer move/click heatmaps (screen-space), FPS (rAF timing), lifecycle, custom events, error capture | the `<canvas>` DOM + `requestAnimationFrame`, purely in JS | **No** — zero engine code |
-| Camera pose / view-direction heatmap, world-space gaze, raycast picks, mesh interaction, scene proxy, node transforms, replay-completeness | engine-side camera/raycast/scene, pushed over the bridge | **Yes** |
+| Capability                                                                                                                                 | Source                                                     | Engine bridge needed?     |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------- |
+| Pointer move/click heatmaps (screen-space), FPS (rAF timing), lifecycle, custom events, error capture                                      | the `<canvas>` DOM + `requestAnimationFrame`, purely in JS | **No** — zero engine code |
+| Camera pose / view-direction heatmap, world-space gaze, raycast picks, mesh interaction, scene proxy, node transforms, replay-completeness | engine-side camera/raycast/scene, pushed over the bridge   | **Yes**                   |
 
 The JS-only tier gives a meaningful zero-config result on any web export (heatmaps + perf +
 custom); the 3D-native value (pose, world-space, replay) layers on once the bridge is added.
@@ -93,10 +93,10 @@ encodes `handedness`, `upAxis` (`y`/`z`), and `unitScale`. Each connector record
 **native** frame as provenance on `session_start` and normalizes world-space payloads at the
 emission boundary:
 
-| Engine | Native frame | Normalization to canonical (LH, y-up, unit 1) |
-| --- | --- | --- |
-| **Unity** | left-handed, **y-up**, meters | already canonical — no axis conversion |
-| **Godot** | right-handed, **y-up**, meters | negate Z (`toCanonicalPosition`/`Direction`/`Aabb`/`Quat`) |
+| Engine     | Native frame                           | Normalization to canonical (LH, y-up, unit 1)                                  |
+| ---------- | -------------------------------------- | ------------------------------------------------------------------------------ |
+| **Unity**  | left-handed, **y-up**, meters          | already canonical — no axis conversion                                         |
+| **Godot**  | right-handed, **y-up**, meters         | negate Z (`toCanonicalPosition`/`Direction`/`Aabb`/`Quat`)                     |
 | **Unreal** | left-handed, **z-up**, **centimeters** | rebase z-up → y-up **and** apply `unitScale` (cm→m); record both in provenance |
 
 Unreal is the one that exercises the non-`y` `upAxis` and non-1 `unitScale` paths; the connector
