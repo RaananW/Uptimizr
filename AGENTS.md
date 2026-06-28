@@ -29,7 +29,8 @@ ingestion/query collector, the dashboard, and an embedded DuckDB store.
    (Fastify now; possibly Hono at the edge later) stays replaceable. (ADR 0005)
 6. **Document decisions.** Significant choices get a new ADR (`docs/adr/template.md`). Do not
    rewrite past ADRs — supersede them.
-7. **Phase discipline.** Don't build Phase 2 features during Phase 1. Check `docs/phases`.
+7. **OSS boundary discipline.** The OSS collector is self-contained; don't build
+   proprietary/hosted-only features here. Check `docs/phases`.
 8. **Every feature reaches the docs.** Any new feature, option, event, endpoint, or user-visible
    improvement MUST be documented in the same change: update the public docs site
    (`oss/apps/docs`) and the SDK/API reference (`docs/integration.md`) where applicable. A feature
@@ -109,4 +110,5 @@ agent's `description`:
 - `connector-author` — invoke when **adding or maintaining a 3D engine connector** (three.js,
   PlayCanvas, react-three-fiber, …). It mirrors `@uptimizr/babylon` per the `add-connector`
   skill (sdk-core + schema only, engine as a peer dep, `dispose()` cleanup, no persistent IDs).
-  New connectors are Phase 2 scope — confirm phase intent first.
+  New web-export connectors (Unity, Godot, Unreal) follow ADR 0045 — confirm the engine-side
+  bridge approach first.

@@ -20,9 +20,9 @@ The OSS analytics UI: projects, live event feed, heatmaps, and session/perf summ
 - Projects list + live event feed.
 - **2D pointer heatmap** rendered on a canvas (screen-normalized positions).
 - **Camera-direction heatmap** rendered on an abstract sphere (no project `.glb` overlay in v1 —
-  that's Phase 2).
+  that's deferred).
 - Sessions list and basic perf summary (FPS, device/GPU, asset load).
-- An in-dashboard per-session replay viewer is a Phase 1 stretch / Phase 2 item.
+- An in-dashboard per-session replay viewer is a stretch goal.
 
 ## Quality
 

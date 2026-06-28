@@ -63,7 +63,7 @@ flowchart LR
 
 - **`dashboard` (Next.js + Tailwind)** — project list, live event feed, **abstract** v1
   heatmaps (2D pointer canvas + camera-direction sphere), and session/perf summaries. Full
-  scene-`.glb` overlay is deferred to Phase 2.
+  scene-`.glb` overlay is deferred.
 - **`@uptimizr/replay`** — fetches a session's ordered event stream and re-drives
   camera/pointer/picks. The framework user runs this **in their own scene on their own infra**.
 

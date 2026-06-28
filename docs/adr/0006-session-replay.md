@@ -22,7 +22,7 @@ user's **own** infrastructure (using the collector).
 - A dedicated OSS package, **`@uptimizr/replay`**, provides a framework-agnostic replay core
   plus a Babylon driver that re-drives camera/pointer/picks over the framework user's own scene.
 - The dashboard v1 ships **abstract aggregate** heatmaps; an in-dashboard per-session replay
-  viewer is a Phase 1 stretch / Phase 2 item. Full scene-`.glb` overlay is Phase 2.
+  viewer is a stretch goal. Full scene-`.glb` overlay is deferred.
 
 ## Consequences
 

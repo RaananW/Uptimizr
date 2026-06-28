@@ -17,14 +17,14 @@ event_type, ts)`. Choose `MergeTree` family appropriate to the access pattern.
   for fields that are queried/aggregated.
 - Raw per-session event storage (for replay) is gated by `ENABLE_RAW_SESSION_RETENTION`
   (ADR 0003). Provide an ordered read by `session_id` for the timeline endpoint.
-- Aggregations are query-time by default. Phase 2 adds ClickHouse **materialized views** for the
+- Aggregations are query-time by default. A future optimization adds ClickHouse **materialized views** for the
   common daily rollups (`perf_daily`, `events_daily`) to keep dashboards fast at volume; query-time
   aggregation remains the source of truth and the rollups are append-only migrations. Read rollups
   with the `-Merge`/`sum` helpers in `clickhouse/queries.ts`.
 
 ## Postgres (metadata)
 
-- Holds `projects` and `api_keys` in v1 (orgs/users/billing arrive in Phase 2).
+- Holds `projects` and `api_keys` in v1 (orgs/users/billing are out of scope for the OSS collector).
 - Use a typed client/ORM consistently across the package; keep migrations versioned and
   additive (forward-only, idempotent via `IF NOT EXISTS` — see ADR 0007).
 - API keys: store only hashes, never plaintext.
