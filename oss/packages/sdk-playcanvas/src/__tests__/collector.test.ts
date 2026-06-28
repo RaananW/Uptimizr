@@ -67,9 +67,29 @@ function makeApp(
 ) {
   const frameHandlers: Array<(...a: unknown[]) => void> = [];
   const nodes = opts.nodes ?? [];
+  // `app.assets` registry stub (#14): records load-lifecycle listeners and can
+  // fire them, mirroring the PlayCanvas AssetRegistry (`load:start`/`load`/`error`).
+  const assetListeners: Record<string, Array<(...a: unknown[]) => void>> = {};
+  const assets = {
+    on(name: string, cb: (...a: unknown[]) => void) {
+      (assetListeners[name] ??= []).push(cb);
+    },
+    off(name: string, cb: (...a: unknown[]) => void) {
+      assetListeners[name] = (assetListeners[name] ?? []).filter((h) => h !== cb);
+    },
+    /** Test helper: fire one registry event. */
+    fire(name: string, ...args: unknown[]) {
+      for (const cb of [...(assetListeners[name] ?? [])]) cb(...args);
+    },
+    /** Test helper: number of bound listeners for an event. */
+    count(name: string) {
+      return (assetListeners[name] ?? []).length;
+    },
+  };
   const app = {
     graphicsDevice: { canvas },
     stats: { frame: { fps: opts.fps ?? 0, triangles: opts.triangles ?? 0 } },
+    assets,
     root: {
       forEach(cb: (n: unknown) => void) {
         for (const n of nodes) cb(n);
@@ -95,6 +115,7 @@ function makeApp(
   };
   return app as unknown as AppBase & {
     stats: { frame: { fps: number; triangles: number } };
+    assets: typeof assets;
     frame(): void;
     frameendCount(): number;
   };
@@ -627,6 +648,133 @@ describe("playcanvasCollector", () => {
     handle.stop();
     vi.advanceTimersByTime(5000);
     expect(events.filter((e) => e.type === "resource_sample")).toHaveLength(1);
+  });
+
+  // --- asset_load (#14) — per-asset load timing via app.assets registry ---
+
+  it("emits asset_load with name, loadMs, and bytes from the app.assets lifecycle", () => {
+    const app = makeApp(makeCanvas());
+    const now = { value: 1000 };
+    const { ctx, events } = makeCtx(now);
+    const handle = playcanvasCollector({
+      app,
+      camera: makeCamera(),
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+
+    const asset = { id: 7, name: "hero.glb", file: { size: 2048 } };
+    app.assets.fire("load:start", asset);
+    now.value = 1450; // 450ms later
+    app.assets.fire("load", asset);
+
+    const loads = events.filter((e) => e.type === "asset_load");
+    expect(loads).toHaveLength(1);
+    expect(loads[0]).toMatchObject({
+      type: "asset_load",
+      name: "hero.glb",
+      loadMs: 450,
+      bytes: 2048,
+    });
+    handle.stop();
+  });
+
+  it("omits bytes when the asset file size is unknown", () => {
+    const app = makeApp(makeCanvas());
+    const now = { value: 1000 };
+    const { ctx, events } = makeCtx(now);
+    const handle = playcanvasCollector({
+      app,
+      camera: makeCamera(),
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+
+    const asset = { id: 3, name: "scene.json" };
+    app.assets.fire("load:start", asset);
+    now.value = 1100;
+    app.assets.fire("load", asset);
+
+    const loads = events.filter((e) => e.type === "asset_load");
+    expect(loads).toHaveLength(1);
+    expect(loads[0]).toMatchObject({ type: "asset_load", name: "scene.json", loadMs: 100 });
+    expect(loads[0]).not.toHaveProperty("bytes");
+    handle.stop();
+  });
+
+  it("does not emit asset_load when the load was not observed from the start", () => {
+    const app = makeApp(makeCanvas());
+    const { ctx, events } = makeCtx();
+    const handle = playcanvasCollector({
+      app,
+      camera: makeCamera(),
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+
+    // `load` without a preceding `load:start` (e.g. already-cached asset).
+    app.assets.fire("load", { id: 9, name: "cached.glb", file: { size: 100 } });
+    expect(events.some((e) => e.type === "asset_load")).toBe(false);
+    handle.stop();
+  });
+
+  it("does not emit asset_load on error and clears the pending start", () => {
+    const app = makeApp(makeCanvas());
+    const { ctx, events } = makeCtx();
+    const handle = playcanvasCollector({
+      app,
+      camera: makeCamera(),
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+
+    const asset = { id: 5, name: "broken.glb", file: { size: 10 } };
+    app.assets.fire("load:start", asset);
+    app.assets.fire("error", new Error("404"), asset);
+    // A late `load` for the same asset must not emit (start was cleared on error).
+    app.assets.fire("load", asset);
+    expect(events.some((e) => e.type === "asset_load")).toBe(false);
+    handle.stop();
+  });
+
+  it("does not hook the assets registry when assetLoad capture is disabled", () => {
+    const app = makeApp(makeCanvas());
+    const { ctx, events } = makeCtx();
+    const handle = playcanvasCollector({
+      app,
+      camera: makeCamera(),
+      capture: { camera: false, perf: false, assetLoad: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+
+    expect(app.assets.count("load")).toBe(0);
+    app.assets.fire("load:start", { id: 1, name: "x.glb" });
+    app.assets.fire("load", { id: 1, name: "x.glb" });
+    expect(events.some((e) => e.type === "asset_load")).toBe(false);
+    handle.stop();
+  });
+
+  it("removes asset registry listeners on stop()", () => {
+    const app = makeApp(makeCanvas());
+    const now = { value: 1000 };
+    const { ctx, events } = makeCtx(now);
+    const handle = playcanvasCollector({
+      app,
+      camera: makeCamera(),
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+
+    expect(app.assets.count("load")).toBe(1);
+    handle.stop();
+    expect(app.assets.count("load:start")).toBe(0);
+    expect(app.assets.count("load")).toBe(0);
+    expect(app.assets.count("error")).toBe(0);
+
+    // No emissions after teardown.
+    app.assets.fire("load:start", { id: 2, name: "late.glb" });
+    app.assets.fire("load", { id: 2, name: "late.glb" });
+    expect(events.some((e) => e.type === "asset_load")).toBe(false);
   });
 
   it("drives a 'frame'-cadence channel with the engine frameend event", () => {
