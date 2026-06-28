@@ -1579,9 +1579,15 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
       // (the helper enforces the gate). We read the device structurally and only
       // on a `WebGPURenderer` — a `WebGLRenderer` has no device-lost concept (its
       // context loss is the `webglcontextlost` event above), so it stays a no-op.
+      //
+      // three builds the WebGPU backend's device asynchronously (`renderer.init()` /
+      // first `renderAsync`), so `renderer.backend.device` is often undefined at
+      // `start()`. We pass a getter (optional-chained, never throws) and let the
+      // helper poll until the device appears. `backend.device` is the documented
+      // location across the WebGPURenderer line; a missing field is a clean no-op.
       if (isWebGpu(renderer)) {
-        const device = (renderer as unknown as RendererBackendDeviceView).backend?.device;
-        wireGpuDeviceLost(ctx, device, () => !disposed);
+        const getDevice = () => (renderer as unknown as RendererBackendDeviceView).backend?.device;
+        wireGpuDeviceLost(ctx, getDevice, () => !disposed);
       }
 
       // GPU / memory footprint (`resource_sample`, #44). A low-rate timer samples

@@ -1440,9 +1440,18 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
       // (the helper enforces the gate). We read the device structurally and only
       // when the engine is WebGPU — WebGL has no device-lost concept (its context
       // loss is already covered by `context_lost` above), so it stays a no-op.
+      //
+      // `_device` is an internal field of Babylon's `WebGPUEngine` (stable across
+      // the 7–9.x peer range) and is populated asynchronously by `initAsync`, so we
+      // pass a getter (optional-chained, never throws) and let the helper poll until
+      // it appears rather than reading once. A missing field is a clean no-op.
       const gpuEngine = scene.getEngine() as unknown as EngineWithWebGpuDevice;
       if (gpuEngine.isWebGPU) {
-        wireGpuDeviceLost(ctx, gpuEngine._device, () => !stopped);
+        wireGpuDeviceLost(
+          ctx,
+          () => gpuEngine._device,
+          () => !stopped,
+        );
       }
 
       // Shader / pipeline compile stalls (#42). Babylon raises a before/after
