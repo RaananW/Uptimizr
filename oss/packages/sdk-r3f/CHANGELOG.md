@@ -1,5 +1,16 @@
 # @uptimizr/r3f
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [fa6c472]
+- Updated dependencies [76a8060]
+- Updated dependencies [32248e0]
+  - @uptimizr/schema@0.3.0
+  - @uptimizr/sdk-core@0.2.0
+  - @uptimizr/three@0.1.3
+
 ## 0.1.2
 
 ### Patch Changes

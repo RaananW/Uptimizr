@@ -1,5 +1,35 @@
 # @uptimizr/schema
 
+## 0.3.0
+
+### Minor Changes
+
+- fa6c472: Add a browser/OS performance segment derived from the request User-Agent at
+  ingestion (#11). The collector reduces the User-Agent to a coarse, non-PII
+  `{ browser, os }` pair (raw UA never stored) and merges it into
+  `session_start.device`; `buildPerfByDevice` and the dashboard "FPS by device"
+  panel now segment per-session median FPS by browser/OS in addition to graphics
+  backend, mobile flag, and GPU renderer. No SDK, schema-capture, or storage
+  migration change (ADR 0041).
+- 32248e0: feat: reconstruct near-plane origin for flat-pointer click rays (ADR 0043)
+
+  Flat pointers (mouse/touch/stylus) have no native pointing ray, so the click-ray heatmap
+  (`/api/v1/heatmaps/click-rays`) collapsed every flat click to the nearest `camera_sample`
+  position. Capture the camera's projection intrinsics and unproject each click's `screen` onto the
+  camera near plane so flat-pointer rays fan out the way the clicks were actually made.
+
+  - **`@uptimizr/schema`** — `camera_sample` gains optional `aspect` and `near` (alongside the
+    existing `fov`).
+  - **`@uptimizr/babylon`** — captures `engine.getAspectRatio(camera)` and `camera.minZ`, emitted
+    only when finite and positive.
+  - **`@uptimizr/db` / `@uptimizr/db-clickhouse`** — `fov`/`aspect`/`near` promoted to dedicated
+    columns (forward-only migrations); `buildClickGazeRay` unprojects flat clicks onto the near
+    plane using a canonical world-up / no-roll basis.
+
+  Pose sources (XR/hand/gaze) keep their native ray origin (ADR 0011); missing intrinsics (legacy
+  data) or a degenerate look-straight-up/down view fall back to the camera position, so existing
+  behaviour and parity goldens are unchanged. Additive and non-breaking.
+
 ## 0.2.0
 
 ### Minor Changes

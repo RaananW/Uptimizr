@@ -1,5 +1,15 @@
 # @uptimizr/replay
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [fa6c472]
+- Updated dependencies [76a8060]
+- Updated dependencies [32248e0]
+  - @uptimizr/schema@0.3.0
+  - @uptimizr/sdk-core@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes
