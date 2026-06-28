@@ -21,6 +21,7 @@ import {
   toCanonicalQuat,
 } from "@uptimizr/sdk-core";
 import type { Aabb, InputSource, Vec3 } from "@uptimizr/schema";
+import { LIMITS } from "@uptimizr/schema";
 import { clamp01, toVec3 } from "./vec.js";
 import { createGazeRaycaster, createSceneRaycaster } from "./raycast.js";
 import type { GazeProbe, GazeProbeOptions, RaycastHit, RaycastProbe } from "./raycast.js";
@@ -64,11 +65,34 @@ interface EventTargetView {
   getBoundingClientRect?: () => { left: number; top: number; width: number; height: number };
 }
 
+/**
+ * Structural view of a PlayCanvas `Asset` — only the fields the `asset_load` hook
+ * reads. We deliberately read `name` (the app-defined logical label) and never the
+ * file URL, so signed/CDN URLs (potential PII, ADR 0003) are never captured.
+ */
+interface AssetView {
+  id?: number | string;
+  name?: string;
+  /** Source file descriptor; `size` is the byte count when the engine knows it. */
+  file?: { size?: number } | null;
+}
+
+/**
+ * Structural view of the PlayCanvas `AssetRegistry` (`app.assets`) — an
+ * `EventHandler` whose load lifecycle (`load:start` → `load` / `error`) the
+ * connector subscribes to for `asset_load` capture.
+ */
+interface AssetRegistryView {
+  on(name: string, callback: (...args: unknown[]) => void): unknown;
+  off(name: string, callback: (...args: unknown[]) => void): unknown;
+}
+
 /** Structural view of the PlayCanvas app fields the connector reads. */
 interface AppView {
   graphicsDevice?: { canvas?: EventTargetView };
   stats?: { frame?: { fps?: number; triangles?: number } };
   root?: { forEach?: (cb: (node: unknown) => void) => void };
+  assets?: AssetRegistryView;
   on(name: string, callback: (...args: unknown[]) => void): unknown;
   off(name: string, callback: (...args: unknown[]) => void): unknown;
 }
@@ -105,6 +129,9 @@ function isPointerLocked(getCanvas: () => unknown): boolean {
 }
 
 type Vec3T = [number, number, number];
+
+/** Max stored `asset_load.name` length (schema bound, ADR 0003). */
+const ASSET_NAME_MAX = LIMITS.maxAssetNameLength;
 
 function sub3(a: Vec3T, b: Vec3T): Vec3T {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -443,6 +470,14 @@ export interface PlayCanvasCaptureOptions {
   /** WebGL `webglcontextlost` / `webglcontextrestored` transitions on the canvas. */
   contextLoss?: boolean;
   /**
+   * Asset / resource load timing (`asset_load`, #14). **On by default**: it hooks
+   * the PlayCanvas `app.assets` registry load lifecycle (`load:start` → `load` /
+   * `error`) and emits one `asset_load` per observed load with its duration and
+   * (when known) byte size. Privacy (ADR 0003): only the asset's app-defined
+   * **name** is recorded — never the file URL.
+   */
+  assetLoad?: boolean;
+  /**
    * Per-object dwell / attention capture (`mesh_visibility`, #37). **Opt-in, off
    * by default** (privacy, ADR 0003). Each window the connector emits one
    * bucketed summary per tracked object (ADR 0012): on-screen time, time spent
@@ -727,6 +762,8 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
     meshPicks: capture.meshPicks ?? true,
     perf: (capture.perf ?? true) && perfCadence.mode !== "off",
     contextLoss: capture.contextLoss ?? true,
+    // Asset load timing is on by default (#14): startup perf, name-only (no URL).
+    assetLoad: capture.assetLoad ?? true,
     // Opt-in, off by default (privacy, ADR 0003).
     meshVisibility: capture.meshVisibility ?? false,
     hoverDwell: capture.hoverDwell ?? false,
@@ -1401,6 +1438,56 @@ export function playcanvasCollector(options: PlayCanvasCollectorOptions): Collec
       if (want.contextLoss) {
         addListener("webglcontextlost", () => ctx.emit({ type: "context_lost" }));
         addListener("webglcontextrestored", () => ctx.emit({ type: "context_restored" }));
+      }
+
+      // Asset / resource load timing (`asset_load`, #14). PlayCanvas' `app.assets`
+      // registry (an EventHandler) exposes the load lifecycle: `load:start` fires
+      // when an asset begins network loading, `load` on success, `error` on
+      // failure. We bracket start→load to report a duration; assets whose load we
+      // never observed from the start (already-loaded, or added before tracking)
+      // are skipped so `loadMs` is never fabricated. Privacy (ADR 0003): only the
+      // asset's app-defined `name` is recorded — never the file URL.
+      const assets = appView.assets;
+      if (want.assetLoad && assets) {
+        const startTimes = new Map<unknown, number>();
+
+        const keyOf = (asset: AssetView): unknown => asset.id ?? asset;
+
+        const onLoadStart = (raw: unknown) => {
+          startTimes.set(keyOf(raw as AssetView), ctx.now());
+        };
+        const onLoad = (raw: unknown) => {
+          const asset = raw as AssetView;
+          const key = keyOf(asset);
+          const start = startTimes.get(key);
+          if (start === undefined) return; // load not observed from the start
+          startTimes.delete(key);
+
+          const event: { type: "asset_load"; name: string; loadMs: number; bytes?: number } = {
+            type: "asset_load",
+            name: (asset.name ?? "asset").slice(0, ASSET_NAME_MAX),
+            loadMs: Math.max(0, Math.round(ctx.now() - start)),
+          };
+          const bytes = asset.file?.size;
+          if (typeof bytes === "number" && bytes > 0) event.bytes = bytes;
+          ctx.emit(event);
+        };
+        const onError = (...args: unknown[]) => {
+          // Registry fires `error(err, asset)`; drop the pending start (no emit —
+          // `asset_load` is a success-timing signal with no error field).
+          const asset = args[1] as AssetView | undefined;
+          if (asset) startTimes.delete(keyOf(asset));
+        };
+
+        assets.on("load:start", onLoadStart);
+        assets.on("load", onLoad);
+        assets.on("error", onError);
+        stopCallbacks.push(() => {
+          assets.off("load:start", onLoadStart);
+          assets.off("load", onLoad);
+          assets.off("error", onError);
+          startTimes.clear();
+        });
       }
 
       // GPU / memory footprint (`resource_sample`, #44). A low-rate timer samples

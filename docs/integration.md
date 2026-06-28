@@ -700,7 +700,13 @@ percentiles and render resolution measured over the sampling window:
 | `renderScale`                      | Engine hardware-scaling factor (`1` = native, `<1` = downscaled). |
 
 `asset_load` likewise carries an optional `ttiMs` (time-to-interactive for the
-asset) alongside `loadMs`/`ttffMs`.
+asset) alongside `loadMs`/`ttffMs`. The **PlayCanvas** connector emits `asset_load`
+automatically by hooking the `app.assets` registry load lifecycle (name + `loadMs`,
+and `bytes` when known; on by default, disable via `capture.assetLoad`). Other
+connectors leave `asset_load` to the host app — emit it on the `UptimizrClient`
+when your loader finishes. See
+[Connectors → asset-load capture](/docs/connectors/overview/#asset-load-capture-asset_load)
+for the per-engine parity table.
 
 ### Pointer lock (first-person / FPS scenes)
 
