@@ -93,6 +93,9 @@ importers:
       '@uptimizr/three':
         specifier: workspace:*
         version: link:../../oss/packages/sdk-three
+      '@uptimizr/unity':
+        specifier: workspace:*
+        version: link:../../oss/packages/unity
       playcanvas:
         specifier: 2.20.0
         version: 2.20.0
@@ -375,6 +378,25 @@ importers:
         specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(happy-dom@20.10.6)(jsdom@29.1.1(canvas@3.2.3))(vite@8.1.0(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  oss/packages/godot:
+    dependencies:
+      '@uptimizr/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@uptimizr/sdk-core':
+        specifier: workspace:*
+        version: link:../sdk-core
+      '@uptimizr/web-export':
+        specifier: workspace:*
+        version: link:../web-export
+    devDependencies:
+      esbuild:
+        specifier: '>=0.28.1'
+        version: 0.28.1
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.0.1)(happy-dom@20.10.6)(jsdom@29.1.1(canvas@3.2.3))(vite@8.1.0(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
   oss/packages/heatmap:
     devDependencies:
       '@babylonjs/core':
@@ -624,6 +646,60 @@ importers:
       three:
         specifier: ^0.185.0
         version: 0.185.0
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.0.1)(happy-dom@20.10.6)(jsdom@29.1.1(canvas@3.2.3))(vite@8.1.0(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  oss/packages/unity:
+    dependencies:
+      '@uptimizr/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@uptimizr/sdk-core':
+        specifier: workspace:*
+        version: link:../sdk-core
+      '@uptimizr/web-export':
+        specifier: workspace:*
+        version: link:../web-export
+    devDependencies:
+      esbuild:
+        specifier: '>=0.28.1'
+        version: 0.28.1
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.0.1)(happy-dom@20.10.6)(jsdom@29.1.1(canvas@3.2.3))(vite@8.1.0(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  oss/packages/unreal:
+    dependencies:
+      '@uptimizr/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@uptimizr/sdk-core':
+        specifier: workspace:*
+        version: link:../sdk-core
+      '@uptimizr/web-export':
+        specifier: workspace:*
+        version: link:../web-export
+    devDependencies:
+      esbuild:
+        specifier: '>=0.28.1'
+        version: 0.28.1
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.0.1)(happy-dom@20.10.6)(jsdom@29.1.1(canvas@3.2.3))(vite@8.1.0(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  oss/packages/web-export:
+    dependencies:
+      '@uptimizr/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@uptimizr/sdk-core':
+        specifier: workspace:*
+        version: link:../sdk-core
+    devDependencies:
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(canvas@3.2.3)
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(happy-dom@20.10.6)(jsdom@29.1.1(canvas@3.2.3))(vite@8.1.0(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))

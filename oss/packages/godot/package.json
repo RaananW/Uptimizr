@@ -1,0 +1,63 @@
+{
+  "name": "@uptimizr/godot",
+  "version": "0.1.0",
+  "description": "Godot 4 (Web export) connector for Uptimizr — JS-only pointer/perf capture plus a bridged camera-pose / world-space tier via a thin engine-side shim.",
+  "keywords": [
+    "uptimizr",
+    "analytics",
+    "3d",
+    "godot",
+    "webgl",
+    "webassembly",
+    "heatmap",
+    "session-replay",
+    "privacy"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/godot"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://uptimizr.com/docs/connectors/godot/",
+  "author": "Raanan Weber (https://github.com/RaananW)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "bridge",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && pnpm run bundle && pnpm run bundle:global",
+    "bundle": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --minify --legal-comments=none --banner:js=\"/* @uptimizr/godot standalone bundle — Apache-2.0. Async-import into a Godot 4 Web export's host page. */\" --outfile=dist/uptimizr-godot.js",
+    "bundle:global": "esbuild src/index.ts --bundle --format=iife --global-name=UptimizrGodot --platform=browser --target=es2022 --minify --legal-comments=none --banner:js=\"/* @uptimizr/godot standalone bundle (global) — Apache-2.0. Inject via a <script> tag into a Godot 4 Web export host page; exposes window.UptimizrGodot. */\" --outfile=dist/uptimizr-godot.global.js",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@uptimizr/schema": "workspace:*",
+    "@uptimizr/sdk-core": "workspace:*",
+    "@uptimizr/web-export": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "vitest": "^4.1.9"
+  }
+}

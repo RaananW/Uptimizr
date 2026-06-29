@@ -29,6 +29,7 @@
     "@uptimizr/replay": "workspace:*",
     "@uptimizr/sdk-core": "workspace:*",
     "@uptimizr/three": "workspace:*",
+    "@uptimizr/unity": "workspace:*",
     "playcanvas": "2.20.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
