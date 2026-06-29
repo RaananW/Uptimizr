@@ -6,11 +6,12 @@ see the [ADRs](./adr), and for package-level detail see each package README.
 
 Two packages matter for integration, and they are deliberately separate:
 
-| Package                                                      | Role                                                          | Where it runs              |
-| ------------------------------------------------------------ | ------------------------------------------------------------- | -------------------------- |
-| [`@uptimizr/babylon`](../oss/packages/sdk-babylon/README.md) | **Collector** — reads a Babylon.js scene, writes events       | every visitor (production) |
-| [`@uptimizr/three`](../oss/packages/sdk-three/README.md)     | **Collector** — reads a three.js scene, writes events         | every visitor (production) |
-| [`@uptimizr/replay`](../oss/packages/replay/README.md)       | **Replay** — reads events, re-drives the scene, emits nothing | the developer (dev/debug)  |
+| Package                                                        | Role                                                                                | Where it runs              |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------- |
+| [`@uptimizr/babylon`](../oss/packages/sdk-babylon/README.md)   | **Collector** — reads a Babylon.js scene, writes events                             | every visitor (production) |
+| [`@uptimizr/three`](../oss/packages/sdk-three/README.md)       | **Collector** — reads a three.js scene, writes events                               | every visitor (production) |
+| [`@uptimizr/web-export`](../oss/packages/web-export/README.md) | **Foundation** — JS-only tier + versioned bridge for Unity/Godot/Unreal web exports | every visitor (production) |
+| [`@uptimizr/replay`](../oss/packages/replay/README.md)         | **Replay** — reads events, re-drives the scene, emits nothing                       | the developer (dev/debug)  |
 
 The collector is intentionally tiny so it can ship to every visitor. Replay is an
 optional developer tool you run in your own environment; it never emits analytics
@@ -20,6 +21,17 @@ The examples below use the Babylon connector; the three.js connector mirrors the
 same API (`trackScene` + options) — see its
 [README](../oss/packages/sdk-three/README.md) for the few three-specific
 arguments (`camera`, `renderer`).
+
+> **Web-export engines (Unity, Godot, Unreal).** Engines that compile to WebAssembly
+> and render into a `<canvas>` have no live JS scene to read, so they don't use
+> `trackScene`. They share the [`@uptimizr/web-export`](../oss/packages/web-export/README.md)
+> foundation and capture in **two tiers**: a **JS-only tier** (pointer heatmaps, FPS,
+> JS errors — no engine code) that is live from `trackUnity` / `trackGodot` /
+> `trackUnreal`, and a **bridged tier** (camera pose, world-space picks, replay) driven
+> by a thin engine-side **copy-in shim** that pushes world-space samples over a
+> versioned bridge. The engine is **not** an npm peer dependency. See the
+> [web-export connector docs](https://uptimizr.dev/connectors/web-export) for the
+> bridge contract and per-engine native frames.
 
 ---
 

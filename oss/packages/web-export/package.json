@@ -1,0 +1,60 @@
+{
+  "name": "@uptimizr/web-export",
+  "version": "0.1.0",
+  "description": "Shared foundation for Uptimizr web-export engine connectors (Unity, Godot, Unreal): the versioned JS bridge contract, a zero-engine-code JS-only capture tier, and native-frame normalization.",
+  "keywords": [
+    "uptimizr",
+    "analytics",
+    "3d",
+    "webassembly",
+    "unity",
+    "godot",
+    "unreal",
+    "webgl",
+    "heatmap",
+    "privacy"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/web-export"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://uptimizr.com/docs/connectors/web-export/",
+  "author": "Raanan Weber (https://github.com/RaananW)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@uptimizr/schema": "workspace:*",
+    "@uptimizr/sdk-core": "workspace:*"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.9"
+  }
+}

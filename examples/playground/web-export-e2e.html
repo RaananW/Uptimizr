@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Uptimizr — web-export e2e harness</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0b0e14;
+      }
+      /* A bare render canvas, standing in for a Unity/Godot/Unreal WebAssembly
+         export's <canvas>. The JS-only tier captures straight from it; there is
+         no live JS scene. */
+      #webExportCanvas {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        display: block;
+        touch-action: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="webExportCanvas"></canvas>
+    <script type="module" src="/src/web-export-e2e.ts"></script>
+  </body>
+</html>

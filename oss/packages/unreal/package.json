@@ -1,0 +1,62 @@
+{
+  "name": "@uptimizr/unreal",
+  "version": "0.1.0",
+  "description": "Unreal Engine (web export) connector for Uptimizr — best-effort, pending a viable WASM/HTML5 target. JS-only pointer/perf capture plus a bridged camera-pose / world-space tier via a thin engine-side shim.",
+  "keywords": [
+    "uptimizr",
+    "analytics",
+    "3d",
+    "unreal",
+    "webassembly",
+    "heatmap",
+    "session-replay",
+    "privacy"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/unreal"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://uptimizr.com/docs/connectors/unreal/",
+  "author": "Raanan Weber (https://github.com/RaananW)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "bridge",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && pnpm run bundle && pnpm run bundle:global",
+    "bundle": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --minify --legal-comments=none --banner:js=\"/* @uptimizr/unreal standalone bundle — Apache-2.0. Async-import into an Unreal web export's host page. Best-effort, pending a viable WASM target. */\" --outfile=dist/uptimizr-unreal.js",
+    "bundle:global": "esbuild src/index.ts --bundle --format=iife --global-name=UptimizrUnreal --platform=browser --target=es2022 --minify --legal-comments=none --banner:js=\"/* @uptimizr/unreal standalone bundle (global) — Apache-2.0. Inject via a <script> tag into an Unreal web export host page; exposes window.UptimizrUnreal. */\" --outfile=dist/uptimizr-unreal.global.js",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@uptimizr/schema": "workspace:*",
+    "@uptimizr/sdk-core": "workspace:*",
+    "@uptimizr/web-export": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "vitest": "^4.1.9"
+  }
+}
