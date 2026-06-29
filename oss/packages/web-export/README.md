@@ -21,9 +21,32 @@ Plus `webExportCollector` (the combined [`@uptimizr/sdk-core`](../sdk-core) coll
 and `trackWebExport` (one-call setup). **No `@uptimizr/schema` change is required** —
 connectors emit only existing events.
 
-You normally don't depend on this directly — use `@uptimizr/unity`, `@uptimizr/godot`,
-or `@uptimizr/unreal`, which bake in their engine's native frame. Depend on it
-directly only to support a new web-export engine.
+Most of the time you don't depend on this directly — use `@uptimizr/unity`,
+`@uptimizr/godot`, or `@uptimizr/unreal`, which bake in their engine's native frame and
+connector name.
+
+## When to use this directly
+
+Reach for `@uptimizr/web-export` itself when:
+
+- **Your engine isn't one we ship a package for** — Wonderland, a Bevy/Rust `wasm`
+  build, Stride, or any in-house Emscripten/WebAssembly renderer that draws to a
+  `<canvas>`. Supply its native `frame` (`handedness` / `upAxis` / `unitScale`) and get
+  both tiers for free.
+- **The native frame is configurable or only known at runtime** — pass `frame`
+  dynamically instead of a hard-coded one.
+- **You only want the JS-only tier on any canvas app** — pointer heatmaps, FPS, and JS
+  errors with zero engine code. Use `trackWebExport`, or `startJsOnlyCapture` for the
+  bare primitive.
+- **You need custom bridge wiring** — `createEngineBridge` and the normalization helpers
+  (`normalizePosition`, `normalizeDirection`, `normalizeAabb`, `rebaseZUpToYUp`) for a
+  bespoke transport, a server-side normalization step, or tests.
+- **You're authoring a new connector package** — a new `@uptimizr/<engine>` wraps this,
+  exactly as `@uptimizr/unity` does.
+
+If you're on Unity, Godot, or Unreal, prefer the engine package — it fixes the correct
+native frame, sets the connector provenance name, and exposes the
+`window.__uptimizr_<engine>__` global the matching copy-in shim expects.
 
 ## Install
 
