@@ -38,10 +38,24 @@ engine-side shim to `bridge` to add camera pose, picks, and replay.
 ## Engine-side bridge
 
 The bridged tier needs a thin **copy-in shim** — a `JavaScriptBridge` autoload that
-samples the active `Camera3D` and calls the bridge each frame. It's a copy-in asset,
-not an npm dependency. The contract and a GDScript sketch live in the package's
+samples the active `Camera3D` and calls the bridge each frame. It ships with the package as
+a copy-in asset (not an npm dependency), in both GDScript and C#:
+
+1. Copy [`UptimizrGodot.gd`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/godot/bridge/UptimizrGodot.gd)
+   (or [`UptimizrGodot.cs`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/godot/bridge/UptimizrGodot.cs)
+   for .NET projects) into your Godot 4 project.
+2. Register it as a singleton: **Project → Project Settings → Globals → Autoload**, add the
+   script with node name `UptimizrGodot`, and enable it.
+
+On the next Web export the autoload finds `window.__uptimizr_godot__` (exposed by
+`trackGodot`), asserts the bridge protocol version, and starts pushing camera pose, FPS, and
+left-click raycast picks automatically. Off the Web export it guards on
+`OS.has_feature("web")` and is a no-op, so it is safe to leave enabled in every build.
+
+For world-space object engagement and replay completeness, mark nodes with
+`add_to_group("uptimizr_tracked")` and call `UptimizrGodot.push_scene_proxy()` once after
+your scene is built. The full contract, options, and coordinate notes live in the package's
 [`bridge/README.md`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/godot/bridge/README.md).
-The full shim is authored in the Godot web-export sub-issue.
 
 ## Coordinate frame
 
