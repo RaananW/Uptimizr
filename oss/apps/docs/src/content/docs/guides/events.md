@@ -95,13 +95,17 @@ severity, category, and backend — backed by `GET /api/v1/graphics-diagnostics`
 markers and per-session rollups into one honest total. With capture off, the panel shows an explicit
 opt-in empty state rather than reading as broken.
 
-> **Wired today:** WebGPU `device.lost` → `graphics_diagnostic` (`category: device-lost`) and WebGPU
+> **Wired today:** WebGPU `device.lost` → `graphics_diagnostic` (`category: device-lost`), WebGPU
 > `uncapturederror` → rate-limited rollup (`category: validation` / `out-of-memory`, `count` + first
-> `message`) in the Babylon (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors.
-> `severity` is `info` for a requested loss (`reason: "destroyed"`) and `fatal` for an unrequested
-> one; the optional `message` is length-capped and runs through `beforeSend`. WebGL renderers are a
-> no-op (their interruption is the always-on `context_lost`). Other signals (context-creation
-> failure, shader-compile failures) land incrementally in later releases.
+> `message`), and WebGL/WebGPU **context-creation failure** → `graphics_diagnostic`
+> (`category: context-loss`, `severity: fatal`, `backend: unknown` when undetermined) in the Babylon
+> (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors. For device loss `severity` is `info`
+> for a requested loss (`reason: "destroyed"`) and `fatal` for an unrequested one; the optional
+> `message` is length-capped and runs through `beforeSend`. The context-creation marker fires once at
+> connector init when the engine cannot obtain a usable GL context / WebGPU adapter, and queues
+> correctly even though it happens before the first flush. WebGL renderers are a no-op for device loss
+> (their interruption is the always-on `context_lost`). Other signals (shader-compile failures) land
+> incrementally in later releases.
 
 ## Changing scenes / levels (`setScene`)
 

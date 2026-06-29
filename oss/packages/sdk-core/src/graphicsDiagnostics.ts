@@ -1,4 +1,5 @@
 import { LIMITS } from "@uptimizr/schema";
+import type { GraphicsApi } from "@uptimizr/schema";
 import type { CollectorContext } from "./types.js";
 
 /**
@@ -275,4 +276,70 @@ export function wireGpuUncapturedError(
     }
     flush();
   };
+}
+
+/**
+ * The result a connector's context-creation probe hands to
+ * {@link wireContextCreationFailure}. Connectors read their engine/renderer
+ * structurally (to keep the engine a peer dependency) and reduce it to this small,
+ * engine-agnostic shape.
+ */
+export interface ContextCreationProbe {
+  /**
+   * `true` when the engine could not obtain a usable GL/WebGPU context or adapter
+   * (e.g. `getContext()` / `requestAdapter()` returned null, or no backend is
+   * usable). `false` for a healthy context — the common case, a clean no-op.
+   */
+  failed: boolean;
+  /** The API that failed, when determinable; omit/`unknown` when it can't be told. */
+  backend?: GraphicsApi;
+  /** Optional engine/driver detail. Length-capped before emit. */
+  message?: string;
+}
+
+/**
+ * Emit a one-shot context-creation failure as a `graphics_diagnostic`
+ * (ADR 0021 part 2, `category: "context-loss"`, `severity: "fatal"`) when a
+ * connector cannot obtain a rendering context/adapter at init. Engine-agnostic:
+ * every connector reduces its backend-specific check to a {@link ContextCreationProbe}
+ * so the gating, length-cap, and event shape live in exactly one place.
+ *
+ * Behavior:
+ * - **Opt-in gate.** No-ops unless `ctx.config.captureGraphicsDiagnostics` is on
+ *   (mirroring {@link wireGpuDeviceLost}; `context_lost` runtime loss stays
+ *   always-on, this *creation* case is the richer opt-in diagnostic).
+ * - **Discrete marker.** Emits a single incident with no `count`: a creation
+ *   failure is rare and decisive, so the high-fidelity marker is the right default.
+ * - **Backend.** `unknown` when the connector can't determine which API failed
+ *   (no context means little to introspect).
+ * - **Ordering.** Connectors call this at `start()`. The client sets `started`
+ *   before running collectors, so the marker queues right after `session_start`
+ *   and is flushed by the normal cadence even though no transport round-trip has
+ *   happened yet.
+ * - **Privacy.** Any `message` is truncated to
+ *   {@link LIMITS.maxGraphicsDiagnosticMessageLength} and rides `ctx.emit`, which
+ *   applies the client's `beforeSend` for deployer-owned redaction.
+ *
+ * @param ctx Collector context (config + `emit`).
+ * @param probe The connector's context-creation result. Must not throw; read the
+ *   engine defensively (optional chaining) and pass `{ failed: false }` on doubt.
+ */
+export function wireContextCreationFailure(
+  ctx: CollectorContext,
+  probe: ContextCreationProbe,
+): void {
+  if (!ctx.config.captureGraphicsDiagnostics) return;
+  if (!probe.failed) return;
+
+  const message = probe.message
+    ? probe.message.slice(0, LIMITS.maxGraphicsDiagnosticMessageLength)
+    : undefined;
+
+  ctx.emit({
+    type: "graphics_diagnostic",
+    severity: "fatal",
+    category: "context-loss",
+    backend: probe.backend ?? "unknown",
+    ...(message ? { message } : {}),
+  });
 }

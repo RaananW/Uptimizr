@@ -21,10 +21,11 @@ import {
   toCanonicalQuat,
   wireGpuDeviceLost,
   wireGpuUncapturedError,
+  wireContextCreationFailure,
 } from "@uptimizr/sdk-core";
 import type { GpuDeviceErrorTargetLike, GpuDeviceLostLike } from "@uptimizr/sdk-core";
 import type { Aabb, InputSource, Vec3 } from "@uptimizr/schema";
-import { isWebGpu } from "./renderer.js";
+import { isWebGpu, lacksGlContext } from "./renderer.js";
 import { clamp01 } from "./vec.js";
 import { createGazeRaycaster, createSceneRaycaster } from "./raycast.js";
 import type { GazeProbe, GazeProbeOptions, RaycastHit, RaycastProbe } from "./raycast.js";
@@ -1600,6 +1601,14 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
         );
         stopCallbacks.push(flushUncaptured);
       }
+
+      // Context-creation failure → `graphics_diagnostic` (`category: context-loss`,
+      // `severity: fatal`, ADR 0021 part 2 / #18). Opt-in; the helper enforces the
+      // gate. Only the WebGL path is checked: a `WebGLRenderer` whose `getContext()`
+      // is null could not obtain a GL context (a WebGPU adapter failure surfaces as
+      // device-lost above). Backend stays `unknown` — nothing to introspect once
+      // creation failed.
+      wireContextCreationFailure(ctx, { failed: lacksGlContext(renderer) });
 
       // GPU / memory footprint (`resource_sample`, #44). A low-rate timer samples
       // the triangles three submitted last frame (`renderer.info.render.triangles`)

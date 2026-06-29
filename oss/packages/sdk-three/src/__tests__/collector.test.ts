@@ -1137,6 +1137,56 @@ describe("threeCollector — WebGPU uncapturederror rollup → graphics_diagnost
   });
 });
 
+describe("threeCollector — context-creation failure → graphics_diagnostic (#18)", () => {
+  function start(renderer: WebGLRenderer, config: Record<string, unknown>) {
+    const { ctx, events } = makeCtx(undefined, config);
+    const handle = threeCollector({
+      scene: emptyScene,
+      camera: makeCamera(),
+      renderer,
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+    return { events, handle };
+  }
+
+  /** A WebGLRenderer whose `getContext()` returned null (creation failed). */
+  function makeFailedRenderer() {
+    return {
+      domElement: makeCanvas(),
+      info: { render: { frame: 0, triangles: 0 } },
+      getContext: () => null,
+    } as unknown as WebGLRenderer;
+  }
+
+  it("emits nothing when captureGraphicsDiagnostics is off", () => {
+    const { events, handle } = start(makeFailedRenderer(), { captureGraphicsDiagnostics: false });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+
+  it("emits exactly one fatal context-loss marker when getContext is null", () => {
+    const { events, handle } = start(makeFailedRenderer(), { captureGraphicsDiagnostics: true });
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toEqual({
+      type: "graphics_diagnostic",
+      severity: "fatal",
+      category: "context-loss",
+      backend: "unknown",
+    });
+    handle.stop();
+  });
+
+  it("does not fire on a healthy WebGL renderer", () => {
+    const { events, handle } = start(makeRenderer(makeCanvas()), {
+      captureGraphicsDiagnostics: true,
+    });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+});
+
 describe("threeCollector — scene actors / node_transform (ADR 0027 Tier 1)", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

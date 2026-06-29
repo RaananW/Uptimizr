@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { wireGpuDeviceLost } from "../graphicsDiagnostics.js";
+import { wireGpuDeviceLost, wireContextCreationFailure } from "../graphicsDiagnostics.js";
 import type { CollectorContext, EventInput } from "../types.js";
 
 /** Build a minimal ctx whose `emit` records into a sink, with a config override. */
@@ -343,5 +343,50 @@ describe("wireGpuUncapturedError", () => {
     fire(new GPUValidationError("late"));
     stop();
     expect(events).toHaveLength(0);
+  });
+});
+
+describe("wireContextCreationFailure", () => {
+  it("emits nothing when the opt-in flag is off, even on failure", () => {
+    const { ctx, events } = makeCtx(false);
+    wireContextCreationFailure(ctx, { failed: true, backend: "webgl2" });
+    expect(events).toHaveLength(0);
+  });
+
+  it("emits nothing when context creation succeeded", () => {
+    const { ctx, events } = makeCtx(true);
+    wireContextCreationFailure(ctx, { failed: false });
+    expect(events).toHaveLength(0);
+  });
+
+  it("emits one fatal context-loss marker on failure (no count)", () => {
+    const { ctx, events } = makeCtx(true);
+    wireContextCreationFailure(ctx, { failed: true, backend: "webgl2", message: "no GL" });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual({
+      type: "graphics_diagnostic",
+      severity: "fatal",
+      category: "context-loss",
+      backend: "webgl2",
+      message: "no GL",
+    });
+    expect(events[0]).not.toHaveProperty("count");
+  });
+
+  it("defaults backend to 'unknown' when undetermined", () => {
+    const { ctx, events } = makeCtx(true);
+    wireContextCreationFailure(ctx, { failed: true });
+    expect(events[0]).toEqual({
+      type: "graphics_diagnostic",
+      severity: "fatal",
+      category: "context-loss",
+      backend: "unknown",
+    });
+  });
+
+  it("truncates an over-long message to the schema cap (1024)", () => {
+    const { ctx, events } = makeCtx(true);
+    wireContextCreationFailure(ctx, { failed: true, message: "x".repeat(5000) });
+    expect((events[0] as { message: string }).message).toHaveLength(1024);
   });
 });
