@@ -148,6 +148,22 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
       { severity: "fatal", category: "device-lost", backend: "webgpu", incidents: 2 },
       { severity: "warning", category: "validation", backend: "webgl2", incidents: 5 },
     ],
+    renderingTechnology: async () => [
+      {
+        api: "webgpu",
+        backend: "metal",
+        api_version: "1.0",
+        shading_language: "wgsl",
+        sessions: 7,
+      },
+      {
+        api: "webgl2",
+        backend: "opengl",
+        api_version: "3.0",
+        shading_language: "glsl-es",
+        sessions: 3,
+      },
+    ],
     sceneCoverage: async () => [{ vx: 0, vy: 0, vz: 0, count: 3 }],
     cameraDistance: async () => [{ bucket: 2, count: 4 }],
     navigationStats: async () => [
@@ -1030,6 +1046,36 @@ describe("collector app", () => {
 
     // A read API key is still required (parity with the other query endpoints).
     const noKey = await app.inject({ method: "GET", url: "/api/v1/graphics-diagnostics" });
+    expect(noKey.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("returns rendering-technology counts by api/backend/version/shading-language for a valid API key (#120)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/rendering-technology?scene=lobby&session=s1",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      {
+        api: "webgpu",
+        backend: "metal",
+        api_version: "1.0",
+        shading_language: "wgsl",
+        sessions: 7,
+      },
+      {
+        api: "webgl2",
+        backend: "opengl",
+        api_version: "3.0",
+        shading_language: "glsl-es",
+        sessions: 3,
+      },
+    ]);
+
+    const noKey = await app.inject({ method: "GET", url: "/api/v1/rendering-technology" });
     expect(noKey.statusCode).toBe(401);
     await app.close();
   });

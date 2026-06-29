@@ -66,6 +66,7 @@ export const PARITY_EVENTS: AnyEvent[] = [
     scene: { cameraType: "arc-rotate", cameraName: "cam", meshCount: 3 },
     user: { id: "anon-1" },
     device: { engine: "webgpu" },
+    graphics: { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl" },
   }),
   ev("camera_sample", PARITY_T0 + 1_000, {
     position: [0, 0, 0],
@@ -135,6 +136,7 @@ export const PARITY_EVENTS: AnyEvent[] = [
     scene: { cameraType: "free", cameraName: "cam2", meshCount: 5 },
     user: { id: "anon-2" },
     device: { engine: "webgl2" },
+    graphics: { api: "webgl2", backend: "opengl", apiVersion: "3.0", shadingLanguage: "glsl-es" },
   }),
   ev("camera_sample", PARITY_T0 + 11_000, {
     sessionId: "s2",

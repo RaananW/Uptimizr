@@ -15,6 +15,7 @@ import {
   type DirectionBin,
   type EventTypeCount,
   type GraphicsDiagnosticCount,
+  type RenderingTechnologyCount,
   type InteractionSource,
   type NavigationStat,
   type PerfSummary,
@@ -50,6 +51,7 @@ import { PerfSummaryPanel } from "@/components/PerfSummaryPanel";
 import { PerformanceSection, type PerformanceData } from "@/components/PerformanceSection";
 import { SceneHealth } from "@/components/SceneHealth";
 import { GraphicsDiagnostics } from "@/components/GraphicsDiagnostics";
+import { RenderingTechnology } from "@/components/RenderingTechnology";
 import { SceneMetrics } from "@/components/SceneMetrics";
 import { SceneSelector, type SceneMeta } from "@/components/SceneSelector";
 import { SessionsTable } from "@/components/SessionsTable";
@@ -92,6 +94,7 @@ interface Dashboard {
   timeseries: TimeseriesBucket[];
   counts: EventTypeCount[];
   diagnostics: GraphicsDiagnosticCount[];
+  renderingTech: RenderingTechnologyCount[];
   coverage: CoverageVoxel[];
   distance: CameraDistanceBucket[];
   navigation: NavigationStat[];
@@ -123,6 +126,7 @@ const EMPTY: Dashboard = {
   timeseries: [],
   counts: [],
   diagnostics: [],
+  renderingTech: [],
   coverage: [],
   distance: [],
   navigation: [],
@@ -298,6 +302,7 @@ export default function Page() {
           timeseries,
           counts,
           diagnostics,
+          renderingTech,
           coverage,
           distance,
           navigation,
@@ -318,6 +323,7 @@ export default function Page() {
           }),
           api.eventCounts({ since: range.since, until: range.until, scene: params.scene }),
           api.graphicsDiagnosticCounts({ ...params, source: undefined }),
+          api.renderingTechnology({ ...params, source: undefined }),
           api.coverage({ ...params, source: undefined, cellSize: COVERAGE_CELL_SIZE }),
           api.cameraDistance({ ...params, source: undefined, bucketSize: DISTANCE_BUCKET_SIZE }),
           api.navigation({ ...params, source: undefined }),
@@ -384,6 +390,7 @@ export default function Page() {
           timeseries,
           counts,
           diagnostics,
+          renderingTech,
           coverage,
           distance,
           navigation,
@@ -971,6 +978,9 @@ export default function Page() {
           </div>
           <div className="lg:col-span-2">
             <GraphicsDiagnostics rows={data.diagnostics} />
+          </div>
+          <div className="lg:col-span-2">
+            <RenderingTechnology rows={data.renderingTech} />
           </div>
           <div className="lg:col-span-2">
             <SceneMetrics

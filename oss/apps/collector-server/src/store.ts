@@ -42,6 +42,7 @@ import type {
   ResolvedApiKey,
   StabilityCountRow,
   GraphicsDiagnosticCountRow,
+  RenderingTechnologyRow,
   RangeOptions,
   RegionOptions,
   SceneOptions,
@@ -381,6 +382,15 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions,
   ): Promise<GraphicsDiagnosticCountRow[]>;
+  /**
+   * Always-on rendering-technology mix (#120, ADR 0021 part 1): `session_start`
+   * counts crossed by `(api, backend, api_version, shading_language)` over the
+   * range. Always-on, so a populated result is the common case.
+   */
+  renderingTechnology(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions,
+  ): Promise<RenderingTechnologyRow[]>;
   /**
    * Scene coverage / dead zones (derived, scene-metrics §B): occupied
    * camera-position voxels. Coverage % is computed by the consumer against the

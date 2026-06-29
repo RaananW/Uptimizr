@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   CoverageVoxel,
   GraphicsDiagnosticCount,
+  RenderingTechnologyCount,
   InteractionSource,
   MeshSourceCount,
   MeshTrendPoint,
@@ -11,6 +12,7 @@ import { buildLeaderboard } from "@/components/MeshLeaderboard";
 import { buildModalitySplit } from "@/components/InputModalitySplit";
 import { buildDeadZones } from "@/components/DeadZoneReport";
 import { foldGraphicsDiagnostics } from "@/components/GraphicsDiagnostics";
+import { foldRenderingTechnology } from "@/components/RenderingTechnology";
 
 describe("buildLeaderboard (#74)", () => {
   const sources: MeshSourceCount[] = [
@@ -152,5 +154,45 @@ describe("foldGraphicsDiagnostics (#16)", () => {
       { severity: "info", category: "device-lost", backend: "webgpu", incidents: 0 },
     ];
     expect(foldGraphicsDiagnostics(rows).total).toBe(0);
+  });
+});
+
+describe("foldRenderingTechnology (#120)", () => {
+  it("folds session counts into api/backend/shading-language breakdowns", () => {
+    const rows: RenderingTechnologyCount[] = [
+      { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl", sessions: 7 },
+      {
+        api: "webgl2",
+        backend: "opengl",
+        apiVersion: "3.0",
+        shadingLanguage: "glsl-es",
+        sessions: 3,
+      },
+      { api: "", backend: "", apiVersion: "", shadingLanguage: "", sessions: 2 },
+    ];
+    const out = foldRenderingTechnology(rows);
+
+    expect(out.total).toBe(12);
+    expect(out.byApi.reduce((n, b) => n + b.count, 0)).toBe(12);
+    expect(out.byBackend.reduce((n, b) => n + b.count, 0)).toBe(12);
+    expect(out.byShadingLanguage.reduce((n, b) => n + b.count, 0)).toBe(12);
+    // Ranked by sessions desc; blanks surface as "unknown".
+    expect(out.byApi[0]).toEqual({ key: "webgpu", label: "webgpu", count: 7 });
+    expect(out.byApi.find((b) => b.key === "unknown")?.count).toBe(2);
+  });
+
+  it("merges rows that share a backend across api versions", () => {
+    const rows: RenderingTechnologyCount[] = [
+      { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl", sessions: 3 },
+      { api: "webgpu", backend: "metal", apiVersion: "1.1", shadingLanguage: "wgsl", sessions: 4 },
+    ];
+    const out = foldRenderingTechnology(rows);
+    expect(out.byBackend).toEqual([{ key: "metal", label: "metal", count: 7 }]);
+  });
+
+  it("reports an empty, zero-total breakdown before any sessions land", () => {
+    const out = foldRenderingTechnology([]);
+    expect(out.total).toBe(0);
+    expect(out.byApi).toEqual([]);
   });
 });

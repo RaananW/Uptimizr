@@ -32,6 +32,7 @@ import {
   buildResourcePercentiles,
   buildStabilityCounts,
   buildGraphicsDiagnosticCounts,
+  buildRenderingTechnology,
   buildPointerHeatmap,
   buildSceneCoverage,
   buildSessionTrajectory,
@@ -99,6 +100,7 @@ import {
   type ResourcePercentileRow,
   type StabilityCountRow,
   type GraphicsDiagnosticCountRow,
+  type RenderingTechnologyRow,
   type PositionBinRow,
   type SceneRow,
   type SessionSummaryRow,
@@ -244,6 +246,11 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<GraphicsDiagnosticCountRow>(
         db,
         buildGraphicsDiagnosticCounts(projectId, opts, duckdbDialect),
+      ),
+    renderingTechnology: (projectId, opts = {}) =>
+      runDuckdbQuery<RenderingTechnologyRow>(
+        db,
+        buildRenderingTechnology(projectId, opts, duckdbDialect),
       ),
     sceneCoverage: (projectId, opts = {}) =>
       runDuckdbQuery<CoverageVoxelRow>(db, buildSceneCoverage(projectId, opts, duckdbDialect)),

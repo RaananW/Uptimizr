@@ -19,6 +19,7 @@ import {
   buildResourcePercentiles,
   buildStabilityCounts,
   buildGraphicsDiagnosticCounts,
+  buildRenderingTechnology,
   buildCapabilityChanges,
   buildNavigationStats,
   buildXrRotationRate,
@@ -953,6 +954,46 @@ describe("duckdb store", () => {
     // by-backend all sum to the same grand total of 8 incidents.
     const total = rows.reduce((n, r) => n + Number(r.incidents), 0);
     expect(total).toBe(8);
+  });
+
+  it("counts session_start.graphics by api/backend/version/shading-language, always-on (#120)", async () => {
+    await insertEvents(db, [
+      base("session_start", T0 + 1_000, {
+        sessionId: "g1",
+        graphics: { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl" },
+      }),
+      base("session_start", T0 + 2_000, {
+        sessionId: "g2",
+        graphics: { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl" },
+      }),
+      base("session_start", T0 + 3_000, {
+        sessionId: "g3",
+        graphics: {
+          api: "webgl2",
+          backend: "opengl",
+          apiVersion: "3.0",
+          shadingLanguage: "glsl-es",
+        },
+      }),
+      // No graphics block: every field coalesces to '' (unknown).
+      base("session_start", T0 + 4_000, { sessionId: "g4" }),
+    ]);
+    const rows = await runDuckdbQuery<{
+      api: string;
+      backend: string;
+      api_version: string;
+      shading_language: string;
+      sessions: number;
+    }>(db, buildRenderingTechnology(PID, RANGE, duckdbDialect));
+
+    const cell = (api: string) => rows.find((r) => r.api === api);
+    expect(Number(cell("webgpu")!.sessions)).toBe(2);
+    expect(cell("webgpu")!.backend).toBe("metal");
+    expect(Number(cell("webgl2")!.sessions)).toBe(1);
+    expect(Number(cell("")!.sessions)).toBe(1);
+    expect(cell("")!.shading_language).toBe("");
+    const total = rows.reduce((n, r) => n + Number(r.sessions), 0);
+    expect(total).toBe(4);
   });
 
   it("lists distinct scenes, a time-series, and event-type counts", async () => {

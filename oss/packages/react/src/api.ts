@@ -406,6 +406,20 @@ export interface GraphicsDiagnosticCount {
   incidents: number;
 }
 
+/**
+ * Always-on rendering-technology mix (ADR 0021 part 1): one row per crossed
+ * `(api, backend, apiVersion, shadingLanguage)` cell with the session count. The
+ * dashboard folds these into the by-api, by-backend, and by-shading-language
+ * breakdowns. Each field is `""` when the connector didn't report one.
+ */
+export interface RenderingTechnologyCount {
+  api: string;
+  backend: string;
+  apiVersion: string;
+  shadingLanguage: string;
+  sessions: number;
+}
+
 /** Coarse per-session descriptor (from the session's `session_start` event). */
 export interface SessionMeta {
   sessionId: string;
@@ -761,6 +775,23 @@ export class CollectorApi {
         category: String(r.category ?? ""),
         backend: String(r.backend ?? ""),
         incidents: Number(r.incidents ?? 0),
+      })),
+    );
+  }
+
+  /**
+   * Always-on rendering-technology mix (#120, ADR 0021 part 1): `session_start`
+   * counts crossed by `(api, backend, apiVersion, shadingLanguage)`. Always-on, so
+   * a populated array is the common case.
+   */
+  renderingTechnology(params?: QueryParams): Promise<RenderingTechnologyCount[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/rendering-technology", params).then((rows) =>
+      rows.map((r) => ({
+        api: String(r.api ?? ""),
+        backend: String(r.backend ?? ""),
+        apiVersion: String(r.api_version ?? ""),
+        shadingLanguage: String(r.shading_language ?? ""),
+        sessions: Number(r.sessions ?? 0),
       })),
     );
   }

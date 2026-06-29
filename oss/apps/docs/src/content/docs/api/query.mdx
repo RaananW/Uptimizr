@@ -62,6 +62,7 @@ longer wash out the rest.
 | `GET`  | `/api/v1/perf/compile-stalls`  | Shader/pipeline compile stalls.                                                                                                                                                                | `limit`, `scene`, `session` |
 | `GET`  | `/api/v1/capabilities`         | Capability fallbacks/recoveries (e.g. WebGPU→WebGL2).                                                                                                                                          | `limit`, `scene`, `session` |
 | `GET`  | `/api/v1/graphics-diagnostics` | Opt-in GPU-health incidents from `graphics_diagnostic`: per `(severity, category, backend)` count, folding markers + rollups (ADR 0021). Empty unless `captureGraphicsDiagnostics` is enabled. | `scene`, `session`          |
+| `GET`  | `/api/v1/rendering-technology` | Always-on rendering-technology mix from `session_start.graphics`: per `(api, backend, api_version, shading_language)` session count (ADR 0021). Powers the dashboard "Rendering technology" panel. | `scene`, `session`          |
 
 ## Navigation & XR
 

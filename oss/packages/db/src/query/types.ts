@@ -454,6 +454,21 @@ export interface GraphicsDiagnosticCountRow {
   incidents: number;
 }
 
+/**
+ * Always-on rendering-technology mix (ADR 0021 part 1): the crossed
+ * `(api, backend, api_version, shading_language)` group with one session count per
+ * cell, so the dashboard can derive the by-api, by-backend, by-version, and
+ * by-shading-language breakdowns from a single query by summing. Each field is
+ * `''` ("unknown") when the connector omitted it.
+ */
+export interface RenderingTechnologyRow {
+  api: string;
+  backend: string;
+  api_version: string;
+  shading_language: string;
+  sessions: number;
+}
+
 export interface PerfDailyRow {
   day: string;
   samples: number;

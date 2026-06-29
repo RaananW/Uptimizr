@@ -48,6 +48,7 @@ than editing history.
 | [0043](./0043-near-plane-origin-for-flat-pointer-click-rays.md)    | Near-plane origin reconstruction for flat-pointer click rays                   | Accepted   |
 | [0044](./0044-connector-aggregation-offload.md)                    | Connector-side aggregation offload via one engine-agnostic Aggregator          | Accepted   |
 | [0045](./0045-web-export-engine-connectors.md)                     | Web-export engine connectors (Unity, Godot, Unreal)                            | Proposed   |
+| [0046](./0046-rendering-technology-breakdown.md)                   | Rendering-technology breakdown from session_start.graphics                     | Accepted   |
 
 ## Template
 
