@@ -32,6 +32,14 @@ arguments (`camera`, `renderer`).
 > versioned bridge. The engine is **not** an npm peer dependency. See the
 > [web-export connector docs](https://uptimizr.dev/connectors/web-export) for the
 > bridge contract and per-engine native frames.
+>
+> **Unreal is best-effort** (ADR 0045 / #112): Epic has no official UE5 HTML5/WASM target
+> (deprecated after UE 4.24) and Pixel Streaming is server-side, so the bridged tier targets
+> the Emscripten-based, client-side web exports that do exist — the community UE4.24–4.27
+> HTML5 forks and the experimental UE5.1–5.4 WASM+WebGPU toolchain (Wonder Interactive /
+> SimplyStream). Its `EM_JS` / `cwrap` shim ships in
+> [`@uptimizr/unreal`'s `bridge/`](../oss/packages/unreal/bridge/README.md); the JS-only tier
+> works on any web export regardless.
 
 ---
 
