@@ -43,7 +43,9 @@ function rebaseAabbZUpToYUp(a: Aabb): Aabb {
 }
 
 function scalePosition(p: Vec3, unitScale: number): Vec3 {
-  return unitScale === 1 ? [p[0], p[1], p[2]] : [p[0] / unitScale, p[1] / unitScale, p[2] / unitScale];
+  return unitScale === 1
+    ? [p[0], p[1], p[2]]
+    : [p[0] / unitScale, p[1] / unitScale, p[2] / unitScale];
 }
 
 function scaleAabb(a: Aabb, unitScale: number): Aabb {

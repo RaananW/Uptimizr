@@ -10,17 +10,17 @@ which renderer you use.
 
 ## Supported engines
 
-| Engine            | Package                  | Status | Entry point                              |
-| ----------------- | ------------------------ | ------ | ---------------------------------------- |
-| Babylon.js        | `@uptimizr/babylon`      | Stable | `trackScene(scene, …)`                   |
-| Babylon Lite      | `@uptimizr/babylon-lite` | Stable | `trackScene(scene, camera, canvas, …)`   |
-| three.js          | `@uptimizr/three`        | Stable | `trackScene(scene, camera, renderer, …)` |
-| PlayCanvas        | `@uptimizr/playcanvas`   | Beta   | `trackScene(app, camera, …)`             |
-| react-three-fiber | `@uptimizr/r3f`          | Beta   | `<Uptimizr />` / `useUptimizr()`         |
-| A-Frame           | `@uptimizr/aframe`       | Beta   | `uptimizr` HTML component                |
-| Unity (WebGL)     | `@uptimizr/unity`        | Beta   | `trackUnity(…)`                          |
-| Godot (web)       | `@uptimizr/godot`        | Beta   | `trackGodot(…)`                          |
-| Unreal (web)      | `@uptimizr/unreal`       | Best-effort | `trackUnreal(…)`                    |
+| Engine            | Package                  | Status      | Entry point                              |
+| ----------------- | ------------------------ | ----------- | ---------------------------------------- |
+| Babylon.js        | `@uptimizr/babylon`      | Stable      | `trackScene(scene, …)`                   |
+| Babylon Lite      | `@uptimizr/babylon-lite` | Stable      | `trackScene(scene, camera, canvas, …)`   |
+| three.js          | `@uptimizr/three`        | Stable      | `trackScene(scene, camera, renderer, …)` |
+| PlayCanvas        | `@uptimizr/playcanvas`   | Beta        | `trackScene(app, camera, …)`             |
+| react-three-fiber | `@uptimizr/r3f`          | Beta        | `<Uptimizr />` / `useUptimizr()`         |
+| A-Frame           | `@uptimizr/aframe`       | Beta        | `uptimizr` HTML component                |
+| Unity (WebGL)     | `@uptimizr/unity`        | Beta        | `trackUnity(…)`                          |
+| Godot (web)       | `@uptimizr/godot`        | Beta        | `trackGodot(…)`                          |
+| Unreal (web)      | `@uptimizr/unreal`       | Best-effort | `trackUnreal(…)`                         |
 
 > **Web-export engines** (Unity, Godot, Unreal) compile to WebAssembly and render into a `<canvas>`,
 > so there is no live JS scene to read. They share the [`@uptimizr/web-export`](/connectors/web-export)

@@ -35,9 +35,9 @@ native frame, sets the connector provenance name, and exposes the
 
 ## Two capture tiers
 
-| Tier | Engine code? | Captures |
-| ---- | ------------ | -------- |
-| **JS-only** | none | pointer move/click heatmaps, FPS / long frames, JS errors |
+| Tier        | Engine code?        | Captures                                                                     |
+| ----------- | ------------------- | ---------------------------------------------------------------------------- |
+| **JS-only** | none                | pointer move/click heatmaps, FPS / long frames, JS errors                    |
 | **Bridged** | a thin copy-in shim | camera pose → view-direction heatmap, world-space picks, scene proxy, replay |
 
 The **JS-only tier** is live the moment you start the connector — it captures purely
@@ -99,11 +99,11 @@ Each engine declares a **native frame** — `handedness`, `upAxis` (`"y"` or `"z
 unit scale, and flips handedness to reach the canonical wire frame (**left-handed,
 y-up, unit scale 1**), then records the native frame in `connector.coordinateSystem`.
 
-| Engine | Handedness | Up axis | Unit scale |
-| ------ | ---------- | ------- | ---------- |
-| Unity  | left  | y | 1 (meters, canonical) |
-| Godot  | right | y | 1 (meters) |
-| Unreal | left  | z | 100 (centimeters) |
+| Engine | Handedness | Up axis | Unit scale            |
+| ------ | ---------- | ------- | --------------------- |
+| Unity  | left       | y       | 1 (meters, canonical) |
+| Godot  | right      | y       | 1 (meters)            |
+| Unreal | left       | z       | 100 (centimeters)     |
 
 ## Privacy
 

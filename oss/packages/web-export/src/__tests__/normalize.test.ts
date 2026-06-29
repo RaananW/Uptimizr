@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAabb, normalizeDirection, normalizePosition, rebaseZUpToYUp } from "../normalize.js";
+import {
+  normalizeAabb,
+  normalizeDirection,
+  normalizePosition,
+  rebaseZUpToYUp,
+} from "../normalize.js";
 import type { NativeFrame } from "../types.js";
 
 const UNITY: NativeFrame = { handedness: "left", upAxis: "y", unitScale: 1 };

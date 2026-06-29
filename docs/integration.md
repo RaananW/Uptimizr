@@ -6,12 +6,12 @@ see the [ADRs](./adr), and for package-level detail see each package README.
 
 Two packages matter for integration, and they are deliberately separate:
 
-| Package                                                      | Role                                                          | Where it runs              |
-| ------------------------------------------------------------ | ------------------------------------------------------------- | -------------------------- |
-| [`@uptimizr/babylon`](../oss/packages/sdk-babylon/README.md) | **Collector** — reads a Babylon.js scene, writes events       | every visitor (production) |
-| [`@uptimizr/three`](../oss/packages/sdk-three/README.md)     | **Collector** — reads a three.js scene, writes events         | every visitor (production) |
+| Package                                                        | Role                                                                                | Where it runs              |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------- |
+| [`@uptimizr/babylon`](../oss/packages/sdk-babylon/README.md)   | **Collector** — reads a Babylon.js scene, writes events                             | every visitor (production) |
+| [`@uptimizr/three`](../oss/packages/sdk-three/README.md)       | **Collector** — reads a three.js scene, writes events                               | every visitor (production) |
 | [`@uptimizr/web-export`](../oss/packages/web-export/README.md) | **Foundation** — JS-only tier + versioned bridge for Unity/Godot/Unreal web exports | every visitor (production) |
-| [`@uptimizr/replay`](../oss/packages/replay/README.md)       | **Replay** — reads events, re-drives the scene, emits nothing | the developer (dev/debug)  |
+| [`@uptimizr/replay`](../oss/packages/replay/README.md)         | **Replay** — reads events, re-drives the scene, emits nothing                       | the developer (dev/debug)  |
 
 The collector is intentionally tiny so it can ship to every visitor. Replay is an
 optional developer tool you run in your own environment; it never emits analytics
