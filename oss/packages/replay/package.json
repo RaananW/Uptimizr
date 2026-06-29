@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/replay",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Framework-agnostic session-replay core + Babylon driver. Re-drives a captured session in the user's own scene.",
   "keywords": [
     "uptimizr",

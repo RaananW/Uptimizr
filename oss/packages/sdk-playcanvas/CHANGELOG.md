@@ -1,5 +1,34 @@
 # @uptimizr/playcanvas
 
+## 0.2.0
+
+### Minor Changes
+
+- c8b9796: Add first-class `asset_load` capture to the PlayCanvas connector. It hooks the
+  `app.assets` registry load lifecycle (`load:start` → `load` / `error`) and emits
+  one `asset_load` per observed load with the asset name, load duration (`loadMs`),
+  and byte size (`bytes`, when known). Privacy-first (ADR 0003): only the asset's
+  app-defined name is recorded — never the file URL. On by default; disable via
+  `capture: { assetLoad: false }`.
+
+### Patch Changes
+
+- d71b284: Roll up the open Dependabot updates into a single dependency bump. Refresh
+  engine peers and tooling (Babylon.js 9.14, Babylon Lite 1.6, three.js 0.185,
+  PlayCanvas 2.20, @clickhouse/client 1.22, fastify-type-provider-zod 7,
+  fastify 5.9, astro 7, @types/node 26, plus the minor/patch group and CI
+  actions). No public API changes. Babylon Lite 1.6 reads WebGPU bitmask
+  globals at import time, so the lite connector's vitest run now stubs those
+  globals via a setup file.
+- Updated dependencies [092ef4b]
+- Updated dependencies [08c4abd]
+- Updated dependencies [16fc907]
+- Updated dependencies [268ea8f]
+- Updated dependencies [73f342d]
+- Updated dependencies [23f308d]
+  - @uptimizr/sdk-core@0.3.0
+  - @uptimizr/schema@0.4.0
+
 ## 0.1.3
 
 ### Patch Changes

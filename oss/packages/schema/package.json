@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/schema",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Uptimizr event contracts — the single source of truth for all analytics events (Zod schemas + TypeScript types).",
   "keywords": [
     "uptimizr",
