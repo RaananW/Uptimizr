@@ -44,8 +44,7 @@ export function foldRenderingTechnology(rows: RenderingTechnologyCount[]): TechB
     add(shading, row.shadingLanguage);
   }
 
-  const byCount = (a: TechBucket, b: TechBucket) =>
-    b.count - a.count || a.key.localeCompare(b.key);
+  const byCount = (a: TechBucket, b: TechBucket) => b.count - a.count || a.key.localeCompare(b.key);
   const toBuckets = (m: Map<string, number>): TechBucket[] =>
     [...m.entries()].map(([key, count]) => ({ key, label: key, count })).sort(byCount);
 

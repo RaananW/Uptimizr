@@ -968,7 +968,12 @@ describe("duckdb store", () => {
       }),
       base("session_start", T0 + 3_000, {
         sessionId: "g3",
-        graphics: { api: "webgl2", backend: "opengl", apiVersion: "3.0", shadingLanguage: "glsl-es" },
+        graphics: {
+          api: "webgl2",
+          backend: "opengl",
+          apiVersion: "3.0",
+          shadingLanguage: "glsl-es",
+        },
       }),
       // No graphics block: every field coalesces to '' (unknown).
       base("session_start", T0 + 4_000, { sessionId: "g4" }),

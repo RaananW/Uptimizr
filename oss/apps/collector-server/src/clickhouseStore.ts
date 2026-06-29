@@ -227,10 +227,7 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
         buildGraphicsDiagnosticCounts(projectId, opts, d),
       ),
     renderingTechnology: (projectId, opts = {}) =>
-      runClickhouseQuery<RenderingTechnologyRow>(
-        ch,
-        buildRenderingTechnology(projectId, opts, d),
-      ),
+      runClickhouseQuery<RenderingTechnologyRow>(ch, buildRenderingTechnology(projectId, opts, d)),
     sceneCoverage: (projectId, opts = {}) =>
       runClickhouseQuery<CoverageVoxelRow>(ch, buildSceneCoverage(projectId, opts, d)),
     cameraDistance: (projectId, opts = {}) =>

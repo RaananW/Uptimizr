@@ -149,8 +149,20 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
       { severity: "warning", category: "validation", backend: "webgl2", incidents: 5 },
     ],
     renderingTechnology: async () => [
-      { api: "webgpu", backend: "metal", api_version: "1.0", shading_language: "wgsl", sessions: 7 },
-      { api: "webgl2", backend: "opengl", api_version: "3.0", shading_language: "glsl-es", sessions: 3 },
+      {
+        api: "webgpu",
+        backend: "metal",
+        api_version: "1.0",
+        shading_language: "wgsl",
+        sessions: 7,
+      },
+      {
+        api: "webgl2",
+        backend: "opengl",
+        api_version: "3.0",
+        shading_language: "glsl-es",
+        sessions: 3,
+      },
     ],
     sceneCoverage: async () => [{ vx: 0, vy: 0, vz: 0, count: 3 }],
     cameraDistance: async () => [{ bucket: 2, count: 4 }],
@@ -1047,8 +1059,20 @@ describe("collector app", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual([
-      { api: "webgpu", backend: "metal", api_version: "1.0", shading_language: "wgsl", sessions: 7 },
-      { api: "webgl2", backend: "opengl", api_version: "3.0", shading_language: "glsl-es", sessions: 3 },
+      {
+        api: "webgpu",
+        backend: "metal",
+        api_version: "1.0",
+        shading_language: "wgsl",
+        sessions: 7,
+      },
+      {
+        api: "webgl2",
+        backend: "opengl",
+        api_version: "3.0",
+        shading_language: "glsl-es",
+        sessions: 3,
+      },
     ]);
 
     const noKey = await app.inject({ method: "GET", url: "/api/v1/rendering-technology" });

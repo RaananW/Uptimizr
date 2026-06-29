@@ -199,7 +199,13 @@ describe("CollectorApi", () => {
 
   it("coerces rendering-technology counts and hits the rendering-technology endpoint (#120)", async () => {
     const fetchMock = mockFetch([
-      { api: "webgpu", backend: "metal", api_version: "1.0", shading_language: "wgsl", sessions: "7" },
+      {
+        api: "webgpu",
+        backend: "metal",
+        api_version: "1.0",
+        shading_language: "wgsl",
+        sessions: "7",
+      },
       { api: null, backend: null, api_version: null, shading_language: null, sessions: "3" },
     ]);
     vi.stubGlobal("fetch", fetchMock);

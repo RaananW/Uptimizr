@@ -161,7 +161,13 @@ describe("foldRenderingTechnology (#120)", () => {
   it("folds session counts into api/backend/shading-language breakdowns", () => {
     const rows: RenderingTechnologyCount[] = [
       { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl", sessions: 7 },
-      { api: "webgl2", backend: "opengl", apiVersion: "3.0", shadingLanguage: "glsl-es", sessions: 3 },
+      {
+        api: "webgl2",
+        backend: "opengl",
+        apiVersion: "3.0",
+        shadingLanguage: "glsl-es",
+        sessions: 3,
+      },
       { api: "", backend: "", apiVersion: "", shadingLanguage: "", sessions: 2 },
     ];
     const out = foldRenderingTechnology(rows);
