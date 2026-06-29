@@ -5,9 +5,9 @@ into a `<canvas>` via WebAssembly, so there is no live JS scene to read — this
 connector is built on [`@uptimizr/web-export`](../web-export) and works in **two
 tiers**:
 
-| Tier | Engine code? | Captures |
-| ---- | ------------ | -------- |
-| **JS-only** | none | pointer move/click heatmaps, FPS / long frames, JS errors |
+| Tier        | Engine code?                                    | Captures                                                        |
+| ----------- | ----------------------------------------------- | --------------------------------------------------------------- |
+| **JS-only** | none                                            | pointer move/click heatmaps, FPS / long frames, JS errors       |
 | **Bridged** | a thin copy-in shim (see [`bridge/`](./bridge)) | camera pose → view-direction heatmap, world-space picks, replay |
 
 > **Best-effort.** Unreal's first-party web export is community-maintained, so the

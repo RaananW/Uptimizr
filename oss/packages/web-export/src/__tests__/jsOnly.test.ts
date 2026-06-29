@@ -93,7 +93,9 @@ describe("startJsOnlyCapture — rAF perf tier", () => {
     vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
       return setTimeout(() => cb(performance.now()), 16) as unknown as number;
     });
-    vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id as unknown as NodeJS.Timeout));
+    vi.stubGlobal("cancelAnimationFrame", (id: number) =>
+      clearTimeout(id as unknown as NodeJS.Timeout),
+    );
     vi.useFakeTimers();
   });
   afterEach(() => {

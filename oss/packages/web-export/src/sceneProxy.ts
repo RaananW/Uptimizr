@@ -62,8 +62,14 @@ export function buildSceneProxy(
 
   const considered = normalized.length;
   let kept = normalized;
-  if (typeof options.maxMeshes === "number" && options.maxMeshes >= 0 && kept.length > options.maxMeshes) {
-    kept = [...normalized].sort((a, b) => aabbVolume(b.aabb) - aabbVolume(a.aabb)).slice(0, options.maxMeshes);
+  if (
+    typeof options.maxMeshes === "number" &&
+    options.maxMeshes >= 0 &&
+    kept.length > options.maxMeshes
+  ) {
+    kept = [...normalized]
+      .sort((a, b) => aabbVolume(b.aabb) - aabbVolume(a.aabb))
+      .slice(0, options.maxMeshes);
   }
 
   let minX = Infinity;

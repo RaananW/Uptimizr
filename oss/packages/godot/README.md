@@ -5,9 +5,9 @@ WebAssembly and renders into a `<canvas>`, so there is no live JS scene to read 
 connector is built on [`@uptimizr/web-export`](../web-export) and works in **two
 tiers**:
 
-| Tier | Engine code? | Captures |
-| ---- | ------------ | -------- |
-| **JS-only** | none | pointer move/click heatmaps, FPS / long frames, JS errors |
+| Tier        | Engine code?                                    | Captures                                                        |
+| ----------- | ----------------------------------------------- | --------------------------------------------------------------- |
+| **JS-only** | none                                            | pointer move/click heatmaps, FPS / long frames, JS errors       |
 | **Bridged** | a thin copy-in shim (see [`bridge/`](./bridge)) | camera pose → view-direction heatmap, world-space picks, replay |
 
 Godot's native world frame is **right-handed, y-up, meters**, so the connector negates

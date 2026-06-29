@@ -22,10 +22,7 @@
 
 export type { NativeFrame } from "./types.js";
 
-export {
-  BRIDGE_PROTOCOL_VERSION,
-  createEngineBridge,
-} from "./bridge.js";
+export { BRIDGE_PROTOCOL_VERSION, createEngineBridge } from "./bridge.js";
 export type { EngineBridge, CreateEngineBridgeOptions } from "./bridge.js";
 
 export {

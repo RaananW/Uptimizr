@@ -51,9 +51,7 @@ function clamp01(n: number): number {
 }
 
 /** Resolve the canvas from a value or lazy resolver. */
-function resolveCanvas(
-  canvas: JsOnlyOptions["canvas"],
-): CanvasView | null {
+function resolveCanvas(canvas: JsOnlyOptions["canvas"]): CanvasView | null {
   if (!canvas) return null;
   const c = typeof canvas === "function" ? canvas() : canvas;
   return c ?? null;
@@ -147,7 +145,8 @@ export function startJsOnlyCapture(options: JsOnlyOptions): () => void {
     let frameTimes: number[] = [];
     let windowStart = ctx.now();
     let last = windowStart;
-    const dpr = typeof devicePixelRatio === "number" && devicePixelRatio > 0 ? devicePixelRatio : undefined;
+    const dpr =
+      typeof devicePixelRatio === "number" && devicePixelRatio > 0 ? devicePixelRatio : undefined;
 
     const flushPerf = (now: number) => {
       const elapsed = now - windowStart;
@@ -185,7 +184,8 @@ export function startJsOnlyCapture(options: JsOnlyOptions): () => void {
     };
     rafId = requestAnimationFrame(tick);
     teardowns.push(() => {
-      if (rafId !== undefined && typeof cancelAnimationFrame === "function") cancelAnimationFrame(rafId);
+      if (rafId !== undefined && typeof cancelAnimationFrame === "function")
+        cancelAnimationFrame(rafId);
     });
   }
 
