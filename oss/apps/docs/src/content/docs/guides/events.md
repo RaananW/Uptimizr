@@ -81,8 +81,8 @@ events — it's the higher-level "what we ran as" signal. Read the rollup from `
 
 Each session's `session_start.graphics` block records the rendering API surface (`api`), the real
 backend beneath it (`backend`, e.g. WebGPU → Metal), the API/driver version (`apiVersion`), and the
-`shadingLanguage` — captured once per session as non-PII, low-cardinality metadata (ADR 0021). It is
-**always-on**: every connector reports it, so no opt-in is needed.
+`shadingLanguage` — captured once per session as non-PII, low-cardinality metadata (ADR 0021 /
+ADR 0046). It is **always-on**: every connector reports it, so no opt-in is needed.
 
 The dashboard's **Rendering technology** panel aggregates the mix across the selected window — counts
 by API, backend, and shading language — backed by `GET /api/v1/rendering-technology`, the always-on
