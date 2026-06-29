@@ -38,10 +38,37 @@ engine-side shim to `bridge` to add camera pose, picks, and replay.
 ## Engine-side bridge
 
 The bridged tier needs a thin **copy-in shim** — a `.jslib` plugin plus a small
-`MonoBehaviour` that samples the active `Camera` and calls the bridge each frame. It's
-a copy-in asset, not an npm dependency. The contract and a `.jslib` sketch live in the
-package's [`bridge/README.md`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/unity/bridge/README.md).
-The full shim is authored in the Unity web-export sub-issue.
+`MonoBehaviour` that samples the active `Camera`, raycast picks, and FPS and calls the
+bridge. It's a copy-in asset, not an npm dependency, and it does **no** coordinate math
+— it pushes Unity's own world-space values and the connector normalizes them. Both files
+live in the package's
+[`bridge/`](https://github.com/RaananW/Uptimizr/tree/main/oss/packages/unity/bridge)
+folder.
+
+Set up:
+
+1. Copy **`Uptimizr.jslib`** to `Assets/Plugins/WebGL/Uptimizr.jslib` in your Unity
+   project (Unity compiles `.jslib` files under `Plugins/WebGL` into the WebGL build).
+2. Copy **`UptimizrUnityBridge.cs`** anywhere under `Assets/` and add the
+   `UptimizrUnityBridge` component to a GameObject. It defaults to `Camera.main`; assign
+   a specific `Camera` if you prefer.
+3. Make sure `trackUnity(...)` (or `client.use(unityCollector())`) runs on the host page
+   **before** the export starts, so `window.__uptimizr_unity__` exists.
+
+On `Start()`, the component asserts the bridge protocol version matches the foundation's
+`BRIDGE_PROTOCOL_VERSION` (1) and disables itself with a warning if the connector is
+missing or a different version. The shim's JS API:
+
+| `.jslib` function                 | Bridge call       | Notes                                             |
+| --------------------------------- | ----------------- | ------------------------------------------------- |
+| `UptimizrUnityGetProtocolVersion` | `protocolVersion` | `-1` when the connector isn't present yet.        |
+| `UptimizrUnityPushPose`           | `pushPose`        | Position / forward / up + vertical FOV (radians). |
+| `UptimizrUnityPushPick`           | `pushPick`        | Named object + world hit point.                   |
+| `UptimizrUnityPushPerf`           | `pushPerf`        | FPS + long frames.                                |
+| `UptimizrUnitySetSceneProxy`      | `setSceneProxy`   | JSON array of `{ name, aabb[6] }` nodes.          |
+
+See [`bridge/README.md`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/unity/bridge/README.md)
+for the full contract.
 
 ## Coordinate frame
 
