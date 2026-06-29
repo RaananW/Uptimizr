@@ -18,6 +18,15 @@ which renderer you use.
 | PlayCanvas        | `@uptimizr/playcanvas`   | Beta   | `trackScene(app, camera, …)`             |
 | react-three-fiber | `@uptimizr/r3f`          | Beta   | `<Uptimizr />` / `useUptimizr()`         |
 | A-Frame           | `@uptimizr/aframe`       | Beta   | `uptimizr` HTML component                |
+| Unity (WebGL)     | `@uptimizr/unity`        | Beta   | `trackUnity(…)`                          |
+| Godot (web)       | `@uptimizr/godot`        | Beta   | `trackGodot(…)`                          |
+| Unreal (web)      | `@uptimizr/unreal`       | Best-effort | `trackUnreal(…)`                    |
+
+> **Web-export engines** (Unity, Godot, Unreal) compile to WebAssembly and render into a `<canvas>`,
+> so there is no live JS scene to read. They share the [`@uptimizr/web-export`](/connectors/web-export)
+> foundation and capture in **two tiers**: a **JS-only tier** (pointer heatmaps, FPS, JS errors — no
+> engine code) and a **bridged tier** (camera pose, world-space picks, replay — via a thin copy-in
+> engine-side shim). For these, the engine is **not** an npm peer dependency.
 
 ## What every connector captures
 
