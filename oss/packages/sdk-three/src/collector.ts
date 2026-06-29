@@ -20,8 +20,9 @@ import {
   toCanonicalPosition,
   toCanonicalQuat,
   wireGpuDeviceLost,
+  wireGpuUncapturedError,
 } from "@uptimizr/sdk-core";
-import type { GpuDeviceLostLike } from "@uptimizr/sdk-core";
+import type { GpuDeviceErrorTargetLike, GpuDeviceLostLike } from "@uptimizr/sdk-core";
 import type { Aabb, InputSource, Vec3 } from "@uptimizr/schema";
 import { isWebGpu } from "./renderer.js";
 import { clamp01 } from "./vec.js";
@@ -1588,6 +1589,16 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
       if (isWebGpu(renderer)) {
         const getDevice = () => (renderer as unknown as RendererBackendDeviceView).backend?.device;
         wireGpuDeviceLost(ctx, getDevice, () => !disposed);
+        // WebGPU `uncapturederror` → rate-limited rollup (#19). The backend device
+        // is also a `GPUDevice` (an `EventTarget`); the shared helper coalesces a
+        // burst into one `graphics_diagnostic` with `count` so a storm can't flood
+        // ingestion. Flushed on teardown via stopCallbacks.
+        const flushUncaptured = wireGpuUncapturedError(
+          ctx,
+          () => getDevice() as unknown as GpuDeviceErrorTargetLike,
+          () => !disposed,
+        );
+        stopCallbacks.push(flushUncaptured);
       }
 
       // GPU / memory footprint (`resource_sample`, #44). A low-rate timer samples

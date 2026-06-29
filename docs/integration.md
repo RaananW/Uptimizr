@@ -208,17 +208,17 @@ So the timeline reflects everything happening around the scene — not just came
 and pointer activity — the SDK also records these discrete lifecycle events
 (privacy-safe: dimensions, booleans, and enum states only):
 
-| Event                 | Source              | When                                                                                                            |
-| --------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `viewport_resize`     | `sdk-core`          | Window resized (debounced) + once at session start.                                                             |
-| `focus_change`        | `sdk-core`          | Window gained/lost focus (`{ focused }`).                                                                       |
-| `visibility_change`   | `sdk-core`          | Tab shown/hidden (`{ state: "visible" \| "hidden" }`).                                                          |
-| `context_lost`        | `@uptimizr/babylon` | Engine lost its GPU context (rendering suspended).                                                              |
-| `context_restored`    | `@uptimizr/babylon` | Engine recovered its GPU context.                                                                               |
-| `compile_stall`       | `@uptimizr/babylon` | Main-thread shader/pipeline compilation hitch (`durationMs`, `phase`).                                          |
-| `capability_change`   | _app-reported_      | Fallback/recovery transition (`kind`, `from`, `to`, `reason`) — e.g. WebGPU→WebGL2.                             |
-| `runtime_error`       | `sdk-core`          | Uncaught JS error / unhandled promise rejection (opt-in).                                                       |
-| `graphics_diagnostic` | engine connector    | Opt-in GPU-health signal — today: WebGPU `device.lost` (`category: device-lost`). Babylon + three; WebGL no-op. |
+| Event                 | Source              | When                                                                                                                                                                      |
+| --------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `viewport_resize`     | `sdk-core`          | Window resized (debounced) + once at session start.                                                                                                                       |
+| `focus_change`        | `sdk-core`          | Window gained/lost focus (`{ focused }`).                                                                                                                                 |
+| `visibility_change`   | `sdk-core`          | Tab shown/hidden (`{ state: "visible" \| "hidden" }`).                                                                                                                    |
+| `context_lost`        | `@uptimizr/babylon` | Engine lost its GPU context (rendering suspended).                                                                                                                        |
+| `context_restored`    | `@uptimizr/babylon` | Engine recovered its GPU context.                                                                                                                                         |
+| `compile_stall`       | `@uptimizr/babylon` | Main-thread shader/pipeline compilation hitch (`durationMs`, `phase`).                                                                                                    |
+| `capability_change`   | _app-reported_      | Fallback/recovery transition (`kind`, `from`, `to`, `reason`) — e.g. WebGPU→WebGL2.                                                                                       |
+| `runtime_error`       | `sdk-core`          | Uncaught JS error / unhandled promise rejection (opt-in).                                                                                                                 |
+| `graphics_diagnostic` | engine connector    | Opt-in GPU-health signal — today: WebGPU `device.lost` (`category: device-lost`) + `uncapturederror` rollup (`validation`/`out-of-memory`). Babylon + three; WebGL no-op. |
 
 The generic browser events are captured by `sdk-core` and controlled by
 `captureLifecycle` (default `true`); `viewport_resize` is debounced by
@@ -296,11 +296,12 @@ flood ingestion; discrete markers are the high-fidelity opt-in. `context_lost` /
 app-reported `capability_change` event (it is reserved here, never emitted by a connector).
 
 > Capture wiring per signal lands incrementally in the engine connectors. **Wired
-> today:** WebGPU `device.lost` → `graphics_diagnostic` (`category: device-lost`) in the
-> Babylon (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors — `severity` is
-> `info` for a requested loss (`reason: "destroyed"`) and `fatal` otherwise; WebGL is a
-> no-op (its interruption is the always-on `context_lost`). **Not yet wired:**
-> `uncapturederror`, context-creation failure, and shader-compile failures.
+> today:** WebGPU `device.lost` → `graphics_diagnostic` (`category: device-lost`) and WebGPU
+> `uncapturederror` → rate-limited rollup (`category: validation` / `out-of-memory`, `count` +
+> first `message`) in the Babylon (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors —
+> `device-lost` `severity` is `info` for a requested loss (`reason: "destroyed"`) and `fatal`
+> otherwise; WebGL is a no-op (its interruption is the always-on `context_lost`). **Not yet wired:**
+> context-creation failure and shader-compile failures.
 
 ### Session context (`meta`, `sceneDescription`, `user`)
 

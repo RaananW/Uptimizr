@@ -1167,6 +1167,73 @@ describe("babylonCollector — WebGPU device.lost → graphics_diagnostic (#20)"
   });
 });
 
+describe("babylonCollector — WebGPU uncapturederror rollup → graphics_diagnostic (#19)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** WebGPU scene whose engine `_device` is also an error EventTarget. */
+  function makeWebGpuErrorScene() {
+    let handler: ((e: { error?: unknown }) => void) | undefined;
+    const engine: Record<string, unknown> = {
+      getFps: () => 60,
+      getRenderWidth: () => 800,
+      getRenderHeight: () => 600,
+      isWebGPU: true,
+      getAspectRatio: () => 800 / 600,
+      onContextLostObservable: new FakeObservable<unknown>(),
+      onContextRestoredObservable: new FakeObservable<unknown>(),
+      _device: {
+        lost: new Promise(() => {}),
+        addEventListener: (_t: string, h: (e: { error?: unknown }) => void) => (handler = h),
+        removeEventListener: () => (handler = undefined),
+      },
+    };
+    const scene = {
+      activeCamera: {
+        globalPosition: { x: 0, y: 0, z: 0 },
+        getForwardRay: () => ({ direction: { x: 0, y: 0, z: 1 } }),
+        getTarget: () => ({ x: 0, y: 0, z: 0 }),
+      },
+      pointerX: 0,
+      pointerY: 0,
+      onPointerObservable: new FakeObservable<unknown>(),
+      onKeyboardObservable: new FakeObservable<unknown>(),
+      onBeforeRenderObservable: new FakeObservable<unknown>(),
+      getEngine: () => engine,
+    };
+    return {
+      scene: scene as unknown as Scene,
+      fire: (error: unknown) => handler?.({ error }),
+    };
+  }
+
+  it("collapses a burst into one rollup on stop, not N events", () => {
+    const { scene, fire } = makeWebGpuErrorScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    for (let i = 0; i < 30; i++)
+      fire({ message: `e${i}`, constructor: { name: "GPUValidationError" } });
+    handle.stop();
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      category: "validation",
+      count: 30,
+      backend: "webgpu",
+      message: "e0",
+    });
+  });
+
+  it("emits nothing when the flag is off", () => {
+    const { scene, fire } = makeWebGpuErrorScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: false });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    fire({ message: "x", constructor: { name: "GPUValidationError" } });
+    handle.stop();
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+});
+
 describe("babylonCollector — scene actors / node_transform (ADR 0027 Tier 1)", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

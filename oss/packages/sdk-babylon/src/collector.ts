@@ -21,8 +21,13 @@ import type {
   SamplingProfile,
   VisibilityMeshObservation,
 } from "@uptimizr/sdk-core";
-import { poseUnchanged, resolveCadence, wireGpuDeviceLost } from "@uptimizr/sdk-core";
-import type { GpuDeviceLostLike } from "@uptimizr/sdk-core";
+import {
+  poseUnchanged,
+  resolveCadence,
+  wireGpuDeviceLost,
+  wireGpuUncapturedError,
+} from "@uptimizr/sdk-core";
+import type { GpuDeviceErrorTargetLike, GpuDeviceLostLike } from "@uptimizr/sdk-core";
 import type { Aabb, InputSource } from "@uptimizr/schema";
 import { resolveTrackedCamera } from "./scene.js";
 import { clamp01, toVec3, toQuat } from "./vec.js";
@@ -928,6 +933,8 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
       // device.lost is a one-shot promise that can't be unsubscribed; this flag
       // lets us suppress a late-resolving emit after the collector has stopped.
       let stopped = false;
+      // Flushes the WebGPU uncapturederror rollup; no-op until wired (or off).
+      let flushUncapturedErrors: () => void = () => {};
       let lastPointerMove = 0;
       // camera_gesture (ADR 0025) bracket state: the camera snapshot taken at
       // pointer-down, the time it opened, and the input source — diffed against
@@ -1452,6 +1459,15 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
           () => gpuEngine._device,
           () => !stopped,
         );
+        // WebGPU `uncapturederror` → rate-limited rollup (#19). The same async
+        // `_device` is also a `GPUDevice` (an `EventTarget`); the shared helper
+        // aggregates a burst into one `graphics_diagnostic` with `count` so a
+        // storm can't flood ingestion. Flushed on stop() below.
+        flushUncapturedErrors = wireGpuUncapturedError(
+          ctx,
+          () => gpuEngine._device as unknown as GpuDeviceErrorTargetLike,
+          () => !stopped,
+        );
       }
 
       // Shader / pipeline compile stalls (#42). Babylon raises a before/after
@@ -1544,6 +1560,7 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
 
       return {
         stop() {
+          flushUncapturedErrors();
           stopped = true;
           for (const t of timers) clearInterval(t);
           for (const detach of renderObservers) detach();

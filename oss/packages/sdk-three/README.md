@@ -183,6 +183,12 @@ boundary so the emitted events are identical:
   runs through `beforeSend`. Engine-parity with the Babylon connector. A
   `WebGLRenderer` is a **no-op** (no device-lost concept; its interruption is the
   always-on `context_lost`).
+- **Engine diagnostics — WebGPU `uncapturederror` (rate-limited rollup, #19):** also
+  under `captureGraphicsDiagnostics`, the connector listens for `uncapturederror` on
+  `renderer.backend.device` and aggregates a burst into one `graphics_diagnostic` with
+  `count: N` + first `message`, flushed on an interval and on dispose — never N events.
+  Subtype maps to `out-of-memory` (`GPUOutOfMemoryError`, `severity: error`) or
+  `validation` (`severity: warning`); `message` is length-capped via `beforeSend`. WebGL no-op.
 
 ## License
 
