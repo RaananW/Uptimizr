@@ -82,6 +82,57 @@ document.head.appendChild(s);
 > `pnpm playground` prints this snippet pre-filled with a local project id and a
 > tunnel/localhost endpoint. See [run-local-stack](../.github/skills/run-local-stack/SKILL.md).
 
+### Web-export engines (Unity / Godot / Unreal)
+
+Engines that compile to **WebAssembly** and render into a `<canvas>` (Unity WebGL,
+Godot Web, Unreal HTML5) have no live JS scene to read, so they don't use `trackScene`.
+They share the [`@uptimizr/web-export`](../oss/packages/web-export/README.md) foundation
+and capture in **two tiers**:
+
+- **JS-only tier (no engine code).** `trackUnity` / `trackGodot` / `trackUnreal` start a
+  client and capture pointer move/click heatmaps, FPS / long frames, and JS errors
+  straight from the `<canvas>` DOM — immediately, with nothing added to the engine.
+- **Bridged tier (a thin copy-in shim).** Camera pose, world-space picks, scene proxy,
+  and replay need the engine to push its own world-space samples over a small versioned
+  bridge. You copy a shim into the engine project; the engine is **not** an npm peer
+  dependency.
+
+```ts
+import { trackUnity } from "@uptimizr/unity";
+
+const { client, bridge } = trackUnity({
+  projectId: "your-project-id",
+  endpoint: "https://collect.example.com",
+  canvas: () => document.querySelector("#unity-canvas"),
+});
+
+// later, on teardown
+await client.stop("manual");
+```
+
+`trackUnity` registers the JS-only collector, starts the session with Unity's connector
+provenance, and exposes the engine `bridge` on `window.__uptimizr_unity__` for the shim
+to find.
+
+**Unity bridged setup.** The shim is two copy-in files shipped in the package's
+[`bridge/`](../oss/packages/unity/bridge) folder:
+
+1. Copy `Uptimizr.jslib` to `Assets/Plugins/WebGL/Uptimizr.jslib` (Unity compiles
+   `.jslib` files under `Plugins/WebGL` into the WebGL build).
+2. Copy `UptimizrUnityBridge.cs` under `Assets/` and add the `UptimizrUnityBridge`
+   component to a GameObject. It samples the active `Camera` pose, raycast picks (the hit
+   GameObject's name + world point), and FPS each interval and pushes them over the
+   bridge. It defaults to `Camera.main`.
+3. Ensure `trackUnity(...)` runs on the host page **before** the export starts.
+
+Unity's native world frame is **left-handed, y-up, meters** — already Uptimizr's
+canonical wire frame — so world-space payloads need no axis conversion; the connector
+records the native frame as `connector.coordinateSystem` on `session_start`. The shim
+does **no** coordinate math and sends only poses, FPS, and developer-named objects (no
+invented IDs, no raw input text — ADR 0003). Godot (negate Z) and Unreal (z-up rebase +
+cm→m scale) follow the same two-tier model with their own native frames; see the
+[web-export connector docs](https://uptimizr.dev/connectors/web-export).
+
 ### Custom events
 
 Beyond the built-in channels, record your own domain events. Custom events are
