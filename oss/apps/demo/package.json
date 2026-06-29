@@ -30,9 +30,9 @@
     "@types/react-dom": "^19.2.0",
     "@uptimizr/dashboard": "workspace:*",
     "@uptimizr/example-playground": "workspace:*",
-    "@vitejs/plugin-react": "^6.0.2",
+    "@vitejs/plugin-react": "^6.0.3",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16",
+    "vite": "^8.1.0",
     "vitest": "^4.1.9"
   }
 }

@@ -48,13 +48,13 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.19.21",
     "dotenv-cli": "^11.0.0",
-    "eslint": "^10.5.0",
+    "eslint": "^10.6.0",
     "fontkit": "^2.0.4",
-    "prettier": "^3.8.4",
+    "prettier": "^3.9.1",
     "sharp": "^0.35.2",
-    "turbo": "^2.9.18",
+    "turbo": "^2.10.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.1",
+    "typescript-eslint": "^8.62.0",
     "wawoff2": "^2.0.1"
   }
 }
