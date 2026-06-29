@@ -17,7 +17,7 @@
     "clean": "rm -rf dist public/playground public/dashboard"
   },
   "dependencies": {
-    "@duckdb/duckdb-wasm": "1.33.1-dev45.0",
+    "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
     "@uptimizr/db": "workspace:*",
     "@uptimizr/schema": "workspace:*",
     "@vercel/analytics": "^2.0.0",
@@ -25,14 +25,14 @@
     "react-dom": "19.2.7"
   },
   "devDependencies": {
-    "@types/node": "^22.19.21",
+    "@types/node": "^26.0.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@uptimizr/dashboard": "workspace:*",
     "@uptimizr/example-playground": "workspace:*",
-    "@vitejs/plugin-react": "^6.0.2",
+    "@vitejs/plugin-react": "^6.0.3",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16",
+    "vite": "^8.1.0",
     "vitest": "^4.1.9"
   }
 }
