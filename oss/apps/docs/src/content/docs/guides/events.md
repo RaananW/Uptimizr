@@ -77,6 +77,17 @@ client.reportCapabilityChange({ kind: "quality", from: "high", to: "low", reason
 This pairs with the raw [`context_lost` / `context_restored`](/docs/guides/sessions/#engine--browser-lifecycle-events)
 events — it's the higher-level "what we ran as" signal. Read the rollup from `GET /api/v1/capabilities`.
 
+## Rendering technology (always-on)
+
+Each session's `session_start.graphics` block records the rendering API surface (`api`), the real
+backend beneath it (`backend`, e.g. WebGPU → Metal), the API/driver version (`apiVersion`), and the
+`shadingLanguage` — captured once per session as non-PII, low-cardinality metadata (ADR 0021). It is
+**always-on**: every connector reports it, so no opt-in is needed.
+
+The dashboard's **Rendering technology** panel aggregates the mix across the selected window — counts
+by API, backend, and shading language — backed by `GET /api/v1/rendering-technology`, the always-on
+sibling of the opt-in Engine diagnostics panel. Blank fields surface as "unknown".
+
 ## Engine diagnostics (opt-in GPU health)
 
 `graphics_diagnostic` carries engine-authored GPU-health signals — GPU errors/warnings,

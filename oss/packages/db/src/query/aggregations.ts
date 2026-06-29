@@ -1202,6 +1202,49 @@ export function buildGraphicsDiagnosticCounts(
 }
 
 /**
+ * Always-on rendering-technology mix from `session_start.graphics` (ADR 0021 part
+ * 1): the fully-crossed `(api, backend, api_version, shading_language)` group with
+ * one session count per cell, so the dashboard can derive the by-api, by-backend,
+ * by-version, and by-shading-language breakdowns from a single query by summing.
+ *
+ * The graphics fields ride in the `payload` JSON (they are not promoted columns,
+ * per ADR 0004 — nothing is promoted unless an aggregation needs it), so each is
+ * read with `jsonText` and `coalesce`s to `''` ("unknown") when the connector
+ * omitted it. Unlike the opt-in `graphics_diagnostic` counts, `session_start` is
+ * always-on, so a populated result is the common case.
+ */
+export function buildRenderingTechnology(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions,
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const api = d.jsonText("payload", "graphics", "api");
+  const backend = d.jsonText("payload", "graphics", "backend");
+  const apiVersion = d.jsonText("payload", "graphics", "apiVersion");
+  const shadingLanguage = d.jsonText("payload", "graphics", "shadingLanguage");
+  return {
+    query: `
+      SELECT
+        coalesce(${api}, '') AS api,
+        coalesce(${backend}, '') AS backend,
+        coalesce(${apiVersion}, '') AS api_version,
+        coalesce(${shadingLanguage}, '') AS shading_language,
+        count() AS sessions
+      FROM events
+      WHERE project_id = ${pid} AND event_type = 'session_start'${range}${scene}${session}
+      GROUP BY api, backend, api_version, shading_language
+      ORDER BY sessions DESC
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * Capability / fidelity transitions from `capability_change` (#49, design §E):
  * per (kind, from, to), how many times the app reported that fallback or
  * recovery. Explains perf / visual-fidelity variance across the user base (e.g.

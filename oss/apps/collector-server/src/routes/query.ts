@@ -850,6 +850,20 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     },
   );
 
+  // Always-on rendering-technology mix (#120, ADR 0021 part 1) — session count
+  // crossed by (api, backend, api_version, shading_language) from
+  // `session_start.graphics`. Always-on (unlike diagnostics), so a populated
+  // result is the common case.
+  r.get(
+    "/api/v1/rendering-technology",
+    { schema: { querystring: heatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.renderingTechnology(projectId, req.query);
+    },
+  );
+
   // Capability changes (#49) — per-transition fallback/recovery counts (e.g. how
   // many sessions fell back WebGPU→WebGL2); explains perf / visual-fidelity
   // variance across the user base. App-reported via reportCapabilityChange.

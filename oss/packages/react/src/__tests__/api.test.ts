@@ -196,6 +196,28 @@ describe("CollectorApi", () => {
       { severity: "error", category: "shader-compile", backend: "", incidents: 1 },
     ]);
   });
+
+  it("coerces rendering-technology counts and hits the rendering-technology endpoint (#120)", async () => {
+    const fetchMock = mockFetch([
+      { api: "webgpu", backend: "metal", api_version: "1.0", shading_language: "wgsl", sessions: "7" },
+      { api: null, backend: null, api_version: null, shading_language: null, sessions: "3" },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.renderingTechnology({ scene: "s", session: "s1" });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe(
+      "http://localhost:4318/api/v1/rendering-technology",
+    );
+    expect(parsed.searchParams.get("scene")).toBe("s");
+    expect(rows).toEqual([
+      { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl", sessions: 7 },
+      // Missing fields coerce to "" (unknown).
+      { api: "", backend: "", apiVersion: "", shadingLanguage: "", sessions: 3 },
+    ]);
+  });
 });
 
 describe("CollectorApi live (ADR 0032)", () => {

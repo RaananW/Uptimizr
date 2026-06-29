@@ -51,6 +51,7 @@ import {
   buildResourcePercentiles,
   buildStabilityCounts,
   buildGraphicsDiagnosticCounts,
+  buildRenderingTechnology,
   buildPointerHeatmap,
   buildSceneCoverage,
   buildSessionTrajectory,
@@ -531,6 +532,31 @@ export const PARITY_CASES: readonly ParityCase[] = [
     // the nullable-int `count` coalesce, and the GROUP/ORDER render identically on
     // both engines (#16).
     golden: [],
+  },
+  {
+    name: "renderingTechnology",
+    build: (d) => buildRenderingTechnology(PID, PARITY_RANGE, d),
+    sortKeys: ["api", "backend", "api_version", "shading_language"],
+    // s1 -> webgpu/metal/1.0/wgsl, s2 -> webgl2/opengl/3.0/glsl-es. One
+    // session_start each (always-on, ADR 0021 part 1). Validates the nested
+    // graphics JSON extraction, the unknown coalesce, and that the crossed
+    // GROUP/ORDER render identically on both engines (#120).
+    golden: [
+      {
+        api: "webgl2",
+        backend: "opengl",
+        api_version: "3.0",
+        shading_language: "glsl-es",
+        sessions: 1,
+      },
+      {
+        api: "webgpu",
+        backend: "metal",
+        api_version: "1.0",
+        shading_language: "wgsl",
+        sessions: 1,
+      },
+    ],
   },
   {
     name: "deadClicks",
