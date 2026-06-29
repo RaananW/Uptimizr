@@ -10,8 +10,15 @@ errors) and a **bridged tier** (a thin copy-in shim adds camera pose, world-spac
 picks, and replay).
 
 :::caution[Best-effort]
-Unreal's first-party web export is community-maintained, so the **bridged tier is
-best-effort** by design (ADR 0045). The JS-only tier always works.
+Epic has **no official UE5 HTML5/WASM target** (it was deprecated after UE 4.24) and Pixel
+Streaming is server-side (no client-side scene to read). The bridged tier therefore targets
+the real, **Emscripten-based, client-side** web exports that do exist — the community
+UE4.24–4.27 HTML5 forks ([ufna/UE-HTML5](https://github.com/ufna/UE-HTML5),
+[SpeculativeCoder/UnrealEngine-HTML5-ES3](https://github.com/SpeculativeCoder/UnrealEngine-HTML5-ES3))
+and the experimental UE5.1–5.4 WASM+WebGPU toolchain (Wonder Interactive / SimplyStream).
+All are Emscripten, so the `EM_JS` / `cwrap` shim drops in — but because each target is
+experimental or community-maintained, the **bridged tier is best-effort** by design (ADR
+0045). The JS-only tier always works.
 :::
 
 ## Install
@@ -42,11 +49,17 @@ engine-side shim to `bridge` to add camera pose, picks, and replay.
 
 ## Engine-side bridge
 
-The bridged tier needs a thin **copy-in shim** — Emscripten `EM_JS` glue that samples
-the active `APlayerCameraManager` and calls the bridge each frame. It's a copy-in
-asset, not an npm dependency. The contract and an `EM_JS` sketch live in the package's
-[`bridge/README.md`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/unreal/bridge/README.md).
-The full shim is authored in the Unreal web-export sub-issue.
+The bridged tier uses a thin **copy-in shim** — Emscripten `EM_JS` / `cwrap` glue that
+samples the active `APlayerCameraManager` pose, raycast picks, and FPS each frame and calls
+the bridge. It's a copy-in asset, not an npm dependency. The shim ships in the package under
+[`bridge/`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/unreal/bridge/) —
+[`Uptimizr.h`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/unreal/bridge/Uptimizr.h)
+
+- [`Uptimizr.cpp`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/unreal/bridge/Uptimizr.cpp)
+  — alongside a [`README`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/unreal/bridge/README.md)
+  covering the supported web targets and wiring. Copy both files into your project's web
+  target, call `UptimizrTelemetry().Initialize()` (which **asserts the bridge protocol version
+  matches**), then `UptimizrTelemetry().Tick(GetWorld(), DeltaSeconds)` each frame.
 
 ## Coordinate frame
 
