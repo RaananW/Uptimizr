@@ -52,6 +52,7 @@ function resolveConfig(config: UptimizrConfig): ResolvedConfig {
     resizeDebounceMs: config.resizeDebounceMs ?? DEFAULTS.resizeDebounceMs,
     captureErrors: config.captureErrors ?? false,
     captureGraphicsDiagnostics: config.captureGraphicsDiagnostics ?? false,
+    captureShaderSource: config.captureShaderSource ?? false,
     debug: config.debug ?? false,
   };
 }

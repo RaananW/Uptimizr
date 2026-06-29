@@ -22,8 +22,17 @@ import {
   wireGpuDeviceLost,
   wireGpuUncapturedError,
   wireContextCreationFailure,
+  wireGlShaderDiagnostics,
+  wireGpuShaderDiagnostics,
+  wireGlErrorSampling,
 } from "@uptimizr/sdk-core";
-import type { GpuDeviceErrorTargetLike, GpuDeviceLostLike } from "@uptimizr/sdk-core";
+import type {
+  GpuDeviceErrorTargetLike,
+  GpuDeviceLostLike,
+  WebGlShaderContextLike,
+  WebGpuShaderDeviceLike,
+  WebGlErrorContextLike,
+} from "@uptimizr/sdk-core";
 import type { Aabb, InputSource, Vec3 } from "@uptimizr/schema";
 import { isWebGpu, lacksGlContext } from "./renderer.js";
 import { clamp01 } from "./vec.js";
@@ -98,7 +107,12 @@ interface RendererInfoView {
  * to keep `three` a peer dependency and stay version-tolerant.
  */
 interface RendererBackendDeviceView {
-  backend?: { device?: GpuDeviceLostLike };
+  backend?: { device?: GpuDeviceLostLike & WebGpuShaderDeviceLike };
+}
+
+/** Structural view of a three `WebGLRenderer`'s `getContext()` for shader/getError capture. */
+interface RendererGlContextView {
+  getContext?: () => (WebGlShaderContextLike & WebGlErrorContextLike) | undefined | null;
 }
 
 /** Structural view of the renderer's canvas (`renderer.domElement`). */
@@ -1609,6 +1623,23 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
       // device-lost above). Backend stays `unknown` — nothing to introspect once
       // creation failed.
       wireContextCreationFailure(ctx, { failed: lacksGlContext(renderer) });
+
+      // Shader compile/link failures + sampled gl.getError → `graphics_diagnostic`
+      // (ADR 0021 part 2). Opt-in (helpers self-gate on captureGraphicsDiagnostics).
+      // WebGL: wrap the context's compile/link and poll getError on a low-rate timer
+      // (never per-frame — a sync GPU stall is forbidden). WebGPU: wrap the device's
+      // createShaderModule for compilation errors. Raw shader source is stripped unless
+      // captureShaderSource is set. Read structurally to keep `three` a peer dep.
+      if (isWebGpu(renderer)) {
+        const device = (renderer as unknown as RendererBackendDeviceView).backend?.device;
+        if (device) stopCallbacks.push(wireGpuShaderDiagnostics(ctx, device, () => !disposed));
+      } else {
+        const gl = (renderer as unknown as RendererGlContextView).getContext?.();
+        if (gl) {
+          stopCallbacks.push(wireGlShaderDiagnostics(ctx, gl, () => !disposed));
+          stopCallbacks.push(wireGlErrorSampling(ctx, gl, () => !disposed));
+        }
+      }
 
       // GPU / memory footprint (`resource_sample`, #44). A low-rate timer samples
       // the triangles three submitted last frame (`renderer.info.render.triangles`)

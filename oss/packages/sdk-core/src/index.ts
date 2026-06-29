@@ -61,6 +61,11 @@ export {
   wireGpuDeviceLost,
   wireGpuUncapturedError,
   wireContextCreationFailure,
+  wireGlShaderDiagnostics,
+  wireGpuShaderDiagnostics,
+  wireGlErrorSampling,
+  buildShaderCompileDiagnostic,
+  createDiagnosticRollup,
 } from "./graphicsDiagnostics.js";
 export type {
   GpuDeviceLostLike,
@@ -70,6 +75,12 @@ export type {
   GpuDeviceErrorTargetLike,
   WireGpuUncapturedErrorOptions,
   ContextCreationProbe,
+  DiagnosticRollup,
+  ShaderDiagnosticsOptions,
+  GlErrorSamplingOptions,
+  WebGlShaderContextLike,
+  WebGpuShaderDeviceLike,
+  WebGlErrorContextLike,
 } from "./graphicsDiagnostics.js";
 
 export type {

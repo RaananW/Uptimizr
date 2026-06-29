@@ -195,6 +195,13 @@ boundary so the emitted events are identical:
   emits **one** `graphics_diagnostic` with `category: "context-loss"`, `severity: "fatal"`,
   and `backend: "unknown"`. It fires before the first flush yet queues in order after
   `session_start`, so the decisive marker always lands.
+- **Engine diagnostics — shader compile/link failures + sampled `gl.getError()` (#17):** also
+  under `captureGraphicsDiagnostics`, shader compile/link **failures** → `category:
+"shader-compile"` (`error`; WebGL info logs, WebGPU shader-module compilation info), and sampled
+  WebGL `gl.getError()` → `category: "validation"` as a low-rate rollup (never per-frame — it forces
+  a sync GPU stall; no-op on WebGPU). Raw shader source is stripped unless the separate
+  `captureShaderSource: true` sub-opt-in is set (off by default — application IP). All text is
+  length-capped via `beforeSend`. Engine-parity with the Babylon connector.
 
 ## License
 

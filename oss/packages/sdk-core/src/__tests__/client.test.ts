@@ -75,6 +75,18 @@ describe("UptimizrClient", () => {
     expect(optedIn.config.captureGraphicsDiagnostics).toBe(true);
   });
 
+  it("defaults captureShaderSource to false (sub-opt-in, IP risk, ADR 0021)", () => {
+    const m = mockTransport();
+    const client = new UptimizrClient(baseConfig(m.transport));
+    expect(client.config.captureShaderSource).toBe(false);
+
+    const optedIn = new UptimizrClient({
+      ...baseConfig(m.transport),
+      captureShaderSource: true,
+    });
+    expect(optedIn.config.captureShaderSource).toBe(true);
+  });
+
   it("auto-flushes when the batch size threshold is reached", async () => {
     const m = mockTransport();
     const client = new UptimizrClient({ ...baseConfig(m.transport), batchSize: 2 });

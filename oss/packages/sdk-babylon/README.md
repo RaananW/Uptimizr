@@ -130,20 +130,27 @@ perf/visual-fidelity variance across the user base.
 client.reportCapabilityChange({ kind: "graphics-backend", from: "webgpu", to: "webgl2" });
 ```
 
-### Engine diagnostics: WebGPU `device.lost` (`graphics_diagnostic`, #20)
+### Engine diagnostics: WebGPU `device.lost`, shader-compile failures, sampled `gl.getError()` (`graphics_diagnostic`)
 
 When the client is created with `captureGraphicsDiagnostics: true` (off by default),
-the connector subscribes to the WebGPU `GPUDevice.lost` promise and emits one
-`graphics_diagnostic` with `category: "device-lost"` and `backend: "webgpu"`. Severity is
-`info` for a requested loss (`reason: "destroyed"`) and `fatal` for an unrequested one;
-the optional `message` is length-capped and passes through `beforeSend` for redaction.
+the connector wires three GPU-health signals into `graphics_diagnostic`:
 
-This is opt-in (the text can carry driver detail) and engine-parity with the three
-connector. **WebGL is a no-op** — it has no device-lost concept, and its interruption is
-the always-on `context_lost` event above.
+- **WebGPU `device.lost`** → `category: "device-lost"`, `backend: "webgpu"`. `info` for a
+  requested loss (`reason: "destroyed"`), `fatal` otherwise. WebGL is a no-op (its interruption
+  is the always-on `context_lost`).
+- **Shader compile/link failures** → `category: "shader-compile"`, `error`. WebGL info logs on
+  failure; WebGPU shader-module compilation info. **Source redaction:** the info log can embed
+  shader source, so raw source is stripped unless you also set `captureShaderSource: true` (off by
+  default — shader source is application IP).
+- **Sampled WebGL `gl.getError()`** → `category: "validation"` as a low-rate rollup (`count`).
+  Never per-frame (a sync GPU stall); no-op on WebGPU.
+
+All `message`/`code` text is length-capped and passes through `beforeSend` for redaction; this stays
+opt-in and engine-parity with the three connector.
 
 ```ts
 const client = new UptimizrClient({ projectId, endpoint, captureGraphicsDiagnostics: true });
+// To include raw shader source (IP-sensitive), also set captureShaderSource: true.
 ```
 
 length-capped and runs through `beforeSend`. **WebGL is a no-op.**
