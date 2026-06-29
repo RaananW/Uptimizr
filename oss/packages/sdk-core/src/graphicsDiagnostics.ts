@@ -128,6 +128,58 @@ export function wireGpuDeviceLost(
 }
 
 /**
+ * Shared **rate-limited rollup** for the noisy `graphics_diagnostic` signals
+ * (ADR 0021 part 2 decision 4 / ADR 0012): a burst of incidents coalesces into one
+ * `count`-bearing event instead of flooding ingestion. Tracks `count` plus the first
+ * representative payload; `emit` composes the event from those. Used by both
+ * `wireGpuUncapturedError` and `wireGlErrorSampling` so the aggregation logic lives once.
+ */
+export interface DiagnosticRollup<T> {
+  /** Record one incident, capturing `first` on the very first record of a window. */
+  record(first: T): void;
+  /** Incidents accumulated in the current (un-flushed) window. */
+  readonly count: number;
+  /** Emit one aggregated event (if any) and reset the window. */
+  flush(): void;
+  /** Begin a bounded auto-flush interval. */
+  start(intervalMs: number): void;
+  /** Clear the interval and flush any remaining incidents. */
+  stop(): void;
+}
+
+export function createDiagnosticRollup<T>(
+  emit: (count: number, first: T | undefined) => void,
+): DiagnosticRollup<T> {
+  let count = 0;
+  let first: T | undefined;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const flush = (): void => {
+    if (count === 0) return;
+    emit(count, first);
+    count = 0;
+    first = undefined;
+  };
+  return {
+    record(value: T) {
+      if (count === 0) first = value;
+      count += 1;
+    },
+    get count() {
+      return count;
+    },
+    flush,
+    start(intervalMs: number) {
+      timer = setInterval(flush, intervalMs);
+    },
+    stop() {
+      if (timer) clearInterval(timer);
+      timer = undefined;
+      flush();
+    },
+  };
+}
+
+/**
  * Structural view of a WebGPU `GPUError` (the value carried on an
  * `uncapturederror` event). Declared locally so the helper stays dependency-free.
  * The subtype is detected by constructor name to avoid depending on `@webgpu/types`.
@@ -214,44 +266,39 @@ export function wireGpuUncapturedError(
   const flushIntervalMs = options?.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
   let attempts = 0;
 
-  let count = 0;
   let firstMessage: string | undefined;
   let category: "validation" | "out-of-memory" = "validation";
-  let flushTimer: ReturnType<typeof setInterval> | undefined;
   let device: GpuDeviceErrorTargetLike | undefined;
   let listener: ((e: GpuUncapturedErrorEventLike) => void) | undefined;
 
-  const flush = (): void => {
-    if (count === 0) return;
+  const rollup = createDiagnosticRollup<string | undefined>((n, first) => {
     const severity = category === "out-of-memory" ? "error" : "warning";
     ctx.emit({
       type: "graphics_diagnostic",
       severity,
       category,
       backend: "webgpu",
-      count,
-      ...(firstMessage ? { message: firstMessage } : {}),
+      count: n,
+      ...(first ? { message: first } : {}),
     });
-    count = 0;
-    firstMessage = undefined;
     category = "validation";
-  };
+  });
 
   const attach = (target: GpuDeviceErrorTargetLike): void => {
     if (typeof target.addEventListener !== "function") return;
     device = target;
     listener = (e) => {
       if (!isActive()) return;
-      count += 1;
       const error = e?.error;
-      if (count === 1) {
+      if (rollup.count === 0) {
         const raw = typeof error?.message === "string" ? error.message : undefined;
         firstMessage = raw ? raw.slice(0, LIMITS.maxGraphicsDiagnosticMessageLength) : undefined;
       }
+      rollup.record(firstMessage);
       if (error?.constructor?.name === "GPUOutOfMemoryError") category = "out-of-memory";
     };
     target.addEventListener("uncapturederror", listener);
-    flushTimer = setInterval(flush, flushIntervalMs);
+    rollup.start(flushIntervalMs);
   };
 
   const poll = (): void => {
@@ -269,12 +316,254 @@ export function wireGpuUncapturedError(
   poll();
 
   return () => {
-    if (flushTimer) clearInterval(flushTimer);
-    flushTimer = undefined;
     if (device && listener && typeof device.removeEventListener === "function") {
       device.removeEventListener("uncapturederror", listener);
     }
-    flush();
+    rollup.stop();
+  };
+}
+/* -------------------------------------------------------------------------- */
+/* Shader compile/link failures (ADR 0021 part 2, `category: shader-compile`) */
+/* -------------------------------------------------------------------------- */
+
+/** Backends a shader/getError diagnostic can be tagged with. */
+type ShaderBackend = "webgl" | "webgl2" | "webgpu";
+
+/** Tuning for shader-compile capture (mainly for tests). */
+export interface ShaderDiagnosticsOptions {
+  /** Max shader-compile diagnostics emitted per session (storm guard). Default 25. */
+  maxIncidents?: number;
+}
+
+const DEFAULT_MAX_SHADER_INCIDENTS = 25;
+
+/**
+ * Build a `graphics_diagnostic` for a shader compile/link **failure**. Pure and
+ * redaction-aware: the engine info log is the message (length-capped); raw shader
+ * `source` is appended **only** when the deployer opted in via `captureShaderSource`
+ * (ADR 0021 part 2 — source is application IP). Either way the result is capped to
+ * the schema limit and still rides through `beforeSend`.
+ */
+export function buildShaderCompileDiagnostic(input: {
+  infoLog?: string;
+  source?: string;
+  backend?: ShaderBackend;
+  captureShaderSource: boolean;
+}): {
+  type: "graphics_diagnostic";
+  severity: "error";
+  category: "shader-compile";
+  backend?: ShaderBackend;
+  message?: string;
+} {
+  const log = input.infoLog?.trim() ?? "";
+  const includeSource = input.captureShaderSource && input.source ? input.source : "";
+  const raw = includeSource ? `${log}\n${includeSource}`.trim() : log;
+  const message = raw ? raw.slice(0, LIMITS.maxGraphicsDiagnosticMessageLength) : undefined;
+  return {
+    type: "graphics_diagnostic",
+    severity: "error",
+    category: "shader-compile",
+    ...(input.backend ? { backend: input.backend } : {}),
+    ...(message ? { message } : {}),
+  };
+}
+
+/** Structural view of the WebGL context fields we read for shader diagnostics. */
+export interface WebGlShaderContextLike {
+  COMPILE_STATUS: number;
+  LINK_STATUS: number;
+  compileShader(shader: object): void;
+  linkProgram(program: object): void;
+  getShaderParameter(shader: object, pname: number): unknown;
+  getProgramParameter(program: object, pname: number): unknown;
+  getShaderInfoLog(shader: object): string | null;
+  getProgramInfoLog(program: object): string | null;
+  getShaderSource?(shader: object): string | null;
+}
+
+/**
+ * Capture WebGL shader compile and program link **failures** as
+ * `graphics_diagnostic` (`category: shader-compile`). Wraps the context's
+ * `compileShader`/`linkProgram`; on a failed status it reads the matching info log
+ * (and, when `captureShaderSource` is on, the shader source) and emits one capped,
+ * redactable diagnostic. Bounded per session so a build loop cannot flood ingestion.
+ *
+ * Opt-in: no-ops unless `ctx.config.captureGraphicsDiagnostics`. Returns a detach
+ * fn that restores the original methods.
+ */
+export function wireGlShaderDiagnostics(
+  ctx: CollectorContext,
+  gl: WebGlShaderContextLike,
+  isActive: () => boolean,
+  options?: ShaderDiagnosticsOptions,
+): () => void {
+  if (!ctx.config.captureGraphicsDiagnostics) return () => {};
+  const max = options?.maxIncidents ?? DEFAULT_MAX_SHADER_INCIDENTS;
+  const backend: ShaderBackend = gl.LINK_STATUS != null ? "webgl2" : "webgl";
+  const wantSource = ctx.config.captureShaderSource;
+  let count = 0;
+  if (typeof gl.compileShader !== "function" || typeof gl.linkProgram !== "function")
+    return () => {};
+  const origCompile = gl.compileShader.bind(gl);
+  const origLink = gl.linkProgram.bind(gl);
+
+  const emit = (infoLog: string | null, source?: string): void => {
+    if (!isActive() || count >= max) return;
+    count += 1;
+    ctx.emit(
+      buildShaderCompileDiagnostic({
+        backend,
+        captureShaderSource: wantSource,
+        ...(infoLog ? { infoLog } : {}),
+        ...(source ? { source } : {}),
+      }),
+    );
+  };
+
+  gl.compileShader = function (shader: object) {
+    origCompile(shader);
+    if (!isActive()) return;
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      const source = wantSource && gl.getShaderSource ? gl.getShaderSource(shader) : undefined;
+      emit(gl.getShaderInfoLog(shader), source ?? undefined);
+    }
+  };
+  gl.linkProgram = function (program: object) {
+    origLink(program);
+    if (!isActive()) return;
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) emit(gl.getProgramInfoLog(program));
+  };
+
+  return () => {
+    gl.compileShader = origCompile;
+    gl.linkProgram = origLink;
+  };
+}
+
+/** Structural view of the WebGPU device + module fields we read for shader info. */
+export interface WebGpuShaderDeviceLike {
+  createShaderModule(descriptor: { code?: string }): WebGpuShaderModuleLike;
+}
+interface WebGpuShaderModuleLike {
+  getCompilationInfo?: () => Promise<{
+    messages?: ReadonlyArray<{ type?: string; message?: string }>;
+  }>;
+  compilationInfo?: () => Promise<{
+    messages?: ReadonlyArray<{ type?: string; message?: string }>;
+  }>;
+}
+
+/**
+ * Capture WebGPU shader-module compile errors as `graphics_diagnostic`
+ * (`category: shader-compile`). Wraps `device.createShaderModule` and inspects the
+ * module's async `compilationInfo()` for `error` messages. Source (`descriptor.code`)
+ * is included only when `captureShaderSource` is on. Opt-in + bounded; returns detach.
+ */
+export function wireGpuShaderDiagnostics(
+  ctx: CollectorContext,
+  device: WebGpuShaderDeviceLike,
+  isActive: () => boolean,
+  options?: ShaderDiagnosticsOptions,
+): () => void {
+  if (!ctx.config.captureGraphicsDiagnostics) return () => {};
+  const max = options?.maxIncidents ?? DEFAULT_MAX_SHADER_INCIDENTS;
+  const wantSource = ctx.config.captureShaderSource;
+  let count = 0;
+  if (typeof device.createShaderModule !== "function") return () => {};
+  const orig = device.createShaderModule.bind(device);
+
+  device.createShaderModule = function (descriptor: { code?: string }) {
+    const module = orig(descriptor);
+    const info = module.getCompilationInfo ?? module.compilationInfo;
+    if (typeof info === "function") {
+      void info.call(module).then((result) => {
+        if (!isActive() || count >= max) return;
+        const errors = (result?.messages ?? []).filter((m) => m?.type === "error");
+        if (errors.length === 0) return;
+        count += 1;
+        ctx.emit(
+          buildShaderCompileDiagnostic({
+            backend: "webgpu",
+            captureShaderSource: wantSource,
+            infoLog: errors.map((m) => m.message ?? "").join("\n"),
+            ...(descriptor?.code ? { source: descriptor.code } : {}),
+          }),
+        );
+      });
+    }
+    return module;
+  };
+
+  return () => {
+    device.createShaderModule = orig;
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sampled gl.getError() (ADR 0021 part 2, `category: validation`, WebGL only) */
+/* -------------------------------------------------------------------------- */
+
+/** Tuning for opportunistic `gl.getError()` sampling. */
+export interface GlErrorSamplingOptions {
+  /** Sampling interval in ms. Default 5000. NEVER per-frame (ADR forbids a sync stall). */
+  intervalMs?: number;
+}
+
+const DEFAULT_GL_ERROR_INTERVAL_MS = 5000;
+const GL_NO_ERROR = 0;
+
+/** Structural view of the one method we poll: `gl.getError()`. */
+export interface WebGlErrorContextLike {
+  getError(): number;
+}
+
+/**
+ * Opportunistically **sample** `gl.getError()` and emit a rate-limited rollup
+ * `graphics_diagnostic` (`category: validation`, ADR 0021 part 2). Runs on a low-rate
+ * timer — never per-frame, since `getError()` forces a sync GPU stall (ADR forbids it).
+ * Non-`NO_ERROR` results are aggregated into a single `count`ed event flushed on the
+ * next tick (and on teardown), so a storm cannot flood ingestion. WebGPU has no
+ * `getError`, so passing nothing makes this a clean no-op.
+ *
+ * Opt-in: no-ops unless `captureGraphicsDiagnostics`. Returns a detach fn that flushes
+ * any pending rollup and clears the timer.
+ */
+export function wireGlErrorSampling(
+  ctx: CollectorContext,
+  gl: WebGlErrorContextLike,
+  isActive: () => boolean,
+  options?: GlErrorSamplingOptions,
+): () => void {
+  if (!ctx.config.captureGraphicsDiagnostics) return () => {};
+  const intervalMs = options?.intervalMs ?? DEFAULT_GL_ERROR_INTERVAL_MS;
+
+  const rollup = createDiagnosticRollup<number>((n, first) => {
+    ctx.emit({
+      type: "graphics_diagnostic",
+      severity: "warning",
+      category: "validation",
+      ...(first != null ? { code: `0x${first.toString(16)}` } : {}),
+      count: n,
+    });
+  });
+
+  const sample = (): void => {
+    if (!isActive()) return;
+    // Drain every pending GL error in one go: `getError()` reports one flag at a
+    // time, so we loop until NO_ERROR to fold a tick's full backlog into the rollup.
+    let code = gl.getError();
+    while (code !== GL_NO_ERROR) {
+      rollup.record(code);
+      code = gl.getError();
+    }
+    rollup.flush();
+  };
+
+  const timer = setInterval(sample, intervalMs);
+  return () => {
+    clearInterval(timer);
+    rollup.stop();
   };
 }
 

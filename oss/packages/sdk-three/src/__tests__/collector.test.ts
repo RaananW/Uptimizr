@@ -1683,3 +1683,58 @@ describe("threeCollector — skeleton bones / node_transform (ADR 0027 Tier 2)",
     }
   });
 });
+
+describe("threeCollector — shader-compile + getError → graphics_diagnostic (#17)", () => {
+  function makeGlRenderer(gl: Record<string, unknown>) {
+    return {
+      domElement: makeCanvas(),
+      info: { render: { frame: 0, triangles: 0 } },
+      capabilities: { isWebGL2: true },
+      getContext: () => gl,
+    } as unknown as WebGLRenderer;
+  }
+
+  function start(renderer: WebGLRenderer, config: Record<string, unknown>) {
+    const { ctx, events } = makeCtx(undefined, config);
+    const handle = threeCollector({
+      scene: emptyScene,
+      camera: makeCamera(),
+      renderer,
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+    return { events, handle };
+  }
+
+  const failGl = () => ({
+    COMPILE_STATUS: 0x8b81,
+    LINK_STATUS: 0x8b82,
+    compileShader: () => {},
+    linkProgram: () => {},
+    getShaderParameter: () => true,
+    getProgramParameter: () => false,
+    getShaderInfoLog: () => "ERR",
+    getProgramInfoLog: () => "LINK FAIL",
+    getError: () => 0,
+  });
+
+  it("emits a shader-compile diagnostic on link failure when enabled", () => {
+    const gl = failGl();
+    const { events, handle } = start(makeGlRenderer(gl), { captureGraphicsDiagnostics: true });
+    gl.linkProgram();
+    expect(events.find((e) => e.type === "graphics_diagnostic")).toMatchObject({
+      category: "shader-compile",
+      severity: "error",
+      message: "LINK FAIL",
+    });
+    handle.stop();
+  });
+
+  it("emits nothing when captureGraphicsDiagnostics is off", () => {
+    const gl = failGl();
+    const { events, handle } = start(makeGlRenderer(gl), { captureGraphicsDiagnostics: false });
+    gl.linkProgram();
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+});

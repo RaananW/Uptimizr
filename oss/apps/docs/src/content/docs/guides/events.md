@@ -95,17 +95,18 @@ severity, category, and backend — backed by `GET /api/v1/graphics-diagnostics`
 markers and per-session rollups into one honest total. With capture off, the panel shows an explicit
 opt-in empty state rather than reading as broken.
 
-> **Wired today:** WebGPU `device.lost` → `graphics_diagnostic` (`category: device-lost`), WebGPU
-> `uncapturederror` → rate-limited rollup (`category: validation` / `out-of-memory`, `count` + first
-> `message`), and WebGL/WebGPU **context-creation failure** → `graphics_diagnostic`
-> (`category: context-loss`, `severity: fatal`, `backend: unknown` when undetermined) in the Babylon
-> (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors. For device loss `severity` is `info`
-> for a requested loss (`reason: "destroyed"`) and `fatal` for an unrequested one; the optional
-> `message` is length-capped and runs through `beforeSend`. The context-creation marker fires once at
-> connector init when the engine cannot obtain a usable GL context / WebGPU adapter, and queues
-> correctly even though it happens before the first flush. WebGL renderers are a no-op for device loss
-> (their interruption is the always-on `context_lost`). Other signals (shader-compile failures) land
-> incrementally in later releases.
+> **Wired today** in the Babylon (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors:
+> WebGPU `device.lost` → `category: device-lost` (`info` for a requested loss,
+> `reason: "destroyed"`; `fatal` otherwise; WebGL is a no-op — its interruption is the always-on
+> `context_lost`); WebGPU `uncapturederror` → a rate-limited rollup (`category: validation` /
+> `out-of-memory`, `count` + first `message`); WebGL/WebGPU **context-creation failure** →
+> `category: context-loss` (`severity: fatal`, `backend: unknown` when undetermined; fires once at
+> connector init and queues before the first flush); shader compile/link **failures** → `category:
+shader-compile` (`error`; WebGL info logs on failure, WebGPU shader-module compilation info); and
+> sampled WebGL `gl.getError()` → `category: validation` (a low-rate rollup, never per-frame — it
+> forces a sync GPU stall; no-op on WebGPU). Shader source can hide in the error log, so raw source
+> is stripped unless the separate `captureShaderSource` sub-opt-in is set (off by default —
+> application IP). All length-capped text runs through `beforeSend`.
 
 ## Changing scenes / levels (`setScene`)
 

@@ -296,15 +296,19 @@ flood ingestion; discrete markers are the high-fidelity opt-in. `context_lost` /
 app-reported `capability_change` event (it is reserved here, never emitted by a connector).
 
 > Capture wiring per signal lands incrementally in the engine connectors. **Wired
-> today:** WebGPU `device.lost` → `graphics_diagnostic` (`category: device-lost`), WebGPU
-> `uncapturederror` → rate-limited rollup (`category: validation` / `out-of-memory`, `count` +
-> first `message`), and WebGL/WebGPU **context-creation failure** → `graphics_diagnostic`
-> (`category: context-loss`, `severity: fatal`, `backend: unknown` when undetermined) in the Babylon
-> (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors — `device-lost` `severity` is `info`
-> for a requested loss (`reason: "destroyed"`) and `fatal` otherwise; WebGL device loss is a no-op
-> (its interruption is the always-on `context_lost`). The context-creation marker fires once at
-> connector init when no usable context/adapter is obtained, and is queued/flushed correctly despite
-> firing before the first flush. **Not yet wired:** shader-compile failures.
+> today** in the Babylon (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors:
+> WebGPU `device.lost` → `category: device-lost` (`info` for a requested
+> loss, `reason: "destroyed"`; `fatal` otherwise; WebGL is a no-op — its interruption is
+> the always-on `context_lost`); WebGPU `uncapturederror` → rate-limited rollup
+> (`category: validation` / `out-of-memory`, `count` + first `message`); WebGL/WebGPU
+> **context-creation failure** → `category: context-loss` (`severity: fatal`, `backend: unknown`
+> when undetermined; fires once at connector init and queues before the first flush); shader
+> compile/link **failures** → `category: shader-compile` (`error`; WebGL
+> `getShaderInfoLog`/`getProgramInfoLog` on failure, WebGPU shader-module `getCompilationInfo`);
+> and sampled WebGL `gl.getError()` → `category: validation` (low-rate **rollup**, never per-frame
+> — `getError` forces a sync GPU stall; no-op on WebGPU). **Shader source redaction:** the info log
+> can embed shader source, so raw source is stripped unless the separate `captureShaderSource`
+> sub-opt-in is set (off by default — application IP, ADR 0021).
 
 ### Session context (`meta`, `sceneDescription`, `user`)
 
@@ -581,6 +585,7 @@ and/or raise the sampling rate; to dedupe a stable FPS, set
 | `resizeDebounceMs`                                                                                              | `250`        | Debounce window for `viewport_resize`.                                                                                                                                                                                                                                                                                                                       |
 | `captureErrors`                                                                                                 | `false`      | Opt-in `runtime_error` capture (ADR 0013); not auto-redacted.                                                                                                                                                                                                                                                                                                |
 | `captureGraphicsDiagnostics`                                                                                    | `false`      | Opt-in engine `graphics_diagnostic` capture (ADR 0021); not auto-redacted. Gates GPU-health signals; `context_lost`/`context_restored` stay always-on.                                                                                                                                                                                                       |
+| `captureShaderSource`                                                                                           | `false`      | Sub-opt-in to `captureGraphicsDiagnostics`: include raw shader source in shader-compile diagnostics. Off by default — shader source is application IP (ADR 0021); even with diagnostics on, source is stripped unless this is set. Still length-capped + passes through `beforeSend`.                                                                        |
 | `meshVisibility`                                                                                                | _off_        | Opt-in object-dwell capture (`mesh_visibility`, ADR 0003). Pass an options object to enable; off by default for privacy. See below.                                                                                                                                                                                                                          |
 | `hoverDwell`                                                                                                    | _off_        | Opt-in hover-hesitation capture (`hover_dwell`, ADR 0003). Enable `capture.hoverDwell` and (optionally) pass an options object; off by default for privacy. See below.                                                                                                                                                                                       |
 | `resourceSample`                                                                                                | _off_        | Opt-in GPU/memory footprint capture (`resource_sample`, ADR 0003). Enable `capture.resourceSample` and (optionally) pass a `resourceSample` options object; off by default. See below.                                                                                                                                                                       |

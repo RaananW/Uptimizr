@@ -209,6 +209,15 @@ export interface UptimizrConfig {
    * `context_restored`, which are always-on and exempt from the opt-in.
    */
   captureGraphicsDiagnostics?: boolean;
+  /**
+   * Sub-opt-in to `captureGraphicsDiagnostics`: include **raw shader source** in
+   * shader-compile diagnostics (ADR 0021 part 2). **Off by default** — shader
+   * source is application IP, so even with diagnostics enabled the engine's
+   * compile/link error text is stripped of embedded source unless this is set.
+   * Length-capped and still passes through `beforeSend` when on. No effect when
+   * `captureGraphicsDiagnostics` is off.
+   */
+  captureShaderSource?: boolean;
   /** Emit debug logs to the console. */
   debug?: boolean;
 }
@@ -227,6 +236,7 @@ export interface ResolvedConfig {
   resizeDebounceMs: number;
   captureErrors: boolean;
   captureGraphicsDiagnostics: boolean;
+  captureShaderSource: boolean;
   debug: boolean;
 }
 

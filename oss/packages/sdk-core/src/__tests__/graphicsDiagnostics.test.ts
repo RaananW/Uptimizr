@@ -1,12 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { wireGpuDeviceLost, wireContextCreationFailure } from "../graphicsDiagnostics.js";
+import {
+  wireGpuDeviceLost,
+  wireContextCreationFailure,
+  wireGpuUncapturedError,
+  wireGlShaderDiagnostics,
+  wireGpuShaderDiagnostics,
+  wireGlErrorSampling,
+  buildShaderCompileDiagnostic,
+} from "../graphicsDiagnostics.js";
+import type {
+  WebGlShaderContextLike,
+  WebGpuShaderDeviceLike,
+  WebGlErrorContextLike,
+} from "../graphicsDiagnostics.js";
 import type { CollectorContext, EventInput } from "../types.js";
 
 /** Build a minimal ctx whose `emit` records into a sink, with a config override. */
-function makeCtx(captureGraphicsDiagnostics: boolean) {
+function makeCtx(captureGraphicsDiagnostics: boolean, captureShaderSource = false) {
   const events: EventInput[] = [];
   const ctx = {
-    config: { captureGraphicsDiagnostics } as never,
+    config: { captureGraphicsDiagnostics, captureShaderSource } as never,
     sessionId: "s1",
     emit: (e: EventInput) => events.push(e),
     track: () => {},
@@ -195,8 +208,6 @@ describe("wireGpuDeviceLost", () => {
     expect(events).toHaveLength(0);
   });
 });
-
-import { wireGpuUncapturedError } from "../graphicsDiagnostics.js";
 
 class GPUValidationError {
   constructor(public message: string) {}
@@ -388,5 +399,173 @@ describe("wireContextCreationFailure", () => {
     const { ctx, events } = makeCtx(true);
     wireContextCreationFailure(ctx, { failed: true, message: "x".repeat(5000) });
     expect((events[0] as { message: string }).message).toHaveLength(1024);
+  });
+});
+
+/** A fake WebGL context with controllable compile/link status. */
+function makeGl(opts?: {
+  compileOk?: boolean;
+  linkOk?: boolean;
+  infoLog?: string;
+  source?: string;
+}) {
+  const calls = { compileShader: 0, linkProgram: 0 };
+  const gl = {
+    COMPILE_STATUS: 0x8b81,
+    LINK_STATUS: 0x8b82,
+    compileShader: () => {
+      calls.compileShader += 1;
+    },
+    linkProgram: () => {
+      calls.linkProgram += 1;
+    },
+    getShaderParameter: () => opts?.compileOk ?? true,
+    getProgramParameter: () => opts?.linkOk ?? true,
+    getShaderInfoLog: () => opts?.infoLog ?? "info log",
+    getProgramInfoLog: () => opts?.infoLog ?? "link failed",
+    getShaderSource: () => opts?.source ?? "void main(){}",
+  } satisfies WebGlShaderContextLike;
+  return { gl, calls };
+}
+
+describe("buildShaderCompileDiagnostic", () => {
+  it("omits raw source by default", () => {
+    const e = buildShaderCompileDiagnostic({
+      infoLog: "ERROR: bad",
+      source: "secret-shader-ip",
+      backend: "webgl2",
+      captureShaderSource: false,
+    });
+    expect(e).toEqual({
+      type: "graphics_diagnostic",
+      severity: "error",
+      category: "shader-compile",
+      backend: "webgl2",
+      message: "ERROR: bad",
+    });
+    expect(e.message).not.toContain("secret-shader-ip");
+  });
+
+  it("includes raw source only when opted in", () => {
+    const e = buildShaderCompileDiagnostic({
+      infoLog: "ERROR: bad",
+      source: "secret-shader-ip",
+      backend: "webgl2",
+      captureShaderSource: true,
+    });
+    expect(e.message).toContain("secret-shader-ip");
+  });
+
+  it("caps message length to the schema limit", () => {
+    const e = buildShaderCompileDiagnostic({
+      infoLog: "x".repeat(5000),
+      captureShaderSource: false,
+    });
+    expect((e.message ?? "").length).toBe(1024);
+  });
+});
+
+describe("wireGlShaderDiagnostics", () => {
+  it("emits nothing when the opt-in flag is off", () => {
+    const { ctx, events } = makeCtx(false);
+    const { gl } = makeGl({ linkOk: false });
+    wireGlShaderDiagnostics(ctx, gl, () => true);
+    gl.linkProgram({});
+    expect(events).toHaveLength(0);
+  });
+
+  it("emits a shader-compile diagnostic on link failure, source redacted by default", () => {
+    const { ctx, events } = makeCtx(true);
+    const { gl } = makeGl({ linkOk: false, infoLog: "LINK ERROR" });
+    wireGlShaderDiagnostics(ctx, gl, () => true);
+    gl.linkProgram({});
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      category: "shader-compile",
+      severity: "error",
+      message: "LINK ERROR",
+    });
+  });
+
+  it("embeds source on compile failure only when the sub-opt-in is set", () => {
+    const on = makeCtx(true, true);
+    const { gl } = makeGl({ compileOk: false, infoLog: "C", source: "MY_SRC" });
+    wireGlShaderDiagnostics(on.ctx, gl, () => true);
+    gl.compileShader({});
+    expect((on.events[0] as { message: string }).message).toContain("MY_SRC");
+
+    const off = makeCtx(true, false);
+    const g2 = makeGl({ compileOk: false, infoLog: "C", source: "MY_SRC" });
+    wireGlShaderDiagnostics(off.ctx, g2.gl, () => true);
+    g2.gl.compileShader({});
+    expect((off.events[0] as { message: string }).message).not.toContain("MY_SRC");
+  });
+
+  it("does not emit on success and detach restores methods", () => {
+    const { ctx, events } = makeCtx(true);
+    const { gl, calls } = makeGl({ linkOk: true });
+    const detach = wireGlShaderDiagnostics(ctx, gl, () => true);
+    gl.linkProgram({});
+    detach();
+    gl.linkProgram({});
+    expect(events).toHaveLength(0);
+    expect(calls.linkProgram).toBe(2);
+  });
+});
+
+describe("wireGpuShaderDiagnostics", () => {
+  it("emits a shader-compile diagnostic for WebGPU compilation errors", async () => {
+    const { ctx, events } = makeCtx(true);
+    const device = {
+      createShaderModule: () => ({
+        getCompilationInfo: async () => ({ messages: [{ type: "error", message: "wgsl bad" }] }),
+      }),
+    } satisfies WebGpuShaderDeviceLike;
+    wireGpuShaderDiagnostics(ctx, device, () => true);
+    device.createShaderModule({ code: "fn main(){}" });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(events[0]).toMatchObject({
+      category: "shader-compile",
+      backend: "webgpu",
+      message: "wgsl bad",
+    });
+  });
+});
+
+describe("wireGlErrorSampling", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("never reads getError synchronously (not per-frame)", () => {
+    const { ctx } = makeCtx(true);
+    let reads = 0;
+    const gl: WebGlErrorContextLike = { getError: () => (reads++, 0) };
+    wireGlErrorSampling(ctx, gl, () => true, { intervalMs: 1000 });
+    expect(reads).toBe(0); // nothing sampled until the timer fires
+  });
+
+  it("rolls up sampled errors into one count-bearing diagnostic", () => {
+    const { ctx, events } = makeCtx(true);
+    const codes = [0x500, 0x501, 0];
+    const gl: WebGlErrorContextLike = { getError: () => codes.shift() ?? 0 };
+    wireGlErrorSampling(ctx, gl, () => true, { intervalMs: 1000 });
+    vi.advanceTimersByTime(1000);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      category: "validation",
+      severity: "warning",
+      count: 2,
+      code: "0x500",
+    });
+  });
+
+  it("emits nothing when off and stops on detach", () => {
+    const off = makeCtx(false);
+    const gl: WebGlErrorContextLike = { getError: () => 0x500 };
+    const noop = wireGlErrorSampling(off.ctx, gl, () => true, { intervalMs: 1000 });
+    vi.advanceTimersByTime(3000);
+    expect(off.events).toHaveLength(0);
+    noop();
   });
 });

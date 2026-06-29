@@ -27,8 +27,17 @@ import {
   wireGpuDeviceLost,
   wireGpuUncapturedError,
   wireContextCreationFailure,
+  wireGlShaderDiagnostics,
+  wireGpuShaderDiagnostics,
+  wireGlErrorSampling,
 } from "@uptimizr/sdk-core";
-import type { GpuDeviceErrorTargetLike, GpuDeviceLostLike } from "@uptimizr/sdk-core";
+import type {
+  GpuDeviceErrorTargetLike,
+  GpuDeviceLostLike,
+  WebGlShaderContextLike,
+  WebGpuShaderDeviceLike,
+  WebGlErrorContextLike,
+} from "@uptimizr/sdk-core";
 import type { Aabb, InputSource } from "@uptimizr/schema";
 import { resolveTrackedCamera } from "./scene.js";
 import { clamp01, toVec3, toQuat } from "./vec.js";
@@ -518,9 +527,11 @@ interface EngineWithContextObservables {
  */
 interface EngineWithWebGpuDevice {
   isWebGPU?: boolean;
-  _device?: GpuDeviceLostLike;
+  _device?: GpuDeviceLostLike & WebGpuShaderDeviceLike;
   /** WebGL major version (1 or 2); `0`/undefined when no GL context was obtained. */
   webGLVersion?: number;
+  /** WebGL rendering context on Babylon's WebGL engine; absent on WebGPU. */
+  _gl?: WebGlShaderContextLike & WebGlErrorContextLike;
 }
 
 /**
@@ -1482,6 +1493,21 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
       // there's nothing to introspect once context creation failed.
       const noWebGlContext = !gpuEngine.isWebGPU && !gpuEngine.webGLVersion;
       wireContextCreationFailure(ctx, { failed: noWebGlContext });
+
+      // Shader compile/link failures + sampled gl.getError → `graphics_diagnostic`
+      // (ADR 0021 part 2). Opt-in (the helpers self-gate on captureGraphicsDiagnostics).
+      // WebGL: wrap the context's compile/link and poll getError on a low-rate timer
+      // (never per-frame — a sync GPU stall is forbidden). WebGPU: wrap the device's
+      // createShaderModule for compilation errors. Raw shader source is stripped unless
+      // captureShaderSource is set. Read structurally to keep `@babylonjs/core` a peer dep.
+      if (gpuEngine.isWebGPU) {
+        if (gpuEngine._device) {
+          engineDetachers.push(wireGpuShaderDiagnostics(ctx, gpuEngine._device, () => !stopped));
+        }
+      } else if (gpuEngine._gl) {
+        engineDetachers.push(wireGlShaderDiagnostics(ctx, gpuEngine._gl, () => !stopped));
+        engineDetachers.push(wireGlErrorSampling(ctx, gpuEngine._gl, () => !stopped));
+      }
 
       // Shader / pipeline compile stalls (#42). Babylon raises a before/after
       // pair around each main-thread shader compilation; we time the outermost

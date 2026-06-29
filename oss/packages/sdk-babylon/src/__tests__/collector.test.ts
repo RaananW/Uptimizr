@@ -1808,6 +1808,66 @@ describe("babylonCollector — resource samples (#44)", () => {
   });
 });
 
+describe("babylonCollector — shader-compile + getError → graphics_diagnostic (#17)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function makeWebGlScene() {
+    const engine = {
+      ...makeEngine(),
+      _gl: {
+        COMPILE_STATUS: 0x8b81,
+        LINK_STATUS: 0x8b82,
+        compileShader: () => {},
+        linkProgram: () => {},
+        getShaderParameter: () => true,
+        getProgramParameter: () => false, // link fails
+        getShaderInfoLog: () => "ERROR",
+        getProgramInfoLog: () => "LINK FAIL",
+        getShaderSource: () => "void main(){}",
+        getError: () => 0,
+      },
+    };
+    const scene = {
+      activeCamera: {
+        globalPosition: { x: 0, y: 0, z: 0 },
+        getForwardRay: () => ({ direction: { x: 0, y: 0, z: 1 } }),
+        getTarget: () => ({ x: 0, y: 0, z: 0 }),
+      },
+      pointerX: 0,
+      pointerY: 0,
+      onPointerObservable: new FakeObservable<unknown>(),
+      onKeyboardObservable: new FakeObservable<unknown>(),
+      onBeforeRenderObservable: new FakeObservable<unknown>(),
+      getEngine: () => engine,
+    };
+    return { scene: scene as unknown as Scene, gl: engine._gl };
+  }
+
+  it("emits shader-compile diagnostic on link failure when enabled (off by default)", () => {
+    const { scene, gl } = makeWebGlScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    gl.linkProgram({});
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags[0]).toMatchObject({
+      category: "shader-compile",
+      severity: "error",
+      message: "LINK FAIL",
+    });
+    handle.stop();
+  });
+
+  it("does nothing when captureGraphicsDiagnostics is off", () => {
+    const { scene, gl } = makeWebGlScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: false });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    gl.linkProgram({});
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+});
+
 describe("readDeviceCaps", () => {
   it("maps a WebGL2 engine into a device block", () => {
     const { scene } = makeScene();
