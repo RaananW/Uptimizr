@@ -56,9 +56,18 @@ client.start();
 ## Engine-side bridge
 
 The bridged tier needs a thin copy-in shim that pushes world-space pose / picks / FPS
-across Unity's JS interop boundary. The contract and a `.jslib` sketch live in
-[`bridge/README.md`](./bridge/README.md). The full shim is authored in the Unity
-web-export sub-issue (umbrella #111).
+across Unity's JS interop boundary. It ships in [`bridge/`](./bridge) as two copy-in
+files:
+
+- **`Uptimizr.jslib`** → copy to `Assets/Plugins/WebGL/Uptimizr.jslib`.
+- **`UptimizrUnityBridge.cs`** → copy under `Assets/` and add the `UptimizrUnityBridge`
+  component to a GameObject (it samples the active `Camera`, raycast picks, and FPS).
+
+Make sure `trackUnity(...)` runs on the host page before the export starts, so the bridge
+global (`window.__uptimizr_unity__`) exists. The shim does **no** coordinate math — it
+pushes Unity's native-frame values and the connector normalizes them. On start it asserts
+the bridge protocol version matches `BRIDGE_PROTOCOL_VERSION` (1). See
+[`bridge/README.md`](./bridge/README.md) for the full contract and the JS API table.
 
 ## Privacy
 
