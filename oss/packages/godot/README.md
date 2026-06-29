@@ -57,9 +57,13 @@ client.start();
 ## Engine-side bridge
 
 The bridged tier needs a thin copy-in shim that pushes world-space pose / picks / FPS
-across Godot's `JavaScriptBridge`. The contract and a GDScript sketch live in
-[`bridge/README.md`](./bridge/README.md). The full shim is authored in the Godot
-web-export sub-issue (umbrella #111).
+across Godot's `JavaScriptBridge`. The package ships ready-to-use autoloads in both
+languages — [`bridge/UptimizrGodot.gd`](./bridge/UptimizrGodot.gd) (GDScript) and
+[`bridge/UptimizrGodot.cs`](./bridge/UptimizrGodot.cs) (C#). Copy one into your Godot 4
+project and register it as an Autoload named `UptimizrGodot` (**Project → Project Settings →
+Globals → Autoload**). It guards on `OS.has_feature("web")`, so it is a no-op outside the
+Web export. Full setup, options, and the bridge contract are in
+[`bridge/README.md`](./bridge/README.md).
 
 ## Privacy
 
