@@ -1,5 +1,22 @@
 # @uptimizr/db-clickhouse
 
+## 0.3.1
+
+### Patch Changes
+
+- d71b284: Roll up the open Dependabot updates into a single dependency bump. Refresh
+  engine peers and tooling (Babylon.js 9.14, Babylon Lite 1.6, three.js 0.185,
+  PlayCanvas 2.20, @clickhouse/client 1.22, fastify-type-provider-zod 7,
+  fastify 5.9, astro 7, @types/node 26, plus the minor/patch group and CI
+  actions). No public API changes. Babylon Lite 1.6 reads WebGPU bitmask
+  globals at import time, so the lite connector's vitest run now stubs those
+  globals via a setup file.
+- Updated dependencies [08c4abd]
+- Updated dependencies [a580f5e]
+- Updated dependencies [c8887f7]
+  - @uptimizr/schema@0.4.0
+  - @uptimizr/db@0.6.0
+
 ## 0.3.0
 
 ### Minor Changes

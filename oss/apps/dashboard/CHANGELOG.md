@@ -1,5 +1,16 @@
 # @uptimizr/dashboard
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [a580f5e]
+- Updated dependencies [c8887f7]
+- Updated dependencies [d71b284]
+  - @uptimizr/react@0.6.0
+  - @uptimizr/replay@0.2.2
+  - @uptimizr/heatmap@0.1.2
+
 ## 0.3.0
 
 ### Minor Changes
