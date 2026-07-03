@@ -52,6 +52,15 @@ test("dashboard renders captured events end to end", async ({ page, request }) =
   // Rendering-performance panel reflects frame_perf samples.
   await expect(page.getByRole("heading", { name: "Rendering performance" })).toBeVisible();
 
+  // FPS-by-device panel surfaces the coarse browser/OS the collector derived from
+  // the request User-Agent at ingestion (#11, ADR 0041). The Playwright runner is
+  // Desktop Chrome, so the derived browser family is "Chrome".
+  const byDevice = page.locator("section", { hasText: "FPS by device" }).first();
+  await byDevice.scrollIntoViewIfNeeded();
+  await expect(byDevice.getByRole("columnheader", { name: "Browser" })).toBeVisible();
+  await expect(byDevice.getByRole("columnheader", { name: "OS" })).toBeVisible();
+  await expect(byDevice.getByRole("cell", { name: "Chrome", exact: true }).first()).toBeVisible();
+
   // 4) The session appears in the sessions table; opening it loads the drill-down.
   const shortId = sessionId.slice(0, 12);
   const sessionCell = page.getByText(shortId, { exact: true }).first();

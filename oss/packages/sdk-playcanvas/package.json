@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/playcanvas",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "PlayCanvas connector for Uptimizr — captures camera, pointer, mesh, and perf events as an sdk-core collector.",
   "keywords": [
     "uptimizr",
@@ -59,7 +59,7 @@
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
-    "playcanvas": "2.19.7",
+    "playcanvas": "2.20.0",
     "vitest": "^4.1.9"
   }
 }

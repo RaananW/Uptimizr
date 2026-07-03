@@ -406,6 +406,10 @@ export interface PerfByDeviceRow {
   engine: string;
   is_mobile: string;
   renderer: string;
+  /** Coarse browser family derived from the User-Agent at ingestion (ADR 0041). */
+  browser: string;
+  /** Coarse OS family derived from the User-Agent at ingestion (ADR 0041). */
+  os: string;
   sessions: number;
   samples: number;
   p50_fps: number;
@@ -436,6 +440,33 @@ export interface StabilityCountRow {
   context_losses: number;
   compile_stalls: number;
   incidents: number;
+}
+
+/**
+ * Opt-in engine-diagnostic counts (ADR 0021 part 2): the crossed
+ * `(severity, category, backend)` group with the rollup-aware incident total.
+ * `backend` is `''` when the connector omitted it.
+ */
+export interface GraphicsDiagnosticCountRow {
+  severity: string;
+  category: string;
+  backend: string;
+  incidents: number;
+}
+
+/**
+ * Always-on rendering-technology mix (ADR 0021 part 1): the crossed
+ * `(api, backend, api_version, shading_language)` group with one session count per
+ * cell, so the dashboard can derive the by-api, by-backend, by-version, and
+ * by-shading-language breakdowns from a single query by summing. Each field is
+ * `''` ("unknown") when the connector omitted it.
+ */
+export interface RenderingTechnologyRow {
+  api: string;
+  backend: string;
+  api_version: string;
+  shading_language: string;
+  sessions: number;
 }
 
 export interface PerfDailyRow {

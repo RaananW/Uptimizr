@@ -19,7 +19,9 @@ import {
  *
  * Event types deliberately out of scope here: WebXR (`xr_*` / immersive) per the
  * task, plus types with no headless trigger (`capability_change`, `asset_load`,
- * `runtime_error`) which are covered by unit/integration tests in their packages.
+ * `runtime_error`, and `graphics_diagnostic` from WebGPU `device.lost` — #20, which
+ * has no deterministic device-loss trigger in headless CI and whose capture matrix
+ * runs WebGL only) which are covered by unit/integration tests in their packages.
  */
 
 // Highly reliable across every connector with all capture toggles on.

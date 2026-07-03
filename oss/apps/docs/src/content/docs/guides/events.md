@@ -77,6 +77,48 @@ client.reportCapabilityChange({ kind: "quality", from: "high", to: "low", reason
 This pairs with the raw [`context_lost` / `context_restored`](/docs/guides/sessions/#engine--browser-lifecycle-events)
 events — it's the higher-level "what we ran as" signal. Read the rollup from `GET /api/v1/capabilities`.
 
+## Rendering technology (always-on)
+
+Each session's `session_start.graphics` block records the rendering API surface (`api`), the real
+backend beneath it (`backend`, e.g. WebGPU → Metal), the API/driver version (`apiVersion`), and the
+`shadingLanguage` — captured once per session as non-PII, low-cardinality metadata (ADR 0021 /
+ADR 0046). It is **always-on**: every connector reports it, so no opt-in is needed.
+
+The dashboard's **Rendering technology** panel aggregates the mix across the selected window — counts
+by API, backend, and shading language — backed by `GET /api/v1/rendering-technology`, the always-on
+sibling of the opt-in Engine diagnostics panel. Blank fields surface as "unknown".
+
+## Engine diagnostics (opt-in GPU health)
+
+`graphics_diagnostic` carries engine-authored GPU-health signals — GPU errors/warnings,
+shader-compile/link failures, richer context-loss reasons, WebGPU `uncapturederror`, and sampled
+`gl.getError()` — in one engine-agnostic shape (`severity`, `category`, optional `backend`,
+length-capped `message`/`code`, and a `count` rollup-or-marker discriminator).
+
+It is **off by default** and gated by the `captureGraphicsDiagnostics`
+[option](/docs/guides/configuration/) — like `runtime_error`, the text can leak application IP, so
+you opt in and redact via `beforeSend`. The default emission is a rate-limited per-session rollup so
+an error storm can't flood ingestion. `context_lost` / `context_restored` are exempt and stay
+always-on; engine-driven backend fallback stays in `capability_change` above.
+
+Once captured, these incidents surface in the dashboard's **Engine diagnostics** panel — counts by
+severity, category, and backend — backed by `GET /api/v1/graphics-diagnostics`, which folds discrete
+markers and per-session rollups into one honest total. With capture off, the panel shows an explicit
+opt-in empty state rather than reading as broken.
+
+> **Wired today** in the Babylon (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors:
+> WebGPU `device.lost` → `category: device-lost` (`info` for a requested loss,
+> `reason: "destroyed"`; `fatal` otherwise; WebGL is a no-op — its interruption is the always-on
+> `context_lost`); WebGPU `uncapturederror` → a rate-limited rollup (`category: validation` /
+> `out-of-memory`, `count` + first `message`); WebGL/WebGPU **context-creation failure** →
+> `category: context-loss` (`severity: fatal`, `backend: unknown` when undetermined; fires once at
+> connector init and queues before the first flush); shader compile/link **failures** → `category:
+shader-compile` (`error`; WebGL info logs on failure, WebGPU shader-module compilation info); and
+> sampled WebGL `gl.getError()` → `category: validation` (a low-rate rollup, never per-frame — it
+> forces a sync GPU stall; no-op on WebGPU). Shader source can hide in the error log, so raw source
+> is stripped unless the separate `captureShaderSource` sub-opt-in is set (off by default —
+> application IP). All length-capped text runs through `beforeSend`.
+
 ## Changing scenes / levels (`setScene`)
 
 A single session can span multiple scenes, areas, or levels — game levels, a viewer swapping models,

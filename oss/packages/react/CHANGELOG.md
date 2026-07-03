@@ -1,5 +1,59 @@
 # @uptimizr/react
 
+## 0.6.0
+
+### Minor Changes
+
+- a580f5e: Surface opt-in engine diagnostics in the dashboard (#16, ADR 0021 part 2). Adds a
+  dialect-agnostic `buildGraphicsDiagnosticCounts(projectId, opts, dialect)` aggregation to
+  `@uptimizr/db` that rolls `graphics_diagnostic` events up into `(severity, category, backend)`
+  incident counts, folding discrete markers (no `count`) and per-session rollups (`count: N`)
+  honestly as `SUM(COALESCE(count, 1))`. The fields ride in stored JSON (nothing promoted to a
+  column), so extraction goes through the existing `jsonText` helper plus a new nullable
+  `Dialect.jsonInt(column, ...path)` so the `count` cast stays identical across DuckDB and
+  ClickHouse (covered by a `PARITY_CASES` entry).
+
+  `@uptimizr/react` gains a `graphicsDiagnosticCounts()` query-client method (and
+  `GraphicsDiagnosticCount` type) hitting the new `GET /api/v1/graphics-diagnostics` collector
+  endpoint. Capture is off by default, so the new dashboard "Engine diagnostics" panel shows an
+  explicit opt-in empty state until `captureGraphicsDiagnostics` is enabled.
+
+- c8887f7: Surface the always-on rendering-technology mix in the dashboard (#120, ADR 0021 part 1). Adds a
+  dialect-agnostic `buildRenderingTechnology(projectId, opts, dialect)` aggregation to `@uptimizr/db`
+  that rolls `session_start.graphics` up into `(api, backend, api_version, shading_language)` session
+  counts. The fields ride in stored JSON (nothing promoted to a column), so extraction goes through the
+  existing `jsonText` helper and blanks coalesce to `''` ("unknown"), covered by a `PARITY_CASES`
+  entry. Unlike the opt-in engine-diagnostics rollup this is always-on, so a populated result is the
+  common case.
+
+  `@uptimizr/react` gains a `renderingTechnology()` query-client method (and `RenderingTechnologyCount`
+  type) hitting the new `GET /api/v1/rendering-technology` collector endpoint, powering the new
+  dashboard "Rendering technology" panel beside Engine diagnostics — sessions broken down by API,
+  backend, and shading language with no opt-in empty state.
+
+## 0.5.0
+
+### Minor Changes
+
+- fa6c472: Add a browser/OS performance segment derived from the request User-Agent at
+  ingestion (#11). The collector reduces the User-Agent to a coarse, non-PII
+  `{ browser, os }` pair (raw UA never stored) and merges it into
+  `session_start.device`; `buildPerfByDevice` and the dashboard "FPS by device"
+  panel now segment per-session median FPS by browser/OS in addition to graphics
+  backend, mobile flag, and GPU renderer. No SDK, schema-capture, or storage
+  migration change (ADR 0041).
+- ad8addf: feat(dashboard): runtime/remote panel loading (#61)
+
+  The dashboard can now discover and load panels from a remote manifest at runtime — behind the same
+  `PanelDefinition` contract — so self-hosters add panels without rebuilding. `@uptimizr/react` gains
+  `PANEL_CONTRACT_VERSION` and a framework-agnostic loader (`fetchPanelManifest`, `loadRemotePanels`,
+  `mergePanels`, plus manifest/definition guards) with contract-version gating, an optional origin
+  allowlist, and per-entry error isolation. The dashboard reads `NEXT_PUBLIC_PANELS_MANIFEST_URL`
+  (and optional `NEXT_PUBLIC_PANELS_ALLOWED_ORIGINS`), merges remote panels with the built-ins,
+  surfaces load failures in a banner, and hardens `PanelHost` with a guarded `enabled()` and a
+  per-panel render error boundary so a misbehaving panel never breaks the grid. Off by default;
+  build-time registration is unchanged.
+
 ## 0.4.0
 
 ### Minor Changes

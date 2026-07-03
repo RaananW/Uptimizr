@@ -13,6 +13,9 @@ import type {
   SessionUser,
 } from "@uptimizr/schema";
 
+import type { AggregatorConfig } from "./aggregation/aggregator.js";
+import type { Snapshot } from "./aggregation/snapshot.js";
+
 /**
  * Envelope fields the client fills in automatically. Collectors and callers only
  * provide the event `type` and its payload — never these.
@@ -100,6 +103,19 @@ export interface CollectorContext {
   reportCapabilityChange(change: CapabilityChangeReport): void;
   /** Switch the active scene/area (ADR 0010); emits a `scene_change` marker. */
   setScene(sceneId: string): void;
+  /**
+   * Register an aggregation channel for the offload-eligible per-frame math
+   * (ADR 0031 follow-up, #10) and obtain a `snapshot` emitter. A connector calls
+   * this once at start with its resolved capture config; per frame it then hands
+   * raw, plain-number {@link Snapshot} DTOs to the returned function instead of
+   * aggregating inline. The client routes them to a main-thread or worker-resident
+   * {@link Aggregator} per the `offload` config; finalized events are always
+   * emitted (and queued/flushed) on the main thread.
+   *
+   * High-volume channels (node/bone matrices, visibility ticks) are
+   * typed-array-backed so they move to the worker zero-copy.
+   */
+  createAggregation(config: AggregatorConfig): (snapshot: Snapshot) => void;
   /** Current timestamp in epoch ms (overridable for testing). */
   now(): number;
 }
@@ -180,6 +196,28 @@ export interface UptimizrConfig {
    * at most 50 are emitted per session.
    */
   captureErrors?: boolean;
+  /**
+   * Capture opt-in **engine diagnostics** (GPU-health signals) as
+   * `graphics_diagnostic` events — GPU errors/warnings, shader-compile failures,
+   * richer context-loss reasons, WebGPU `uncapturederror`, and sampled
+   * `gl.getError()` (ADR 0021 part 2). **Off by default**, mirroring
+   * `captureErrors`: the signals can be high-volume and their text can leak
+   * application IP, so the deployer opts in and redacts via `beforeSend`.
+   *
+   * This is the single shared gate the engine connectors read to decide whether to
+   * wire their backend-specific capture. It does **not** affect `context_lost` /
+   * `context_restored`, which are always-on and exempt from the opt-in.
+   */
+  captureGraphicsDiagnostics?: boolean;
+  /**
+   * Sub-opt-in to `captureGraphicsDiagnostics`: include **raw shader source** in
+   * shader-compile diagnostics (ADR 0021 part 2). **Off by default** — shader
+   * source is application IP, so even with diagnostics enabled the engine's
+   * compile/link error text is stripped of embedded source unless this is set.
+   * Length-capped and still passes through `beforeSend` when on. No effect when
+   * `captureGraphicsDiagnostics` is off.
+   */
+  captureShaderSource?: boolean;
   /** Emit debug logs to the console. */
   debug?: boolean;
 }
@@ -197,6 +235,8 @@ export interface ResolvedConfig {
   captureLifecycle: boolean;
   resizeDebounceMs: number;
   captureErrors: boolean;
+  captureGraphicsDiagnostics: boolean;
+  captureShaderSource: boolean;
   debug: boolean;
 }
 

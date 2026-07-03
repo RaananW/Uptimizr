@@ -208,16 +208,17 @@ So the timeline reflects everything happening around the scene — not just came
 and pointer activity — the SDK also records these discrete lifecycle events
 (privacy-safe: dimensions, booleans, and enum states only):
 
-| Event               | Source              | When                                                                                |
-| ------------------- | ------------------- | ----------------------------------------------------------------------------------- |
-| `viewport_resize`   | `sdk-core`          | Window resized (debounced) + once at session start.                                 |
-| `focus_change`      | `sdk-core`          | Window gained/lost focus (`{ focused }`).                                           |
-| `visibility_change` | `sdk-core`          | Tab shown/hidden (`{ state: "visible" \| "hidden" }`).                              |
-| `context_lost`      | `@uptimizr/babylon` | Engine lost its GPU context (rendering suspended).                                  |
-| `context_restored`  | `@uptimizr/babylon` | Engine recovered its GPU context.                                                   |
-| `compile_stall`     | `@uptimizr/babylon` | Main-thread shader/pipeline compilation hitch (`durationMs`, `phase`).              |
-| `capability_change` | _app-reported_      | Fallback/recovery transition (`kind`, `from`, `to`, `reason`) — e.g. WebGPU→WebGL2. |
-| `runtime_error`     | `sdk-core`          | Uncaught JS error / unhandled promise rejection (opt-in).                           |
+| Event                 | Source              | When                                                                                                                                                                                                                                                   |
+| --------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `viewport_resize`     | `sdk-core`          | Window resized (debounced) + once at session start.                                                                                                                                                                                                    |
+| `focus_change`        | `sdk-core`          | Window gained/lost focus (`{ focused }`).                                                                                                                                                                                                              |
+| `visibility_change`   | `sdk-core`          | Tab shown/hidden (`{ state: "visible" \| "hidden" }`).                                                                                                                                                                                                 |
+| `context_lost`        | `@uptimizr/babylon` | Engine lost its GPU context (rendering suspended).                                                                                                                                                                                                     |
+| `context_restored`    | `@uptimizr/babylon` | Engine recovered its GPU context.                                                                                                                                                                                                                      |
+| `compile_stall`       | `@uptimizr/babylon` | Main-thread shader/pipeline compilation hitch (`durationMs`, `phase`).                                                                                                                                                                                 |
+| `capability_change`   | _app-reported_      | Fallback/recovery transition (`kind`, `from`, `to`, `reason`) — e.g. WebGPU→WebGL2.                                                                                                                                                                    |
+| `runtime_error`       | `sdk-core`          | Uncaught JS error / unhandled promise rejection (opt-in).                                                                                                                                                                                              |
+| `graphics_diagnostic` | engine connector    | Opt-in GPU-health signal — today: WebGPU `device.lost` (`category: device-lost`), `uncapturederror` rollup (`validation`/`out-of-memory`), and context-creation failure (`category: context-loss`, `fatal`). Babylon + three; WebGL device-loss no-op. |
 
 The generic browser events are captured by `sdk-core` and controlled by
 `captureLifecycle` (default `true`); `viewport_resize` is debounced by
@@ -266,10 +267,57 @@ browser. To limit
 noisy loops, consecutive identical `message`+`stack` errors are de-duplicated and
 capture is capped at 50 events per session.
 
+#### Engine diagnostics (opt-in)
+
+`graphics_diagnostic` capture is **off by default** and gated by
+`captureGraphicsDiagnostics` ([ADR 0021](./adr/0021-graphics-backend-and-engine-diagnostics.md)).
+It carries engine-authored GPU-health signals — GPU errors/warnings, shader-compile/link
+failures, richer context-loss reasons, WebGPU `uncapturederror`, and sampled
+`gl.getError()` — in one engine-agnostic shape:
+
+```jsonc
+{
+  "type": "graphics_diagnostic",
+  "severity": "error", // info | warning | error | fatal
+  "category": "validation", // context-loss | validation | out-of-memory | shader-compile | device-lost | fallback
+  "backend": "webgpu", // optional; reuses the graphics.api enum
+  "message": "…", // optional, ≤ 1024 chars
+  "code": "…", // optional, ≤ 64 chars (e.g. GL error / GPUError subtype)
+  "count": 12, // optional: present ⇒ per-session rollup of N incidents; absent ⇒ one discrete marker
+}
+```
+
+Like error capture, the text can leak application IP (shader source, driver
+strings), so it is opt-in and **not auto-redacted** — sanitize via
+[`beforeSend`](#advanced-setup-custom-client-beforesend). The default emission is a
+rate-limited **per-session rollup** (`count` + first `message`) so an error storm can't
+flood ingestion; discrete markers are the high-fidelity opt-in. `context_lost` /
+`context_restored` are exempt and stay always-on, and the `fallback` category stays in the
+app-reported `capability_change` event (it is reserved here, never emitted by a connector).
+
+> Capture wiring per signal lands incrementally in the engine connectors. **Wired
+> today** in the Babylon (`@uptimizr/babylon`) and three (`@uptimizr/three`) connectors:
+> WebGPU `device.lost` → `category: device-lost` (`info` for a requested
+> loss, `reason: "destroyed"`; `fatal` otherwise; WebGL is a no-op — its interruption is
+> the always-on `context_lost`); WebGPU `uncapturederror` → rate-limited rollup
+> (`category: validation` / `out-of-memory`, `count` + first `message`); WebGL/WebGPU
+> **context-creation failure** → `category: context-loss` (`severity: fatal`, `backend: unknown`
+> when undetermined; fires once at connector init and queues before the first flush); shader
+> compile/link **failures** → `category: shader-compile` (`error`; WebGL
+> `getShaderInfoLog`/`getProgramInfoLog` on failure, WebGPU shader-module `getCompilationInfo`);
+> and sampled WebGL `gl.getError()` → `category: validation` (low-rate **rollup**, never per-frame
+> — `getError` forces a sync GPU stall; no-op on WebGPU). **Shader source redaction:** the info log
+> can embed shader source, so raw source is stripped unless the separate `captureShaderSource`
+> sub-opt-in is set (off by default — application IP, ADR 0021).
+
 ### Session context (`meta`, `sceneDescription`, `user`)
 
 `trackScene` attaches context to the one-time `session_start` event. `device` and
-`scene` are auto-detected from Babylon; you supply the rest. There are three
+`scene` are auto-detected from Babylon; you supply the rest. The collector also
+**derives a coarse `device.browser` / `device.os`** from the request User-Agent at
+ingestion (e.g. `Chrome` / `Windows`) and merges them into the `device` block — a
+non-PII, server-authoritative segment for the performance panels; the raw
+User-Agent is never stored (ADR 0003 / ADR 0042). There are three
 inputs, all optional:
 
 - **`sceneDescription`** — a free-text label for the experience, merged into the
@@ -530,22 +578,25 @@ and/or raise the sampling rate; to dedupe a stable FPS, set
 
 ### Channel toggles (`capture`) and delivery
 
-| Option                                                                                                          | Default      | Effect                                                                                                                                                                                               |
-| --------------------------------------------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `capture.camera` / `pointerMove` / `clicks` / `buttons` / `meshPicks` / `perf` / `contextLoss` / `compileStall` | all `true`   | Enable/disable individual channels.                                                                                                                                                                  |
-| `captureLifecycle`                                                                                              | `true`       | Emit `viewport_resize` / `focus_change` / `visibility_change`.                                                                                                                                       |
-| `resizeDebounceMs`                                                                                              | `250`        | Debounce window for `viewport_resize`.                                                                                                                                                               |
-| `captureErrors`                                                                                                 | `false`      | Opt-in `runtime_error` capture (ADR 0013); not auto-redacted.                                                                                                                                        |
-| `meshVisibility`                                                                                                | _off_        | Opt-in object-dwell capture (`mesh_visibility`, ADR 0003). Pass an options object to enable; off by default for privacy. See below.                                                                  |
-| `hoverDwell`                                                                                                    | _off_        | Opt-in hover-hesitation capture (`hover_dwell`, ADR 0003). Enable `capture.hoverDwell` and (optionally) pass an options object; off by default for privacy. See below.                               |
-| `resourceSample`                                                                                                | _off_        | Opt-in GPU/memory footprint capture (`resource_sample`, ADR 0003). Enable `capture.resourceSample` and (optionally) pass a `resourceSample` options object; off by default. See below.               |
-| `gaze`                                                                                                          | _off_        | Opt-in world-space gaze capture (`camera_sample.hitPoint` / `hitMesh`, ADR 0030). Enable `capture.gaze` and (optionally) pass a `gaze` options object; off by default for privacy + cost. See below. |
-| `jankFrameMs`                                                                                                   | `50`         | A rendered frame slower than this counts toward `frame_perf.longFrames`.                                                                                                                             |
-| `flushIntervalMs`                                                                                               | `5000`       | Max time between network flushes. `0` disables the timer.                                                                                                                                            |
-| `transport`                                                                                                     | beacon→fetch | Custom delivery (e.g. to observe sends).                                                                                                                                                             |
-| `disabled`                                                                                                      | `false`      | Collect nothing (e.g. honor Do-Not-Track).                                                                                                                                                           |
-| `debug`                                                                                                         | `false`      | Console debug logs.                                                                                                                                                                                  |
-| `sceneDescription`, `user`, `meta`                                                                              | —            | Extra `session_start` context.                                                                                                                                                                       |
+| Option                                                                                                          | Default      | Effect                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `capture.camera` / `pointerMove` / `clicks` / `buttons` / `meshPicks` / `perf` / `contextLoss` / `compileStall` | all `true`   | Enable/disable individual channels.                                                                                                                                                                                                                                                                                                                          |
+| `captureLifecycle`                                                                                              | `true`       | Emit `viewport_resize` / `focus_change` / `visibility_change`.                                                                                                                                                                                                                                                                                               |
+| `resizeDebounceMs`                                                                                              | `250`        | Debounce window for `viewport_resize`.                                                                                                                                                                                                                                                                                                                       |
+| `captureErrors`                                                                                                 | `false`      | Opt-in `runtime_error` capture (ADR 0013); not auto-redacted.                                                                                                                                                                                                                                                                                                |
+| `captureGraphicsDiagnostics`                                                                                    | `false`      | Opt-in engine `graphics_diagnostic` capture (ADR 0021); not auto-redacted. Gates GPU-health signals; `context_lost`/`context_restored` stay always-on.                                                                                                                                                                                                       |
+| `captureShaderSource`                                                                                           | `false`      | Sub-opt-in to `captureGraphicsDiagnostics`: include raw shader source in shader-compile diagnostics. Off by default — shader source is application IP (ADR 0021); even with diagnostics on, source is stripped unless this is set. Still length-capped + passes through `beforeSend`.                                                                        |
+| `meshVisibility`                                                                                                | _off_        | Opt-in object-dwell capture (`mesh_visibility`, ADR 0003). Pass an options object to enable; off by default for privacy. See below.                                                                                                                                                                                                                          |
+| `hoverDwell`                                                                                                    | _off_        | Opt-in hover-hesitation capture (`hover_dwell`, ADR 0003). Enable `capture.hoverDwell` and (optionally) pass an options object; off by default for privacy. See below.                                                                                                                                                                                       |
+| `resourceSample`                                                                                                | _off_        | Opt-in GPU/memory footprint capture (`resource_sample`, ADR 0003). Enable `capture.resourceSample` and (optionally) pass a `resourceSample` options object; off by default. See below.                                                                                                                                                                       |
+| `gaze`                                                                                                          | _off_        | Opt-in world-space gaze capture (`camera_sample.hitPoint` / `hitMesh`, ADR 0030). Enable `capture.gaze` and (optionally) pass a `gaze` options object; off by default for privacy + cost. See below.                                                                                                                                                         |
+| `jankFrameMs`                                                                                                   | `50`         | A rendered frame slower than this counts toward `frame_perf.longFrames`.                                                                                                                                                                                                                                                                                     |
+| `flushIntervalMs`                                                                                               | `5000`       | Max time between network flushes. `0` disables the timer.                                                                                                                                                                                                                                                                                                    |
+| `transport`                                                                                                     | beacon→fetch | Custom delivery (e.g. to observe sends).                                                                                                                                                                                                                                                                                                                     |
+| `offload`                                                                                                       | `main`       | `"worker"` moves per-frame aggregation (percentiles, transform decomposition, visibility bucketing, idle-diffs, gesture classification) + serialization off the render thread into an opt-in same-origin worker; engine reads and the terminal unload flush stay main-thread. Opt-in, byte-for-byte identical output, silent fallback (ADR 0031 / ADR 0044). |
+| `disabled`                                                                                                      | `false`      | Collect nothing (e.g. honor Do-Not-Track).                                                                                                                                                                                                                                                                                                                   |
+| `debug`                                                                                                         | `false`      | Console debug logs.                                                                                                                                                                                                                                                                                                                                          |
+| `sceneDescription`, `user`, `meta`                                                                              | —            | Extra `session_start` context.                                                                                                                                                                                                                                                                                                                               |
 
 ### Object dwell (`meshVisibility`) — opt-in
 
@@ -695,7 +746,13 @@ percentiles and render resolution measured over the sampling window:
 | `renderScale`                      | Engine hardware-scaling factor (`1` = native, `<1` = downscaled). |
 
 `asset_load` likewise carries an optional `ttiMs` (time-to-interactive for the
-asset) alongside `loadMs`/`ttffMs`.
+asset) alongside `loadMs`/`ttffMs`. The **PlayCanvas** connector emits `asset_load`
+automatically by hooking the `app.assets` registry load lifecycle (name + `loadMs`,
+and `bytes` when known; on by default, disable via `capture.assetLoad`). Other
+connectors leave `asset_load` to the host app — emit it on the `UptimizrClient`
+when your loader finishes. See
+[Connectors → asset-load capture](/docs/connectors/overview/#asset-load-capture-asset_load)
+for the per-engine parity table.
 
 ### Pointer lock (first-person / FPS scenes)
 
@@ -1016,7 +1073,7 @@ correctly). The dashboard's 3D world heatmap also normalizes color/size to the
 | `GET`  | `/api/v1/heatmaps/gaze/stats`     | Gaze-heatmap totals (ADR 0040 §3): `{ cellSize, cells, hits }` — the gaze sibling of `/heatmaps/world/stats`.                                                                                                                                                                                                                                                                                                                       | `cellSize`, `region`, `scene`, `session`, `cameraMode`                                        |
 | `GET`  | `/api/v1/heatmaps/camera`         | View-direction heatmap (spherical bins).                                                                                                                                                                                                                                                                                                                                                                                            | `bins`, `scene`, `session`, `cameraMode`                                                      |
 | `GET`  | `/api/v1/heatmaps/position`       | Top-down floor-plan camera-position heatmap (ADR 0026): `camera_sample` positions binned on the X/Z ground plane (`gx,gz,avg_y,count`). First-person analog of the pointer heatmap.                                                                                                                                                                                                                                                 | `cellSize`, `region`, `scene`, `session`, `cameraMode`                                        |
-| `GET`  | `/api/v1/heatmaps/click-rays`     | Click rays: pose sources (XR/hand/gaze) use their own ray origin; flat pointers fall back to the nearest camera sample, per voxel/mesh.                                                                                                                                                                                                                                                                                             | `cellSize`, `scene`, `source`, `session`                                                      |
+| `GET`  | `/api/v1/heatmaps/click-rays`     | Click rays: pose sources (XR/hand/gaze) use their own ray origin; flat pointers (mouse/touch/stylus) reconstruct the ray origin by unprojecting the click's `screen` onto the camera's near plane (using the `camera_sample` `fov`/`aspect`/`near` intrinsics), falling back to the nearest camera-sample position when those intrinsics are absent or the view basis is degenerate. Per voxel/mesh.                                | `cellSize`, `scene`, `source`, `session`                                                      |
 | `GET`  | `/api/v1/heatmaps/flow`           | Aggregate gaze→mesh flow links: direction-bin to clicked-mesh counts (no timeline required). Position-aware mode (§7.8) restores the click-time camera **standpoint**: pass `groupByOrigin=true` to also bin by standpoint voxel, or `originVoxel=vx,vy,vz` to scope to one standpoint — rows then carry `origin_vx/vy/vz` and averaged `origin_x/y/z`. Most useful for first-person/walkable scenes (pair with `cameraMode`).      | `bins`, `limit`, `scene`, `session`, `cellSize`, `groupByOrigin`, `originVoxel`, `cameraMode` |
 | `GET`  | `/api/v1/meshes/top`              | Most-interacted meshes.                                                                                                                                                                                                                                                                                                                                                                                                             | `limit`, `session`                                                                            |
 | `GET`  | `/api/v1/meshes/sources`          | Part-popularity source split (#74): per `(mesh, source)` `count` — which input source (mouse/touch/XR/…) drove each mesh's interactions. Scoped to **active interactions** (`mesh_interaction` + `pointer_click`), so passive gaze hits are excluded — this diverges from `/meshes/top`, which counts every mesh-referencing event. The leaderboard reads both rank (sum across sources) and the per-row split from this one query. | `limit`, `scene`, `source`, `session`                                                         |
@@ -1031,6 +1088,8 @@ correctly). The dashboard's 3D world heatmap also normalizes color/size to the
 | `GET`  | `/api/v1/perf/render-scale`       | Render-scale truth from `frame_perf`: `samples`, avg/p50 `fps`, avg/p50 `render_scale`, `downscaled_samples`, `scale_samples` — reveals FPS bought by dynamic downscaling rather than real headroom (#71).                                                                                                                                                                                                                          | `session`                                                                                     |
 | `GET`  | `/api/v1/perf/resources`          | GPU/memory footprint summary from `resource_sample`: `samples` plus avg/max `js_heap_bytes`, `triangles`, `vertices`, `texture_bytes`, `geometry_bytes` (averages skip unreported metrics).                                                                                                                                                                                                                                         | `session`                                                                                     |
 | `GET`  | `/api/v1/capabilities`            | Capability fallbacks/recoveries from `capability_change`: per `(kind, from, to)` `changes` count (e.g. how many sessions fell back WebGPU→WebGL2).                                                                                                                                                                                                                                                                                  | `limit`, `scene`, `session`                                                                   |
+| `GET`  | `/api/v1/graphics-diagnostics`    | Opt-in GPU-health rollup from `graphics_diagnostic`: per `(severity, category, backend)` `incidents` count. Folds discrete markers (no `count`) and per-session rollups (`count: N`) honestly as `SUM(COALESCE(count, 1))` (ADR 0021). Capture is **off by default**, so this is empty unless `captureGraphicsDiagnostics` is enabled. Powers the dashboard "Engine diagnostics" panel.                                             | `scene`, `session`                                                                            |
+| `GET`  | `/api/v1/rendering-technology`    | Always-on rendering-technology mix from `session_start.graphics`: per `(api, backend, api_version, shading_language)` `sessions` count. Captured once per session and always on (ADR 0021 / ADR 0046), so a populated result is the common case; blank fields surface as "unknown". Powers the dashboard "Rendering technology" panel.                                                                                              | `scene`, `session`                                                                            |
 | `GET`  | `/api/v1/camera-gestures`         | Camera-navigation breakdown from `camera_gesture`: per-`kind` (orbit/pan/dolly/zoom/roll/fly) `gestures`, `total_ms`, `avg_ms`, `max_ms` (deliberate viewpoint movement, separated from object selection).                                                                                                                                                                                                                          | `limit`, `scene`, `source`, `session`                                                         |
 | `GET`  | `/api/v1/coverage`                | Scene coverage / dead zones: occupied camera-position voxels (`vx,vy,vz,count`) from `camera_sample`.                                                                                                                                                                                                                                                                                                                               | `cellSize`, `scene`, `source`, `session`                                                      |
 | `GET`  | `/api/v1/camera/distance`         | Camera distance / zoom: histogram of camera-to-center distance (`bucket`, `count`).                                                                                                                                                                                                                                                                                                                                                 | `centerX/Y/Z`, `bucketSize`, `scene`, `source`, `session`                                     |
@@ -1207,6 +1266,43 @@ where `event.sessionId === ctx.sessionId`.
 Panels are registered at **build time** by appending to the `builtinPanels` array in
 the dashboard's `src/panels/registry.tsx`; the `PanelHost` filters by surface and each
 panel's `enabled` gate and renders the bodies into the grid — no manual placement in
-`page.tsx`. Loading panels from a remote URL at runtime is tracked for a future
-release. See the [Custom dashboard panels guide](https://uptimizr.com/docs/guides/custom-panels/)
-for a full walkthrough.
+`page.tsx`.
+
+### Loading panels at runtime (ADR 0041)
+
+The dashboard can also discover and load panels from a **remote manifest at runtime**, so a
+self-hoster adds a panel without rebuilding. It uses the same `PanelDefinition` contract — a panel
+module you can `import()` in the browser. Runtime loading is **off by default**; enable it with a
+build-time env var:
+
+```bash
+# One manifest, or a comma-separated list.
+NEXT_PUBLIC_PANELS_MANIFEST_URL="https://panels.example.com/uptimizr.panels.json"
+# Optional comma-separated allowlist of module origins.
+NEXT_PUBLIC_PANELS_ALLOWED_ORIGINS="https://panels.example.com"
+```
+
+A manifest lists panel modules and the contract major each targets
+(`PANEL_CONTRACT_VERSION` from `@uptimizr/react`):
+
+```json
+{
+  "version": 1,
+  "panels": [
+    {
+      "id": "co2-budget",
+      "url": "https://panels.example.com/co2-budget.js",
+      "contract": 1,
+      "export": "default"
+    }
+  ]
+}
+```
+
+Remote panels execute **with the dashboard's full privileges** (no iframe/worker sandbox — that
+would break the rich `PanelContext`), so only point the manifest at sources you trust; the origin
+allowlist is a guardrail, not a sandbox. Loading is resilient: an unreachable/invalid manifest, an
+incompatible `contract`, a blocked origin, a failed import, or a throwing `render` is isolated per
+panel and surfaced in a "panels failed to load" banner without breaking the grid. See the
+[Custom dashboard panels guide](https://uptimizr.com/docs/guides/custom-panels/) for a full
+walkthrough.

@@ -43,6 +43,31 @@ describe("toEventRow", () => {
     expect(row.ts).toBe("2024-06-16 10:00:00.123");
   });
 
+  it("promotes camera_sample projection intrinsics into their columns (#22)", () => {
+    const row = toEventRow(
+      event({
+        type: "camera_sample",
+        position: [1, 2, 3],
+        direction: [0, 0, 1],
+        fov: 1.2,
+        aspect: 1.6,
+        near: 0.1,
+      }),
+    );
+    expect(row.fov).toBeCloseTo(1.2);
+    expect(row.aspect).toBeCloseTo(1.6);
+    expect(row.near).toBeCloseTo(0.1);
+  });
+
+  it("defaults missing camera intrinsics to 0 (#22)", () => {
+    const row = toEventRow(
+      event({ type: "camera_sample", position: [1, 2, 3], direction: [0, 0, 1] }),
+    );
+    expect(row.fov).toBe(0);
+    expect(row.aspect).toBe(0);
+    expect(row.near).toBe(0);
+  });
+
   it("maps pointer screen and hit mesh", () => {
     const row = toEventRow(
       event({

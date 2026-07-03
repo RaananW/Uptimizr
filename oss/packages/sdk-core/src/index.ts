@@ -26,7 +26,62 @@ export {
 } from "./coordinates.js";
 export { decomposeWorldMatrix } from "./matrix.js";
 export type { DecomposedTransform } from "./matrix.js";
+export {
+  createAggregator,
+  collectSnapshotTransferables,
+  percentileAsc,
+  visibilityContribution,
+  aabbClose,
+  roundAabb,
+  vec3Close,
+  poseUnchanged,
+  nodeSampleUnchanged,
+  clamp01,
+} from "./aggregation/index.js";
+export type {
+  Aggregator,
+  AggregatorConfig,
+  AggregatorOptions,
+  Snapshot,
+  SnapshotChannel,
+  CameraSnapshot,
+  PerfSnapshot,
+  NodeSnapshot,
+  VisibilityMeshObservation,
+  VisibilityTickSnapshot,
+  VisibilityFlushSnapshot,
+  GestureSnapshot,
+  HoverSnapshot,
+  VisibilityContribution,
+  CameraPose,
+  NodeSample,
+} from "./aggregation/index.js";
 export { xrSource, xrHandedness } from "./xrInput.js";
+export {
+  wireGpuDeviceLost,
+  wireGpuUncapturedError,
+  wireContextCreationFailure,
+  wireGlShaderDiagnostics,
+  wireGpuShaderDiagnostics,
+  wireGlErrorSampling,
+  buildShaderCompileDiagnostic,
+  createDiagnosticRollup,
+} from "./graphicsDiagnostics.js";
+export type {
+  GpuDeviceLostLike,
+  GpuDeviceLostInfoLike,
+  WireGpuDeviceLostOptions,
+  GpuErrorLike,
+  GpuDeviceErrorTargetLike,
+  WireGpuUncapturedErrorOptions,
+  ContextCreationProbe,
+  DiagnosticRollup,
+  ShaderDiagnosticsOptions,
+  GlErrorSamplingOptions,
+  WebGlShaderContextLike,
+  WebGpuShaderDeviceLike,
+  WebGlErrorContextLike,
+} from "./graphicsDiagnostics.js";
 
 export type {
   Collector,
@@ -43,6 +98,8 @@ export type {
 } from "./types.js";
 
 export type { Processor, WorkerLike, WorkerFactory, WorkerProcessorOptions } from "./processor.js";
+export { createMainSink, createWorkerAggregationSink } from "./aggregationSink.js";
+export type { AggregationSink, WorkerAggregationSinkOptions } from "./aggregationSink.js";
 
 export type {
   SampleRate,

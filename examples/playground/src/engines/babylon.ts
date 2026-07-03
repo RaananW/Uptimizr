@@ -195,6 +195,7 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
       endpoint: ctx.collectorUrl,
       flushIntervalMs: 3000,
       transport: ctx.transport,
+      ...(ctx.offload ? { offload: ctx.offload } : {}),
       sampling: {
         camera: 10,
         pointerMove: 30,

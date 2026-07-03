@@ -144,6 +144,26 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
       },
     ],
     stabilityCounts: async () => [{ context_losses: 1, compile_stalls: 2, incidents: 3 }],
+    graphicsDiagnosticCounts: async () => [
+      { severity: "fatal", category: "device-lost", backend: "webgpu", incidents: 2 },
+      { severity: "warning", category: "validation", backend: "webgl2", incidents: 5 },
+    ],
+    renderingTechnology: async () => [
+      {
+        api: "webgpu",
+        backend: "metal",
+        api_version: "1.0",
+        shading_language: "wgsl",
+        sessions: 7,
+      },
+      {
+        api: "webgl2",
+        backend: "opengl",
+        api_version: "3.0",
+        shading_language: "glsl-es",
+        sessions: 3,
+      },
+    ],
     sceneCoverage: async () => [{ vx: 0, vy: 0, vz: 0, count: 3 }],
     cameraDistance: async () => [{ bucket: 2, count: 4 }],
     navigationStats: async () => [
@@ -251,6 +271,27 @@ describe("collector app", () => {
     expect(res.json()).toMatchObject({ accepted: 1, rejected: 0 });
     expect(store.inserted).toHaveLength(1);
     expect(store.inserted[0]!.visitorId).toMatch(/^[a-f0-9]{32}$/);
+    await app.close();
+  });
+
+  it("derives a coarse browser/os onto session_start.device from the User-Agent", async () => {
+    const store = makeStore();
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/collect",
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+      },
+      payload: { schemaVersion: "1.0", events: [sessionStart()] },
+    });
+    expect(res.statusCode).toBe(200);
+    const inserted = store.inserted[0]! as AnyEvent & {
+      device?: { browser?: string; os?: string };
+    };
+    expect(inserted.device?.browser).toBe("Safari");
+    expect(inserted.device?.os).toBe("macOS");
     await app.close();
   });
 
@@ -987,6 +1028,55 @@ describe("collector app", () => {
     });
     expect(stability.statusCode).toBe(200);
     expect(stability.json()).toEqual([{ context_losses: 1, compile_stalls: 2, incidents: 3 }]);
+    await app.close();
+  });
+
+  it("returns graphics_diagnostic counts by severity/category/backend for a valid API key (#16)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/graphics-diagnostics?scene=lobby&session=s1",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      { severity: "fatal", category: "device-lost", backend: "webgpu", incidents: 2 },
+      { severity: "warning", category: "validation", backend: "webgl2", incidents: 5 },
+    ]);
+
+    // A read API key is still required (parity with the other query endpoints).
+    const noKey = await app.inject({ method: "GET", url: "/api/v1/graphics-diagnostics" });
+    expect(noKey.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("returns rendering-technology counts by api/backend/version/shading-language for a valid API key (#120)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/rendering-technology?scene=lobby&session=s1",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      {
+        api: "webgpu",
+        backend: "metal",
+        api_version: "1.0",
+        shading_language: "wgsl",
+        sessions: 7,
+      },
+      {
+        api: "webgl2",
+        backend: "opengl",
+        api_version: "3.0",
+        shading_language: "glsl-es",
+        sessions: 3,
+      },
+    ]);
+
+    const noKey = await app.inject({ method: "GET", url: "/api/v1/rendering-technology" });
+    expect(noKey.statusCode).toBe(401);
     await app.close();
   });
 

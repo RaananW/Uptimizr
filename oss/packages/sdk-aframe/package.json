@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/aframe",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "description": "A-Frame (WebXR) connector for Uptimizr — registers the `uptimizr` component over @uptimizr/three and adds XR controller/gaze capture.",
   "keywords": [
     "uptimizr",
@@ -61,9 +61,9 @@
     "@uptimizr/three": "workspace:*"
   },
   "devDependencies": {
-    "@types/three": "^0.184.0",
+    "@types/three": "^0.185.0",
     "esbuild": "^0.25.0",
-    "three": "^0.184.0",
+    "three": "^0.185.0",
     "vitest": "^4.1.9"
   }
 }

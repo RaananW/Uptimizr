@@ -17,6 +17,18 @@ import type { CollectorApi, PresenceSnapshot, QueryParams } from "../api";
 import type { FilterState } from "../filters";
 import type { LiveEvent } from "../live";
 
+/**
+ * The major version of the panel contract (ADR 0036 / ADR 0041).
+ *
+ * Remote panels loaded at runtime declare the contract major they were built
+ * against in their manifest entry (`contract`). The host only loads an entry
+ * whose declared major equals this value, so an incompatible panel surfaces a
+ * clear per-panel error instead of failing in subtle ways. Bump this whenever a
+ * breaking change is made to `PanelDefinition` / `PanelContext`; additive,
+ * backward-compatible changes keep the same major.
+ */
+export const PANEL_CONTRACT_VERSION = 1;
+
 /** Which dashboard surface a panel can appear on. */
 export type PanelSurface = "overview" | "session";
 

@@ -309,6 +309,30 @@ export const DUCKDB_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
       ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS capability VARCHAR DEFAULT 'query';
     `,
   },
+  // camera_sample projection intrinsics (#22): vertical FOV, viewport aspect, and
+  // near-plane distance, promoted so the click-gaze ray aggregation can unproject
+  // a flat pointer's `screen` onto the near plane. Physically last (after
+  // `inserted_at`), so the appender binds them last. 0 when the sample omitted the
+  // intrinsic — the aggregation treats non-positive as "absent" and falls back to
+  // the camera position, keeping legacy flat-click rays unchanged.
+  {
+    id: "0028_events_fov",
+    sql: /* sql */ `
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS fov DOUBLE;
+    `,
+  },
+  {
+    id: "0029_events_aspect",
+    sql: /* sql */ `
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS aspect DOUBLE;
+    `,
+  },
+  {
+    id: "0030_events_near",
+    sql: /* sql */ `
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS near DOUBLE;
+    `,
+  },
 ];
 
 /**

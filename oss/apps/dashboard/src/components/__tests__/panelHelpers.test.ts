@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type {
   CoverageVoxel,
+  GraphicsDiagnosticCount,
+  RenderingTechnologyCount,
   InteractionSource,
   MeshSourceCount,
   MeshTrendPoint,
@@ -9,6 +11,8 @@ import type {
 import { buildLeaderboard } from "@/components/MeshLeaderboard";
 import { buildModalitySplit } from "@/components/InputModalitySplit";
 import { buildDeadZones } from "@/components/DeadZoneReport";
+import { foldGraphicsDiagnostics } from "@/components/GraphicsDiagnostics";
+import { foldRenderingTechnology } from "@/components/RenderingTechnology";
 
 describe("buildLeaderboard (#74)", () => {
   const sources: MeshSourceCount[] = [
@@ -95,5 +99,100 @@ describe("buildDeadZones (#76)", () => {
     const report = buildDeadZones(coverage, [proxyMeshes[0]!], 1, 1);
     expect(report.rows[0]?.nearbySamples).toBe(2);
     expect(report.rows[0]?.dead).toBe(false);
+  });
+});
+
+describe("foldGraphicsDiagnostics (#16)", () => {
+  it("folds markers and rollups into severity/category/backend breakdowns", () => {
+    const rows: GraphicsDiagnosticCount[] = [
+      // Two device-lost markers already summed server-side into one cell (count 2).
+      { severity: "fatal", category: "device-lost", backend: "webgpu", incidents: 2 },
+      // A validation rollup (count 5) on a different backend.
+      { severity: "warning", category: "validation", backend: "webgl2", incidents: 5 },
+      // A backend-less shader-compile error.
+      { severity: "error", category: "shader-compile", backend: "", incidents: 1 },
+    ];
+    const out = foldGraphicsDiagnostics(rows);
+
+    // All three breakdowns sum to the same grand total of 8 incidents.
+    expect(out.total).toBe(8);
+    expect(out.bySeverity.reduce((n, b) => n + b.count, 0)).toBe(8);
+    expect(out.byCategory.reduce((n, b) => n + b.count, 0)).toBe(8);
+    expect(out.byBackend.reduce((n, b) => n + b.count, 0)).toBe(8);
+
+    // Severity is ordered worst-first (fatal, error, warning).
+    expect(out.bySeverity.map((b) => b.key)).toEqual(["fatal", "error", "warning"]);
+    // Category & backend are ranked by incident count desc.
+    expect(out.byCategory[0]).toEqual({ key: "validation", label: "validation", count: 5 });
+    // A blank backend surfaces as "unknown".
+    expect(out.byBackend.find((b) => b.key === "unknown")?.count).toBe(1);
+    expect(out.byBackend.find((b) => b.key === "webgl2")?.count).toBe(5);
+  });
+
+  it("merges rows that share a (severity, category, backend) cell", () => {
+    const rows: GraphicsDiagnosticCount[] = [
+      { severity: "warning", category: "validation", backend: "webgpu", incidents: 3 },
+      { severity: "warning", category: "validation", backend: "webgpu", incidents: 4 },
+    ];
+    const out = foldGraphicsDiagnostics(rows);
+    expect(out.total).toBe(7);
+    expect(out.bySeverity).toEqual([{ key: "warning", label: "warning", count: 7 }]);
+  });
+
+  it("reports an empty, zero-total breakdown when capture is off (opt-in default)", () => {
+    const out = foldGraphicsDiagnostics([]);
+    // total === 0 is exactly the signal the panel uses to show its opt-in/off
+    // empty state instead of the breakdown tiles.
+    expect(out.total).toBe(0);
+    expect(out.bySeverity).toEqual([]);
+    expect(out.byCategory).toEqual([]);
+    expect(out.byBackend).toEqual([]);
+  });
+
+  it("ignores non-positive incident counts", () => {
+    const rows: GraphicsDiagnosticCount[] = [
+      { severity: "info", category: "device-lost", backend: "webgpu", incidents: 0 },
+    ];
+    expect(foldGraphicsDiagnostics(rows).total).toBe(0);
+  });
+});
+
+describe("foldRenderingTechnology (#120)", () => {
+  it("folds session counts into api/backend/shading-language breakdowns", () => {
+    const rows: RenderingTechnologyCount[] = [
+      { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl", sessions: 7 },
+      {
+        api: "webgl2",
+        backend: "opengl",
+        apiVersion: "3.0",
+        shadingLanguage: "glsl-es",
+        sessions: 3,
+      },
+      { api: "", backend: "", apiVersion: "", shadingLanguage: "", sessions: 2 },
+    ];
+    const out = foldRenderingTechnology(rows);
+
+    expect(out.total).toBe(12);
+    expect(out.byApi.reduce((n, b) => n + b.count, 0)).toBe(12);
+    expect(out.byBackend.reduce((n, b) => n + b.count, 0)).toBe(12);
+    expect(out.byShadingLanguage.reduce((n, b) => n + b.count, 0)).toBe(12);
+    // Ranked by sessions desc; blanks surface as "unknown".
+    expect(out.byApi[0]).toEqual({ key: "webgpu", label: "webgpu", count: 7 });
+    expect(out.byApi.find((b) => b.key === "unknown")?.count).toBe(2);
+  });
+
+  it("merges rows that share a backend across api versions", () => {
+    const rows: RenderingTechnologyCount[] = [
+      { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl", sessions: 3 },
+      { api: "webgpu", backend: "metal", apiVersion: "1.1", shadingLanguage: "wgsl", sessions: 4 },
+    ];
+    const out = foldRenderingTechnology(rows);
+    expect(out.byBackend).toEqual([{ key: "metal", label: "metal", count: 7 }]);
+  });
+
+  it("reports an empty, zero-total breakdown before any sessions land", () => {
+    const out = foldRenderingTechnology([]);
+    expect(out.total).toBe(0);
+    expect(out.byApi).toEqual([]);
   });
 });

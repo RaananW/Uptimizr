@@ -10,7 +10,7 @@
 set -euo pipefail
 
 # Forbidden tokens (extended regex, case-insensitive).
-PATTERN='@uptimizr/(hosted-api|hosted-web|scale-store|tenancy|auth)|hosted/apps|hosted/packages|HOSTED_API|app\.uptimizr\.com|multi-tenant saas|phase-2-hosted'
+PATTERN='@uptimizr/(hosted-api|hosted-web|scale-store|tenancy|auth)|hosted/apps|hosted/packages|HOSTED_API|app\.uptimizr\.com|multi-tenant saas'
 
 matches=$(grep -rEnI -i \
   --exclude-dir=node_modules \

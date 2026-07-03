@@ -120,6 +120,8 @@ export function createMemoryStore({
     perfByScene: async () => [],
     resourcePercentiles: async () => [],
     stabilityCounts: async () => [],
+    graphicsDiagnosticCounts: async () => [],
+    renderingTechnology: async () => [],
     sceneCoverage: async () => [],
     cameraDistance: async () => [],
     navigationStats: async () => [],

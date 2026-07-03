@@ -17,7 +17,8 @@ backends thin, and record significant decisions as ADRs.
 
 - Read the issue fully, including its acceptance criteria and any linked ADR / phase doc /
   design sketch. Open them: `gh issue view <N> --comments`.
-- Confirm **phase intent** (`docs/phases`) — do not implement a Phase 2 feature during Phase 1.
+- Confirm **scope** (`docs/phases`) — don't implement proprietary/hosted-only features in the
+  self-contained OSS collector.
 - Restate the goal and the acceptance criteria in your own words as a short plan, and post it as
   an issue comment so intent is visible before work starts:
   `gh issue comment <N> --body "Plan: …"`.
@@ -31,7 +32,7 @@ backends thin, and record significant decisions as ADRs.
 
 ## 3. Implement (minimal, idiomatic, in-scope)
 
-- Make only the change the issue asks for. No drive-by refactors, no Phase 2 scope creep, no
+- Make only the change the issue asks for. No drive-by refactors, no out-of-scope scope creep, no
   speculative abstractions.
 - Honor the boundaries: keep storage behind the `@uptimizr/db` contracts; import event types from
   `@uptimizr/schema`; validate external input with Zod at the edge; TypeScript strict, ESM,

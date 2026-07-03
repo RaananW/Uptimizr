@@ -274,6 +274,13 @@ export interface EngineMountContext {
   readonly cameraMode: CameraMode;
   /** Optional demo keyboard bindings (Babylon only). */
   readonly keyBindings?: Record<string, string>;
+  /**
+   * SDK processing-location flag (ADR 0031 / ADR 0041). `"worker"` moves the
+   * per-frame aggregation + serialization off the render thread; the default
+   * (`"main"`) is byte-for-byte identical. Resolved from `?offload=worker` so the
+   * e2e suite can exercise both locations against the same interaction set.
+   */
+  readonly offload?: "main" | "worker";
   /** Notify the shell that a demo box was picked (bumps the local click counter). */
   onBoxPick(name: string): void;
   /** Push a line of status text into the panel (used by the declarative A-Frame path). */

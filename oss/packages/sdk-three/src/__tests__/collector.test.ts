@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Camera, Scene, WebGLRenderer } from "three";
-import type { CollectorContext, EventInput } from "@uptimizr/sdk-core";
+import type { AggregatorConfig, CollectorContext, EventInput, Snapshot } from "@uptimizr/sdk-core";
+import { createAggregator } from "@uptimizr/sdk-core";
 import { threeCollector } from "../collector.js";
 import type { RaycastProbe } from "../raycast.js";
 
@@ -107,10 +108,10 @@ function makeMeshScene(meshes: unknown[]): Scene {
   } as unknown as Scene;
 }
 
-function makeCtx(now = { value: 1000 }) {
+function makeCtx(now = { value: 1000 }, config: Record<string, unknown> = {}) {
   const events: EventInput[] = [];
   const ctx = {
-    config: {} as never,
+    config: config as never,
     sessionId: "s1",
     emit: (e: EventInput) => events.push(e),
     track: () => {},
@@ -127,6 +128,13 @@ function makeCtx(now = { value: 1000 }) {
         ...(typeof opts.pressed === "boolean" ? { pressed: opts.pressed } : {}),
       } as EventInput),
     setScene: () => {},
+    createAggregation: (config: AggregatorConfig) => {
+      // Mirror production: snapshots flow through a real main-thread aggregator
+      // whose finalized events land in the same `events` sink, so the existing
+      // event-shape assertions exercise the snapshot → aggregator → emit path.
+      const aggregator = createAggregator({ ...config, emit: (e) => events.push(e) });
+      return (s: Snapshot) => aggregator.ingest(s);
+    },
     now: () => now.value,
   } satisfies CollectorContext;
   return { ctx, events, now };
@@ -919,6 +927,266 @@ describe("threeCollector", () => {
   });
 });
 
+describe("threeCollector — WebGPU device.lost → graphics_diagnostic (#20)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /**
+   * A WebGPURenderer whose `backend.device.lost` promise resolves on `lose(...)`.
+   * Pass `deferDevice: true` to start with `backend.device` undefined (mirrors
+   * WebGPURenderer's async `init()`) and attach it later via `provideDevice()`.
+   */
+  function makeWebGpuRenderer(
+    canvas: ReturnType<typeof makeCanvas>,
+    opts: { deferDevice?: boolean } = {},
+  ) {
+    let resolveLost!: (info: { reason?: string; message?: string }) => void;
+    const lost = new Promise<{ reason?: string; message?: string }>((r) => {
+      resolveLost = r;
+    });
+    const backend: { device?: { lost: Promise<{ reason?: string; message?: string }> } } = {
+      device: opts.deferDevice ? undefined : { lost },
+    };
+    const renderer = {
+      domElement: canvas,
+      isWebGPURenderer: true,
+      info: { render: { frame: 0, triangles: 0 } },
+      backend,
+    } as unknown as WebGLRenderer;
+    return {
+      renderer,
+      provideDevice: () => {
+        backend.device = { lost };
+      },
+      lose: async (info: { reason?: string; message?: string }) => {
+        resolveLost(info);
+        await Promise.resolve();
+        await Promise.resolve();
+      },
+    };
+  }
+
+  function start(renderer: WebGLRenderer, config: Record<string, unknown>) {
+    const { ctx, events } = makeCtx(undefined, config);
+    const handle = threeCollector({
+      scene: emptyScene,
+      camera: makeCamera(),
+      renderer,
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+    return { events, handle };
+  }
+
+  it("emits nothing when captureGraphicsDiagnostics is off", async () => {
+    const { renderer, lose } = makeWebGpuRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: false });
+
+    await lose({ reason: "unknown", message: "boom" });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+
+  it("emits exactly one fatal device-lost diagnostic when enabled", async () => {
+    const { renderer, lose } = makeWebGpuRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+
+    await lose({ reason: "unknown", message: "device removed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toEqual({
+      type: "graphics_diagnostic",
+      severity: "fatal",
+      category: "device-lost",
+      backend: "webgpu",
+      message: "device removed",
+    });
+    handle.stop();
+  });
+
+  it("maps reason 'destroyed' to info severity", async () => {
+    const { renderer, lose } = makeWebGpuRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+
+    await lose({ reason: "destroyed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      severity: "info",
+      category: "device-lost",
+      backend: "webgpu",
+    });
+    handle.stop();
+  });
+
+  it("does not emit after the collector has stopped", async () => {
+    const { renderer, lose } = makeWebGpuRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+
+    handle.stop();
+    await lose({ reason: "unknown" });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+
+  it("wires device.lost even when the device initializes asynchronously after start()", async () => {
+    const { renderer, provideDevice, lose } = makeWebGpuRenderer(makeCanvas(), {
+      deferDevice: true,
+    });
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+
+    // Device not ready yet at start() — the loss must not be missed.
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+
+    provideDevice();
+    await vi.advanceTimersByTimeAsync(300);
+    await lose({ reason: "unknown", message: "late device removed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      severity: "fatal",
+      category: "device-lost",
+      backend: "webgpu",
+    });
+    handle.stop();
+  });
+
+  it("never wires device.lost if the renderer is disposed before the device appears", async () => {
+    const { renderer, provideDevice, lose } = makeWebGpuRenderer(makeCanvas(), {
+      deferDevice: true,
+    });
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+
+    // Tear down before the async WebGPU device ever initializes.
+    handle.stop();
+    provideDevice();
+    await vi.advanceTimersByTimeAsync(2000);
+    await lose({ reason: "unknown", message: "too late" });
+
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+
+  it("is a no-op on a WebGL renderer (no device-lost concept)", async () => {
+    const canvas = makeCanvas();
+    const { events, handle } = start(makeRenderer(canvas), { captureGraphicsDiagnostics: true });
+
+    // A WebGL context loss is a context_lost, never a graphics_diagnostic.
+    canvas.dispatch("webglcontextlost", {});
+    await Promise.resolve();
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+});
+
+describe("threeCollector — WebGPU uncapturederror rollup → graphics_diagnostic (#19)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function makeWebGpuErrorRenderer(canvas: ReturnType<typeof makeCanvas>) {
+    let handler: ((e: { error?: unknown }) => void) | undefined;
+    const device = {
+      lost: new Promise(() => {}),
+      addEventListener: (_t: string, h: (e: { error?: unknown }) => void) => (handler = h),
+      removeEventListener: () => (handler = undefined),
+    };
+    const renderer = {
+      domElement: canvas,
+      isWebGPURenderer: true,
+      info: { render: { frame: 0, triangles: 0 } },
+      backend: { device },
+    } as unknown as WebGLRenderer;
+    return { renderer, fire: (error: unknown) => handler?.({ error }) };
+  }
+
+  function start(renderer: WebGLRenderer, config: Record<string, unknown>) {
+    const { ctx, events } = makeCtx(undefined, config);
+    const handle = threeCollector({
+      scene: emptyScene,
+      camera: makeCamera(),
+      renderer,
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+    return { events, handle };
+  }
+
+  it("collapses a burst into one rollup on stop, not N events", () => {
+    const { renderer, fire } = makeWebGpuErrorRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: true });
+    for (let i = 0; i < 30; i++)
+      fire({ message: `e${i}`, constructor: { name: "GPUValidationError" } });
+    handle.stop();
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      category: "validation",
+      count: 30,
+      backend: "webgpu",
+      message: "e0",
+    });
+  });
+
+  it("emits nothing when the flag is off", () => {
+    const { renderer, fire } = makeWebGpuErrorRenderer(makeCanvas());
+    const { events, handle } = start(renderer, { captureGraphicsDiagnostics: false });
+    fire({ message: "x", constructor: { name: "GPUValidationError" } });
+    handle.stop();
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+});
+
+describe("threeCollector — context-creation failure → graphics_diagnostic (#18)", () => {
+  function start(renderer: WebGLRenderer, config: Record<string, unknown>) {
+    const { ctx, events } = makeCtx(undefined, config);
+    const handle = threeCollector({
+      scene: emptyScene,
+      camera: makeCamera(),
+      renderer,
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+    return { events, handle };
+  }
+
+  /** A WebGLRenderer whose `getContext()` returned null (creation failed). */
+  function makeFailedRenderer() {
+    return {
+      domElement: makeCanvas(),
+      info: { render: { frame: 0, triangles: 0 } },
+      getContext: () => null,
+    } as unknown as WebGLRenderer;
+  }
+
+  it("emits nothing when captureGraphicsDiagnostics is off", () => {
+    const { events, handle } = start(makeFailedRenderer(), { captureGraphicsDiagnostics: false });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+
+  it("emits exactly one fatal context-loss marker when getContext is null", () => {
+    const { events, handle } = start(makeFailedRenderer(), { captureGraphicsDiagnostics: true });
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toEqual({
+      type: "graphics_diagnostic",
+      severity: "fatal",
+      category: "context-loss",
+      backend: "unknown",
+    });
+    handle.stop();
+  });
+
+  it("does not fire on a healthy WebGL renderer", () => {
+    const { events, handle } = start(makeRenderer(makeCanvas()), {
+      captureGraphicsDiagnostics: true,
+    });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+});
+
 describe("threeCollector — scene actors / node_transform (ADR 0027 Tier 1)", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -1413,5 +1681,60 @@ describe("threeCollector — skeleton bones / node_transform (ADR 0027 Tier 2)",
       if (prevWin === undefined) delete (globalThis as { window?: unknown }).window;
       else (globalThis as { window?: unknown }).window = prevWin;
     }
+  });
+});
+
+describe("threeCollector — shader-compile + getError → graphics_diagnostic (#17)", () => {
+  function makeGlRenderer(gl: Record<string, unknown>) {
+    return {
+      domElement: makeCanvas(),
+      info: { render: { frame: 0, triangles: 0 } },
+      capabilities: { isWebGL2: true },
+      getContext: () => gl,
+    } as unknown as WebGLRenderer;
+  }
+
+  function start(renderer: WebGLRenderer, config: Record<string, unknown>) {
+    const { ctx, events } = makeCtx(undefined, config);
+    const handle = threeCollector({
+      scene: emptyScene,
+      camera: makeCamera(),
+      renderer,
+      capture: { camera: false, perf: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+    return { events, handle };
+  }
+
+  const failGl = () => ({
+    COMPILE_STATUS: 0x8b81,
+    LINK_STATUS: 0x8b82,
+    compileShader: () => {},
+    linkProgram: () => {},
+    getShaderParameter: () => true,
+    getProgramParameter: () => false,
+    getShaderInfoLog: () => "ERR",
+    getProgramInfoLog: () => "LINK FAIL",
+    getError: () => 0,
+  });
+
+  it("emits a shader-compile diagnostic on link failure when enabled", () => {
+    const gl = failGl();
+    const { events, handle } = start(makeGlRenderer(gl), { captureGraphicsDiagnostics: true });
+    gl.linkProgram();
+    expect(events.find((e) => e.type === "graphics_diagnostic")).toMatchObject({
+      category: "shader-compile",
+      severity: "error",
+      message: "LINK FAIL",
+    });
+    handle.stop();
+  });
+
+  it("emits nothing when captureGraphicsDiagnostics is off", () => {
+    const gl = failGl();
+    const { events, handle } = start(makeGlRenderer(gl), { captureGraphicsDiagnostics: false });
+    gl.linkProgram();
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
   });
 });

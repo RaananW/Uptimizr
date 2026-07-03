@@ -55,6 +55,42 @@ const EXCEPTIONS = new Map([
     "@img/sharp-libvips-linux-arm64",
     "LGPL-3.0-or-later — sharp's prebuilt libvips native binary (linux arm64), dynamically linked.",
   ],
+  [
+    "@bruits/satteri-darwin-arm64",
+    "MIT (github.com/bruits/satteri) — prebuilt native Markdown/MDX binary pulled in by astro; binary packages omit the license field.",
+  ],
+  [
+    "@bruits/satteri-darwin-x64",
+    "MIT (github.com/bruits/satteri) — prebuilt native Markdown/MDX binary pulled in by astro; binary packages omit the license field.",
+  ],
+  [
+    "@bruits/satteri-linux-x64-gnu",
+    "MIT (github.com/bruits/satteri) — prebuilt native Markdown/MDX binary pulled in by astro; binary packages omit the license field.",
+  ],
+  [
+    "@bruits/satteri-linux-arm64-gnu",
+    "MIT (github.com/bruits/satteri) — prebuilt native Markdown/MDX binary pulled in by astro; binary packages omit the license field.",
+  ],
+  [
+    "@bruits/satteri-linux-x64-musl",
+    "MIT (github.com/bruits/satteri) — prebuilt native Markdown/MDX binary pulled in by astro; binary packages omit the license field.",
+  ],
+  [
+    "@bruits/satteri-linux-arm64-musl",
+    "MIT (github.com/bruits/satteri) — prebuilt native Markdown/MDX binary pulled in by astro; binary packages omit the license field.",
+  ],
+  [
+    "@bruits/satteri-win32-x64-msvc",
+    "MIT (github.com/bruits/satteri) — prebuilt native Markdown/MDX binary pulled in by astro; binary packages omit the license field.",
+  ],
+  [
+    "@bruits/satteri-win32-arm64-msvc",
+    "MIT (github.com/bruits/satteri) — prebuilt native Markdown/MDX binary pulled in by astro; binary packages omit the license field.",
+  ],
+  [
+    "@bruits/satteri-wasm32-wasi",
+    "MIT (github.com/bruits/satteri) — prebuilt native Markdown/MDX binary pulled in by astro; binary packages omit the license field.",
+  ],
 ]);
 
 /**

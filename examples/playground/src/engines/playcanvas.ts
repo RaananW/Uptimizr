@@ -289,6 +289,7 @@ export function createPlayCanvasEngineModule(options: PlayCanvasEngineOptions): 
       endpoint: ctx.collectorUrl,
       flushIntervalMs: 3000,
       transport: ctx.transport,
+      ...(ctx.offload ? { offload: ctx.offload } : {}),
       sampling: {
         camera: 10,
         pointerMove: 30,

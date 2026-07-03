@@ -1,12 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
   anyEventSchema,
+  cameraSampleSchema,
   eventSchemaByType,
   collectRequestSchema,
   EVENT_TYPES,
   SCHEMA_VERSION,
   LIMITS,
   type CameraSampleEvent,
+  type GraphicsDiagnosticEvent,
 } from "../index.js";
 
 const baseEnvelope = {
@@ -39,6 +41,44 @@ describe("anyEventSchema (discriminated union)", () => {
     const parsed = anyEventSchema.parse(event);
     expect(parsed.type).toBe("camera_sample");
     expect((parsed as CameraSampleEvent).position).toEqual([0, 1, 2]);
+  });
+
+  it("round-trips a camera_sample with projection intrinsics (fov, aspect, near)", () => {
+    const event = {
+      ...baseEnvelope,
+      type: "camera_sample",
+      position: [0, 1, 2],
+      direction: [0, 0, 1],
+      fov: 0.8,
+      aspect: 1.7777,
+      near: 0.1,
+    };
+    const parsed = cameraSampleSchema.parse(event);
+    expect(parsed.fov).toBe(0.8);
+    expect(parsed.aspect).toBe(1.7777);
+    expect(parsed.near).toBe(0.1);
+  });
+
+  it("rejects a camera_sample with a non-positive near plane", () => {
+    const event = {
+      ...baseEnvelope,
+      type: "camera_sample",
+      position: [0, 1, 2],
+      direction: [0, 0, 1],
+      near: 0,
+    };
+    expect(cameraSampleSchema.safeParse(event).success).toBe(false);
+  });
+
+  it("rejects a camera_sample with a non-positive aspect ratio", () => {
+    const event = {
+      ...baseEnvelope,
+      type: "camera_sample",
+      position: [0, 1, 2],
+      direction: [0, 0, 1],
+      aspect: -1.5,
+    };
+    expect(cameraSampleSchema.safeParse(event).success).toBe(false);
   });
 
   it("rejects an event with an unknown type", () => {
@@ -929,5 +969,139 @@ describe("browser & runtime lifecycle events", () => {
         message: "x".repeat(1025),
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("graphics_diagnostic (ADR 0021 part 2)", () => {
+  it("validates a discrete incident marker (no count)", () => {
+    const event = {
+      ...baseEnvelope,
+      type: "graphics_diagnostic",
+      severity: "fatal",
+      category: "device-lost",
+      backend: "webgpu",
+      message: "device lost: unknown",
+      code: "destroyed",
+    };
+    const parsed = anyEventSchema.parse(event);
+    expect(parsed.type).toBe("graphics_diagnostic");
+    const diag = parsed as GraphicsDiagnosticEvent;
+    expect(diag.severity).toBe("fatal");
+    expect(diag.category).toBe("device-lost");
+    expect(diag.backend).toBe("webgpu");
+    expect(diag.count).toBeUndefined();
+  });
+
+  it("validates an aggregated rollup (count present)", () => {
+    const event = {
+      ...baseEnvelope,
+      type: "graphics_diagnostic",
+      severity: "warning",
+      category: "validation",
+      backend: "webgpu",
+      message: "first validation error",
+      count: 37,
+    };
+    const parsed = anyEventSchema.parse(event) as GraphicsDiagnosticEvent;
+    expect(parsed.count).toBe(37);
+  });
+
+  it("accepts a minimal diagnostic (severity + category only)", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "graphics_diagnostic",
+        severity: "error",
+        category: "shader-compile",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("requires severity and category", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "graphics_diagnostic",
+        category: "validation",
+      }).success,
+    ).toBe(false);
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "graphics_diagnostic",
+        severity: "error",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an unknown severity", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "graphics_diagnostic",
+        severity: "critical",
+        category: "validation",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an unknown category", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "graphics_diagnostic",
+        severity: "error",
+        category: "memory-leak",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps the reserved `fallback` category in the contract", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "graphics_diagnostic",
+        severity: "info",
+        category: "fallback",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an over-long message", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "graphics_diagnostic",
+        severity: "error",
+        category: "validation",
+        message: "x".repeat(LIMITS.maxGraphicsDiagnosticMessageLength + 1),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an over-long code", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "graphics_diagnostic",
+        severity: "error",
+        category: "validation",
+        code: "x".repeat(LIMITS.maxGraphicsDiagnosticCodeLength + 1),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a non-positive or fractional count", () => {
+    for (const count of [0, -1, 2.5]) {
+      expect(
+        anyEventSchema.safeParse({
+          ...baseEnvelope,
+          type: "graphics_diagnostic",
+          severity: "warning",
+          category: "validation",
+          count,
+        }).success,
+      ).toBe(false);
+    }
   });
 });

@@ -11,6 +11,10 @@ Uptimizr is privacy-first by architecture: the responsible default is the easy d
   Nothing persistent is written to the visitor's device. The `sessionId` is in-memory only.
 - **Server-side rotating visitor hash.** Visitors are counted with a hash computed **on the
   server** that rotates **every day**, so individuals can't be tracked across days.
+- **Derived, coarse browser/OS — never the raw User-Agent.** The request User-Agent is used only to
+  compute the visitor hash and to derive a coarse `{ browser, os }` family pair (e.g. `Safari` /
+  `iOS`) for the performance device segment. The raw User-Agent and version are never stored — only
+  the two low-cardinality families. Derived, non-PII (ADR 0003 / ADR 0041).
 - **No PII by default.** Events carry spatial and performance signals, not personal data. Never put
   PII in `meta`, `track` props, or `user`.
 - **Opt-in user descriptor.** `user.id` must be pseudonymous or hashed — never an email, username,

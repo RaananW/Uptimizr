@@ -18,6 +18,8 @@ import {
   buildResourceSummary,
   buildResourcePercentiles,
   buildStabilityCounts,
+  buildGraphicsDiagnosticCounts,
+  buildRenderingTechnology,
   buildCapabilityChanges,
   buildNavigationStats,
   buildXrRotationRate,
@@ -234,6 +236,107 @@ describe("duckdb store", () => {
       buildClickGazeRay(PID, { ...RANGE, cellSize: 1 }, duckdbDialect),
     );
     expect(rays).toHaveLength(0);
+  });
+
+  it("reconstructs the near-plane origin for a flat pointer click (#22)", async () => {
+    // The camera carries projection intrinsics, so a mouse click unprojects its
+    // off-centre `screen` onto the near plane instead of collapsing to the camera
+    // point. Expected origin computed from the same unproject the SQL applies.
+    const position: [number, number, number] = [0, 0, 0];
+    const direction: [number, number, number] = [2, 1, 2];
+    const screen: [number, number] = [0.15, 0.15];
+    const fov = Math.PI / 2;
+    const aspect = 2;
+    const near = 0.1;
+    const [dx, dy, dz] = direction;
+    const dlen = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const hlen = Math.sqrt(dx * dx + dz * dz);
+    const offR = (2 * screen[0] - 1) * near * Math.tan(fov / 2) * aspect;
+    const offU = (1 - 2 * screen[1]) * near * Math.tan(fov / 2);
+    const expected = [
+      position[0] + (dx * near) / dlen + (dz / hlen) * offR + (-(dx * dy) / (dlen * hlen)) * offU,
+      position[1] + (dy * near) / dlen + (hlen / dlen) * offU,
+      position[2] + (dz * near) / dlen + (-dx / hlen) * offR + (-(dy * dz) / (dlen * hlen)) * offU,
+    ];
+    const flatEvents: AnyEvent[] = [
+      base("camera_sample", T0 + 1_000, { position, direction, fov, aspect, near }),
+      base("pointer_click", T0 + 2_000, {
+        screen,
+        hitPoint: [5, 5, 5],
+        hitMesh: "box",
+        button: 0,
+        source: "mouse",
+      }),
+    ];
+    await insertEvents(db, flatEvents);
+    const rays = await runDuckdbQuery<{
+      origin_x: number;
+      origin_y: number;
+      origin_z: number;
+      mesh: string;
+    }>(db, buildClickGazeRay(PID, { ...RANGE, cellSize: 1 }, duckdbDialect));
+    expect(rays).toHaveLength(1);
+    expect(Number(rays[0].origin_x)).toBeCloseTo(expected[0], 9);
+    expect(Number(rays[0].origin_y)).toBeCloseTo(expected[1], 9);
+    expect(Number(rays[0].origin_z)).toBeCloseTo(expected[2], 9);
+    // The reconstructed origin must differ from the raw camera point.
+    expect(Number(rays[0].origin_x)).not.toBeCloseTo(0, 3);
+  });
+
+  it("falls back to the camera position when intrinsics are missing (#22)", async () => {
+    // No fov/aspect/near on the camera sample → the flat click keeps the legacy
+    // camera-position origin.
+    const flatEvents: AnyEvent[] = [
+      base("camera_sample", T0 + 1_000, { position: [5, 6, 7], direction: [2, 1, 2] }),
+      base("pointer_click", T0 + 2_000, {
+        screen: [0.3, 0.3],
+        hitPoint: [9, 9, 9],
+        hitMesh: "box",
+        button: 0,
+        source: "mouse",
+      }),
+    ];
+    await insertEvents(db, flatEvents);
+    const rays = await runDuckdbQuery<{
+      origin_x: number;
+      origin_y: number;
+      origin_z: number;
+    }>(db, buildClickGazeRay(PID, { ...RANGE, cellSize: 1 }, duckdbDialect));
+    expect(rays).toHaveLength(1);
+    expect(Number(rays[0].origin_x)).toBeCloseTo(5);
+    expect(Number(rays[0].origin_y)).toBeCloseTo(6);
+    expect(Number(rays[0].origin_z)).toBeCloseTo(7);
+  });
+
+  it("falls back to the camera position for a degenerate look-up/down view (#22)", async () => {
+    // Looking straight up makes the near-plane basis undefined (no roll-free right
+    // vector), so reconstruction is skipped in favour of the camera position.
+    const flatEvents: AnyEvent[] = [
+      base("camera_sample", T0 + 1_000, {
+        position: [1, 2, 3],
+        direction: [0, 1, 0],
+        fov: Math.PI / 2,
+        aspect: 1,
+        near: 0.1,
+      }),
+      base("pointer_click", T0 + 2_000, {
+        screen: [0.2, 0.8],
+        hitPoint: [9, 9, 9],
+        hitMesh: "box",
+        button: 0,
+        source: "mouse",
+      }),
+    ];
+    await insertEvents(db, flatEvents);
+    const rays = await runDuckdbQuery<{
+      origin_x: number;
+      origin_y: number;
+      origin_z: number;
+    }>(db, buildClickGazeRay(PID, { ...RANGE, cellSize: 1 }, duckdbDialect));
+    expect(rays).toHaveLength(1);
+    expect(Number(rays[0].origin_x)).toBeCloseTo(1);
+    expect(Number(rays[0].origin_y)).toBeCloseTo(2);
+    expect(Number(rays[0].origin_z)).toBeCloseTo(3);
   });
 
   it("computes the flow heatmap", async () => {
@@ -801,6 +904,96 @@ describe("duckdb store", () => {
     expect(Number(stab.context_losses)).toBe(1);
     expect(Number(stab.compile_stalls)).toBe(2);
     expect(Number(stab.incidents)).toBe(3);
+  });
+
+  it("counts graphics_diagnostic incidents by severity/category/backend, folding rollups and markers (#16)", async () => {
+    await insertEvents(db, [
+      // Two discrete device-lost markers (no `count`) on WebGPU: fold in as 1 each.
+      base("graphics_diagnostic", T0 + 1_000, {
+        severity: "fatal",
+        category: "device-lost",
+        backend: "webgpu",
+      }),
+      base("graphics_diagnostic", T0 + 2_000, {
+        severity: "fatal",
+        category: "device-lost",
+        backend: "webgpu",
+      }),
+      // A per-session rollup of 5 validation warnings on WebGL2: folds in as 5.
+      base("graphics_diagnostic", T0 + 3_000, {
+        severity: "warning",
+        category: "validation",
+        backend: "webgl2",
+        count: 5,
+      }),
+      // A diagnostic with no backend: groups under '' (unknown).
+      base("graphics_diagnostic", T0 + 4_000, {
+        severity: "error",
+        category: "shader-compile",
+      }),
+    ]);
+    const rows = await runDuckdbQuery<{
+      severity: string;
+      category: string;
+      backend: string;
+      incidents: number;
+    }>(db, buildGraphicsDiagnosticCounts(PID, RANGE, duckdbDialect));
+
+    const cell = (severity: string, category: string, backend: string) =>
+      rows.find((r) => r.severity === severity && r.category === category && r.backend === backend);
+
+    // Two markers fold into a single (fatal, device-lost, webgpu) cell with count 2.
+    expect(Number(cell("fatal", "device-lost", "webgpu")!.incidents)).toBe(2);
+    // The rollup of 5 lands as 5, not 1.
+    expect(Number(cell("warning", "validation", "webgl2")!.incidents)).toBe(5);
+    // The backend-less diagnostic groups under '' (unknown).
+    expect(Number(cell("error", "shader-compile", "")!.incidents)).toBe(1);
+    expect(rows).toHaveLength(3);
+
+    // Derived breakdowns (what the dashboard folds): by-category, by-severity,
+    // by-backend all sum to the same grand total of 8 incidents.
+    const total = rows.reduce((n, r) => n + Number(r.incidents), 0);
+    expect(total).toBe(8);
+  });
+
+  it("counts session_start.graphics by api/backend/version/shading-language, always-on (#120)", async () => {
+    await insertEvents(db, [
+      base("session_start", T0 + 1_000, {
+        sessionId: "g1",
+        graphics: { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl" },
+      }),
+      base("session_start", T0 + 2_000, {
+        sessionId: "g2",
+        graphics: { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl" },
+      }),
+      base("session_start", T0 + 3_000, {
+        sessionId: "g3",
+        graphics: {
+          api: "webgl2",
+          backend: "opengl",
+          apiVersion: "3.0",
+          shadingLanguage: "glsl-es",
+        },
+      }),
+      // No graphics block: every field coalesces to '' (unknown).
+      base("session_start", T0 + 4_000, { sessionId: "g4" }),
+    ]);
+    const rows = await runDuckdbQuery<{
+      api: string;
+      backend: string;
+      api_version: string;
+      shading_language: string;
+      sessions: number;
+    }>(db, buildRenderingTechnology(PID, RANGE, duckdbDialect));
+
+    const cell = (api: string) => rows.find((r) => r.api === api);
+    expect(Number(cell("webgpu")!.sessions)).toBe(2);
+    expect(cell("webgpu")!.backend).toBe("metal");
+    expect(Number(cell("webgl2")!.sessions)).toBe(1);
+    expect(Number(cell("")!.sessions)).toBe(1);
+    expect(cell("")!.shading_language).toBe("");
+    const total = rows.reduce((n, r) => n + Number(r.sessions), 0);
+    expect(total).toBe(4);
   });
 
   it("lists distinct scenes, a time-series, and event-type counts", async () => {

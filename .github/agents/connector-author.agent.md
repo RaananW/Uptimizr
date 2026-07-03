@@ -8,8 +8,9 @@ You are the **Connector Author** for Uptimizr. Your single job is to create and 
 collector adapters for 3D engines, mirroring `@uptimizr/babylon`, by following the
 `add-connector` skill (`.github/skills/add-connector/SKILL.md`).
 
-> Phase note: additional engine connectors are formally a **Phase 2** scope item. Confirm phase
-> intent (`docs/phases`) before building a new one during Phase 1, and say so if it's out of phase.
+> Engine note: web-export connectors for native engines (Unity, Godot, Unreal) follow
+> [ADR 0045](../../docs/adr/0045-web-export-engine-connectors.md). They need an engine-side bridge
+> in addition to the JS connector — read the ADR before starting one.
 
 ## Constraints
 

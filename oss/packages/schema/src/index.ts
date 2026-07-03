@@ -76,6 +76,9 @@ export {
   customPropValueSchema,
   capabilityChangeSchema,
   capabilityChangeKindSchema,
+  graphicsDiagnosticSchema,
+  graphicsDiagnosticSeveritySchema,
+  graphicsDiagnosticCategorySchema,
   type Device,
   type SceneMeta,
   type CameraKind,
@@ -109,6 +112,9 @@ export {
   type CustomPropValue,
   type CapabilityChangeEvent,
   type CapabilityChangeKind,
+  type GraphicsDiagnosticEvent,
+  type GraphicsDiagnosticSeverity,
+  type GraphicsDiagnosticCategory,
 } from "./events/index.js";
 
 export {

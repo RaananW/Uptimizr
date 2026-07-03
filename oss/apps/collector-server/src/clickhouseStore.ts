@@ -31,6 +31,8 @@ import {
   buildPerfByScene,
   buildResourcePercentiles,
   buildStabilityCounts,
+  buildGraphicsDiagnosticCounts,
+  buildRenderingTechnology,
   buildPointerHeatmap,
   buildSceneCoverage,
   buildSessionTrajectory,
@@ -84,6 +86,8 @@ import {
   type PerfBySceneRow,
   type ResourcePercentileRow,
   type StabilityCountRow,
+  type GraphicsDiagnosticCountRow,
+  type RenderingTechnologyRow,
   type PositionBinRow,
   type SceneRow,
   type SessionSummaryRow,
@@ -217,6 +221,13 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<ResourcePercentileRow>(ch, buildResourcePercentiles(projectId, opts, d)),
     stabilityCounts: (projectId, opts = {}) =>
       runClickhouseQuery<StabilityCountRow>(ch, buildStabilityCounts(projectId, opts, d)),
+    graphicsDiagnosticCounts: (projectId, opts = {}) =>
+      runClickhouseQuery<GraphicsDiagnosticCountRow>(
+        ch,
+        buildGraphicsDiagnosticCounts(projectId, opts, d),
+      ),
+    renderingTechnology: (projectId, opts = {}) =>
+      runClickhouseQuery<RenderingTechnologyRow>(ch, buildRenderingTechnology(projectId, opts, d)),
     sceneCoverage: (projectId, opts = {}) =>
       runClickhouseQuery<CoverageVoxelRow>(ch, buildSceneCoverage(projectId, opts, d)),
     cameraDistance: (projectId, opts = {}) =>

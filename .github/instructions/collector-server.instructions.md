@@ -33,7 +33,7 @@ The public-facing ingestion + query API. Treat all client input as untrusted.
 ## Query API
 
 - Aggregations (heatmap grids, top meshes, sessions, perf) computed **at query time** in v1
-  (materialized views are Phase 2 — ADR 0002).
+  (materialized views are a future optimization — ADR 0002).
 - `GET /api/v1/sessions/:id/events` returns the ordered session timeline for replay.
 
 ## Security (public endpoint)

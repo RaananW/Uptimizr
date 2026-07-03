@@ -14,6 +14,8 @@ import {
   type CoverageVoxel,
   type DirectionBin,
   type EventTypeCount,
+  type GraphicsDiagnosticCount,
+  type RenderingTechnologyCount,
   type InteractionSource,
   type NavigationStat,
   type PerfSummary,
@@ -36,15 +38,20 @@ import {
 import { parseTimestamp } from "@/lib/format";
 import { mergeSceneProxies } from "@/lib/sceneProxies";
 import { useLivePresence, useLiveStream, type LiveEvent } from "@/lib/live";
-import type { PanelContext } from "@uptimizr/react";
+import type { PanelContext, PanelDefinition, RemotePanelError } from "@uptimizr/react";
+import { mergePanels } from "@uptimizr/react";
 import { PanelHost } from "@/panels/PanelHost";
 import { builtinPanels } from "@/panels/registry";
+import { useRemotePanels } from "@/panels/useRemotePanels";
+import { RemotePanelErrors } from "@/panels/RemotePanelErrors";
 import { CameraDirectionHeatmap } from "@/components/CameraDirectionHeatmap";
 import { GlobalFilters } from "@/components/GlobalFilters";
 import { InputSourceBreakdown } from "@/components/InputSourceBreakdown";
 import { PerfSummaryPanel } from "@/components/PerfSummaryPanel";
 import { PerformanceSection, type PerformanceData } from "@/components/PerformanceSection";
 import { SceneHealth } from "@/components/SceneHealth";
+import { GraphicsDiagnostics } from "@/components/GraphicsDiagnostics";
+import { RenderingTechnology } from "@/components/RenderingTechnology";
 import { SceneMetrics } from "@/components/SceneMetrics";
 import { SceneSelector, type SceneMeta } from "@/components/SceneSelector";
 import { SessionsTable } from "@/components/SessionsTable";
@@ -86,6 +93,8 @@ interface Dashboard {
   proxyMeshes: SceneProxyMesh[];
   timeseries: TimeseriesBucket[];
   counts: EventTypeCount[];
+  diagnostics: GraphicsDiagnosticCount[];
+  renderingTech: RenderingTechnologyCount[];
   coverage: CoverageVoxel[];
   distance: CameraDistanceBucket[];
   navigation: NavigationStat[];
@@ -116,6 +125,8 @@ const EMPTY: Dashboard = {
   proxyMeshes: [],
   timeseries: [],
   counts: [],
+  diagnostics: [],
+  renderingTech: [],
   coverage: [],
   distance: [],
   navigation: [],
@@ -290,6 +301,8 @@ export default function Page() {
           sceneList,
           timeseries,
           counts,
+          diagnostics,
+          renderingTech,
           coverage,
           distance,
           navigation,
@@ -309,6 +322,8 @@ export default function Page() {
             interval: intervalSec,
           }),
           api.eventCounts({ since: range.since, until: range.until, scene: params.scene }),
+          api.graphicsDiagnosticCounts({ ...params, source: undefined }),
+          api.renderingTechnology({ ...params, source: undefined }),
           api.coverage({ ...params, source: undefined, cellSize: COVERAGE_CELL_SIZE }),
           api.cameraDistance({ ...params, source: undefined, bucketSize: DISTANCE_BUCKET_SIZE }),
           api.navigation({ ...params, source: undefined }),
@@ -374,6 +389,8 @@ export default function Page() {
           proxyMeshes: prev.proxyMeshes,
           timeseries,
           counts,
+          diagnostics,
+          renderingTech,
           coverage,
           distance,
           navigation,
@@ -694,6 +711,22 @@ export default function Page() {
     ? { ...panelBase, surface: "session", sessionId: detail.id }
     : null;
 
+  // Runtime / remote panels (ADR 0041): discover and load panels from a
+  // configured manifest at runtime, then merge them with the build-time
+  // `builtinPanels`. Off unless `NEXT_PUBLIC_PANELS_MANIFEST_URL` is set, so the
+  // default dashboard is unchanged. Load/merge failures are collected and shown
+  // in a banner without breaking the grid.
+  const remotePanels = useRemotePanels();
+  const merged = useMemo(
+    () => mergePanels(builtinPanels, remotePanels.panels),
+    [remotePanels.panels],
+  );
+  const allPanels: PanelDefinition<unknown>[] = merged.panels;
+  const panelLoadErrors: RemotePanelError[] = useMemo(
+    () => [...remotePanels.errors, ...merged.errors],
+    [remotePanels.errors, merged.errors],
+  );
+
   // Surface the live-follow replay only when the open session is currently live
   // (present in the presence roster), so historical sessions aren't cluttered
   // with an idle "waiting for events" viewer.
@@ -845,6 +878,11 @@ export default function Page() {
         )
       ) : detail ? (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          {panelLoadErrors.length > 0 ? (
+            <div className="lg:col-span-2">
+              <RemotePanelErrors errors={panelLoadErrors} />
+            </div>
+          ) : null}
           <div className="lg:col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-edge bg-panel p-4">
             <div>
               <p className="text-xs uppercase tracking-wide text-fg-muted">Session</p>
@@ -891,7 +929,7 @@ export default function Page() {
           <PerfSummaryPanel perf={detail.perf} />
           {sessionCtx ? (
             <PanelHost
-              panels={builtinPanels}
+              panels={allPanels}
               ctx={sessionCtx}
               surface="session"
               revision={liveRevision}
@@ -912,6 +950,11 @@ export default function Page() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          {panelLoadErrors.length > 0 ? (
+            <div className="lg:col-span-2">
+              <RemotePanelErrors errors={panelLoadErrors} />
+            </div>
+          ) : null}
           <div className="lg:col-span-2">
             <LivePresence
               snapshot={livePresence}
@@ -934,6 +977,12 @@ export default function Page() {
             <SceneHealth counts={data.counts} perf={data.perf} />
           </div>
           <div className="lg:col-span-2">
+            <GraphicsDiagnostics rows={data.diagnostics} />
+          </div>
+          <div className="lg:col-span-2">
+            <RenderingTechnology rows={data.renderingTech} />
+          </div>
+          <div className="lg:col-span-2">
             <SceneMetrics
               coverage={data.coverage}
               cellSize={COVERAGE_CELL_SIZE}
@@ -944,7 +993,7 @@ export default function Page() {
           </div>
           <PerfSummaryPanel perf={data.perf} />
           <PanelHost
-            panels={builtinPanels}
+            panels={allPanels}
             ctx={overviewCtx}
             surface="overview"
             revision={liveRevision}

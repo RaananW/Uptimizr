@@ -21,6 +21,7 @@ import { viewportResizeSchema } from "./viewportResize.js";
 import { visibilityChangeSchema } from "./visibilityChange.js";
 import { focusChangeSchema } from "./focusChange.js";
 import { contextLostSchema, contextRestoredSchema } from "./contextLoss.js";
+import { graphicsDiagnosticSchema } from "./graphicsDiagnostic.js";
 import { runtimeErrorSchema } from "./runtimeError.js";
 import { inputActionSchema } from "./inputAction.js";
 import { customSchema } from "./custom.js";
@@ -60,6 +61,7 @@ export const eventSchemaList = [
   focusChangeSchema,
   contextLostSchema,
   contextRestoredSchema,
+  graphicsDiagnosticSchema,
   runtimeErrorSchema,
   inputActionSchema,
   customSchema,
@@ -93,6 +95,7 @@ export const anyEventSchema = z.discriminatedUnion("type", [
   focusChangeSchema,
   contextLostSchema,
   contextRestoredSchema,
+  graphicsDiagnosticSchema,
   runtimeErrorSchema,
   inputActionSchema,
   customSchema,
@@ -129,6 +132,7 @@ export const eventSchemaByType = {
   focus_change: focusChangeSchema,
   context_lost: contextLostSchema,
   context_restored: contextRestoredSchema,
+  graphics_diagnostic: graphicsDiagnosticSchema,
   runtime_error: runtimeErrorSchema,
   input_action: inputActionSchema,
   custom: customSchema,
@@ -214,6 +218,14 @@ export {
   type ContextLostEvent,
   type ContextRestoredEvent,
 } from "./contextLoss.js";
+export {
+  graphicsDiagnosticSchema,
+  graphicsDiagnosticSeveritySchema,
+  graphicsDiagnosticCategorySchema,
+  type GraphicsDiagnosticEvent,
+  type GraphicsDiagnosticSeverity,
+  type GraphicsDiagnosticCategory,
+} from "./graphicsDiagnostic.js";
 export {
   runtimeErrorSchema,
   runtimeErrorKindSchema,

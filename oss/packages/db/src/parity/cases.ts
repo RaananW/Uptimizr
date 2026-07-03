@@ -50,6 +50,8 @@ import {
   buildPerfByScene,
   buildResourcePercentiles,
   buildStabilityCounts,
+  buildGraphicsDiagnosticCounts,
+  buildRenderingTechnology,
   buildPointerHeatmap,
   buildSceneCoverage,
   buildSessionTrajectory,
@@ -213,12 +215,17 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["mesh"],
     golden: [
       {
-        cam_vx: 0,
+        // Flat-pointer near-plane reconstruction (#22): the box click ASOF-joins to
+        // the camera sample carrying intrinsics (pos [0,0,0], dir [2,1,2], fov π/2,
+        // aspect 2, near 0.1) and screen [0.15, 0.15], so its origin is unprojected
+        // onto the near plane instead of collapsing to the camera point. Verified
+        // from the unproject formula; at cellSize 1 the origin voxel is (-1, 0, 0).
+        cam_vx: -1,
         cam_vy: 0,
         cam_vz: 0,
-        origin_x: 0,
-        origin_y: 0,
-        origin_z: 0,
+        origin_x: -0.04882744092713605,
+        origin_y: 0.09932996624407775,
+        origin_z: 0.14916245780509718,
         hit_vx: 0,
         hit_vy: 0,
         hit_vz: 0,
@@ -453,10 +460,29 @@ export const PARITY_CASES: readonly ParityCase[] = [
     build: (d) => buildPerfByDevice(PID, PARITY_RANGE, d),
     sortKeys: ["engine"],
     // s1 -> webgpu (2 samples), s2 -> webgl2 (1 sample); both sessions have a
-    // single median FPS of 45. isMobile/renderer were never reported -> ''.
+    // single median FPS of 45. isMobile/renderer/browser/os were never reported
+    // -> ''.
     golden: [
-      { engine: "webgl2", is_mobile: "", renderer: "", sessions: 1, samples: 1, p50_fps: 45 },
-      { engine: "webgpu", is_mobile: "", renderer: "", sessions: 1, samples: 2, p50_fps: 45 },
+      {
+        engine: "webgl2",
+        is_mobile: "",
+        renderer: "",
+        browser: "",
+        os: "",
+        sessions: 1,
+        samples: 1,
+        p50_fps: 45,
+      },
+      {
+        engine: "webgpu",
+        is_mobile: "",
+        renderer: "",
+        browser: "",
+        os: "",
+        sessions: 1,
+        samples: 2,
+        p50_fps: 45,
+      },
     ],
   },
   {
@@ -496,6 +522,41 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["incidents"],
     // No context_lost / compile_stall fixtures: all counts coalesce to 0.
     golden: [{ context_losses: 0, compile_stalls: 0, incidents: 0 }],
+  },
+  {
+    name: "graphicsDiagnosticCounts",
+    build: (d) => buildGraphicsDiagnosticCounts(PID, PARITY_RANGE, d),
+    sortKeys: ["severity", "category", "backend"],
+    // No graphics_diagnostic fixtures in the parity set (capture is off by
+    // default), so the crossed roll-up is empty. Validates the JSON extraction,
+    // the nullable-int `count` coalesce, and the GROUP/ORDER render identically on
+    // both engines (#16).
+    golden: [],
+  },
+  {
+    name: "renderingTechnology",
+    build: (d) => buildRenderingTechnology(PID, PARITY_RANGE, d),
+    sortKeys: ["api", "backend", "api_version", "shading_language"],
+    // s1 -> webgpu/metal/1.0/wgsl, s2 -> webgl2/opengl/3.0/glsl-es. One
+    // session_start each (always-on, ADR 0021 part 1). Validates the nested
+    // graphics JSON extraction, the unknown coalesce, and that the crossed
+    // GROUP/ORDER render identically on both engines (#120).
+    golden: [
+      {
+        api: "webgl2",
+        backend: "opengl",
+        api_version: "3.0",
+        shading_language: "glsl-es",
+        sessions: 1,
+      },
+      {
+        api: "webgpu",
+        backend: "metal",
+        api_version: "1.0",
+        shading_language: "wgsl",
+        sessions: 1,
+      },
+    ],
   },
   {
     name: "deadClicks",

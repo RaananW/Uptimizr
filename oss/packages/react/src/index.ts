@@ -26,7 +26,7 @@ export type { FilterState, TimeWindow } from "./filters";
 export type { LiveEvent } from "./live";
 
 // Extensible dashboard panel contract (ADR 0036, extended by ADR 0039).
-export { definePanel } from "./panels/contract";
+export { definePanel, PANEL_CONTRACT_VERSION } from "./panels/contract";
 export type {
   PanelDefinition,
   PanelContext,
@@ -54,6 +54,27 @@ export {
   EMPTY_PANEL_STATE,
 } from "./panels/settings";
 export type { PanelState, PanelStateStore } from "./panels/settings";
+
+// Runtime / remote panel loading (ADR 0041). The contract is designed so panels
+// can be discovered and loaded at runtime behind the same `PanelDefinition`.
+export {
+  fetchPanelManifest,
+  loadRemotePanels,
+  mergePanels,
+  isPanelDefinition,
+  isPanelManifest,
+  isContractCompatible,
+} from "./panels/remote";
+export type {
+  PanelManifest,
+  PanelManifestEntry,
+  RemotePanelError,
+  RemotePanelErrorCode,
+  LoadRemotePanelsResult,
+  LoadRemotePanelsOptions,
+  FetchManifestOptions,
+  ModuleImporter,
+} from "./panels/remote";
 export { usePanelData } from "./panels/usePanelData";
 export { PanelCard, PanelMessage } from "./panels/PanelCard";
 export {

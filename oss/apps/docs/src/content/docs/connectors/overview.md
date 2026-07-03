@@ -27,6 +27,25 @@ which renderer you use.
 - **FPS / frame perf** → performance
 - **Mesh visibility**, **hover dwell**, **resource sample** (opt-in) → attention & footprint
 
+## Asset-load capture (`asset_load`)
+
+The `asset_load` event reports per-asset load timing (`name`, `loadMs`, optional `bytes`/`ttffMs`/
+`ttiMs`). Whether a connector captures it **automatically** depends on the engine exposing a global
+load lifecycle to hook. Engines without an always-on asset registry can still report `asset_load`
+**from your app** by emitting it on the `UptimizrClient` directly.
+
+| Engine            | `asset_load` capture | How                                                                                  |
+| ----------------- | -------------------- | ------------------------------------------------------------------------------------ |
+| PlayCanvas        | ✅ Automatic         | Hooks the `app.assets` registry lifecycle (`load:start` → `load` / `error`).         |
+| Babylon.js        | ⚙️ App-reported      | `SceneLoader` / `AssetsManager` are per-call — no always-on global registry to hook. |
+| Babylon Lite      | ⚙️ App-reported      | Same as Babylon.js.                                                                  |
+| three.js          | ⚙️ App-reported      | `LoadingManager` is per-loader and optional — no guaranteed global hook.             |
+| react-three-fiber | ⚙️ App-reported      | Wraps three.js; same as three.js.                                                    |
+| A-Frame           | ⚙️ App-reported      | Wraps three.js; same as three.js.                                                    |
+
+Privacy (ADR 0003): the PlayCanvas connector records only the asset's app-defined **name**, never the
+file URL. Disable it with `capture: { assetLoad: false }`.
+
 ## Shared principles
 
 - **The engine is a peer dependency.** Connectors read your existing engine instance and never

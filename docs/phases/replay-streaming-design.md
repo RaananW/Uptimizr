@@ -85,10 +85,10 @@ exposing a monotonic per-session sequence (or using ClickHouse row ordering dete
 
 ## Compatibility & rollout
 
-- **Phase 1 (additive):** add NDJSON + cursor support to the endpoint; keep the single-JSON array
+- **Step 1 (additive):** add NDJSON + cursor support to the endpoint; keep the single-JSON array
   as the default. `@uptimizr/replay` gains an opt-in streaming fetch; `replayInScene` auto-uses it
   when available and falls back to the array otherwise. Small sessions are unaffected.
-- **Phase 2:** make streaming the default for `replayInScene`; keep the array response for explicit
+- **Step 2:** make streaming the default for `replayInScene`; keep the array response for explicit
   `Accept: application/json` and the dashboard's simpler reads.
 - The streaming contract (NDJSON shape + cursor semantics + tiebreaker) is a public client
   dependency → **write an ADR** before locking it.

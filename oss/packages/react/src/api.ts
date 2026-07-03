@@ -357,6 +357,10 @@ export interface PerfByDevice {
   engine: string;
   is_mobile: string;
   renderer: string;
+  /** Coarse browser family derived from the User-Agent at ingestion (ADR 0041). */
+  browser: string;
+  /** Coarse OS family derived from the User-Agent at ingestion (ADR 0041). */
+  os: string;
   sessions: number;
   samples: number;
   p50_fps: number;
@@ -387,6 +391,33 @@ export interface StabilityCounts {
   context_losses: number;
   compile_stalls: number;
   incidents: number;
+}
+
+/**
+ * Opt-in engine-diagnostic counts (ADR 0021 part 2): one row per crossed
+ * `(severity, category, backend)` cell with the rollup-aware incident total. The
+ * dashboard folds these into the by-category, by-severity, and by-backend
+ * breakdowns. `backend` is `""` when the connector didn't report one.
+ */
+export interface GraphicsDiagnosticCount {
+  severity: string;
+  category: string;
+  backend: string;
+  incidents: number;
+}
+
+/**
+ * Always-on rendering-technology mix (ADR 0021 part 1): one row per crossed
+ * `(api, backend, apiVersion, shadingLanguage)` cell with the session count. The
+ * dashboard folds these into the by-api, by-backend, and by-shading-language
+ * breakdowns. Each field is `""` when the connector didn't report one.
+ */
+export interface RenderingTechnologyCount {
+  api: string;
+  backend: string;
+  apiVersion: string;
+  shadingLanguage: string;
+  sessions: number;
 }
 
 /** Coarse per-session descriptor (from the session's `session_start` event). */
@@ -673,13 +704,15 @@ export class CollectorApi {
     });
   }
 
-  /** FPS segmented by device class (backend / mobile / GPU renderer) (#82). */
+  /** FPS segmented by device class (backend / mobile / GPU / browser / OS) (#82, #11). */
   perfByDevice(params?: QueryParams): Promise<PerfByDevice[]> {
     return this.get<Record<string, unknown>[]>("api/v1/perf/by-device", params).then((rows) =>
       rows.map((r) => ({
         engine: String(r.engine ?? ""),
         is_mobile: String(r.is_mobile ?? ""),
         renderer: String(r.renderer ?? ""),
+        browser: String(r.browser ?? ""),
+        os: String(r.os ?? ""),
         sessions: Number(r.sessions ?? 0),
         samples: Number(r.samples ?? 0),
         p50_fps: Number(r.p50_fps ?? 0),
@@ -728,6 +761,39 @@ export class CollectorApi {
         incidents: Number(r.incidents ?? 0),
       };
     });
+  }
+
+  /**
+   * Opt-in engine-diagnostic counts (#16, ADR 0021 part 2): `graphics_diagnostic`
+   * incidents crossed by `(severity, category, backend)`, folding markers and
+   * per-session rollups. Off by default, so an empty array is the clean case.
+   */
+  graphicsDiagnosticCounts(params?: QueryParams): Promise<GraphicsDiagnosticCount[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/graphics-diagnostics", params).then((rows) =>
+      rows.map((r) => ({
+        severity: String(r.severity ?? ""),
+        category: String(r.category ?? ""),
+        backend: String(r.backend ?? ""),
+        incidents: Number(r.incidents ?? 0),
+      })),
+    );
+  }
+
+  /**
+   * Always-on rendering-technology mix (#120, ADR 0021 part 1): `session_start`
+   * counts crossed by `(api, backend, apiVersion, shadingLanguage)`. Always-on, so
+   * a populated array is the common case.
+   */
+  renderingTechnology(params?: QueryParams): Promise<RenderingTechnologyCount[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/rendering-technology", params).then((rows) =>
+      rows.map((r) => ({
+        api: String(r.api ?? ""),
+        backend: String(r.backend ?? ""),
+        apiVersion: String(r.api_version ?? ""),
+        shadingLanguage: String(r.shading_language ?? ""),
+        sessions: Number(r.sessions ?? 0),
+      })),
+    );
   }
 
   /** World-space (3D) pointer heatmap voxels. */

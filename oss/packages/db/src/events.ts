@@ -54,6 +54,13 @@ export interface EventRow {
   long_frames: number;
   dpr: number;
   render_scale: number;
+  // camera_sample projection intrinsics (#22): promoted so the click-gaze ray
+  // aggregation can unproject a flat pointer's `screen` onto the camera near
+  // plane. 0 when the sample didn't carry the intrinsic (fall back to the camera
+  // position, preserving legacy behavior).
+  fov: number;
+  aspect: number;
+  near: number;
   name: string;
   payload: string;
 }
@@ -162,6 +169,13 @@ export function toEventRow(event: AnyEvent): EventRow {
     long_frames: typeof e.longFrames === "number" ? e.longFrames : 0,
     dpr: typeof e.dpr === "number" ? e.dpr : 0,
     render_scale: typeof e.renderScale === "number" ? e.renderScale : 0,
+    // camera_sample projection intrinsics (#22); 0 on other event types and on
+    // camera samples that didn't capture them (the full event stays in payload).
+    // The click-gaze ray aggregation treats a non-positive value as "absent" and
+    // falls back to the camera position.
+    fov: typeof e.fov === "number" ? e.fov : 0,
+    aspect: typeof e.aspect === "number" ? e.aspect : 0,
+    near: typeof e.near === "number" ? e.near : 0,
     name,
     payload: JSON.stringify(event),
   };

@@ -130,6 +130,39 @@ perf/visual-fidelity variance across the user base.
 client.reportCapabilityChange({ kind: "graphics-backend", from: "webgpu", to: "webgl2" });
 ```
 
+### Engine diagnostics: WebGPU `device.lost`, shader-compile failures, sampled `gl.getError()` (`graphics_diagnostic`)
+
+When the client is created with `captureGraphicsDiagnostics: true` (off by default),
+the connector wires three GPU-health signals into `graphics_diagnostic`:
+
+- **WebGPU `device.lost`** → `category: "device-lost"`, `backend: "webgpu"`. `info` for a
+  requested loss (`reason: "destroyed"`), `fatal` otherwise. WebGL is a no-op (its interruption
+  is the always-on `context_lost`).
+- **Shader compile/link failures** → `category: "shader-compile"`, `error`. WebGL info logs on
+  failure; WebGPU shader-module compilation info. **Source redaction:** the info log can embed
+  shader source, so raw source is stripped unless you also set `captureShaderSource: true` (off by
+  default — shader source is application IP).
+- **Sampled WebGL `gl.getError()`** → `category: "validation"` as a low-rate rollup (`count`).
+  Never per-frame (a sync GPU stall); no-op on WebGPU.
+
+All `message`/`code` text is length-capped and passes through `beforeSend` for redaction; this stays
+opt-in and engine-parity with the three connector.
+
+```ts
+const client = new UptimizrClient({ projectId, endpoint, captureGraphicsDiagnostics: true });
+// To include raw shader source (IP-sensitive), also set captureShaderSource: true.
+```
+
+length-capped and runs through `beforeSend`. **WebGL is a no-op.**
+
+### Engine diagnostics: context-creation failure (`graphics_diagnostic`, #18)
+
+Also gated by `captureGraphicsDiagnostics`, the connector checks at init whether the
+Babylon engine obtained a usable backend. If no WebGL context could be created, it emits
+**one** `graphics_diagnostic` with `category: "context-loss"`, `severity: "fatal"`, and
+`backend: "unknown"` (a failed context exposes nothing to introspect). It fires before the
+first flush, but is queued in order after `session_start` so it always lands.
+
 ## Standalone bundle (drop into the Babylon Playground)
 
 Because every `@babylonjs/core` import in this package is a **type-only** import,

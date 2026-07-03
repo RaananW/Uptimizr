@@ -73,4 +73,4 @@ pnpm --filter @uptimizr/dashboard build:static   # static export (out/)
 - Top interacted meshes.
 
 A textured 3D sphere / project `.glb` overlay and an in-dashboard replay viewer
-are Phase 2.
+are deferred.

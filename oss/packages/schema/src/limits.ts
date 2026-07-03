@@ -72,6 +72,15 @@ export const LIMITS = {
   maxBoneIdLength: 128,
   /** Relative engine node path of a Tier-1 subtree child on `node_transform` (ADR 0033). */
   maxChildPathLength: 512,
+
+  /**
+   * Free-text diagnostic message on `graphics_diagnostic` (ADR 0021 part 2). May
+   * embed GPU/driver/shader error text, so it is length-capped and the deployer
+   * redacts via `beforeSend`. Raw shader source is a separate sub-opt-in.
+   */
+  maxGraphicsDiagnosticMessageLength: 1024,
+  /** Short diagnostic code on `graphics_diagnostic` (e.g. GL error / `GPUError` subtype). */
+  maxGraphicsDiagnosticCodeLength: 64,
 } as const;
 
 /**

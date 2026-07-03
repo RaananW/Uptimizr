@@ -63,6 +63,30 @@ describe("UptimizrClient", () => {
     expect(m.batches).toHaveLength(0);
   });
 
+  it("defaults captureGraphicsDiagnostics to false (opt-in, ADR 0021)", () => {
+    const m = mockTransport();
+    const client = new UptimizrClient(baseConfig(m.transport));
+    expect(client.config.captureGraphicsDiagnostics).toBe(false);
+
+    const optedIn = new UptimizrClient({
+      ...baseConfig(m.transport),
+      captureGraphicsDiagnostics: true,
+    });
+    expect(optedIn.config.captureGraphicsDiagnostics).toBe(true);
+  });
+
+  it("defaults captureShaderSource to false (sub-opt-in, IP risk, ADR 0021)", () => {
+    const m = mockTransport();
+    const client = new UptimizrClient(baseConfig(m.transport));
+    expect(client.config.captureShaderSource).toBe(false);
+
+    const optedIn = new UptimizrClient({
+      ...baseConfig(m.transport),
+      captureShaderSource: true,
+    });
+    expect(optedIn.config.captureShaderSource).toBe(true);
+  });
+
   it("auto-flushes when the batch size threshold is reached", async () => {
     const m = mockTransport();
     const client = new UptimizrClient({ ...baseConfig(m.transport), batchSize: 2 });
@@ -188,6 +212,32 @@ describe("UptimizrClient", () => {
     expect(types).toContain("camera_sample");
     expect(types).toContain("session_start");
     expect(types).toContain("session_end");
+  });
+
+  it("queues + flushes a context-creation marker emitted at collector init (#18)", async () => {
+    const m = mockTransport();
+    // A connector that detects a failed context and emits before any transport
+    // round-trip — the marker must still land, ordered after session_start.
+    const collector: Collector = {
+      name: "context-fail",
+      start: (ctx) => {
+        ctx.emit({
+          type: "graphics_diagnostic",
+          severity: "fatal",
+          category: "context-loss",
+          backend: "unknown",
+        });
+      },
+    };
+    const client = new UptimizrClient({
+      ...baseConfig(m.transport),
+      captureGraphicsDiagnostics: true,
+    }).use(collector);
+    client.start();
+    await client.flush();
+
+    const types = m.batches.flatMap((b) => b.events.map((e) => e.type));
+    expect(types).toEqual(["session_start", "graphics_diagnostic"]);
   });
 
   it("setScene emits a scene_change marker and stamps sceneId on later events", async () => {

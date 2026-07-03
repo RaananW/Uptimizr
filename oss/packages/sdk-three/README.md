@@ -174,6 +174,34 @@ boundary so the emitted events are identical:
   `client.reportCapabilityChange({ kind, from?, to?, reason? })` (sdk-core). The
   raw GPU lifecycle (`context_lost` / `context_restored`) is still captured by the
   connector; `capability_change` is the higher-level companion.
+- **Engine diagnostics — WebGPU `device.lost` (`graphics_diagnostic`, #20):**
+  opt-in via `captureGraphicsDiagnostics: true` on the client (off by default). On a
+  `WebGPURenderer`, the connector subscribes to `renderer.backend.device.lost` and
+  emits one `graphics_diagnostic` with `category: "device-lost"` and
+  `backend: "webgpu"` — `severity` is `info` for a requested loss
+  (`reason: "destroyed"`) and `fatal` otherwise; the optional length-capped `message`
+  runs through `beforeSend`. Engine-parity with the Babylon connector. A
+  `WebGLRenderer` is a **no-op** (no device-lost concept; its interruption is the
+  always-on `context_lost`).
+- **Engine diagnostics — WebGPU `uncapturederror` (rate-limited rollup, #19):** also
+  under `captureGraphicsDiagnostics`, the connector listens for `uncapturederror` on
+  `renderer.backend.device` and aggregates a burst into one `graphics_diagnostic` with
+  `count: N` + first `message`, flushed on an interval and on dispose — never N events.
+  Subtype maps to `out-of-memory` (`GPUOutOfMemoryError`, `severity: error`) or
+  `validation` (`severity: warning`); `message` is length-capped via `beforeSend`. WebGL no-op.
+- **Engine diagnostics — context-creation failure (`graphics_diagnostic`, #18):**
+  also opt-in via `captureGraphicsDiagnostics: true`. At init the connector checks whether
+  the renderer obtained a GL context (`getContext()` returns null on failure) and, if not,
+  emits **one** `graphics_diagnostic` with `category: "context-loss"`, `severity: "fatal"`,
+  and `backend: "unknown"`. It fires before the first flush yet queues in order after
+  `session_start`, so the decisive marker always lands.
+- **Engine diagnostics — shader compile/link failures + sampled `gl.getError()` (#17):** also
+  under `captureGraphicsDiagnostics`, shader compile/link **failures** → `category:
+"shader-compile"` (`error`; WebGL info logs, WebGPU shader-module compilation info), and sampled
+  WebGL `gl.getError()` → `category: "validation"` as a low-rate rollup (never per-frame — it forces
+  a sync GPU stall; no-op on WebGPU). Raw shader source is stripped unless the separate
+  `captureShaderSource: true` sub-opt-in is set (off by default — application IP). All text is
+  length-capped via `beforeSend`. Engine-parity with the Babylon connector.
 
 ## License
 

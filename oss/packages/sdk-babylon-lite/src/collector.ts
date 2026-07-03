@@ -7,7 +7,9 @@ import type { Camera, Mat4, SceneContext } from "@babylonjs/lite";
 // esbuild keeps it external — it is never bundled.
 import { getViewProjectionMatrix, onBeforeRender } from "@babylonjs/lite";
 import type {
+  AggregatorConfig,
   CameraGestureSample,
+  CameraPose,
   Collector,
   CollectorContext,
   CollectorHandle,
@@ -15,9 +17,10 @@ import type {
   ResolvedCadence,
   SampleRate,
   SamplingProfile,
+  VisibilityMeshObservation,
 } from "@uptimizr/sdk-core";
 import {
-  classifyCameraGesture,
+  poseUnchanged,
   resolveCadence,
   toCanonicalDirection,
   toCanonicalPosition,
@@ -63,30 +66,6 @@ interface ArcRotateView {
 
 type Vec3T = [number, number, number];
 
-function vec3Close(a: Vec3T, b: Vec3T, eps: number): boolean {
-  return (
-    Math.abs(a[0] - b[0]) <= eps && Math.abs(a[1] - b[1]) <= eps && Math.abs(a[2] - b[2]) <= eps
-  );
-}
-
-interface CameraPose {
-  position: Vec3T;
-  direction: Vec3T;
-  target?: Vec3T;
-  fov?: number;
-}
-
-/** True when two poses are equal within `eps`. */
-function poseUnchanged(a: CameraPose, b: CameraPose, eps: number): boolean {
-  if (!vec3Close(a.position, b.position, eps)) return false;
-  if (!vec3Close(a.direction, b.direction, eps)) return false;
-  if ((a.target === undefined) !== (b.target === undefined)) return false;
-  if (a.target && b.target && !vec3Close(a.target, b.target, eps)) return false;
-  if ((a.fov === undefined) !== (b.fov === undefined)) return false;
-  if (a.fov !== undefined && b.fov !== undefined && Math.abs(a.fov - b.fov) > eps) return false;
-  return true;
-}
-
 /** Read a Mat4 index, coercing the (index-signature) read to a concrete number. */
 function m(mat: Mat4, i: number): number {
   return (mat as unknown as Record<number, number>)[i] ?? 0;
@@ -97,19 +76,6 @@ function sub3(a: Vec3T, b: Vec3T): Vec3T {
 }
 function dot3(a: Vec3T, b: Vec3T): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-function len3(a: Vec3T): number {
-  return Math.hypot(a[0], a[1], a[2]);
-}
-
-/** Round an AABB to mm precision so tiny float jitter doesn't re-send the box. */
-function roundAabb(b: Aabb): Aabb {
-  return b.map((v) => Math.round(v * 1000) / 1000) as Aabb;
-}
-/** True when two AABBs match within `eps` on every axis. */
-function aabbClose(a: Aabb, b: Aabb, eps: number): boolean {
-  for (let i = 0; i < 6; i++) if (Math.abs((a[i] ?? 0) - (b[i] ?? 0)) > eps) return false;
-  return true;
 }
 
 /**
@@ -200,14 +166,6 @@ function sphereInFrustum(
   }
   // Fallback: anything in front of the camera (VP unavailable / non-finite).
   return dot3(sub3(center, camPos), forward) > 0;
-}
-
-/** Per-object visibility accumulator for the current window (mirrors three/Babylon). */
-interface VisibilityAccumulator {
-  visibleMs: number;
-  centeredMs: number;
-  maxScreenFraction: number;
-  bounds?: Aabb;
 }
 
 /**
@@ -340,22 +298,6 @@ function readNodeTransform(node: WorldMatrixNode, scaleEps: number): NodeSample 
     sample.scale = s;
   }
   return sample;
-}
-
-/** True when two node samples are equal within `eps` (scale presence must also match). */
-function nodeSampleUnchanged(a: NodeSample, b: NodeSample, eps: number): boolean {
-  if (!vec3Close(a.position, b.position, eps)) return false;
-  if (
-    Math.abs(a.rotation[0] - b.rotation[0]) > eps ||
-    Math.abs(a.rotation[1] - b.rotation[1]) > eps ||
-    Math.abs(a.rotation[2] - b.rotation[2]) > eps ||
-    Math.abs(a.rotation[3] - b.rotation[3]) > eps
-  ) {
-    return false;
-  }
-  if ((a.scale === undefined) !== (b.scale === undefined)) return false;
-  if (a.scale && b.scale && !vec3Close(a.scale, b.scale, eps)) return false;
-  return true;
 }
 
 /** Structural view of a Lite node that might be a camera (refused for node_transform). */
@@ -771,6 +713,17 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
   return {
     name: "babylon-lite",
     start(ctx: CollectorContext): CollectorHandle {
+      // The engine-agnostic aggregator (#10): the connector reads live engine
+      // state into plain-number snapshot DTOs and hands them here; the
+      // offload-eligible math (matrix decompose, visibility bucketing,
+      // idle-diffs, gesture classification) runs main-thread by default or
+      // inside the offload worker, behind the client `offload` flag.
+      const aggregatorConfig: AggregatorConfig = {
+        perf: { suppressIdle: suppressIdlePerfSamples, fpsThreshold: perfFpsThreshold },
+        node: { suppressIdle: suppressIdleSamples },
+        visibility: { centeredCos: visCenteredCos, boundingBox: visBoundingBox, boundsEps: 1e-3 },
+      };
+      const snapshot = ctx.createAggregation(aggregatorConfig);
       const timers: ReturnType<typeof setInterval>[] = [];
       const domListeners: Array<{ type: string; handler: (e: unknown) => void }> = [];
       const frameCallbacks: Array<(deltaMs: number) => void> = [];
@@ -781,7 +734,6 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
 
       let lastPointerMove = 0;
       let lastPose: CameraPose | undefined;
-      let lastFps: number | undefined;
       // Gaze (ADR 0030) state: the most recent resolved center-pixel hit, and the
       // async refresher that updates it. Lite picking is async, so the hit is
       // attached to the *next* emitted camera_sample (≤ one sample of latency).
@@ -855,12 +807,16 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
           ...(target ? { target } : {}),
           ...(fov !== undefined ? { fov } : {}),
         };
+        // Cheap main-thread idle pre-gate: keep at most one gaze pick per emitted
+        // pose (and none while the view is static) by diffing against the last
+        // pose with the same `poseUnchanged` the aggregator uses (#10, no logic
+        // fork). The aggregator's camera channel is then a pass-through.
         if (suppressIdleSamples && lastPose && poseUnchanged(lastPose, pose, cameraEpsilon)) {
           return;
         }
         lastPose = pose;
-        ctx.emit({
-          type: "camera_sample",
+        snapshot({
+          channel: "camera",
           position: pose.position,
           direction: pose.direction,
           ...(pose.target ? { target: pose.target } : {}),
@@ -878,15 +834,10 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
       const samplePerf = () => {
         if (smoothedFps === undefined) return;
         const fps = smoothedFps;
-        if (
-          suppressIdlePerfSamples &&
-          lastFps !== undefined &&
-          Math.abs(fps - lastFps) <= perfFpsThreshold
-        ) {
-          return;
-        }
-        lastFps = fps;
-        ctx.emit({ type: "frame_perf", fps });
+        // Lite exposes no frame-time series, so the perf snapshot carries an empty
+        // window (the aggregator's percentile/longFrames path stays a no-op). The
+        // FPS idle-diff moves to the aggregator behind `perf.suppressIdle` (#10).
+        snapshot({ channel: "perf", frameTimes: new Float32Array(0), fps, jankFrameMs: 0 });
       };
 
       if (want.camera) {
@@ -905,11 +856,10 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
         // actor gets its own cadence-driven sampler: resolve the node (lazily —
         // resolvers handle load order), refuse cameras (the visitor camera is
         // already `camera_sample`; "events live once"), read the WORLD transform,
-        // and emit. Lite is left-handed (canonical), so no frame conversion is
-        // applied. Idle suppression skips unchanged frames so a static actor costs
-        // nothing on the wire.
+        // and hand it to the aggregator. Lite is left-handed (canonical), so we
+        // pass the engine-decomposed sample; the aggregator owns the idle-diff so
+        // a static actor still costs nothing on the wire (#10).
         const lookupScene = scene as unknown as ActorLookupScene;
-        const lastNodeSample = new Map<string, NodeSample>();
         const refusedCamera = new Set<string>();
         for (const id of actorIds) {
           const actor = actorMap[id]!;
@@ -937,18 +887,11 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
               }
               return;
             }
-            const sample = readNodeTransform(node, cameraEpsilon);
-            const prev = lastNodeSample.get(id);
-            if (suppressIdleSamples && prev && nodeSampleUnchanged(prev, sample, cameraEpsilon)) {
-              return;
-            }
-            lastNodeSample.set(id, sample);
-            ctx.emit({
-              type: "node_transform",
+            snapshot({
+              channel: "node",
               nodeId: id,
-              position: sample.position,
-              rotation: sample.rotation,
-              ...(sample.scale ? { scale: sample.scale } : {}),
+              decomposed: readNodeTransform(node, cameraEpsilon),
+              scaleEps: cameraEpsilon,
             });
           };
           sampleNode();
@@ -957,16 +900,14 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
       }
 
       // --- Per-object dwell (`mesh_visibility`, #37) ---
-      // Accumulate on-screen / near-centre time per object every frame (the Lite
-      // per-frame hook ≈ render cadence, so dwell pauses when the tab is hidden),
-      // then flush one bucketed summary per object per window (ADR 0012). World
-      // bounds come from each mesh's `boundMin`/`boundMax` (the same source the
-      // scene-proxy scan reads); the frustum test uses Lite's getViewProjectionMatrix.
+      // Each render tick we read which tracked objects are on-screen (the engine
+      // frustum/bounds reads must stay main-thread) and hand the raw per-tick
+      // observations to the aggregator; it owns the dwell/centred/screen-fraction
+      // bucketing, the AABB dedupe/round (#53) and the per-window flush (ADR 0012,
+      // #10). World bounds come from each mesh's `boundMin`/`boundMax` (the same
+      // source the scene-proxy scan reads); the frustum test uses Lite's
+      // getViewProjectionMatrix.
       if (want.meshVisibility) {
-        const accum = new Map<string, VisibilityAccumulator>();
-        // Last AABB sent per mesh, so a static box is sent once then suppressed.
-        const sentBounds = new Map<string, Aabb>();
-        const boundsEps = 1e-3;
         const visCanvas = canvas as unknown as CanvasView;
         let lastVisTime = ctx.now();
 
@@ -978,16 +919,12 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
 
           const wm = camera.worldMatrix;
           const camPos: Vec3T = [m(wm, 12), m(wm, 13), m(wm, 14)];
-          let fx = m(wm, 8),
-            fy = m(wm, 9),
-            fz = m(wm, 10);
-          const fLen = Math.hypot(fx, fy, fz) || 1;
-          fx /= fLen;
-          fy /= fLen;
-          fz /= fLen;
-          const forward: Vec3T = [fx, fy, fz];
-          // Half vertical FOV in radians (Lite fov is already radians).
-          const halfFov = typeof camera.fov === "number" ? camera.fov / 2 : 0.4;
+          // Raw (un-normalized) world +Z basis; the aggregator normalizes it. The
+          // frustum test only uses its sign, so the raw vector is equivalent.
+          const forward: Vec3T = [m(wm, 8), m(wm, 9), m(wm, 10)];
+          // Vertical FOV in radians (Lite fov is already radians); the aggregator
+          // halves it. `0.8` mirrors the previous `0.4` half-FOV default.
+          const fov = typeof camera.fov === "number" ? camera.fov : 0.8;
           const rect =
             typeof visCanvas.getBoundingClientRect === "function"
               ? visCanvas.getBoundingClientRect()
@@ -997,6 +934,7 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
           let tracked = 0;
           const meshes = (scene as unknown as { meshes?: unknown[] }).meshes;
           if (!Array.isArray(meshes)) return;
+          const observations: VisibilityMeshObservation[] = [];
           for (const raw of meshes) {
             const obj = raw as MeshVisibilityView;
             const name = obj.name;
@@ -1013,49 +951,28 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
             if (!sphereInFrustum(camera, aspect, bounds.center, bounds.radius, camPos, forward)) {
               continue;
             }
-            const toCenter = sub3(bounds.center, camPos);
-            const dist = len3(toCenter) || 1e-6;
-            const cosAngle = dot3(toCenter, forward) / dist;
-            const screenFraction = clamp01(Math.atan2(bounds.radius, dist) / (halfFov || 1e-6));
-
-            let entry = accum.get(name);
-            if (!entry) {
-              entry = { visibleMs: 0, centeredMs: 0, maxScreenFraction: 0 };
-              accum.set(name, entry);
-            }
-            entry.visibleMs += stepMs;
-            if (cosAngle >= visCenteredCos) entry.centeredMs += stepMs;
-            if (screenFraction > entry.maxScreenFraction) entry.maxScreenFraction = screenFraction;
-            // Lite is left-handed (canonical) — the AABB needs no Z flip (ADR 0018).
-            if (visBoundingBox) entry.bounds = bounds.aabb;
-          }
-        };
-
-        const flushVisibility = () => {
-          for (const [mesh, entry] of accum) {
-            if (entry.visibleMs <= 0) continue;
-            let bounds: Aabb | undefined;
-            if (entry.bounds) {
-              const rounded = roundAabb(entry.bounds);
-              const prev = sentBounds.get(mesh);
-              if (!prev || !aabbClose(prev, rounded, boundsEps)) {
-                bounds = rounded;
-                sentBounds.set(mesh, rounded);
-              }
-            }
-            ctx.emit({
-              type: "mesh_visibility",
-              mesh,
-              visibleMs: Math.round(entry.visibleMs),
-              ...(entry.centeredMs > 0 ? { centeredMs: Math.round(entry.centeredMs) } : {}),
-              ...(entry.maxScreenFraction > 0
-                ? { maxScreenFraction: entry.maxScreenFraction }
-                : {}),
-              ...(bounds ? { bounds } : {}),
+            observations.push({
+              mesh: name,
+              center: bounds.center,
+              radius: bounds.radius,
+              // Ride the world AABB along only when bounds capture is on (#53); Lite
+              // is left-handed (canonical) so it needs no Z flip (ADR 0018). The
+              // aggregator dedupes/rounds it across the window.
+              ...(visBoundingBox ? { aabb: bounds.aabb } : {}),
             });
           }
-          accum.clear();
+          if (observations.length === 0) return;
+          snapshot({
+            channel: "visibilityTick",
+            stepMs,
+            camPos,
+            forward,
+            fov,
+            meshes: observations,
+          });
         };
+
+        const flushVisibility = () => snapshot({ channel: "visibilityFlush" });
 
         // Sample every frame; flush on the window timer + once on stop (trailing).
         frameCallbacks.push(sampleVisibility);
@@ -1180,9 +1097,11 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
       const flushHover = (now: number) => {
         if (hoverMesh !== undefined && !hoverActed) {
           const dwellMs = now - hoverStartMs;
+          // Keep the dwell-threshold gate on the main thread (the aggregator's
+          // hover channel is a pass-through); only completed episodes are emitted.
           if (dwellMs >= hoverMinDwellMs) {
-            ctx.emit({
-              type: "hover_dwell",
+            snapshot({
+              channel: "hover",
               mesh: hoverMesh,
               dwellMs,
               ...(hoverSource ? { source: hoverSource } : {}),
@@ -1277,18 +1196,14 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
         const opened = gestureStart;
         gestureStart = null;
         if (!opened) return;
-        const classified = classifyCameraGesture(opened.sample, readGestureSample(camera), {
-          sensitivity: cameraGestureSensitivity,
-        });
-        if (!classified) return;
-        ctx.emit({
-          type: "camera_gesture",
-          kind: classified.kind,
+        // Hand the start→end bracket to the aggregator; the (pure) classification
+        // math runs there, main-thread or in the worker (#10).
+        snapshot({
+          channel: "gesture",
+          start: opened.sample,
+          end: readGestureSample(camera),
           durationMs: Math.max(0, Math.round(ctx.now() - opened.ts)),
-          ...(classified.orbitDeg !== undefined ? { orbitDeg: classified.orbitDeg } : {}),
-          ...(classified.rollDeg !== undefined ? { rollDeg: classified.rollDeg } : {}),
-          ...(classified.zoomRatio !== undefined ? { zoomRatio: classified.zoomRatio } : {}),
-          ...(classified.panDist !== undefined ? { panDist: classified.panDist } : {}),
+          options: { sensitivity: cameraGestureSensitivity },
           ...(opened.source ? { source: opened.source } : {}),
         });
       };

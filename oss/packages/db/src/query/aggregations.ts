@@ -463,11 +463,18 @@ export function buildAggregateTrajectories(
  * controllers, hands, gaze) carry their own world-space pointing ray, so when a
  * click has a `ray.origin` we use it verbatim — the controller/hand/gaze is the
  * true pointing origin, not the headset/camera. Flat pointers (mouse, touch,
- * stylus) have no native ray, so they fall back to the nearest preceding
- * `camera_sample` in the same session (the historical view-gated behavior). The
- * camera join is therefore a LEFT join so pose clicks survive even in sessions
- * that never emit a `camera_sample`; rows with neither a ray nor a camera origin
- * are dropped.
+ * stylus) have no native ray; when the ASOF-joined `camera_sample` carries the
+ * projection intrinsics (`fov`/`aspect`/`near`, #22, ADR 0043) we unproject the
+ * click's normalized `screen[x, y]` onto the camera **near plane** and use that
+ * point as the origin, so flat-pointer rays fan out across the near plane the way
+ * the clicks were actually made. The near-plane basis assumes the canonical
+ * world-up `(0, 1, 0)` and no camera roll (true for mouse/touch); a degenerate
+ * look-straight-up/down view (or any missing/zero intrinsic, e.g. legacy data)
+ * falls back to the nearest preceding `camera_sample` **position** — the
+ * historical view-gated behavior. The camera join is therefore a LEFT join so
+ * pose clicks survive even in sessions that never emit a `camera_sample`; rows
+ * with neither a ray, a reconstructable near-plane point, nor a camera origin are
+ * dropped.
  */
 export function buildClickGazeRay(
   projectId: string,
@@ -506,29 +513,66 @@ export function buildClickGazeRay(
         count() AS count
       FROM (
         SELECT
-          c.hx AS hx, c.hy AS hy, c.hz AS hz, c.mesh AS mesh,
-          CASE WHEN c.has_ray THEN c.rox WHEN m.cam_present = 1 THEN m.px END AS ox,
-          CASE WHEN c.has_ray THEN c.roy WHEN m.cam_present = 1 THEN m.py END AS oy,
-          CASE WHEN c.has_ray THEN c.roz WHEN m.cam_present = 1 THEN m.pz END AS oz
+          ja.hx AS hx, ja.hy AS hy, ja.hz AS hz, ja.mesh AS mesh,
+          CASE
+            WHEN ja.has_ray THEN ja.rox
+            WHEN ja.recon THEN ja.px + ja.dx * ja.near / ja.dlen
+              + (ja.dz / ja.hlen) * ja.off_r
+              + (-(ja.dx * ja.dy) / (ja.dlen * ja.hlen)) * ja.off_u
+            WHEN ja.cam_present = 1 THEN ja.px
+          END AS ox,
+          CASE
+            WHEN ja.has_ray THEN ja.roy
+            WHEN ja.recon THEN ja.py + ja.dy * ja.near / ja.dlen
+              + (ja.hlen / ja.dlen) * ja.off_u
+            WHEN ja.cam_present = 1 THEN ja.py
+          END AS oy,
+          CASE
+            WHEN ja.has_ray THEN ja.roz
+            WHEN ja.recon THEN ja.pz + ja.dz * ja.near / ja.dlen
+              + (-(ja.dx) / ja.hlen) * ja.off_r
+              + (-(ja.dy * ja.dz) / (ja.dlen * ja.hlen)) * ja.off_u
+            WHEN ja.cam_present = 1 THEN ja.pz
+          END AS oz
         FROM (
-          SELECT session_id, ts,
-            hit_point[1] AS hx, hit_point[2] AS hy, hit_point[3] AS hz, mesh,
-            length(ray_origin) = 3 AS has_ray,
-            ray_origin[1] AS rox, ray_origin[2] AS roy, ray_origin[3] AS roz
-          FROM events
-          WHERE project_id = ${pid}
-            AND event_type = 'pointer_click'
-            AND length(hit_point) = 3${range}${scene}${source}${session}
-        ) AS c
-        ${d.asofLeftJoin} (
-          SELECT session_id, ts, 1 AS cam_present,
-            position[1] AS px, position[2] AS py, position[3] AS pz
-          FROM events
-          WHERE project_id = ${pid}
-            AND event_type = 'camera_sample'
-            AND length(position) = 3${range}${scene}${session}
-        ) AS m
-        ON c.session_id = m.session_id AND c.ts >= m.ts
+          SELECT
+            c.hx AS hx, c.hy AS hy, c.hz AS hz, c.mesh AS mesh,
+            c.has_ray AS has_ray, c.rox AS rox, c.roy AS roy, c.roz AS roz,
+            m.cam_present AS cam_present,
+            m.px AS px, m.py AS py, m.pz AS pz,
+            m.dx AS dx, m.dy AS dy, m.dz AS dz, m.cam_near AS near,
+            sqrt(m.dx * m.dx + m.dy * m.dy + m.dz * m.dz) AS dlen,
+            sqrt(m.dx * m.dx + m.dz * m.dz) AS hlen,
+            (2 * c.sx - 1) * m.cam_near * tan(m.cam_fov / 2) * m.cam_aspect AS off_r,
+            (1 - 2 * c.sy) * m.cam_near * tan(m.cam_fov / 2) AS off_u,
+            (NOT c.has_ray) AND c.has_screen
+              AND m.cam_fov > 0 AND m.cam_aspect > 0 AND m.cam_near > 0
+              AND sqrt(m.dx * m.dx + m.dz * m.dz)
+                  > 1e-6 * sqrt(m.dx * m.dx + m.dy * m.dy + m.dz * m.dz) AS recon
+          FROM (
+            SELECT session_id, ts,
+              hit_point[1] AS hx, hit_point[2] AS hy, hit_point[3] AS hz, mesh,
+              length(ray_origin) = 3 AS has_ray,
+              ray_origin[1] AS rox, ray_origin[2] AS roy, ray_origin[3] AS roz,
+              length(screen) = 2 AS has_screen,
+              screen[1] AS sx, screen[2] AS sy
+            FROM events
+            WHERE project_id = ${pid}
+              AND event_type = 'pointer_click'
+              AND length(hit_point) = 3${range}${scene}${source}${session}
+          ) AS c
+          ${d.asofLeftJoin} (
+            SELECT session_id, ts, 1 AS cam_present,
+              position[1] AS px, position[2] AS py, position[3] AS pz,
+              direction[1] AS dx, direction[2] AS dy, direction[3] AS dz,
+              fov AS cam_fov, aspect AS cam_aspect, near AS cam_near
+            FROM events
+            WHERE project_id = ${pid}
+              AND event_type = 'camera_sample'
+              AND length(position) = 3${range}${scene}${session}
+          ) AS m
+          ON c.session_id = m.session_id AND c.ts >= m.ts
+        ) AS ja
       ) AS j
       WHERE j.ox IS NOT NULL
       GROUP BY cam_vx, cam_vy, cam_vz, hit_vx, hit_vy, hit_vz, mesh
@@ -1111,6 +1155,96 @@ export function buildStabilityCounts(
 }
 
 /**
+ * Opt-in engine-diagnostic counts from `graphics_diagnostic` (ADR 0021 part 2):
+ * the fully-crossed `(severity, category, backend)` group with the total incident
+ * count per cell, so the dashboard can derive the by-category, by-severity, and
+ * by-backend breakdowns from a single query by summing.
+ *
+ * The diagnostic fields ride in the `payload` JSON (they are not promoted
+ * columns, per ADR 0004 — nothing is promoted unless an aggregation needs it),
+ * so `severity` / `category` / `backend` are read with `jsonText` and `backend`
+ * `coalesce`s to `''` ("unknown") when the connector omitted it.
+ *
+ * **Rollup-or-marker (ADR 0021 decision 4).** Each event carries *either* one
+ * discrete incident (no `count`) *or* a per-session rollup (`count = N`). The
+ * incident total is `sum(coalesce(count, 1))`, so a marker folds in as 1 and a
+ * rollup as N — markers and rollups land in the same counters. Capture is off by
+ * default, so the common case is an empty result.
+ */
+export function buildGraphicsDiagnosticCounts(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions,
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const severity = d.jsonText("payload", "severity");
+  const category = d.jsonText("payload", "category");
+  const backend = d.jsonText("payload", "backend");
+  const count = d.jsonInt("payload", "count");
+  return {
+    query: `
+      SELECT
+        ${severity} AS severity,
+        ${category} AS category,
+        coalesce(${backend}, '') AS backend,
+        sum(coalesce(${count}, 1)) AS incidents
+      FROM events
+      WHERE project_id = ${pid} AND event_type = 'graphics_diagnostic'${range}${scene}${session}
+      GROUP BY severity, category, backend
+      ORDER BY incidents DESC
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Always-on rendering-technology mix from `session_start.graphics` (ADR 0021 part
+ * 1): the fully-crossed `(api, backend, api_version, shading_language)` group with
+ * one session count per cell, so the dashboard can derive the by-api, by-backend,
+ * by-version, and by-shading-language breakdowns from a single query by summing.
+ *
+ * The graphics fields ride in the `payload` JSON (they are not promoted columns,
+ * per ADR 0004 — nothing is promoted unless an aggregation needs it), so each is
+ * read with `jsonText` and `coalesce`s to `''` ("unknown") when the connector
+ * omitted it. Unlike the opt-in `graphics_diagnostic` counts, `session_start` is
+ * always-on, so a populated result is the common case.
+ */
+export function buildRenderingTechnology(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions,
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const api = d.jsonText("payload", "graphics", "api");
+  const backend = d.jsonText("payload", "graphics", "backend");
+  const apiVersion = d.jsonText("payload", "graphics", "apiVersion");
+  const shadingLanguage = d.jsonText("payload", "graphics", "shadingLanguage");
+  return {
+    query: `
+      SELECT
+        coalesce(${api}, '') AS api,
+        coalesce(${backend}, '') AS backend,
+        coalesce(${apiVersion}, '') AS api_version,
+        coalesce(${shadingLanguage}, '') AS shading_language,
+        count() AS sessions
+      FROM events
+      WHERE project_id = ${pid} AND event_type = 'session_start'${range}${scene}${session}
+      GROUP BY api, backend, api_version, shading_language
+      ORDER BY sessions DESC
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * Capability / fidelity transitions from `capability_change` (#49, design §E):
  * per (kind, from, to), how many times the app reported that fallback or
  * recovery. Explains perf / visual-fidelity variance across the user base (e.g.
@@ -1411,11 +1545,13 @@ export function buildJankRate(
 /**
  * FPS segmented by device class, computed **per-session then aggregated** (ADR
  * 0028 §2). Each session's median FPS is attributed to the graphics backend,
- * mobile flag, and GPU `renderer` recorded in its `session_start.device` block —
- * data already on the wire, so there is no SDK or schema change. Device fields
- * are read from the `session_start` payload JSON (they are not promoted columns)
- * and `coalesce`d to `''` when a session never reported them. `p50_fps` is the
- * median across sessions in the group of each session's median FPS.
+ * mobile flag, and GPU `renderer` recorded in its `session_start.device` block,
+ * plus the coarse `browser`/`os` families derived server-side from the
+ * User-Agent at ingestion (ADR 0041) — all data already on the wire, so there is
+ * no SDK or schema change. Device fields are read from the `session_start`
+ * payload JSON (they are not promoted columns) and `coalesce`d to `''` when a
+ * session never reported them. `p50_fps` is the median across sessions in the
+ * group of each session's median FPS.
  */
 export function buildPerfByDevice(
   projectId: string,
@@ -1430,6 +1566,8 @@ export function buildPerfByDevice(
   const engine = d.jsonText("payload", "device", "engine");
   const isMobile = d.jsonText("payload", "device", "isMobile");
   const renderer = d.jsonText("payload", "device", "renderer");
+  const browser = d.jsonText("payload", "device", "browser");
+  const os = d.jsonText("payload", "device", "os");
   return {
     query: `
       WITH session_device AS (
@@ -1437,7 +1575,9 @@ export function buildPerfByDevice(
           session_id,
           ${engine} AS engine,
           ${isMobile} AS is_mobile,
-          ${renderer} AS renderer
+          ${renderer} AS renderer,
+          ${browser} AS browser,
+          ${os} AS os
         FROM events
         WHERE project_id = ${pid} AND event_type = 'session_start'
       ),
@@ -1454,12 +1594,14 @@ export function buildPerfByDevice(
         coalesce(dev.engine, '') AS engine,
         coalesce(dev.is_mobile, '') AS is_mobile,
         coalesce(dev.renderer, '') AS renderer,
+        coalesce(dev.browser, '') AS browser,
+        coalesce(dev.os, '') AS os,
         count() AS sessions,
         sum(perf.s_samples) AS samples,
         ${d.quantile("perf.s_p50", 0.5)} AS p50_fps
       FROM session_perf perf
       LEFT JOIN session_device dev ON dev.session_id = perf.session_id
-      GROUP BY engine, is_mobile, renderer
+      GROUP BY engine, is_mobile, renderer, browser, os
       ORDER BY sessions DESC
     `,
     query_params: bag.values,

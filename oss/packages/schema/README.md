@@ -42,18 +42,38 @@ Every event carries a shared envelope:
 
 ## Event catalog (v1)
 
-| `type`             | Purpose                                                           |
-| ------------------ | ----------------------------------------------------------------- |
-| `session_start`    | Session begins; carries the device/GPU block (WebGL2 + WebGPU).   |
-| `session_end`      | Session ends; duration + reason.                                  |
-| `frame_perf`       | Sampled FPS / frame time.                                         |
-| `camera_sample`    | Camera position, direction, target, fov — view-direction heatmap. |
-| `pointer_move`     | Screen-normalized position + optional 3D hit + mesh.              |
-| `pointer_click`    | As above plus button — click heatmap.                             |
-| `camera_gesture`   | Typed navigation gesture (orbit/pan/dolly/zoom/roll/fly).         |
-| `mesh_interaction` | Hover / pick / click / drag on a named mesh.                      |
-| `asset_load`       | Asset name, bytes, load ms, time-to-first-frame.                  |
-| `custom`           | Developer-defined `name` + open `props` record.                   |
+| `type`                | Purpose                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `session_start`       | Session begins; carries the device/GPU block (WebGL2 + WebGPU).                                                     |
+| `session_end`         | Session ends; duration + reason.                                                                                    |
+| `frame_perf`          | Sampled FPS / frame time.                                                                                           |
+| `camera_sample`       | Camera position, direction, target, fov — view-direction heatmap.                                                   |
+| `pointer_move`        | Screen-normalized position + optional 3D hit + mesh.                                                                |
+| `pointer_click`       | As above plus button — click heatmap.                                                                               |
+| `camera_gesture`      | Typed navigation gesture (orbit/pan/dolly/zoom/roll/fly).                                                           |
+| `mesh_interaction`    | Hover / pick / click / drag on a named mesh.                                                                        |
+| `asset_load`          | Asset name, bytes, load ms, time-to-first-frame.                                                                    |
+| `graphics_diagnostic` | Opt-in engine/GPU-health signal (errors, shader-compile failures, context loss, `uncapturederror`). Off by default. |
+| `custom`              | Developer-defined `name` + open `props` record.                                                                     |
+
+## Opt-in engine diagnostics (`graphics_diagnostic`)
+
+`graphics_diagnostic` carries engine-authored GPU-health signals (ADR 0021 part 2): GPU
+errors/warnings, shader-compile/link failures, richer context-loss reasons, WebGPU
+`uncapturederror`, and sampled `gl.getError()`. It is a single engine-agnostic shape:
+
+- `severity`: `info | warning | error | fatal`
+- `category`: `context-loss | validation | out-of-memory | shader-compile | device-lost | fallback`
+- `backend` (optional): the producing API surface, reusing the `graphics.api` enum.
+- `message` / `code` (optional): length-capped free text; redact via `beforeSend`.
+- `count` (optional): **rollup-or-marker discriminator** — omit for a single discrete
+  incident; set it to aggregate that many incidents into one per-session rollup (the cheap
+  default so an error storm can't flood ingestion).
+
+**Off by default.** Capture is gated by the SDK's `captureGraphicsDiagnostics` flag (mirrors
+JS error capture). `context_lost` / `context_restored` are exempt and stay always-on. The
+`fallback` category is reserved for forward-compatibility and is not emitted by any connector
+(engine-driven fallback stays in `capability_change`).
 
 ## Adding a new event type (extension point)
 

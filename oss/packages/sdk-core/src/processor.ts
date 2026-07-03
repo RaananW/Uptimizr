@@ -129,7 +129,7 @@ export function collectTransferables(batch: CollectRequest): Transferable[] {
 }
 
 /** Default factory: a module worker shipped alongside the SDK in `dist/`. */
-function defaultWorkerFactory(): WorkerLike {
+export function defaultWorkerFactory(): WorkerLike {
   // `new URL(..., import.meta.url)` + `new Worker` is the pattern bundlers
   // recognize to emit and resolve a library-owned worker asset.
   return new Worker(new URL("./offloadWorker.js", import.meta.url), {

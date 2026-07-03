@@ -41,9 +41,19 @@ wire frame (**left-handed, y-up**) at the emission boundary; the session is attr
 
 ## Capture
 
-Captures camera pose, pointer move/click (with optional raycast hit), mesh picks, and FPS. Opt-in:
-mesh visibility and hover dwell. It tears down all DOM listeners, timers, and `frameend` handlers on
+Captures camera pose, pointer move/click (with optional raycast hit), mesh picks, FPS, and
+**asset load timing** (`asset_load`, on by default — see below). Opt-in: mesh visibility and hover
+dwell. It tears down all DOM listeners, timers, `frameend` handlers, and asset-registry listeners on
 stop.
+
+### Asset load timing (`asset_load`)
+
+The connector hooks the PlayCanvas [`app.assets`](https://developer.playcanvas.com/api/pc.AssetRegistry.html)
+registry load lifecycle (`load:start` → `load` / `error`) and emits one `asset_load` per observed
+load, carrying the asset's **name**, load **duration** (`loadMs`), and **byte size** (`bytes`, when
+the engine knows it). Privacy (ADR 0003): only the asset's app-defined `name` is recorded — never the
+file URL — and loads the connector didn't observe from the start (already-cached assets) are skipped
+rather than reported with a fabricated duration. Disable with `capture: { assetLoad: false }`.
 
 ## First-person scenes (pointer lock)
 

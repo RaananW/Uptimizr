@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Scene } from "@babylonjs/core";
-import type { CollectorContext, EventInput } from "@uptimizr/sdk-core";
+import type { AggregatorConfig, CollectorContext, EventInput, Snapshot } from "@uptimizr/sdk-core";
+import { createAggregator } from "@uptimizr/sdk-core";
 import { babylonCollector } from "../collector.js";
 import { readDeviceCaps } from "../device.js";
 import { classifyCamera, readSceneMeta } from "../scene.js";
@@ -37,6 +38,7 @@ function makeEngine() {
     webGLVersion: 2,
     getGlInfo: () => ({ vendor: "Acme", renderer: "GPU-9000" }),
     getCaps: () => ({ maxTextureSize: 8192 }),
+    getAspectRatio: () => 800 / 600,
     onContextLostObservable: new FakeObservable<unknown>(),
     onContextRestoredObservable: new FakeObservable<unknown>(),
     onBeforeShaderCompilationObservable: new FakeObservable<unknown>(),
@@ -54,6 +56,7 @@ function makeScene() {
       globalPosition: { x: 1, y: 2, z: 3 },
       getForwardRay: () => ({ direction: { x: 0, y: 0, z: 1 } }),
       fov: 0.8,
+      minZ: 0.1,
       getTarget: () => ({ x: 0, y: 0, z: 0 }),
     },
     pointerX: 400,
@@ -74,10 +77,10 @@ function makeScene() {
   };
 }
 
-function makeCtx(now = { value: 1000 }) {
+function makeCtx(now = { value: 1000 }, config: Record<string, unknown> = {}) {
   const events: EventInput[] = [];
   const ctx = {
-    config: {} as never,
+    config: config as never,
     sessionId: "s1",
     emit: (e: EventInput) => events.push(e),
     track: () => {},
@@ -94,6 +97,13 @@ function makeCtx(now = { value: 1000 }) {
         ...(typeof opts.pressed === "boolean" ? { pressed: opts.pressed } : {}),
       } as EventInput),
     setScene: () => {},
+    createAggregation: (config: AggregatorConfig) => {
+      // Mirror production: snapshots flow through a real main-thread aggregator
+      // whose finalized events land in the same `events` sink, so the existing
+      // event-shape assertions exercise the snapshot → aggregator → emit path.
+      const aggregator = createAggregator({ ...config, emit: (e) => events.push(e) });
+      return (s: Snapshot) => aggregator.ingest(s);
+    },
     now: () => now.value,
   } satisfies CollectorContext;
   return { ctx, events, now };
@@ -116,6 +126,39 @@ describe("babylonCollector", () => {
       target: [0, 0, 0],
       fov: 0.8,
     });
+    handle.stop();
+  });
+
+  it("captures camera projection intrinsics (fov/aspect/near) on camera_sample (#22)", () => {
+    const { scene } = makeScene();
+    const { ctx, events } = makeCtx();
+    const handle = babylonCollector({ scene, capture: { perf: false } }).start(ctx)!;
+
+    const cam = events.find((e) => e.type === "camera_sample");
+    expect(cam).toMatchObject({
+      type: "camera_sample",
+      fov: 0.8,
+      aspect: 800 / 600,
+      near: 0.1,
+    });
+    handle.stop();
+  });
+
+  it("omits aspect/near when the engine/camera don't expose them (#22)", () => {
+    const { scene } = makeScene();
+    const mutableCam = (scene as unknown as { activeCamera: Record<string, unknown> }).activeCamera;
+    delete mutableCam.minZ;
+    (scene as unknown as { getEngine: () => Record<string, unknown> }).getEngine = () => ({
+      getFps: () => 60,
+      getRenderWidth: () => 800,
+      getRenderHeight: () => 600,
+    });
+    const { ctx, events } = makeCtx();
+    const handle = babylonCollector({ scene, capture: { perf: false } }).start(ctx)!;
+
+    const cam = events.find((e) => e.type === "camera_sample");
+    expect(cam).not.toHaveProperty("aspect");
+    expect(cam).not.toHaveProperty("near");
     handle.stop();
   });
 
@@ -967,6 +1010,271 @@ describe("babylonCollector sampling profile (ADR 0012)", () => {
   });
 });
 
+describe("babylonCollector — WebGPU device.lost → graphics_diagnostic (#20)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /**
+   * A WebGPU scene whose engine `_device.lost` promise resolves on `lose(...)`.
+   * Pass `deferDevice: true` to start with `_device` undefined (mirrors Babylon's
+   * async `initAsync`) and attach it later via the returned `provideDevice()`.
+   */
+  function makeWebGpuScene(opts: { deferDevice?: boolean } = {}) {
+    let resolveLost!: (info: { reason?: string; message?: string }) => void;
+    const lost = new Promise<{ reason?: string; message?: string }>((r) => {
+      resolveLost = r;
+    });
+    const engine: Record<string, unknown> = {
+      getFps: () => 60,
+      getRenderWidth: () => 800,
+      getRenderHeight: () => 600,
+      isWebGPU: true,
+      getAspectRatio: () => 800 / 600,
+      onContextLostObservable: new FakeObservable<unknown>(),
+      onContextRestoredObservable: new FakeObservable<unknown>(),
+      onBeforeShaderCompilationObservable: new FakeObservable<unknown>(),
+      onAfterShaderCompilationObservable: new FakeObservable<unknown>(),
+      _device: opts.deferDevice ? undefined : { lost },
+    };
+    const scene = {
+      activeCamera: {
+        globalPosition: { x: 0, y: 0, z: 0 },
+        getForwardRay: () => ({ direction: { x: 0, y: 0, z: 1 } }),
+        getTarget: () => ({ x: 0, y: 0, z: 0 }),
+      },
+      pointerX: 0,
+      pointerY: 0,
+      onPointerObservable: new FakeObservable<unknown>(),
+      onKeyboardObservable: new FakeObservable<unknown>(),
+      onBeforeRenderObservable: new FakeObservable<unknown>(),
+      getEngine: () => engine,
+    };
+    return {
+      scene: scene as unknown as Scene,
+      provideDevice: () => {
+        engine._device = { lost };
+      },
+      lose: async (info: { reason?: string; message?: string }) => {
+        resolveLost(info);
+        await Promise.resolve();
+        await Promise.resolve();
+      },
+    };
+  }
+
+  it("emits nothing when captureGraphicsDiagnostics is off", async () => {
+    const { scene, lose } = makeWebGpuScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: false });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    await lose({ reason: "unknown", message: "boom" });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+
+  it("emits exactly one fatal device-lost diagnostic when enabled", async () => {
+    const { scene, lose } = makeWebGpuScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    await lose({ reason: "unknown", message: "device removed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toEqual({
+      type: "graphics_diagnostic",
+      severity: "fatal",
+      category: "device-lost",
+      backend: "webgpu",
+      message: "device removed",
+    });
+    handle.stop();
+  });
+
+  it("maps reason 'destroyed' to info severity", async () => {
+    const { scene, lose } = makeWebGpuScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    await lose({ reason: "destroyed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      severity: "info",
+      category: "device-lost",
+      backend: "webgpu",
+    });
+    handle.stop();
+  });
+
+  it("does not emit after the collector has stopped", async () => {
+    const { scene, lose } = makeWebGpuScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    handle.stop();
+    await lose({ reason: "unknown" });
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+
+  it("wires device.lost even when the device initializes asynchronously after start()", async () => {
+    const { scene, provideDevice, lose } = makeWebGpuScene({ deferDevice: true });
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    // Device not ready yet at start() — the loss must not be missed.
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+
+    provideDevice();
+    await vi.advanceTimersByTimeAsync(300);
+    await lose({ reason: "unknown", message: "late device removed" });
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      severity: "fatal",
+      category: "device-lost",
+      backend: "webgpu",
+    });
+    handle.stop();
+  });
+
+  it("never wires device.lost if the collector is stopped before the device appears", async () => {
+    const { scene, provideDevice, lose } = makeWebGpuScene({ deferDevice: true });
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    // Tear down before the async WebGPU device ever initializes.
+    handle.stop();
+    provideDevice();
+    await vi.advanceTimersByTimeAsync(2000);
+    await lose({ reason: "unknown", message: "too late" });
+
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+
+  it("is a no-op on a WebGL engine (no device-lost concept)", async () => {
+    const { scene, engine } = makeScene(); // WebGL engine, no `_device`
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    // Even a WebGL context loss does not produce a graphics_diagnostic.
+    (engine.onContextLostObservable as FakeObservable<unknown>).trigger({});
+    await Promise.resolve();
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+});
+
+describe("babylonCollector — WebGPU uncapturederror rollup → graphics_diagnostic (#19)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** WebGPU scene whose engine `_device` is also an error EventTarget. */
+  function makeWebGpuErrorScene() {
+    let handler: ((e: { error?: unknown }) => void) | undefined;
+    const engine: Record<string, unknown> = {
+      getFps: () => 60,
+      getRenderWidth: () => 800,
+      getRenderHeight: () => 600,
+      isWebGPU: true,
+      getAspectRatio: () => 800 / 600,
+      onContextLostObservable: new FakeObservable<unknown>(),
+      onContextRestoredObservable: new FakeObservable<unknown>(),
+      _device: {
+        lost: new Promise(() => {}),
+        addEventListener: (_t: string, h: (e: { error?: unknown }) => void) => (handler = h),
+        removeEventListener: () => (handler = undefined),
+      },
+    };
+    const scene = {
+      activeCamera: {
+        globalPosition: { x: 0, y: 0, z: 0 },
+        getForwardRay: () => ({ direction: { x: 0, y: 0, z: 1 } }),
+        getTarget: () => ({ x: 0, y: 0, z: 0 }),
+      },
+      pointerX: 0,
+      pointerY: 0,
+      onPointerObservable: new FakeObservable<unknown>(),
+      onKeyboardObservable: new FakeObservable<unknown>(),
+      onBeforeRenderObservable: new FakeObservable<unknown>(),
+      getEngine: () => engine,
+    };
+    return {
+      scene: scene as unknown as Scene,
+      fire: (error: unknown) => handler?.({ error }),
+    };
+  }
+
+  it("collapses a burst into one rollup on stop, not N events", () => {
+    const { scene, fire } = makeWebGpuErrorScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    for (let i = 0; i < 30; i++)
+      fire({ message: `e${i}`, constructor: { name: "GPUValidationError" } });
+    handle.stop();
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toMatchObject({
+      category: "validation",
+      count: 30,
+      backend: "webgpu",
+      message: "e0",
+    });
+  });
+
+  it("emits nothing when the flag is off", () => {
+    const { scene, fire } = makeWebGpuErrorScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: false });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    fire({ message: "x", constructor: { name: "GPUValidationError" } });
+    handle.stop();
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+  });
+});
+
+describe("babylonCollector — context-creation failure → graphics_diagnostic (#18)", () => {
+  /** A WebGL engine that failed to obtain a context (webGLVersion 0). */
+  function makeFailedScene() {
+    const { scene, engine } = makeScene();
+    (engine as { webGLVersion: number }).webGLVersion = 0;
+    return { scene, engine };
+  }
+
+  it("emits nothing when captureGraphicsDiagnostics is off", () => {
+    const { scene } = makeFailedScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: false });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+
+  it("emits exactly one fatal context-loss marker when the GL context is missing", () => {
+    const { scene } = makeFailedScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags).toHaveLength(1);
+    expect(diags[0]).toEqual({
+      type: "graphics_diagnostic",
+      severity: "fatal",
+      category: "context-loss",
+      backend: "unknown",
+    });
+    handle.stop();
+  });
+
+  it("does not fire on a healthy WebGL engine", () => {
+    const { scene } = makeScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
+    handle.stop();
+  });
+});
+
 describe("babylonCollector — scene actors / node_transform (ADR 0027 Tier 1)", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -1496,6 +1804,66 @@ describe("babylonCollector — resource samples (#44)", () => {
     // performance.memory is Chromium-only and absent under the test runtime.
     expect(sample).not.toHaveProperty("jsHeapBytes");
     expect(sample).not.toHaveProperty("textureBytes");
+    handle.stop();
+  });
+});
+
+describe("babylonCollector — shader-compile + getError → graphics_diagnostic (#17)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function makeWebGlScene() {
+    const engine = {
+      ...makeEngine(),
+      _gl: {
+        COMPILE_STATUS: 0x8b81,
+        LINK_STATUS: 0x8b82,
+        compileShader: () => {},
+        linkProgram: () => {},
+        getShaderParameter: () => true,
+        getProgramParameter: () => false, // link fails
+        getShaderInfoLog: () => "ERROR",
+        getProgramInfoLog: () => "LINK FAIL",
+        getShaderSource: () => "void main(){}",
+        getError: () => 0,
+      },
+    };
+    const scene = {
+      activeCamera: {
+        globalPosition: { x: 0, y: 0, z: 0 },
+        getForwardRay: () => ({ direction: { x: 0, y: 0, z: 1 } }),
+        getTarget: () => ({ x: 0, y: 0, z: 0 }),
+      },
+      pointerX: 0,
+      pointerY: 0,
+      onPointerObservable: new FakeObservable<unknown>(),
+      onKeyboardObservable: new FakeObservable<unknown>(),
+      onBeforeRenderObservable: new FakeObservable<unknown>(),
+      getEngine: () => engine,
+    };
+    return { scene: scene as unknown as Scene, gl: engine._gl };
+  }
+
+  it("emits shader-compile diagnostic on link failure when enabled (off by default)", () => {
+    const { scene, gl } = makeWebGlScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: true });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    gl.linkProgram({});
+    const diags = events.filter((e) => e.type === "graphics_diagnostic");
+    expect(diags[0]).toMatchObject({
+      category: "shader-compile",
+      severity: "error",
+      message: "LINK FAIL",
+    });
+    handle.stop();
+  });
+
+  it("does nothing when captureGraphicsDiagnostics is off", () => {
+    const { scene, gl } = makeWebGlScene();
+    const { ctx, events } = makeCtx(undefined, { captureGraphicsDiagnostics: false });
+    const handle = babylonCollector({ scene, capture: { perf: false, camera: false } }).start(ctx)!;
+    gl.linkProgram({});
+    expect(events.some((e) => e.type === "graphics_diagnostic")).toBe(false);
     handle.stop();
   });
 });

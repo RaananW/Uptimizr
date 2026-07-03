@@ -66,10 +66,18 @@ export const PARITY_EVENTS: AnyEvent[] = [
     scene: { cameraType: "arc-rotate", cameraName: "cam", meshCount: 3 },
     user: { id: "anon-1" },
     device: { engine: "webgpu" },
+    graphics: { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl" },
   }),
   ev("camera_sample", PARITY_T0 + 1_000, {
     position: [0, 0, 0],
     direction: [2, 1, 2],
+    // Projection intrinsics (#22): the box click below ASOF-joins to this sample,
+    // so its flat-pointer ray origin is unprojected onto the near plane. fov=π/2
+    // (so tan(fov/2)=1), aspect=2, near=0.1. The other two camera samples omit
+    // intrinsics, so the sphere/floor clicks stay on the camera-position fallback.
+    fov: Math.PI / 2,
+    aspect: 2,
+    near: 0.1,
     hitPoint: [0.2, 0.2, 0.2],
   }),
   ev("pointer_click", PARITY_T0 + 2_000, {
@@ -128,6 +136,7 @@ export const PARITY_EVENTS: AnyEvent[] = [
     scene: { cameraType: "free", cameraName: "cam2", meshCount: 5 },
     user: { id: "anon-2" },
     device: { engine: "webgl2" },
+    graphics: { api: "webgl2", backend: "opengl", apiVersion: "3.0", shadingLanguage: "glsl-es" },
   }),
   ev("camera_sample", PARITY_T0 + 11_000, {
     sessionId: "s2",

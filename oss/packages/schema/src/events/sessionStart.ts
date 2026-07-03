@@ -26,6 +26,20 @@ export const deviceSchema = z
     deviceMemoryGb: z.number().optional(),
     /** Whether the context reports as a mobile device. */
     isMobile: z.boolean().optional(),
+    /**
+     * Coarse browser family, derived **server-side** from the request User-Agent at
+     * ingestion (e.g. `"Chrome"`, `"Safari"`, `"Firefox"`, `"Edge"`, `"Other"`).
+     * Low-cardinality, non-PII, never the raw UA or a version (ADR 0003 / ADR 0041).
+     * The collector overrides any client-supplied value, so it is authoritative.
+     */
+    browser: z.string().optional(),
+    /**
+     * Coarse operating-system family, derived **server-side** from the request
+     * User-Agent at ingestion (e.g. `"Windows"`, `"macOS"`, `"iOS"`, `"Android"`,
+     * `"Linux"`, `"Other"`). Low-cardinality, non-PII, never the raw UA or a
+     * version (ADR 0003 / ADR 0041). The collector overrides any client value.
+     */
+    os: z.string().optional(),
   })
   .passthrough();
 export type Device = z.infer<typeof deviceSchema>;

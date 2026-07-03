@@ -50,9 +50,9 @@ Three forces constrain the design:
 Add a **live layer** to the OSS collector and dashboard: a privacy-safe **presence** tier, a
 **live dashboard-update** tier, and a retention-gated **live-follow (replay)** tier — all delivered
 over **Server-Sent Events (SSE)** and fanned out from a single **in-process event bus**. The light
-path (presence, feed, live counters, throttled panel refresh, per-session live follow) is
-**Phase 1**; the heavy path (continuous _incremental_ aggregation of spatial heatmaps and
-percentile rollups) is **Phase 2** (see §9).
+path (presence, feed, live counters, throttled panel refresh, per-session live follow)
+**ships now**; the heavy path (continuous _incremental_ aggregation of spatial heatmaps and
+percentile rollups) is **deferred** (see §9).
 
 ### 1. Liveness is a sliding window, not a new event
 
@@ -82,8 +82,8 @@ All endpoints sit behind the same project/API-key authorization as the query API
 - **`GET /api/v1/live/stream`** — a **project-scoped firehose** of arriving events (optionally
   filtered by scene/event-type), used by the dashboard to **update its panels in place**: the live
   event feed and light counters update directly from the stream; heavier analytics tiles trigger a
-  **throttled re-query** of the existing read endpoints when the stream signals new activity
-  (Phase 1). Continuous _incremental_ aggregation of those tiles is Phase 2 (§9). Event payloads in
+  **throttled re-query** of the existing read endpoints when the stream signals new activity.
+  Continuous _incremental_ aggregation of those tiles is deferred (§9). Event payloads in
   this stream carry **no more than the aggregate read API already exposes** (no raw per-session
   detail unless raw-retention is on).
 - **`GET /api/v1/live/sessions/:id`** — the **live-follow** tail: the ordered event stream of one
@@ -148,21 +148,21 @@ format, presence semantics, replay reuse — is identical regardless of fan-out 
 transport behind the bus seam differs. The bus is therefore introduced as a small interface so an
 alternative implementation can be supplied without touching the rest of `oss/**`.
 
-### 9. Phase split — light path now, heavy aggregation later
+### 9. Scope split — light path now, heavy aggregation deferred
 
-The feature is Phase 1 **except** the part that is genuinely processing-heavy, which is deferred so
+The feature **ships now except** the part that is genuinely processing-heavy, which is deferred so
 it cannot drag the rest:
 
-- **Phase 1 (light, ship now):** the in-process bus (§2); the presence tier (§1, §3, §3a); the
+- **Light path (ship now):** the in-process bus (§2); the presence tier (§1, §3, §3a); the
   live firehose (§3) driving the **live event feed**, **live counters/tiles**, and **throttled
   re-query** of existing aggregate endpoints on activity; and **per-session live follow/replay**
   (§4) — cheap, because the replay player already exists and the stream is just events. None of
   this maintains server-side running aggregates.
-- **Phase 2 (heavy, deferred):** **continuous incremental aggregation** — maintaining running
+- **Heavy path (deferred):** **continuous incremental aggregation** — maintaining running
   server-side rollups so the spatial 3D heatmaps, percentile/perf panels, and click↔gaze surfaces
   update _continuously_ (not by throttled re-query). This is the part with real CPU/memory cost
   (streaming voxel binning, per-session percentile state) and is where a shared bus and possibly the
-  worker-offload seam (ADR 0031) matter. Deferring it keeps Phase 1 small while still delivering the
+  worker-offload seam (ADR 0031) matter. Deferring it keeps the shipped scope small while still delivering the
   felt "everything updates live" experience via the throttled-refresh path.
 
 ## Consequences
@@ -172,9 +172,9 @@ it cannot drag the rest:
 - Delivers all of #102: a privacy-safe **active-now** count/roster, **dashboard panels that update
   as events arrive**, and retention-gated **per-session live replay** — with no new event types and
   no schema change.
-- The **light/heavy phase split** lets the felt "live dashboard" experience ship in Phase 1 (feed,
-  counters, throttled tile refresh) while the expensive continuous-aggregation work is isolated to
-  Phase 2 and cannot block it.
+- The **light/heavy split** lets the felt "live dashboard" experience ship now (feed,
+  counters, throttled tile refresh) while the expensive continuous-aggregation work is isolated as
+  a deferred follow-up and cannot block it.
 - **Additive and seam-based:** a publish call at the ingest point plus two read endpoints; no change
   to enrichment, storage, the `CollectorStore` contract, or `@uptimizr/schema`.
 - **Reuses replay** end-to-end — one replay engine for historical and live — and finally exercises
@@ -215,10 +215,10 @@ it cannot drag the rest:
   surface for no gain ("events live once", AGENTS.md).
 - **Lower the default SDK flush to make it feel real-time.** Rejected: violates the cost-first
   defaults of ADR 0012 / ADR 0031. Lower latency is an explicit opt-in, never the default.
-- **Incrementally aggregate every panel live in Phase 1** (maintain running 3D-heatmap/percentile
+- **Incrementally aggregate every panel live up front** (maintain running 3D-heatmap/percentile
   state server-side). Rejected _for now_: it is the genuinely heavy part (streaming voxel binning,
-  per-session percentile state) and would bloat Phase 1. The throttled re-query of existing
-  endpoints delivers a live-feeling dashboard cheaply; true incremental aggregation is Phase 2 (\u00a79).
+  per-session percentile state) and would bloat the initial scope. The throttled re-query of existing
+  endpoints delivers a live-feeling dashboard cheaply; true incremental aggregation is deferred (§9).
 - **Per-session detail in the presence roster** (geo/UA per active session). Rejected against the
   privacy goal (ADR 0003): the roster is available without raw-retention, so it stays
   non-identifying; per-session detail is reachable only through the gated live-follow tier.

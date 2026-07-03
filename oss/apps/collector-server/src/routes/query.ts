@@ -788,8 +788,9 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     },
   );
 
-  // FPS by device class (#82, ADR 0028 §2) — per-session median FPS attributed to
-  // the `session_start.device` block (backend / mobile / GPU renderer).
+  // FPS by device class (#82, ADR 0028 §2; #11, ADR 0041) — per-session median FPS
+  // attributed to the `session_start.device` block (backend / mobile / GPU
+  // renderer) plus the coarse browser/OS derived from the User-Agent at ingestion.
   r.get(
     "/api/v1/perf/by-device",
     { schema: { querystring: heatmapQueryParams } },
@@ -832,6 +833,34 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.stabilityCounts(projectId, req.query);
+    },
+  );
+
+  // Opt-in engine diagnostics (#16, ADR 0021 part 2) — `graphics_diagnostic`
+  // incident counts crossed by (severity, category, backend) over the range,
+  // folding discrete markers and per-session rollups into the same counters.
+  // Capture is off by default, so an empty result is the common (clean) case.
+  r.get(
+    "/api/v1/graphics-diagnostics",
+    { schema: { querystring: heatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.graphicsDiagnosticCounts(projectId, req.query);
+    },
+  );
+
+  // Always-on rendering-technology mix (#120, ADR 0021 part 1) — session count
+  // crossed by (api, backend, api_version, shading_language) from
+  // `session_start.graphics`. Always-on (unlike diagnostics), so a populated
+  // result is the common case.
+  r.get(
+    "/api/v1/rendering-technology",
+    { schema: { querystring: heatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.renderingTechnology(projectId, req.query);
     },
   );
 
