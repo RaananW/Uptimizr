@@ -1,6 +1,5 @@
-import type { Aabb, CoverageVoxel, SceneProxyMesh } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
-import { Panel } from "./Panel";
+import type { Aabb, CoverageVoxel, SceneProxyMesh } from "../../api";
+import { formatNumber } from "../../format";
 
 export const DEAD_ZONE_TITLE = "Dead-zone report";
 export const DEAD_ZONE_SUBTITLE = "Scene parts visitors never approach";
@@ -148,22 +147,5 @@ export function DeadZoneReportView({
         ))}
       </ul>
     </div>
-  );
-}
-
-/** Chrome-wrapped dead-zone report for legacy call sites. */
-export function DeadZoneReportPanel({
-  coverage,
-  proxyMeshes,
-  cellSize,
-}: {
-  coverage: CoverageVoxel[];
-  proxyMeshes: SceneProxyMesh[];
-  cellSize: number;
-}) {
-  return (
-    <Panel title={DEAD_ZONE_TITLE} subtitle={DEAD_ZONE_SUBTITLE} help={DEAD_ZONE_HELP}>
-      <DeadZoneReportView coverage={coverage} proxyMeshes={proxyMeshes} cellSize={cellSize} />
-    </Panel>
   );
 }

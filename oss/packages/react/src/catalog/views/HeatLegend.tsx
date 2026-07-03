@@ -1,4 +1,4 @@
-import { HEAT_GRADIENT } from "@/lib/heat";
+import { HEAT_GRADIENT } from "../../heat";
 
 /**
  * A small color-scale legend for the 3D heat viewers. Overlaid in a corner of

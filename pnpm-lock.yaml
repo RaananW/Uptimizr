@@ -410,7 +410,14 @@ importers:
         version: 4.1.9(@types/node@26.0.1)(happy-dom@20.10.6)(jsdom@29.1.1(canvas@3.2.3))(vite@8.1.0(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
   oss/packages/react:
+    dependencies:
+      '@uptimizr/heatmap':
+        specifier: workspace:*
+        version: link:../heatmap
     devDependencies:
+      '@babylonjs/core':
+        specifier: ^9.14.0
+        version: 9.14.0
       '@testing-library/react':
         specifier: ^16.1.0
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -935,6 +942,7 @@ packages:
 
   '@clickhouse/client-common@1.22.0':
     resolution: {integrity: sha512-MQgXRhoYXut6GhRrTJlub42bnPX7+5Vm+5gHNR0zZXU5+EwZKsBgMXiWXPOerAmQd3weGKm8hzoeZJCfU3Cw2w==}
+    deprecated: 'Deprecated: import from @clickhouse/client or @clickhouse/client-web instead.'
 
   '@clickhouse/client@1.22.0':
     resolution: {integrity: sha512-iQAAM4VT9fO7mYVOkGB/Ul9Xxuf0atKn+GFceZqfE8xFakV8KOAQxR3tfNrXFMlJ8T+Q3gbrpfLFyj7/TbOwyA==}

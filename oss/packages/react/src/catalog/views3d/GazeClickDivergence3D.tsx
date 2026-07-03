@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { SceneProxyMesh, WorldHeatmapBin } from "@/lib/api";
-import { heatRgb } from "@/lib/heat";
+import type { SceneProxyMesh, WorldHeatmapBin } from "../../api";
+import { heatRgb } from "../../heat";
 import {
   attachDoubleClickFocus,
   disableWheelZoom,
@@ -10,20 +10,14 @@ import {
   stepZoom,
   type OrbitFocusCamera,
   type OrbitHome,
-} from "@/lib/orbitZoom";
-import { attachMeshHover, type HoverTip } from "@/lib/sceneHover";
-import { Panel } from "./Panel";
-import { ZoomButtons } from "./ZoomButtons";
+} from "../lib/orbitZoom";
+import { attachMeshHover, type HoverTip } from "../lib/sceneHover";
+import { ZoomButtons } from "../views/ZoomButtons";
 
 type Phase = "loading" | "ready" | "empty" | "error";
 
 /** Which layer(s) to show: both overlaid, gaze only, clicks only, or the divergence field. */
 type LayerMode = "overlay" | "gaze" | "click" | "divergence";
-
-/** Default panel chrome copy for the gaze-vs-click divergence overlay. */
-export const GAZE_CLICK_TITLE = "Gaze vs. click divergence";
-export const GAZE_CLICK_SUBTITLE =
-  "Where viewers look (gaze) vs. where they act (clicks), voxel-binned in world space — double-click to focus";
 
 /** Cool ramp (gaze): deep blue → cyan, the visual opposite of the warm click heat. */
 function coolRgb(t: number): [number, number, number] {
@@ -411,14 +405,5 @@ function ModeButton({
     >
       {children}
     </button>
-  );
-}
-
-/** Chrome-wrapped divergence overlay for legacy call sites. */
-export function GazeClickDivergence3D(props: Parameters<typeof GazeClickDivergence3DView>[0]) {
-  return (
-    <Panel title={GAZE_CLICK_TITLE} subtitle={GAZE_CLICK_SUBTITLE}>
-      <GazeClickDivergence3DView {...props} />
-    </Panel>
   );
 }

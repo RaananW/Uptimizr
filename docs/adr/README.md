@@ -49,6 +49,7 @@ than editing history.
 | [0044](./0044-connector-aggregation-offload.md)                    | Connector-side aggregation offload via one engine-agnostic Aggregator          | Accepted   |
 | [0045](./0045-web-export-engine-connectors.md)                     | Web-export engine connectors (Unity, Godot, Unreal)                            | Proposed   |
 | [0046](./0046-rendering-technology-breakdown.md)                   | Rendering-technology breakdown from session_start.graphics                     | Accepted   |
+| [0047](./0047-react-owns-oss-panel-catalog.md)                     | `@uptimizr/react` owns the portable OSS panel catalog                          | Accepted   |
 
 ## Template
 

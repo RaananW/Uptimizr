@@ -1,6 +1,6 @@
 "use client";
 
-import { ZOOM_IN_FACTOR, ZOOM_OUT_FACTOR } from "@/lib/orbitZoom";
+import { ZOOM_IN_FACTOR, ZOOM_OUT_FACTOR } from "../lib/orbitZoom";
 
 /**
  * Overlay +/- zoom controls for the embedded Babylon canvases. Replaces wheel

@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { AggregateTrajectoryPoint } from "@/lib/api";
-import { Panel } from "./Panel";
+import type { AggregateTrajectoryPoint } from "../../api";
 
 const SIZE = 360;
 const PAD = 8;
@@ -113,14 +112,5 @@ export function DesireLinesView({ points }: { points: AggregateTrajectoryPoint[]
         </p>
       ) : null}
     </>
-  );
-}
-
-/** Chrome-wrapped desire lines for legacy call sites. */
-export function DesireLines({ points }: { points: AggregateTrajectoryPoint[] }) {
-  return (
-    <Panel title={DESIRE_LINES_TITLE} subtitle={DESIRE_LINES_SUBTITLE} help={DESIRE_LINES_HELP}>
-      <DesireLinesView points={points} />
-    </Panel>
   );
 }

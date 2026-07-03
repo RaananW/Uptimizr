@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { buildGazeEquirect } from "@uptimizr/heatmap";
-import type { DirectionBin } from "@/lib/api";
-import { heatRgb } from "@/lib/heat";
+import type { DirectionBin } from "../../api";
+import { heatRgb } from "../../heat";
 import {
   attachDoubleClickFocus,
   disableWheelZoom,
@@ -11,11 +11,10 @@ import {
   stepZoom,
   type OrbitFocusCamera,
   type OrbitHome,
-} from "@/lib/orbitZoom";
-import { attachMeshHover, type HoverTip } from "@/lib/sceneHover";
-import { HeatLegend } from "./HeatLegend";
-import { Panel } from "./Panel";
-import { ZoomButtons } from "./ZoomButtons";
+} from "../lib/orbitZoom";
+import { attachMeshHover, type HoverTip } from "../lib/sceneHover";
+import { HeatLegend } from "../views/HeatLegend";
+import { ZoomButtons } from "../views/ZoomButtons";
 
 type Phase = "loading" | "ready" | "empty" | "error";
 type DomeMode = "markers" | "skydome";
@@ -316,18 +315,5 @@ export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gri
         </div>
       )}
     </div>
-  );
-}
-
-export const CAMERA_DOME_TITLE = "View-direction dome (3D)";
-export const CAMERA_DOME_SUBTITLE =
-  "Where the audience looked, mapped onto a sphere — drag to orbit, +/- to zoom, double-click to focus";
-
-/** Chrome-wrapped dome for legacy call sites (overview + session surfaces). */
-export function CameraDome3D(props: { bins: DirectionBin[]; gridSize: number }) {
-  return (
-    <Panel title={CAMERA_DOME_TITLE} subtitle={CAMERA_DOME_SUBTITLE}>
-      <CameraDome3DView {...props} />
-    </Panel>
   );
 }

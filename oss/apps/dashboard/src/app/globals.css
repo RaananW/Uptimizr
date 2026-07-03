@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
 /*
+ * The analytics panels now live in @uptimizr/react (the portable OSS panel
+ * catalog — ADR 0047). Tailwind v4 auto-detects content but skips node_modules,
+ * so point it at the package source too, otherwise the panel utility classes
+ * (bg-panel, text-fg-muted, border-edge, …) would be tree-shaken out of the
+ * generated stylesheet and the moved panels would render unstyled.
+ */
+@source "../../../../packages/react/src/**/*.{ts,tsx}";
+
+/*
  * Brand tokens — the Ember palette (docs/design/brand-guidelines.md).
  * Warm espresso surfaces under a saffron→rust heat ramp. These are the single
  * source of truth for the dashboard's colours and type; use the semantic

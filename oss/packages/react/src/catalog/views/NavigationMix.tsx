@@ -1,6 +1,5 @@
-import type { CameraGestureStat } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
-import { Panel } from "./Panel";
+import type { CameraGestureStat } from "../../api";
+import { formatNumber } from "../../format";
 
 /** Human-readable label for each `camera_gesture` kind (ADR 0025). */
 const KIND_LABELS: Record<string, string> = {
@@ -77,12 +76,3 @@ export function NavigationMixView({ stats }: { stats: CameraGestureStat[] }) {
 export const NAVIGATION_MIX_TITLE = "Navigation-style mix";
 export const NAVIGATION_MIX_SUBTITLE =
   "Orbit / pan / dolly / zoom / roll / fly share + avg gesture duration";
-
-/** Chrome-wrapped navigation mix for legacy call sites (overview + session). */
-export function NavigationMix({ stats }: { stats: CameraGestureStat[] }) {
-  return (
-    <Panel title={NAVIGATION_MIX_TITLE} subtitle={NAVIGATION_MIX_SUBTITLE}>
-      <NavigationMixView stats={stats} />
-    </Panel>
-  );
-}

@@ -7,11 +7,15 @@ import type { Scene } from "@babylonjs/core/scene.js";
 import type { SceneBackdrop } from "@uptimizr/replay/babylon";
 import { CollectorApi } from "@/lib/api";
 import type { SceneProxyMesh } from "@/lib/api";
-import { mergeSceneProxies } from "@/lib/sceneProxies";
 import { useLiveSession, type LiveEvent } from "@/lib/live";
-import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "@/lib/orbitZoom";
+import {
+  mergeSceneProxies,
+  disableWheelZoom,
+  stepZoom,
+  ZoomButtons,
+  type OrbitZoomCamera,
+} from "@uptimizr/react";
 import { Panel } from "./Panel";
-import { ZoomButtons } from "./ZoomButtons";
 
 type Phase = "idle" | "loading" | "ready" | "empty" | "error";
 

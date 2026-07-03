@@ -1,4 +1,4 @@
-import type { FlowLink } from "@/lib/api";
+import type { FlowLink } from "../../api";
 
 /** A standpoint rolled up from position-aware flow rows (§7.8 slice 2). */
 export interface FlowStandpoint {

@@ -1,6 +1,5 @@
-import type { FpsHistogramBin, PerfDistribution } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
-import { Panel } from "./Panel";
+import type { FpsHistogramBin, PerfDistribution } from "../../api";
+import { formatNumber } from "../../format";
 
 export const PERF_DISTRIBUTION_TITLE = "Performance distribution";
 export const PERF_DISTRIBUTION_SUBTITLE = "p05 / p50 / p95 FPS bands, not just the average";
@@ -71,24 +70,5 @@ export function PerfDistributionView({
       </div>
       <FpsHistogram bins={histogram} />
     </div>
-  );
-}
-
-/** Chrome-wrapped performance distribution for legacy call sites. */
-export function PerfDistributionPanel({
-  distribution,
-  histogram,
-}: {
-  distribution: PerfDistribution | null;
-  histogram: FpsHistogramBin[];
-}) {
-  return (
-    <Panel
-      title={PERF_DISTRIBUTION_TITLE}
-      subtitle={PERF_DISTRIBUTION_SUBTITLE}
-      help={PERF_DISTRIBUTION_HELP}
-    >
-      <PerfDistributionView distribution={distribution} histogram={histogram} />
-    </Panel>
   );
 }

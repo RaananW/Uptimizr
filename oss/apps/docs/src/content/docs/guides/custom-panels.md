@@ -178,32 +178,30 @@ with, say, a user-preferences API. No panel code is needed — this is host chro
 
 ## Registering a panel
 
-Panels are registered at **build time**. The dashboard exposes a `builtinPanels` array in
-`src/panels/registry.tsx`; append your own definitions to it (or to your fork's registry):
+The built-in panels now live in `@uptimizr/react` as the portable **`ossPanelCatalog`** (ADR 0047)
+— the package is the single source of truth for the OSS panel set, and the dashboard is a thin
+consumer of it. Panels are still registered at **build time**: the dashboard exposes a
+`builtinPanels` array in `src/panels/registry.tsx` that spreads the catalog. Append your own
+definitions to it (or to your fork's registry):
 
 ```ts
 // oss/apps/dashboard/src/panels/registry.tsx
+import type { PanelDefinition } from "@uptimizr/react";
+import { ossPanelCatalog } from "@uptimizr/react";
 import { myPanel } from "./MyPanel";
 
 export const builtinPanels: PanelDefinition<unknown>[] = [
-  topMeshesPanel,
-  meshLeaderboardPanel,
-  pointerHeatmapPanel,
-  cameraDomePanel,
-  floorPlanPanel,
-  desireLinesPanel,
-  meshKindsPanel,
-  inputModalityPanel,
-  renderScalePanel,
-  perfDistributionPanel,
-  worldHeatmapPanel,
-  navigationMixPanel,
-  deadZonePanel,
-  flowPanel,
-  divergencePanel,
+  ...ossPanelCatalog, // every built-in OSS panel
   myPanel, // ← your panel
-] as PanelDefinition<unknown>[];
+];
 ```
+
+`ossPanelCatalog` also lets any embedding app recreate the full OSS panel set from the package
+alone — each panel is additionally exported individually (`topMeshesPanel`, `worldHeatmapPanel`,
+…) if you'd rather cherry-pick. The Babylon-backed 3D panels are code-split (`React.lazy`) inside
+the catalog, so importing it never loads Babylon until a 3D panel renders; `@babylonjs/core` is an
+optional peer. See the [`@uptimizr/react` README](https://www.npmjs.com/package/@uptimizr/react)
+for the catalog, the panel view components, and the `@uptimizr/react/panels-3d` subpath.
 
 The host (`PanelHost`) filters the array by the active surface and each panel's `enabled` gate,
 then renders the bodies into the grid. There is nothing else to wire up — no manual placement in
