@@ -781,3 +781,30 @@ export interface SceneRetentionRow {
   to_scene: string;
   sessions: number;
 }
+
+/**
+ * Options for {@link "./aggregations".buildLoadBounceFunnel} (#152): the standard
+ * range / scene scope plus the ascending load-time band boundaries (ms). Each
+ * value is the exclusive upper bound of a band; `bands.length + 1` bands result
+ * (the final, open-ended band catches everything `>=` the last boundary).
+ * Defaults to `[1000, 3000, 5000]` when omitted. Labels are the caller's concern
+ * (kept out of the query, mirroring the funnel step labels).
+ */
+export interface LoadBounceFunnelOptions extends RangeOptions, SceneOptions {
+  /** Ascending band boundaries in milliseconds; `undefined` uses the default. */
+  bands?: readonly number[];
+}
+
+/**
+ * One load-time band of the load→bounce funnel (#152): how many sessions loaded
+ * within band `band` (0-based, ordered by ascending load time) and, of those,
+ * how many **bounced** — produced no interaction event (`pointer_*` /
+ * `mesh_interaction` / `camera_gesture`) at or after their initial `asset_load`.
+ * The consumer derives the bounce rate as `bounced / sessions` and attaches the
+ * band labels from its own boundaries.
+ */
+export interface LoadBounceBandRow {
+  band: number;
+  sessions: number;
+  bounced: number;
+}

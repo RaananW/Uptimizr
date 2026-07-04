@@ -127,6 +127,7 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "xrLocomotion",
       "interactionsBySource",
       "funnel",
+      "loadBounceFunnel",
     ]);
   });
 

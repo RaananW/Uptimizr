@@ -27,6 +27,7 @@ import type {
   ErrorHeatmapOptions,
   FunnelOptions,
   FunnelStepInput,
+  LoadBounceFunnelOptions,
   RangeOptions,
   RegionOptions,
   SceneOptions,
@@ -2848,6 +2849,93 @@ export function buildSceneRetention(
       GROUP BY from_scene, to_scene
       ORDER BY sessions DESC, from_scene ASC, to_scene ASC
       LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/** Default load-time band boundaries (ms) for the load→bounce funnel (#152). */
+const DEFAULT_LOAD_BANDS = [1000, 3000, 5000] as const;
+
+/**
+ * Interaction event types that count as post-load engagement (#152). A session
+ * that produces none of these at/after its initial load is a "bounce". Mirrors
+ * the issue's `pointer_*` / `mesh_interaction` / `camera_gesture` set.
+ */
+const INTERACTION_EVENT_TYPES =
+  "('pointer_move', 'pointer_down', 'pointer_up', 'pointer_click', 'mesh_interaction', 'camera_gesture')";
+
+/**
+ * Load → bounce/abandon funnel (#152): bucket sessions by their initial load
+ * time and report how many **bounced** per band — a bounce being a session that
+ * produced no interaction event (`pointer_*` / `mesh_interaction` /
+ * `camera_gesture`) at or after its first `asset_load`. Turns "slow load costs
+ * you customers" into a concrete per-band number.
+ *
+ * Semantics — a session's load time is the `loadMs` of its **earliest**
+ * `asset_load` (the initial scene load). Engagement is any interaction event in
+ * the same session at a timestamp `>=` that load event's timestamp, across
+ * scenes — bounce is a session-level signal, so the engagement check is not
+ * re-bounded by the range's `until` (a load near the window's end is not counted
+ * as a false bounce). Sessions with no `asset_load` in scope are excluded.
+ * `loadMs` lives in the `payload` JSON (it is not a promoted column), so it is
+ * read with `jsonInt`.
+ *
+ * Bands come from `opts.bands` (ascending exclusive upper bounds in ms), or the
+ * `[1000, 3000, 5000]` default → four bands. The builder emits a plain `CASE`
+ * over the bound band values plus `JOIN` / `min` / `count` / `sum` — **no window
+ * or ASOF functions** — so it renders identically on DuckDB (OSS) and ClickHouse
+ * (scale tier). Band labels are the caller's concern.
+ */
+export function buildLoadBounceFunnel(
+  projectId: string,
+  opts: LoadBounceFunnelOptions,
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const loadMs = d.jsonInt("payload", "loadMs");
+
+  const bands = opts.bands != null && opts.bands.length > 0 ? opts.bands : DEFAULT_LOAD_BANDS;
+  const bandCase = `CASE\n${bands
+    .map((upper, i) => `          WHEN load_ms < ${bag.add(`band${i}`, "f64", upper)} THEN ${i}`)
+    .join("\n")}\n          ELSE ${bands.length}\n        END`;
+
+  return {
+    query: `
+      WITH first_load AS (
+        SELECT session_id, min(ts) AS load_ts
+        FROM events
+        WHERE project_id = ${pid} AND event_type = 'asset_load'${range}${scene}
+        GROUP BY session_id
+      ),
+      load_ms AS (
+        SELECT fl.session_id AS session_id, fl.load_ts AS load_ts,
+               min(${loadMs}) AS load_ms
+        FROM events AS e JOIN first_load AS fl
+          ON e.session_id = fl.session_id AND e.ts = fl.load_ts
+        WHERE e.project_id = ${pid} AND e.event_type = 'asset_load'
+        GROUP BY fl.session_id, fl.load_ts
+      ),
+      engaged AS (
+        SELECT lm.session_id AS session_id, count() AS interactions
+        FROM events AS e JOIN load_ms AS lm
+          ON e.session_id = lm.session_id
+        WHERE e.project_id = ${pid}
+          AND e.event_type IN ${INTERACTION_EVENT_TYPES}
+          AND e.ts >= lm.load_ts
+        GROUP BY lm.session_id
+      )
+      SELECT
+        ${bandCase} AS band,
+        count() AS sessions,
+        sum(CASE WHEN coalesce(eng.interactions, 0) = 0 THEN 1 ELSE 0 END) AS bounced
+      FROM load_ms AS lm LEFT JOIN engaged AS eng ON lm.session_id = eng.session_id
+      WHERE lm.load_ms IS NOT NULL
+      GROUP BY band
+      ORDER BY band ASC
     `,
     query_params: bag.values,
   };

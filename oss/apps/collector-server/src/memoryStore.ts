@@ -276,6 +276,7 @@ export function createMemoryStore({
       );
       return rows.slice(0, opts.limit ?? 100);
     },
+    loadBounceFunnel: async () => [],
     getSessionEvents: async (_projectId, sessionId) => forSession(sessionId),
     streamSessionEvents: async function* (_projectId, sessionId) {
       for (const e of forSession(sessionId)) yield e;

@@ -238,6 +238,10 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
       { step: 0, sessions: 10 },
       { step: 1, sessions: 4 },
     ],
+    loadBounceFunnel: async () => [
+      { band: 0, sessions: 20, bounced: 3 },
+      { band: 3, sessions: 8, bounced: 6 },
+    ],
     getSessionEvents: async () => [],
     streamSessionEvents: async function* () {},
     getSessionMeta: async () => ({
@@ -486,6 +490,51 @@ describe("collector app", () => {
     const res = await app.inject({
       method: "GET",
       url: `/api/v1/funnel?steps=${encodeURIComponent(steps)}`,
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("returns the load-bounce funnel for a valid API key (#152)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/load-bounce",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      { band: 0, sessions: 20, bounced: 3 },
+      { band: 3, sessions: 8, bounced: 6 },
+    ]);
+    await app.close();
+  });
+
+  it("forwards parsed load-bounce bands + filters to the store call (#152)", async () => {
+    let received: unknown;
+    const store = makeStore({
+      loadBounceFunnel: async (_projectId, opts) => {
+        received = opts;
+        return [{ band: 0, sessions: 1, bounced: 0 }];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/load-bounce?scene=lobby&bands=1000,3000,5000",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received).toMatchObject({ scene: "lobby", bands: [1000, 3000, 5000] });
+    await app.close();
+  });
+
+  it("rejects non-ascending load-bounce bands with 400 (#152)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/load-bounce?bands=3000,1000",
       headers: { "x-api-key": "valid-key" },
     });
     expect(res.statusCode).toBe(400);

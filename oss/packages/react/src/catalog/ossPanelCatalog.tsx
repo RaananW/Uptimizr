@@ -28,6 +28,7 @@ import type {
   HeatmapBin,
   InputActionCount,
   InteractionSource,
+  LoadBounceBand,
   MeshCount,
   MeshBlindSpot,
   MeshInteractionKind,
@@ -150,6 +151,13 @@ import {
   VIEW_COVERAGE_SUBTITLE,
   VIEW_COVERAGE_HELP,
 } from "./views/ViewCoverage";
+import {
+  LoadBounceFunnelView,
+  LOAD_BOUNCE_TITLE,
+  LOAD_BOUNCE_SUBTITLE,
+  LOAD_BOUNCE_HELP,
+  LOAD_BANDS,
+} from "./views/LoadBounceFunnel";
 
 // --- 3D (Babylon-backed) view labels (Babylon-free copy) + lazy views. ------
 import {
@@ -971,6 +979,24 @@ export const backtrackPanel = definePanel<BacktrackRatioStat[]>({
   render: ({ data }) => <BacktrackRatioView stats={data ?? []} />,
 });
 
+/**
+ * Load → bounce funnel (#152) — React/HTML bars, half width. Buckets sessions by
+ * their initial `asset_load` time and shows the bounce rate (no interaction after
+ * load) per band. The dashboard passes the default `LOAD_BANDS` explicitly so the
+ * client and the view agree on the buckets and their labels (the DB stays
+ * label-free, mirroring the funnel panel).
+ */
+export const loadBounceFunnelPanel = definePanel<LoadBounceBand[]>({
+  id: "load-bounce-funnel",
+  title: LOAD_BOUNCE_TITLE,
+  subtitle: LOAD_BOUNCE_SUBTITLE,
+  help: LOAD_BOUNCE_HELP,
+  span: 1,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.loadBounce({ ...scoped(ctx), bands: [...LOAD_BANDS] }),
+  render: ({ data }) => <LoadBounceFunnelView rows={data ?? []} boundaries={LOAD_BANDS} />,
+});
+
 /** Aggregate gaze→mesh flow data: position-aware links + the scene-proxy backdrop. */
 interface FlowData {
   links: FlowLink[];
@@ -1091,6 +1117,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   xrLocomotionComfortPanel,
   sceneRetentionPanel,
   backtrackPanel,
+  loadBounceFunnelPanel,
   deadZonePanel,
   flowPanel,
   divergencePanel,

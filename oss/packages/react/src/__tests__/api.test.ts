@@ -204,6 +204,37 @@ describe("CollectorApi", () => {
     ]);
   });
 
+  it("encodes load-bounce bands into the query and coerces the result (#152)", async () => {
+    const fetchMock = mockFetch([
+      { band: "0", sessions: "20", bounced: "3" },
+      { band: "3", sessions: "8", bounced: "6" },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.loadBounce({ scene: "lobby", bands: [1000, 3000, 5000] });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/load-bounce");
+    expect(parsed.searchParams.get("scene")).toBe("lobby");
+    expect(parsed.searchParams.get("bands")).toBe("1000,3000,5000");
+    expect(rows).toEqual([
+      { band: 0, sessions: 20, bounced: 3 },
+      { band: 3, sessions: 8, bounced: 6 },
+    ]);
+  });
+
+  it("omits the bands param when no bands are supplied (#152)", async () => {
+    const fetchMock = mockFetch([]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    await api.loadBounce({ scene: "lobby" });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.searchParams.has("bands")).toBe(false);
+  });
+
   it("coerces camera-gesture rows and hits the camera-gestures endpoint", async () => {
     const fetchMock = mockFetch([
       { kind: "orbit", gestures: "9", total_ms: "4500", avg_ms: "500", max_ms: "1200" },

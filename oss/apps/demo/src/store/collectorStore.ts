@@ -24,6 +24,7 @@ import {
   buildHoverDwell,
   buildInteractionsBySource,
   buildJankRate,
+  buildLoadBounceFunnel,
   buildListSessions,
   buildMeshBlindSpots,
   buildMeshDwell,
@@ -270,9 +271,26 @@ export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/scenes": (pid, o) => buildDistinctScenes(pid, o, duckdbDialect),
   "/api/v1/timeseries": (pid, o) => buildTimeseries(pid, o, duckdbDialect),
   "/api/v1/event-counts": (pid, o) => buildEventTypeCounts(pid, o, duckdbDialect),
+  "/api/v1/load-bounce": (pid, o, sp) =>
+    buildLoadBounceFunnel(pid, { ...o, bands: parseBands(sp.get("bands")) }, duckdbDialect),
   "/api/v1/paths": (pid, o) => buildAggregateTrajectories(pid, o, duckdbDialect),
   "/api/v1/scene-retention": (pid, o) => buildSceneRetention(pid, o, duckdbDialect),
 };
+
+/**
+ * Parse the optional `bands` query param (ascending positive ms boundaries) for
+ * the load→bounce funnel. Mirrors the collector's lenient contract: an absent,
+ * empty, or malformed value falls back to the builder's default bands.
+ */
+function parseBands(raw: string | null): number[] | undefined {
+  if (!raw) return undefined;
+  const parts = raw.split(",").map((s) => Number(s.trim()));
+  const valid =
+    parts.length > 0 &&
+    parts.length <= 16 &&
+    parts.every((n, i) => Number.isFinite(n) && n > 0 && (i === 0 || n > (parts[i - 1] ?? 0)));
+  return valid ? parts : undefined;
+}
 
 function parseVoxel(raw: string | null): [number, number, number] | undefined {
   if (!raw) return undefined;

@@ -13,6 +13,8 @@ import type {
   FunnelStepResultRow,
   SceneRetentionOptions,
   SceneRetentionRow,
+  LoadBounceFunnelOptions,
+  LoadBounceBandRow,
   HeatmapBinRow,
   HoverDwellRow,
   CompileStallRow,
@@ -594,6 +596,15 @@ export interface CollectorStore {
    * caller-authored funnel (ADR 0038).
    */
   sceneRetention(projectId: string, opts: SceneRetentionOptions): Promise<SceneRetentionRow[]>;
+  /**
+   * Load → bounce/abandon funnel (#152): bucket sessions by their initial
+   * `asset_load` load time and report, per band, how many sessions **bounced** —
+   * produced no interaction (`pointer_*` / `mesh_interaction` / `camera_gesture`)
+   * at or after that load. Makes "slow load costs you customers" a concrete
+   * number. Bands are caller-supplied ascending ms boundaries (a sensible default
+   * applies when omitted); no schema change — derived from existing events.
+   */
+  loadBounceFunnel(projectId: string, opts?: LoadBounceFunnelOptions): Promise<LoadBounceBandRow[]>;
   /** Ordered session timeline for replay (gated by raw-session retention). */
   getSessionEvents(projectId: string, sessionId: string): Promise<AnyEvent[]>;
   /**

@@ -43,6 +43,7 @@ import {
   buildXrLocomotionComfort,
   buildInteractionsBySource,
   buildFunnel,
+  buildLoadBounceFunnel,
   buildPerfDaily,
   buildPerfSummary,
   buildRenderScaleTruth,
@@ -875,5 +876,18 @@ export const PARITY_CASES: readonly ParityCase[] = [
       { step: 0, sessions: 2 },
       { step: 1, sessions: 1 },
     ],
+  },
+  {
+    // Load → bounce funnel (#152): the fixtures carry no `asset_load` events, so
+    // no session has an initial load metric and the result is empty on both
+    // engines. Like `xrSourceUsage`/`xrAbandonment`, the value here is confirming
+    // the dialect-agnostic SQL (the `first_load`/`load_ms`/`engaged` CTE chain and
+    // the `CASE` banding over `payload.loadMs`) renders and executes identically on
+    // DuckDB and ClickHouse; the banding/bounce arithmetic is covered exhaustively
+    // by `loadBounce.test.ts`.
+    name: "loadBounceFunnel",
+    build: (d) => buildLoadBounceFunnel(PID, PARITY_RANGE, d),
+    sortKeys: ["band"],
+    golden: [],
   },
 ];
