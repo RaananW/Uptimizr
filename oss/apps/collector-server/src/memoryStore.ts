@@ -130,6 +130,7 @@ export function createMemoryStore({
     perfHeatmap: async () => [],
     cameraDistance: async () => [],
     navigationStats: async () => [],
+    backtrackRatio: async () => [],
     xrRotationRate: async () => [],
     xrSourceUsage: async () => [],
     xrAbandonment: async () => [],

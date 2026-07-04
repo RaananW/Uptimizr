@@ -36,6 +36,7 @@ import {
   buildCapabilityChanges,
   buildCameraGestures,
   buildNavigationStats,
+  buildBacktrackRatio,
   buildXrRotationRate,
   buildXrSourceUsage,
   buildXrAbandonment,
@@ -770,6 +771,18 @@ export const PARITY_CASES: readonly ParityCase[] = [
         active_segments: 1,
         active_distance: 10,
       },
+    ],
+  },
+  {
+    name: "backtrackRatio",
+    build: (d) => buildBacktrackRatio(PID, PARITY_RANGE, d),
+    sortKeys: ["scene"],
+    // Neither session re-walks a coarse (cellSize 2) grid cell, so every scene's
+    // ratio is 0. s1/lobby enters cells (0,0) then (5,0) = 2 entries; s2/arena's
+    // single sample is one entry. No revisits anywhere.
+    golden: [
+      { scene: "arena", sessions: 1, entries: 1, revisits: 0, backtrack_ratio: 0 },
+      { scene: "lobby", sessions: 1, entries: 2, revisits: 0, backtrack_ratio: 0 },
     ],
   },
   {

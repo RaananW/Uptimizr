@@ -189,6 +189,9 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
         active_distance: 11,
       },
     ],
+    backtrackRatio: async () => [
+      { scene: "hall", sessions: 2, entries: 8, revisits: 2, backtrack_ratio: 0.25 },
+    ],
     xrRotationRate: async () => [
       {
         session_id: "s1",
@@ -1604,6 +1607,35 @@ describe("collector app", () => {
       { mesh: "near-panel", bucket: 0, count: 12, avg_distance: 0.3 },
     ]);
     expect(received).toMatchObject({ bucketSize: 1, scene: "lobby", source: "xr-controller" });
+    await app.close();
+  });
+
+  it("forwards the cell size to the backtrack-ratio store call (#153)", async () => {
+    let received: unknown;
+    const store = makeStore({
+      backtrackRatio: async (_projectId, opts) => {
+        received = opts;
+        return [{ scene: "hall", sessions: 2, entries: 8, revisits: 2, backtrack_ratio: 0.25 }];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/backtrack?cellSize=1.5&scene=hall",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      { scene: "hall", sessions: 2, entries: 8, revisits: 2, backtrack_ratio: 0.25 },
+    ]);
+    expect(received).toMatchObject({ cellSize: 1.5, scene: "hall" });
+    await app.close();
+  });
+
+  it("requires a valid api key for the backtrack-ratio endpoint (#153)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({ method: "GET", url: "/api/v1/backtrack" });
+    expect(res.statusCode).toBe(401);
     await app.close();
   });
 

@@ -335,6 +335,25 @@ export interface NavigationStat {
 }
 
 /**
+ * One scene/area of the path-retrace / backtracking leaderboard (#153): how
+ * often visitors re-walk a coarse grid cell, derived from the `camera_sample`
+ * position stream. A high `backtrack_ratio` flags a confusing area — a dead end,
+ * a missed cue, or an unclear puzzle — that's a candidate for signage / level fixes.
+ */
+export interface BacktrackRatioStat {
+  /** Developer-assigned scene id the counts are pooled over. */
+  scene: string;
+  /** Distinct sessions that entered any cell in this scene. */
+  sessions: number;
+  /** Total coarse-grid cell entries (consecutive dwell samples collapsed). */
+  entries: number;
+  /** Entries into an already-visited cell — the re-walked-area signal. */
+  revisits: number;
+  /** `revisits / entries` in [0, 1); higher = more backtracking / confusion. */
+  backtrack_ratio: number;
+}
+
+/**
  * Per-kind camera-navigation gesture summary from `camera_gesture` events
  * (ADR 0025): the orbit / pan / dolly / zoom / roll / fly / navigate breakdown
  * with per-kind counts and durations. Powers the navigation-style mix panel.
@@ -1198,6 +1217,23 @@ export class CollectorApi {
         total_distance: Number(r.total_distance ?? 0),
         active_segments: Number(r.active_segments ?? 0),
         active_distance: Number(r.active_distance ?? 0),
+      })),
+    );
+  }
+
+  /**
+   * Path-retrace / backtracking ratio (#153): a per-scene leaderboard of how
+   * often visitors re-walk a coarse grid cell, derived from the `camera_sample`
+   * position stream. Drives the backtracking-hotspots panel.
+   */
+  backtrackRatio(params?: QueryParams): Promise<BacktrackRatioStat[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/backtrack", params).then((rows) =>
+      rows.map((r) => ({
+        scene: String(r.scene ?? ""),
+        sessions: Number(r.sessions ?? 0),
+        entries: Number(r.entries ?? 0),
+        revisits: Number(r.revisits ?? 0),
+        backtrack_ratio: Number(r.backtrack_ratio ?? 0),
       })),
     );
   }

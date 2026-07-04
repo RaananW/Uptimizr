@@ -61,6 +61,16 @@ test("dashboard renders captured events end to end", async ({ page, request }) =
   await expect(byDevice.getByRole("columnheader", { name: "OS" })).toBeVisible();
   await expect(byDevice.getByRole("cell", { name: "Chrome", exact: true }).first()).toBeVisible();
 
+  // Backtracking-hotspots leaderboard (#153) is derived from the camera_sample
+  // position stream, so the driven session populates it. Assert the panel renders
+  // real data (a per-scene row with a ratio + entry count), not its empty state.
+  const backtrack = page.locator("section", { hasText: "Backtracking hotspots" }).first();
+  await backtrack.scrollIntoViewIfNeeded();
+  await expect(backtrack.getByRole("heading", { name: "Backtracking hotspots" })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(backtrack.getByText(/entries/).first()).toBeVisible();
+
   // 4) The session appears in the sessions table; opening it loads the drill-down.
   const shortId = sessionId.slice(0, 12);
   const sessionCell = page.getByText(shortId, { exact: true }).first();

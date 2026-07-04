@@ -620,6 +620,23 @@ export interface NavigationStatsRow {
   active_distance: number;
 }
 
+/**
+ * One row of the path-retrace / backtracking leaderboard (#153): a scene/area
+ * with its pooled backtrack ratio and the raw counts behind it.
+ */
+export interface BacktrackRatioRow {
+  /** Developer-assigned scene id the counts are pooled over (may be empty). */
+  scene: string;
+  /** Distinct sessions that entered any cell in this scene. */
+  sessions: number;
+  /** Total coarse-grid cell entries (consecutive dwell samples collapsed). */
+  entries: number;
+  /** Entries into an already-visited cell — the re-walked-area signal. */
+  revisits: number;
+  /** `revisits / entries` in [0, 1); higher = more confusion / re-walking. */
+  backtrack_ratio: number;
+}
+
 /** Per-session XR motion-sickness proxy: view-rotation rate over the pose stream. */
 export interface XrRotationRateRow {
   session_id: string;

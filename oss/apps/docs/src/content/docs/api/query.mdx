@@ -71,16 +71,17 @@ longer wash out the rest.
 
 ## Navigation & XR
 
-| Method | Path                      | Purpose                                                                | Extra params                                              |
-| ------ | ------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------- |
-| `GET`  | `/api/v1/camera-gestures` | Camera-navigation breakdown (orbit/pan/dolly/zoom/…).                  | `limit`, `scene`, `source`, `session`                     |
-| `GET`  | `/api/v1/coverage`        | Scene coverage / dead zones from camera positions.                     | `cellSize`, `scene`, `source`, `session`                  |
-| `GET`  | `/api/v1/camera/distance` | Camera distance / zoom histogram.                                      | `centerX/Y/Z`, `bucketSize`, `scene`, `source`, `session` |
-| `GET`  | `/api/v1/navigation`      | Per-session travel (segments, distance, active vs idle).               | `moveThreshold`, `scene`, `source`, `session`             |
-| `GET`  | `/api/v1/xr/rotation`     | XR head/view rotation rate (motion-sickness proxy).                    | `rapidTurn`, `limit`, `scene`, `session`                  |
-| `GET`  | `/api/v1/xr/sources`      | XR input-source usage (hand vs controller vs gaze).                    | `limit`, `scene`, `session`                               |
-| `GET`  | `/api/v1/xr/abandonment`  | XR session abandonment.                                                | `limit`, `scene`, `session`                               |
-| `GET`  | `/api/v1/xr/locomotion`   | XR locomotion & comfort: per-session fly/navigate/teleport mix + span. | `limit`, `scene`, `session`                               |
+| Method | Path                      | Purpose                                                                                                                                                                    | Extra params                                              |
+| ------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `GET`  | `/api/v1/camera-gestures` | Camera-navigation breakdown (orbit/pan/dolly/zoom/…).                                                                                                                      | `limit`, `scene`, `source`, `session`                     |
+| `GET`  | `/api/v1/coverage`        | Scene coverage / dead zones from camera positions.                                                                                                                         | `cellSize`, `scene`, `source`, `session`                  |
+| `GET`  | `/api/v1/camera/distance` | Camera distance / zoom histogram.                                                                                                                                          | `centerX/Y/Z`, `bucketSize`, `scene`, `source`, `session` |
+| `GET`  | `/api/v1/navigation`      | Per-session travel (segments, distance, active vs idle).                                                                                                                   | `moveThreshold`, `scene`, `source`, `session`             |
+| `GET`  | `/api/v1/backtrack`       | Path-retrace / backtracking ratio: per-scene leaderboard of how often visitors re-walk a coarse grid cell (`scene`, `sessions`, `entries`, `revisits`, `backtrack_ratio`). | `cellSize`, `limit`, `scene`, `session`                   |
+| `GET`  | `/api/v1/xr/rotation`     | XR head/view rotation rate (motion-sickness proxy).                                                                                                                        | `rapidTurn`, `limit`, `scene`, `session`                  |
+| `GET`  | `/api/v1/xr/sources`      | XR input-source usage (hand vs controller vs gaze).                                                                                                                        | `limit`, `scene`, `session`                               |
+| `GET`  | `/api/v1/xr/abandonment`  | XR session abandonment.                                                                                                                                                    | `limit`, `scene`, `session`                               |
+| `GET`  | `/api/v1/xr/locomotion`   | XR locomotion & comfort: per-session fly/navigate/teleport mix + span.                                                                                                     | `limit`, `scene`, `session`                               |
 
 ## Time & volume
 

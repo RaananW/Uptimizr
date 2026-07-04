@@ -81,6 +81,7 @@ describe("duckdb parity (vs golden)", () => {
       "perfHeatmap",
       "cameraDistance",
       "navigationStats",
+      "backtrackRatio",
       "xrRotationRate",
       "xrSourceUsage",
       "xrAbandonment",

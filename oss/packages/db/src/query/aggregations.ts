@@ -2263,6 +2263,96 @@ export function buildNavigationStats(
   };
 }
 
+/**
+ * Path-retrace / backtracking ratio (#153): a confusion signal derived from the
+ * same `camera_sample` position stream that feeds desire lines, surfaced as a
+ * per-scene leaderboard. It answers "which areas do visitors keep re-walking?" —
+ * a high backtrack ratio flags a dead end, a missed cue, or a puzzle that isn't
+ * reading clearly.
+ *
+ * Algorithm — the coarse-grid revisit proxy (the cheap first cut, not true
+ * reverse-segment retracing): bin each session's positions onto a `cellSize`
+ * X/Z grid, then collapse consecutive samples in the same cell into ordered cell
+ * *entries* (so standing still / dwelling never counts) via an ASOF self-join to
+ * the immediately preceding sample. A row is an entry when it has no predecessor
+ * (the session's first sample) or its cell differs from the predecessor's. The
+ * `present` sentinel makes the unmatched-predecessor test engine-agnostic:
+ * DuckDB null-fills a LEFT-join miss while ClickHouse zero-fills it, so `present`
+ * (`1` only on a real match) is the portable "has a predecessor" flag.
+ *
+ * Per (session, scene): `revisits = entries − distinct_cells` — every entry into
+ * a cell beyond its first is a re-entry. Pooled per scene, the leaderboard
+ * reports `backtrack_ratio = Σ revisits / Σ entries` alongside the raw counts.
+ * Only plain `count()` and a dedup subquery are used (no multi-column
+ * `COUNT(DISTINCT …)`), so DuckDB and ClickHouse agree.
+ */
+export function buildBacktrackRatio(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions & { cellSize?: number; limit?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const cellSize = bag.add("cellSize", "f64", opts.cellSize ?? 2);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const limit = bag.add("limit", "u32", opts.limit ?? 100);
+  const sampleSelect = `
+        SELECT session_id, scene_id AS scene, ts,
+          floor(position[1] / ${cellSize}) AS gx,
+          floor(position[3] / ${cellSize}) AS gz
+        FROM events
+        WHERE project_id = ${pid}
+          AND event_type = 'camera_sample'
+          AND length(position) = 3${range}${scene}${session}`;
+  // Ordered cell entries (consecutive same-cell samples collapsed): a sample is
+  // an entry when it has no predecessor or its cell changed vs. the predecessor.
+  const entries = `
+      SELECT c.session_id AS session_id, c.scene AS scene, c.gx AS gx, c.gz AS gz
+      FROM (${sampleSelect}
+      ) AS c
+      ${d.asofLeftJoin} (
+        SELECT session_id, ts, 1 AS present, gx, gz FROM (${sampleSelect}
+        ) AS s
+      ) AS m
+      ON c.session_id = m.session_id AND c.ts > m.ts
+      WHERE m.present IS NULL OR m.present = 0 OR c.gx <> m.gx OR c.gz <> m.gz`;
+  return {
+    query: `
+      SELECT
+        scene,
+        count() AS sessions,
+        sum(total_entries) AS entries,
+        sum(revisits) AS revisits,
+        CASE WHEN sum(total_entries) > 0
+             THEN sum(revisits) * 1.0 / sum(total_entries) ELSE 0 END AS backtrack_ratio
+      FROM (
+        SELECT
+          e.session_id AS session_id,
+          e.scene AS scene,
+          count() AS total_entries,
+          count() - dc.distinct_cells AS revisits
+        FROM (${entries}
+        ) AS e
+        JOIN (
+          SELECT session_id, scene, count() AS distinct_cells
+          FROM (
+            SELECT DISTINCT session_id, scene, gx, gz FROM (${entries}
+            ) AS de
+          ) AS ded
+          GROUP BY session_id, scene
+        ) AS dc ON e.session_id = dc.session_id AND e.scene = dc.scene
+        GROUP BY e.session_id, e.scene, dc.distinct_cells
+      ) AS per_session
+      GROUP BY scene
+      ORDER BY backtrack_ratio DESC, entries DESC
+      LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
 /** XR input sources that distinguish hand-tracking, controllers and gaze. */
 const XR_SOURCES = "('xr-controller', 'hand', 'gaze', 'transient')";
 

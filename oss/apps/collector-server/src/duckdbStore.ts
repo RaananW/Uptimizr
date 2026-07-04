@@ -18,6 +18,7 @@ import {
   buildSceneRetention,
   buildListSessions,
   buildNavigationStats,
+  buildBacktrackRatio,
   buildXrRotationRate,
   buildXrSourceUsage,
   buildXrAbandonment,
@@ -96,6 +97,7 @@ import {
   type MeshTrendPointRow,
   type InputActionCountRow,
   type NavigationStatsRow,
+  type BacktrackRatioRow,
   type XrRotationRateRow,
   type XrSourceUsageRow,
   type XrAbandonmentRow,
@@ -288,6 +290,8 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       ),
     navigationStats: (projectId, opts = {}) =>
       runDuckdbQuery<NavigationStatsRow>(db, buildNavigationStats(projectId, opts, duckdbDialect)),
+    backtrackRatio: (projectId, opts = {}) =>
+      runDuckdbQuery<BacktrackRatioRow>(db, buildBacktrackRatio(projectId, opts, duckdbDialect)),
     xrRotationRate: (projectId, opts = {}) =>
       runDuckdbQuery<XrRotationRateRow>(db, buildXrRotationRate(projectId, opts, duckdbDialect)),
     xrSourceUsage: (projectId, opts = {}) =>

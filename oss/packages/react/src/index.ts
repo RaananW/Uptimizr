@@ -116,6 +116,7 @@ export {
   navigationMixPanel,
   xrLocomotionComfortPanel,
   sceneRetentionPanel,
+  backtrackPanel,
   deadZonePanel,
   flowPanel,
   divergencePanel,
