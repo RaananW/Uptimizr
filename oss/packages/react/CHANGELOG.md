@@ -1,5 +1,173 @@
 # @uptimizr/react
 
+## 0.8.0
+
+### Minor Changes
+
+- 4751b5d: feat: path-retrace / backtracking-ratio leaderboard (#153). Adds a new derived
+  metric — computed from the existing `camera_sample` position stream, with **no
+  schema change** — that ranks scenes/areas by how often visitors re-walk the same
+  area (a confusion signal desire lines don't surface).
+
+  - `@uptimizr/db`: new `buildBacktrackRatio(projectId, opts, dialect)` aggregation
+    and `BacktrackRatioRow` type. It bins positions onto a coarse X/Z grid
+    (`cellSize`, default 2 world units), collapses consecutive dwell samples in one
+    cell into ordered _cell entries_ via the `asofLeftJoin` predecessor pattern, and
+    pools `backtrack_ratio = revisits ÷ entries` per scene. Cross-engine safe
+    (DuckDB + ClickHouse): uses only plain `count()` + a distinct-cell dedup
+    subquery and the `present` sentinel for ASOF-LEFT misses. Added to the parity
+    suite with golden output.
+  - `@uptimizr/collector-server`: new `GET /api/v1/backtrack` query route
+    (`cellSize`, `limit`, `scene`, `session`) plus the `backtrackRatio` store method
+    across the DuckDB, ClickHouse, and memory stores.
+  - `@uptimizr/react`: new `backtrackRatio()` API client method, `BacktrackRatioStat`
+    type, and a **Backtracking hotspots** leaderboard panel (`backtrack-ratio`)
+    registered in `ossPanelCatalog` and exported individually.
+
+  Additive and non-breaking — every existing export keeps working.
+
+- e39cbc7: feat: optional `position` on `runtime_error` / `graphics_diagnostic` + spatial error heatmap (#154)
+
+  Add an optional, best-effort `position` (`[x, y, z]`, the camera pose at the moment the event
+  fired) to the `runtime_error` and `graphics_diagnostic` events. The Babylon connector stamps it
+  automatically from the tracked camera; `sdk-core` gains a `setPositionProvider` seam so any connector
+  can supply one, and enrichment happens centrally in `emitInternal` (before `beforeSend`, so it stays
+  redactable). The field is additive and backward-compatible — older events simply omit it, and it
+  reuses the already-promoted `position` column (no migration).
+
+  On the read side, `@uptimizr/db` adds `buildErrorHeatmap` (voxel-bins positioned errors +
+  diagnostics, with optional `severity`/`category`/`errorKind` filters), surfaced via the collector's
+  new `GET /api/v1/heatmaps/errors` endpoint and a new **Error heatmap (3D)** dashboard panel
+  (`@uptimizr/react`) reusing the world-heatmap view — revealing _where_ in the scene things break,
+  not just _when_.
+
+- 3c0a20b: feat(perf): add optional `position` to `frame_perf` + spatial FPS heatmap (#145)
+
+  `frame_perf` samples can now carry the camera world-`position` at the moment
+  they're taken, so the collector can show _where_ FPS drops, not just _when_. The
+  Babylon connector fills it automatically from the tracked camera; other
+  connectors may set it on the emitted event.
+
+  - **schema**: `frame_perf.position` is an optional `vec3` (additive,
+    backward-compatible — events still validate without it).
+  - **sdk-core / babylon**: the perf snapshot threads an optional `position`
+    through the aggregator into the emitted event; Babylon reads the tracked camera.
+  - **db**: new dialect-agnostic `buildPerfHeatmap` voxel builder
+    (`samples`/`avg_fps`/`min_fps`, ordered `avg_fps ASC`). Reuses the promoted
+    `position` column — **no migration**.
+  - **react**: new `perfHeatmap()` client method + **Performance heatmap (3D)**
+    panel (reuses the world-heatmap renderer; hot = slow, honest per-voxel FPS on
+    hover).
+
+  The collector exposes it at `GET /api/v1/heatmaps/perf`.
+
+- db331a3: feat: load → bounce/abandon funnel (#152). Adds a `buildLoadBounceFunnel` query
+  builder that buckets sessions by their initial `asset_load` time band and counts
+  how many bounced (no `pointer_*` / `mesh_interaction` / `camera_gesture` after
+  load), a `GET /api/v1/load-bounce` collector endpoint, an `api.loadBounce()` client
+  method, and a "Load → bounce funnel" dashboard panel. Derived from existing events —
+  no schema change.
+- de0836d: feat: blind-spot / never-noticed mesh report (#143)
+
+  Add a "blind spots" leaderboard — the inverse of the most-interacted / part-
+  popularity panels — surfacing meshes that render but are never noticed. A new
+  `@uptimizr/db` aggregation (`buildMeshBlindSpots`) cross-references
+  `mesh_visibility` on-screen time against `mesh_interaction` + `hover_dwell`
+  engagement per mesh, keeping only meshes that were actually visible and ranking
+  the most-seen-yet-least-touched first. Exposed through the collector's
+  `GET /api/v1/meshes/blind-spots` endpoint and a new **Blind spots** panel in
+  `@uptimizr/react`'s `ossPanelCatalog` (`meshBlindSpots` API client +
+  `BlindSpotReportView`). No schema change — reuses the existing event types.
+
+- 3193a21: feat: add optional `uv` field for a per-mesh texture-space heatmap (#149)
+
+  `pointer_click`, `mesh_interaction`, and `hover_dwell` now carry an optional,
+  unclamped `uv: [u, v]` texture coordinate, captured by the Babylon connector from
+  the raycast hit (`PickingInfo.getTextureCoordinates()`). It rides in the event
+  `payload` — additive and backward-compatible, no column promotion or migration.
+
+  A new `buildMeshUvHeatmap` query builder and `GET /api/v1/heatmaps/mesh-uv`
+  endpoint bin a single mesh's `uv` values into a grid, surfaced by the dashboard's
+  new **Mesh UV heatmap** panel (interactive mesh picker, defaults to the
+  most-interacted mesh).
+
+- 541c97a: feat(perf): perf-driven churn overlay — correlate FPS dips / compile stalls with early session end (#144)
+
+  Adds a buildable-now "perf-correlated churn rate": of the sessions that ended in
+  range, the share that ended shortly after an FPS dip (a `frame_perf` sample below
+  a threshold) or a `compile_stall`, within a configurable window, split by cause.
+
+  - `@uptimizr/db`: new dialect-agnostic `buildPerfChurn` aggregation (`PerfChurnRow`)
+    derived from existing `frame_perf`, `compile_stall`, `session_end` events — no
+    schema change; DuckDB + ClickHouse safe (no window/ASOF functions).
+  - `@uptimizr/collector-server`: new `GET /api/v1/perf/churn` endpoint
+    (`windowMs` / `fpsThreshold` / `stallMs` params) and `Store.perfChurn`.
+  - `@uptimizr/react`: `CollectorApi.perfChurn` + the "Perf-driven churn" dashboard
+    panel with viewer-tunable window / FPS / stall settings.
+
+- 31ae82b: feat(db,collector,react): reachability report — per-mesh interaction-distance histogram (#151)
+
+  Adds a buildable-now `buildReachability` query that ASOF-joins each `mesh_interaction`
+  world point to the nearest preceding `camera_sample` and histograms the standpoint→interaction
+  distance per mesh, surfaced through `GET /api/v1/meshes/reachability`, the `@uptimizr/react`
+  client, and a new **Reachability report** OSS panel. No schema change.
+
+- 53a4695: feat: add a canned scene/level retention funnel (#147)
+
+  A zero-config Sankey preset built directly from `scene_change` markers — session
+  counts flowing scene → scene in observed order, weighted by distinct sessions, so
+  level-to-level drop-off is visible without authoring any funnel steps (the
+  complement to the caller-authored funnel, ADR 0038).
+
+  - `@uptimizr/db`: new `buildSceneRetention()` query builder (parity-safe — no
+    window functions) plus `SceneRetentionOptions` / `SceneRetentionRow` types.
+  - `@uptimizr/react`: new `CollectorApi.sceneRetention()` + `SceneRetentionLink`
+    type, and a built-in **Scene retention funnel** panel in the OSS catalog.
+
+  Served by the collector at `GET /api/v1/scene-retention`.
+
+- b0ac76e: feat(db,react): variant → conversion leaderboard for product configurators (#150)
+
+  Add a read-only leaderboard that ranks `custom` variant events (grouped by their
+  `name`) by views, with distinct sessions, mean dwell before the next variant
+  switch/conversion, and an optional per-variant conversion rate to a caller-supplied
+  success event. Reuses the ADR 0038 funnel-step predicate shape — no schema change.
+
+  - `@uptimizr/db`: `buildVariantLeaderboard` query builder (`VariantLeaderboardOptions`
+    / `VariantLeaderboardRow`), engine-agnostic so DuckDB and ClickHouse match.
+  - `@uptimizr/react`: `CollectorApi.variantLeaderboard()` client method and a new
+    `variant-leaderboard` dashboard panel with an in-panel success-event picker.
+
+  Also wires the `GET /api/v1/variant-leaderboard` endpoint through the collector
+  server (store contract + DuckDB / ClickHouse / memory stores).
+
+- ab4e3c5: feat(dashboard,db): 360° view-coverage gauge per session (#146)
+
+  Add a derived per-session **view-coverage** metric: bin each session's
+  `camera_sample` directions into the same azimuth/elevation grid as the
+  view-direction dome, and report the fraction of cells visited as a 0–100%
+  coverage score. Sessions are aggregated into a histogram of 25%-wide coverage
+  bands (0–25 / 25–50 / 50–75 / 75–100%) — "how many visitors never rotated the
+  product to see the back".
+
+  - `@uptimizr/db`: new `buildViewCoverageHistogram` query builder + `ViewCoverageHistogramRow`.
+  - `@uptimizr/collector-server`: new `GET /api/v1/coverage/view-histogram` read endpoint.
+  - `@uptimizr/react`: new `viewCoverageHistogram` API client method and the **View coverage**
+    dashboard panel.
+
+  No schema change — entirely derived from the existing `camera_sample` stream.
+
+- 872d4b2: feat(dashboard): VR comfort & locomotion panel (#148)
+
+  Add an XR-focused locomotion + comfort panel that reuses existing schema (no
+  schema change). A new `@uptimizr/db` `buildXrLocomotionComfort` builder returns,
+  per XR session, its fly/navigate gesture counts, `mesh_interaction` teleport
+  count, total locomotion duration, and wall-clock span. The `@uptimizr/react`
+  catalog gains an `xrLocomotionComfortPanel` that renders the locomotion-style mix
+  (teleport vs. smooth locomotion vs. navigate) and a heavy-vs-light-locomotion
+  early-exit correlation — a motion-discomfort proxy. Exposed via
+  `GET /api/v1/xr/locomotion`.
+
 ## 0.7.0
 
 ### Minor Changes

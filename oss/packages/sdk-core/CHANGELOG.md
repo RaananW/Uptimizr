@@ -1,5 +1,63 @@
 # @uptimizr/sdk-core
 
+## 0.4.0
+
+### Minor Changes
+
+- e39cbc7: feat: optional `position` on `runtime_error` / `graphics_diagnostic` + spatial error heatmap (#154)
+
+  Add an optional, best-effort `position` (`[x, y, z]`, the camera pose at the moment the event
+  fired) to the `runtime_error` and `graphics_diagnostic` events. The Babylon connector stamps it
+  automatically from the tracked camera; `sdk-core` gains a `setPositionProvider` seam so any connector
+  can supply one, and enrichment happens centrally in `emitInternal` (before `beforeSend`, so it stays
+  redactable). The field is additive and backward-compatible — older events simply omit it, and it
+  reuses the already-promoted `position` column (no migration).
+
+  On the read side, `@uptimizr/db` adds `buildErrorHeatmap` (voxel-bins positioned errors +
+  diagnostics, with optional `severity`/`category`/`errorKind` filters), surfaced via the collector's
+  new `GET /api/v1/heatmaps/errors` endpoint and a new **Error heatmap (3D)** dashboard panel
+  (`@uptimizr/react`) reusing the world-heatmap view — revealing _where_ in the scene things break,
+  not just _when_.
+
+- 3c0a20b: feat(perf): add optional `position` to `frame_perf` + spatial FPS heatmap (#145)
+
+  `frame_perf` samples can now carry the camera world-`position` at the moment
+  they're taken, so the collector can show _where_ FPS drops, not just _when_. The
+  Babylon connector fills it automatically from the tracked camera; other
+  connectors may set it on the emitted event.
+
+  - **schema**: `frame_perf.position` is an optional `vec3` (additive,
+    backward-compatible — events still validate without it).
+  - **sdk-core / babylon**: the perf snapshot threads an optional `position`
+    through the aggregator into the emitted event; Babylon reads the tracked camera.
+  - **db**: new dialect-agnostic `buildPerfHeatmap` voxel builder
+    (`samples`/`avg_fps`/`min_fps`, ordered `avg_fps ASC`). Reuses the promoted
+    `position` column — **no migration**.
+  - **react**: new `perfHeatmap()` client method + **Performance heatmap (3D)**
+    panel (reuses the world-heatmap renderer; hot = slow, honest per-voxel FPS on
+    hover).
+
+  The collector exposes it at `GET /api/v1/heatmaps/perf`.
+
+- 3193a21: feat: add optional `uv` field for a per-mesh texture-space heatmap (#149)
+
+  `pointer_click`, `mesh_interaction`, and `hover_dwell` now carry an optional,
+  unclamped `uv: [u, v]` texture coordinate, captured by the Babylon connector from
+  the raycast hit (`PickingInfo.getTextureCoordinates()`). It rides in the event
+  `payload` — additive and backward-compatible, no column promotion or migration.
+
+  A new `buildMeshUvHeatmap` query builder and `GET /api/v1/heatmaps/mesh-uv`
+  endpoint bin a single mesh's `uv` values into a grid, surfaced by the dashboard's
+  new **Mesh UV heatmap** panel (interactive mesh picker, defaults to the
+  most-interacted mesh).
+
+### Patch Changes
+
+- Updated dependencies [e39cbc7]
+- Updated dependencies [3c0a20b]
+- Updated dependencies [3193a21]
+  - @uptimizr/schema@0.5.0
+
 ## 0.3.0
 
 ### Minor Changes

@@ -1,5 +1,86 @@
 # @uptimizr/collector-server
 
+## 0.6.0
+
+### Minor Changes
+
+- 4751b5d: feat: path-retrace / backtracking-ratio leaderboard (#153). Adds a new derived
+  metric — computed from the existing `camera_sample` position stream, with **no
+  schema change** — that ranks scenes/areas by how often visitors re-walk the same
+  area (a confusion signal desire lines don't surface).
+
+  - `@uptimizr/db`: new `buildBacktrackRatio(projectId, opts, dialect)` aggregation
+    and `BacktrackRatioRow` type. It bins positions onto a coarse X/Z grid
+    (`cellSize`, default 2 world units), collapses consecutive dwell samples in one
+    cell into ordered _cell entries_ via the `asofLeftJoin` predecessor pattern, and
+    pools `backtrack_ratio = revisits ÷ entries` per scene. Cross-engine safe
+    (DuckDB + ClickHouse): uses only plain `count()` + a distinct-cell dedup
+    subquery and the `present` sentinel for ASOF-LEFT misses. Added to the parity
+    suite with golden output.
+  - `@uptimizr/collector-server`: new `GET /api/v1/backtrack` query route
+    (`cellSize`, `limit`, `scene`, `session`) plus the `backtrackRatio` store method
+    across the DuckDB, ClickHouse, and memory stores.
+  - `@uptimizr/react`: new `backtrackRatio()` API client method, `BacktrackRatioStat`
+    type, and a **Backtracking hotspots** leaderboard panel (`backtrack-ratio`)
+    registered in `ossPanelCatalog` and exported individually.
+
+  Additive and non-breaking — every existing export keeps working.
+
+- 541c97a: feat(perf): perf-driven churn overlay — correlate FPS dips / compile stalls with early session end (#144)
+
+  Adds a buildable-now "perf-correlated churn rate": of the sessions that ended in
+  range, the share that ended shortly after an FPS dip (a `frame_perf` sample below
+  a threshold) or a `compile_stall`, within a configurable window, split by cause.
+
+  - `@uptimizr/db`: new dialect-agnostic `buildPerfChurn` aggregation (`PerfChurnRow`)
+    derived from existing `frame_perf`, `compile_stall`, `session_end` events — no
+    schema change; DuckDB + ClickHouse safe (no window/ASOF functions).
+  - `@uptimizr/collector-server`: new `GET /api/v1/perf/churn` endpoint
+    (`windowMs` / `fpsThreshold` / `stallMs` params) and `Store.perfChurn`.
+  - `@uptimizr/react`: `CollectorApi.perfChurn` + the "Perf-driven churn" dashboard
+    panel with viewer-tunable window / FPS / stall settings.
+
+- 31ae82b: feat(db,collector,react): reachability report — per-mesh interaction-distance histogram (#151)
+
+  Adds a buildable-now `buildReachability` query that ASOF-joins each `mesh_interaction`
+  world point to the nearest preceding `camera_sample` and histograms the standpoint→interaction
+  distance per mesh, surfaced through `GET /api/v1/meshes/reachability`, the `@uptimizr/react`
+  client, and a new **Reachability report** OSS panel. No schema change.
+
+- ab4e3c5: feat(dashboard,db): 360° view-coverage gauge per session (#146)
+
+  Add a derived per-session **view-coverage** metric: bin each session's
+  `camera_sample` directions into the same azimuth/elevation grid as the
+  view-direction dome, and report the fraction of cells visited as a 0–100%
+  coverage score. Sessions are aggregated into a histogram of 25%-wide coverage
+  bands (0–25 / 25–50 / 50–75 / 75–100%) — "how many visitors never rotated the
+  product to see the back".
+
+  - `@uptimizr/db`: new `buildViewCoverageHistogram` query builder + `ViewCoverageHistogramRow`.
+  - `@uptimizr/collector-server`: new `GET /api/v1/coverage/view-histogram` read endpoint.
+  - `@uptimizr/react`: new `viewCoverageHistogram` API client method and the **View coverage**
+    dashboard panel.
+
+  No schema change — entirely derived from the existing `camera_sample` stream.
+
+### Patch Changes
+
+- Updated dependencies [4751b5d]
+- Updated dependencies [e39cbc7]
+- Updated dependencies [3c0a20b]
+- Updated dependencies [db331a3]
+- Updated dependencies [de0836d]
+- Updated dependencies [3193a21]
+- Updated dependencies [541c97a]
+- Updated dependencies [31ae82b]
+- Updated dependencies [53a4695]
+- Updated dependencies [b0ac76e]
+- Updated dependencies [ab4e3c5]
+- Updated dependencies [872d4b2]
+  - @uptimizr/db@0.7.0
+  - @uptimizr/schema@0.5.0
+  - @uptimizr/db-clickhouse@0.3.2
+
 ## 0.5.1
 
 ### Patch Changes
