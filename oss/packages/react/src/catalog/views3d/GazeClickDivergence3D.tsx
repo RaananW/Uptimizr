@@ -67,10 +67,22 @@ export function GazeClickDivergence3DView({
   const [mode, setMode] = useState<LayerMode>("overlay");
   const [tip, setTip] = useState<HoverTip | null>(null);
 
+  const gazeVoxelsRef = useRef(gazeVoxels);
+  const clickVoxelsRef = useRef(clickVoxels);
+  const proxyMeshesRef = useRef(proxyMeshes);
+  const modeRef = useRef(mode);
+  gazeVoxelsRef.current = gazeVoxels;
+  clickVoxelsRef.current = clickVoxels;
+  proxyMeshesRef.current = proxyMeshes;
+  modeRef.current = mode;
+
+  const syncRef = useRef<(() => void) | null>(null);
+  const hasContent = gazeVoxels.length > 0 || clickVoxels.length > 0 || proxyMeshes.length > 0;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (gazeVoxels.length === 0 && clickVoxels.length === 0 && proxyMeshes.length === 0) {
+    if (!hasContent) {
       setPhase("empty");
       return;
     }
@@ -105,11 +117,13 @@ export function GazeClickDivergence3DView({
         ]);
         if (disposed) return;
 
-        const gazeMax = gazeVoxels.reduce((m, v) => Math.max(m, v.count), 1);
-        const clickMax = clickVoxels.reduce((m, v) => Math.max(m, v.count), 1);
-
         // Frame the camera on the union of both grids (fall back to proxy AABBs).
-        const allVoxels = [...gazeVoxels, ...clickVoxels];
+        // This runs once per scene build, so live data/mode changes never reset
+        // the user's orbit camera.
+        const gaze0 = gazeVoxelsRef.current;
+        const click0 = clickVoxelsRef.current;
+        const proxy0 = proxyMeshesRef.current;
+        const allVoxels = [...gaze0, ...click0];
         let cx = 0;
         let cy = 0;
         let cz = 0;
@@ -121,7 +135,7 @@ export function GazeClickDivergence3DView({
           samples++;
         }
         if (samples === 0) {
-          for (const m of proxyMeshes) {
+          for (const m of proxy0) {
             cx += (m.aabb[0] + m.aabb[3]) / 2;
             cy += (m.aabb[1] + m.aabb[4]) / 2;
             cz += (m.aabb[2] + m.aabb[5]) / 2;
@@ -136,7 +150,7 @@ export function GazeClickDivergence3DView({
           const dz = (v.vz + 0.5) * cellSize - center.z;
           radius = Math.max(radius, Math.sqrt(dx * dx + dy * dy + dz * dz));
         }
-        for (const m of proxyMeshes) {
+        for (const m of proxy0) {
           const dx = (m.aabb[0] + m.aabb[3]) / 2 - center.x;
           const dy = (m.aabb[1] + m.aabb[4]) / 2 - center.y;
           const dz = (m.aabb[2] + m.aabb[5]) / 2 - center.z;
@@ -167,8 +181,21 @@ export function GazeClickDivergence3DView({
         new HemisphericLight("divergence-light", new Vector3(0.4, 1, 0.3), scene);
 
         // Faint wireframe backdrop: one thin-instanced unit box per proxy AABB.
-        if (proxyMeshes.length > 0) {
-          const proxyBox = MeshBuilder.CreateBox("scene-proxy", { size: 1 }, scene);
+        // Rebuilt only when the scene geometry itself changes (tracked by a cheap
+        // signature) so a live data refresh doesn't churn it.
+        let proxyBox: ReturnType<typeof MeshBuilder.CreateBox> | null = null;
+        let proxySig = "\u0000";
+        const syncProxy = () => {
+          const proxyNow = proxyMeshesRef.current;
+          const sig = proxyNow.map((m) => `${m.name}:${m.aabb.join(",")}`).join("|");
+          if (sig === proxySig) return;
+          proxySig = sig;
+          if (proxyBox) {
+            proxyBox.dispose(false, true);
+            proxyBox = null;
+          }
+          if (proxyNow.length === 0) return;
+          proxyBox = MeshBuilder.CreateBox("scene-proxy", { size: 1 }, scene);
           const proxyMat = new StandardMaterial("scene-proxy-mat", scene);
           proxyMat.wireframe = true;
           proxyMat.disableLighting = true;
@@ -177,12 +204,12 @@ export function GazeClickDivergence3DView({
           proxyBox.material = proxyMat;
           proxyBox.isPickable = true;
           proxyBox.thinInstanceEnablePicking = true;
-          proxyBox.metadata = { hoverLabels: proxyMeshes.map((m) => m.name) };
+          proxyBox.metadata = { hoverLabels: proxyNow.map((m) => m.name) };
 
-          const pn = proxyMeshes.length;
+          const pn = proxyNow.length;
           const proxyMatrices = new Float32Array(pn * 16);
           for (let i = 0; i < pn; i++) {
-            const a = proxyMeshes[i]!.aabb;
+            const a = proxyNow[i]!.aabb;
             const sx = Math.max(a[3] - a[0], 1e-3);
             const sy = Math.max(a[4] - a[1], 1e-3);
             const sz = Math.max(a[5] - a[2], 1e-3);
@@ -192,10 +219,17 @@ export function GazeClickDivergence3DView({
             m.copyToArray(proxyMatrices, i * 16);
           }
           proxyBox.thinInstanceSetBuffer("matrix", proxyMatrices, 16, true);
-        }
+        };
 
         const markerUnit = Math.max(radius * 0.02, cellSize * 0.25);
         const fitScale = markerUnit / (cellSize * 0.9);
+        let layerMeshes: Array<{
+          dispose: (doNotRecurse?: boolean, disposeMaterialAndTextures?: boolean) => void;
+        }> = [];
+        const disposeLayers = () => {
+          for (const mesh of layerMeshes) mesh.dispose(false, true);
+          layerMeshes = [];
+        };
 
         // Build one thin-instanced marker layer from a voxel list + colorer.
         const buildLayer = (
@@ -219,6 +253,7 @@ export function GazeClickDivergence3DView({
           // render every marker uncolored (matches WorldHeatmap3D).
           marker.material = mat;
           marker.metadata = { hoverLabel: label };
+          layerMeshes.push(marker);
 
           const n = voxels.length;
           const matrices = new Float32Array(n * 16);
@@ -245,39 +280,51 @@ export function GazeClickDivergence3DView({
           marker.thinInstanceSetBuffer("color", colors, 4, true);
         };
 
-        if (mode === "divergence") {
-          // Per-voxel normalized difference: each grid normalized to its own
-          // busiest cell so the comparison is fair. diff > 0 => click-heavy
-          // (warm), diff < 0 => gaze-heavy (cool); |diff| drives intensity.
-          const gazeByKey = new Map(gazeVoxels.map((v) => [voxelKey(v), v]));
-          const clickByKey = new Map(clickVoxels.map((v) => [voxelKey(v), v]));
-          const keys = new Set([...gazeByKey.keys(), ...clickByKey.keys()]);
-          const warm: WorldHeatmapBin[] = [];
-          const cool: WorldHeatmapBin[] = [];
-          for (const key of keys) {
-            const g = (gazeByKey.get(key)?.count ?? 0) / gazeMax;
-            const c = (clickByKey.get(key)?.count ?? 0) / clickMax;
-            const ref = clickByKey.get(key) ?? gazeByKey.get(key)!;
-            const diff = c - g;
-            // Encode |diff| in `count` (0..1 → 0..1000) so buildLayer's t = 1.
-            const bin: WorldHeatmapBin = {
-              vx: ref.vx,
-              vy: ref.vy,
-              vz: ref.vz,
-              count: Math.abs(diff) * 1000,
-            };
-            (diff >= 0 ? warm : cool).push(bin);
+        const sync = () => {
+          syncProxy();
+          disposeLayers();
+          const gazeNow = gazeVoxelsRef.current;
+          const clickNow = clickVoxelsRef.current;
+          const gazeMax = gazeNow.reduce((m, v) => Math.max(m, v.count), 1);
+          const clickMax = clickNow.reduce((m, v) => Math.max(m, v.count), 1);
+          const currentMode = modeRef.current;
+
+          if (currentMode === "divergence") {
+            // Per-voxel normalized difference: each grid normalized to its own
+            // busiest cell so the comparison is fair. diff > 0 => click-heavy
+            // (warm), diff < 0 => gaze-heavy (cool); |diff| drives intensity.
+            const gazeByKey = new Map(gazeNow.map((v) => [voxelKey(v), v]));
+            const clickByKey = new Map(clickNow.map((v) => [voxelKey(v), v]));
+            const keys = new Set([...gazeByKey.keys(), ...clickByKey.keys()]);
+            const warm: WorldHeatmapBin[] = [];
+            const cool: WorldHeatmapBin[] = [];
+            for (const key of keys) {
+              const g = (gazeByKey.get(key)?.count ?? 0) / gazeMax;
+              const c = (clickByKey.get(key)?.count ?? 0) / clickMax;
+              const ref = clickByKey.get(key) ?? gazeByKey.get(key)!;
+              const diff = c - g;
+              // Encode |diff| in `count` (0..1 → 0..1000) so buildLayer's t = 1.
+              const bin: WorldHeatmapBin = {
+                vx: ref.vx,
+                vy: ref.vy,
+                vz: ref.vz,
+                count: Math.abs(diff) * 1000,
+              };
+              (diff >= 0 ? warm : cool).push(bin);
+            }
+            buildLayer("div-click", warm, 1000, heatRgb, "Click-heavy");
+            buildLayer("div-gaze", cool, 1000, coolRgb, "Gaze-heavy");
+          } else {
+            if (currentMode === "overlay" || currentMode === "gaze") {
+              buildLayer("gaze-voxel", gazeNow, gazeMax, coolRgb, "Gaze");
+            }
+            if (currentMode === "overlay" || currentMode === "click") {
+              buildLayer("click-voxel", clickNow, clickMax, heatRgb, "Click");
+            }
           }
-          buildLayer("div-click", warm, 1000, heatRgb, "Click-heavy");
-          buildLayer("div-gaze", cool, 1000, coolRgb, "Gaze-heavy");
-        } else {
-          if (mode === "overlay" || mode === "gaze") {
-            buildLayer("gaze-voxel", gazeVoxels, gazeMax, coolRgb, "Gaze");
-          }
-          if (mode === "overlay" || mode === "click") {
-            buildLayer("click-voxel", clickVoxels, clickMax, heatRgb, "Click");
-          }
-        }
+        };
+        syncRef.current = sync;
+        sync();
 
         engine.runRenderLoop(() => scene.render());
         const onResize = () => engine.resize();
@@ -291,6 +338,7 @@ export function GazeClickDivergence3DView({
           detachHover();
           detachFocus();
           setTip(null);
+          syncRef.current = null;
           cameraRef.current = null;
           homeRef.current = null;
           scene.dispose();
@@ -307,7 +355,11 @@ export function GazeClickDivergence3DView({
       disposed = true;
       cleanup?.();
     };
-  }, [gazeVoxels, clickVoxels, cellSize, proxyMeshes, mode]);
+  }, [hasContent, cellSize]);
+
+  useEffect(() => {
+    syncRef.current?.();
+  }, [gazeVoxels, clickVoxels, proxyMeshes, cellSize, mode]);
 
   return (
     <div className="relative">

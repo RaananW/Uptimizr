@@ -175,6 +175,12 @@ export default function Page() {
   // Bumped on a throttled live refetch so registry panels (ADR 0036) refresh and
   // relative time windows advance without a filter change.
   const [liveRevision, setLiveRevision] = useState(0);
+  // Bumped by the per-second live-session poll so the OPEN session's registry
+  // panels (ADR 0036, `surface: "session"`) refetch while the session is live.
+  // `liveRevision` is intentionally frozen while a drill-down is open (so the
+  // aggregate view isn't reset under the user), which otherwise left the session
+  // panels stale until you navigated away and back.
+  const [sessionRevision, setSessionRevision] = useState(0);
   // Live scene auto-follow (ADR 0040): the section the live avatar is currently
   // in, tracked from the firehose so the 3D backdrop swaps to it. Kept in a ref
   // too for the event handler's change check without re-subscribing.
@@ -781,6 +787,9 @@ export default function Page() {
           // Keep the existing panels if a refresh fails; they're only stale.
         }
       })();
+      // Also refresh the session-surface registry panels (heatmaps etc.), whose
+      // data the poll above doesn't own — they self-fetch off this revision.
+      if (!cancelled) setSessionRevision((r) => r + 1);
     }, 1_000);
     return () => {
       cancelled = true;
@@ -934,7 +943,7 @@ export default function Page() {
               panels={allPanels}
               ctx={sessionCtx}
               surface="session"
-              revision={liveRevision}
+              revision={liveRevision + sessionRevision}
             />
           ) : null}
           <CameraDirectionHeatmap bins={detail.camera} gridSize={CAMERA_BINS} />

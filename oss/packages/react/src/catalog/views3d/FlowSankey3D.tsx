@@ -368,11 +368,37 @@ export function FlowSankey3DView({
     return meshCounts.map(([name, count]) => ({ value: name, label: `${name} · ${count}` }));
   }, [isTwoStage, twoStage, meshCounts]);
 
+  // Latest data/focus kept in refs so the Babylon lifecycle effect can read the
+  // newest values without listing them as deps: the scene builds once and only
+  // the content is repainted in place (never the camera). See WorldHeatmap3D.
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const twoStageRef = useRef(twoStage);
+  twoStageRef.current = twoStage;
+  const proxyMeshesRef = useRef(proxyMeshes);
+  proxyMeshesRef.current = proxyMeshes;
+  const meshCountsRef = useRef(meshCounts);
+  meshCountsRef.current = meshCounts;
+  const meshFocusRef = useRef(meshFocus);
+  meshFocusRef.current = meshFocus;
+  const sourceFocusRef = useRef(sourceFocus);
+  sourceFocusRef.current = sourceFocus;
+  const standpointFocusRef = useRef(standpointFocus);
+  standpointFocusRef.current = standpointFocus;
+  const selectedStandpointRef = useRef(selectedStandpoint);
+  selectedStandpointRef.current = selectedStandpoint;
+  const syncRef = useRef<(() => void) | null>(null);
+
+  const hasContent = isTwoStage ? twoStage.ribbons.length > 0 : visible.length > 0;
+
+  // Build the Babylon engine/scene/camera ONCE per structural mode (aggregate vs
+  // two-stage, grid size), then repaint the data-driven content in place on every
+  // refresh via `syncRef`. The camera is framed a single time at build so live
+  // data updates never reset the user's orbit position (design §7.5/§7.8).
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (isTwoStage) return;
-    if (visible.length === 0) {
+    if (!hasContent) {
       setPhase("empty");
       return;
     }
@@ -410,244 +436,443 @@ export function FlowSankey3DView({
         const scene = new Scene(engine);
         scene.clearColor = new Color4(0.04, 0.05, 0.07, 1);
 
-        const proxyByMesh = new Map<string, [number, number, number]>();
-        for (const m of proxyMeshes) proxyByMesh.set(m.name, meshCenter(m));
-
-        // Build target positions (mesh nodes). Use proxy centroid when present,
-        // otherwise place unknown meshes on a deterministic ring.
-        const target = new Map<string, [number, number, number]>();
-        const ringNames = meshCounts.map(([name]) => name).filter((name) => !proxyByMesh.has(name));
-        const ringR = 2.2;
-        const ringY = -0.35;
-        for (let i = 0; i < ringNames.length; i++) {
-          const name = ringNames[i]!;
-          const h = meshHash(name);
-          const a = (i / Math.max(1, ringNames.length)) * Math.PI * 2 + ((h % 100) / 100) * 0.35;
-          target.set(name, [
-            Math.cos(a) * ringR,
-            ringY + ((h % 7) - 3) * 0.06,
-            Math.sin(a) * ringR,
-          ]);
-        }
-        for (const [name, pos] of proxyByMesh.entries()) target.set(name, pos);
-
-        // Scene center from target nodes.
-        let cx = 0;
-        let cy = 0;
-        let cz = 0;
-        let targetN = 0;
-        for (const p of target.values()) {
-          cx += p[0];
-          cy += p[1];
-          cz += p[2];
-          targetN++;
-        }
-        const center = new Vector3(
-          cx / Math.max(1, targetN),
-          cy / Math.max(1, targetN),
-          cz / Math.max(1, targetN),
-        );
-
-        let targetExtent = 1.8;
-        for (const p of target.values()) {
-          const dx = p[0] - center.x;
-          const dy = p[1] - center.y;
-          const dz = p[2] - center.z;
-          targetExtent = Math.max(targetExtent, Math.sqrt(dx * dx + dy * dy + dz * dz));
-        }
-        const sourceRadius = targetExtent * 0.75 + 1;
-
-        // Scale node/tube sizes with the scene extent so links stay visible on
-        // large (walkable) scenes, not just small viewer models. ~1.0 at the
-        // 1.8 floor; grows proportionally as the proxy meshes spread out.
-        const sizeScale = Math.max(1, targetExtent / 1.8);
-
-        const maxCount = visible.reduce((m, l) => Math.max(m, l.count), 1);
-
-        // Draw source and target nodes for legibility.
-        const sourceNodeMat = new StandardMaterial("flow-source-node", scene);
-        sourceNodeMat.disableLighting = true;
-        sourceNodeMat.emissiveColor = new Color3(0.45, 0.75, 1);
-        const targetNodeMat = new StandardMaterial("flow-target-node", scene);
-        targetNodeMat.disableLighting = true;
-        targetNodeMat.emissiveColor = new Color3(1, 0.82, 0.42);
-
-        const sourceSeen = new Set<string>();
-        const targetSeen = new Set<string>();
-
-        const matchesFocus = (link: FlowLink): boolean => {
-          const sourceOk =
-            sourceFocus === ALL || sourceKey(link.azimuth_bin, link.elevation_bin) === sourceFocus;
-          const meshOk = meshFocus === ALL || link.mesh === meshFocus;
-          return sourceOk && meshOk;
+        // Content meshes/materials are rebuilt on every data sync; track them so
+        // each repaint disposes the previous set without touching engine/camera.
+        let content: { dispose: () => void }[] = [];
+        const clearContent = () => {
+          for (const d of content) d.dispose();
+          content = [];
         };
 
-        const activeSource = new Set<string>();
-        const activeMesh = new Set<string>();
-        for (const link of visible) {
-          if (!matchesFocus(link)) continue;
-          activeSource.add(sourceKey(link.azimuth_bin, link.elevation_bin));
-          activeMesh.add(link.mesh);
-        }
+        let camera: InstanceType<typeof ArcRotateCamera>;
 
-        for (const link of visible) {
-          const key = `${link.azimuth_bin}|${link.elevation_bin}`;
-          const targetPos = target.get(link.mesh);
-          if (!targetPos) continue;
-          const isActive = matchesFocus(link);
+        if (isTwoStage) {
+          // §7.8 slice 3 — three-column flow. Camera is fixed at the origin, so
+          // framing never depends on the (live) data: only nodes/ribbons repaint.
+          const tsCenter = Vector3.Zero();
+          camera = new ArcRotateCamera("ts-cam", Math.PI / 2, Math.PI / 2.4, 8.5, tsCenter, scene);
+          camera.attachControl(canvas, true);
+          disableWheelZoom(camera);
+          cameraRef.current = camera;
+          homeRef.current = {
+            target: tsCenter,
+            alpha: camera.alpha,
+            beta: camera.beta,
+            radius: camera.radius,
+          };
+          new HemisphericLight("ts-light", new Vector3(0.3, 1, 0.2), scene);
 
-          const az = ((link.azimuth_bin + 0.5) / gridSize) * Math.PI * 2 - Math.PI;
-          const el = ((link.elevation_bin + 0.5) / gridSize) * Math.PI - Math.PI / 2;
-          const ce = Math.cos(el);
-          const dirX = ce * Math.cos(az);
-          const dirY = Math.sin(el);
-          const dirZ = ce * Math.sin(az);
-          const src = new Vector3(
-            center.x + dirX * sourceRadius,
-            center.y + dirY * sourceRadius,
-            center.z + dirZ * sourceRadius,
-          );
-          const dst = new Vector3(targetPos[0], targetPos[1], targetPos[2]);
+          const nodeColor: Record<TwoStageKind, [number, number, number]> = {
+            standpoint: [0.95, 0.45, 0.95],
+            gaze: [0.45, 0.75, 1],
+            mesh: [1, 0.82, 0.42],
+          };
+          const nodeSize: Record<TwoStageKind, number> = {
+            standpoint: 0.26,
+            gaze: 0.13,
+            mesh: 0.22,
+          };
 
-          if (!sourceSeen.has(key)) {
-            const s = MeshBuilder.CreateSphere(
-              `flow-src-${key}`,
-              { diameter: 0.12 * sizeScale, segments: 6 },
-              scene,
-            );
-            s.position = src;
-            const sm = sourceNodeMat.clone(`flow-src-mat-${key}`);
-            const srcActive = activeSource.has(key);
-            sm.alpha = srcActive || (meshFocus === ALL && sourceFocus === ALL) ? 1 : 0.22;
-            s.material = sm;
-            s.isPickable = false;
-            sourceSeen.add(key);
+          const arcSegment = (
+            a: [number, number, number],
+            b: [number, number, number],
+            lift: number,
+          ): InstanceType<typeof Vector3>[] => {
+            const ax = a[0];
+            const ay = a[1];
+            const az = a[2];
+            const bx = b[0];
+            const by = b[1];
+            const bz = b[2];
+            const ctrl = [(ax + bx) / 2, (ay + by) / 2 + lift, (az + bz) / 2] as const;
+            const out: InstanceType<typeof Vector3>[] = [];
+            const seg = 12;
+            for (let i = 0; i <= seg; i++) {
+              const t = i / seg;
+              const omt = 1 - t;
+              out.push(
+                new Vector3(
+                  omt * omt * ax + 2 * omt * t * ctrl[0] + t * t * bx,
+                  omt * omt * ay + 2 * omt * t * ctrl[1] + t * t * by,
+                  omt * omt * az + 2 * omt * t * ctrl[2] + t * t * bz,
+                ),
+              );
+            }
+            return out;
+          };
+
+          const sync = () => {
+            clearContent();
+            const ts = twoStageRef.current;
+            if (ts.ribbons.length === 0) return;
+            const standpointFocusNow = standpointFocusRef.current;
+            const sourceFocusNow = sourceFocusRef.current;
+            const meshFocusNow = meshFocusRef.current;
+
+            const ribbonActive = (r: TwoStageRibbon): boolean => {
+              const spOk = standpointFocusNow === ALL || r.standpointId === standpointFocusNow;
+              const gazeOk =
+                sourceFocusNow === ALL ||
+                sourceKey(r.azimuthBin, r.elevationBin) === sourceFocusNow;
+              const meshOk = meshFocusNow === ALL || r.meshId === meshFocusNow;
+              return spOk && gazeOk && meshOk;
+            };
+            const anyFocus =
+              standpointFocusNow !== ALL || sourceFocusNow !== ALL || meshFocusNow !== ALL;
+
+            const activeNodes = new Set<string>();
+            for (const r of ts.ribbons) {
+              if (!ribbonActive(r)) continue;
+              activeNodes.add(r.standpointId);
+              activeNodes.add(r.gazeId);
+              activeNodes.add(r.meshId);
+            }
+
+            const allNodes = [...ts.standpoints, ...ts.gazes, ...ts.meshes];
+            const posById = new Map(allNodes.map((n) => [n.id, n.pos]));
+            const labelById = new Map(allNodes.map((n) => [n.id, n.label]));
+            for (const n of allNodes) {
+              const sphere = MeshBuilder.CreateSphere(
+                `ts-node-${n.kind}-${n.id}`,
+                { diameter: nodeSize[n.kind], segments: 8 },
+                scene,
+              );
+              sphere.position = new Vector3(n.pos[0], n.pos[1], n.pos[2]);
+              const mat = new StandardMaterial(`ts-node-mat-${n.kind}-${n.id}`, scene);
+              mat.disableLighting = true;
+              const [r, g, b] = nodeColor[n.kind];
+              mat.emissiveColor = new Color3(r, g, b);
+              mat.alpha = !anyFocus || activeNodes.has(n.id) ? 1 : 0.2;
+              sphere.material = mat;
+              sphere.isPickable = true;
+              sphere.metadata = { hoverLabel: n.label };
+              content.push(sphere, mat);
+            }
+
+            for (const r of ts.ribbons) {
+              const spPos = posById.get(r.standpointId);
+              const gazePos = posById.get(r.gazeId);
+              const meshPos = posById.get(r.meshId);
+              if (!spPos || !gazePos || !meshPos) continue;
+              const intensity = r.count / ts.maxCount;
+              const lift = 0.18 + intensity * 0.5;
+              const path = [
+                ...arcSegment(spPos, gazePos, lift),
+                ...arcSegment(gazePos, meshPos, lift).slice(1),
+              ];
+              const isActive = ribbonActive(r);
+              const [cr, cg, cb] = heatRgb(intensity);
+              const tube = MeshBuilder.CreateTube(
+                `ts-link-${r.standpointId}-${r.gazeId}-${r.meshId}`,
+                {
+                  path,
+                  radius: (isActive ? 1 : 0.4) * (0.012 + 0.04 * intensity),
+                  tessellation: 8,
+                  cap: 0,
+                  sideOrientation: 0,
+                },
+                scene,
+              );
+              const mat = new StandardMaterial(
+                `ts-link-mat-${r.standpointId}-${r.gazeId}-${r.meshId}`,
+                scene,
+              );
+              mat.disableLighting = true;
+              mat.emissiveColor = new Color3(cr, cg, cb);
+              mat.alpha = isActive ? 0.35 + 0.65 * intensity : anyFocus ? 0.06 : 0.18;
+              tube.material = mat;
+              tube.isPickable = true;
+              tube.metadata = { hoverLabel: labelById.get(r.meshId) ?? r.meshId };
+              content.push(tube, mat);
+            }
+          };
+          syncRef.current = sync;
+          sync();
+        } else {
+          // §7.5 aggregate mode. Frame the camera ONCE from the initial link set;
+          // the coordinate system (center/extent/scale) is frozen so later data
+          // refreshes only repaint nodes/tubes — the camera never snaps back.
+          const proxyByMeshInit = new Map<string, [number, number, number]>();
+          for (const m of proxyMeshesRef.current) proxyByMeshInit.set(m.name, meshCenter(m));
+
+          const targetInit = new Map<string, [number, number, number]>();
+          const ringNamesInit = meshCountsRef.current
+            .map(([name]) => name)
+            .filter((name) => !proxyByMeshInit.has(name));
+          const ringR = 2.2;
+          const ringY = -0.35;
+          for (let i = 0; i < ringNamesInit.length; i++) {
+            const name = ringNamesInit[i]!;
+            const h = meshHash(name);
+            const a =
+              (i / Math.max(1, ringNamesInit.length)) * Math.PI * 2 + ((h % 100) / 100) * 0.35;
+            targetInit.set(name, [
+              Math.cos(a) * ringR,
+              ringY + ((h % 7) - 3) * 0.06,
+              Math.sin(a) * ringR,
+            ]);
           }
-          if (!targetSeen.has(link.mesh)) {
-            const t = MeshBuilder.CreateSphere(
-              `flow-target-${link.mesh}`,
-              { diameter: 0.2 * sizeScale, segments: 7 },
-              scene,
-            );
-            t.position = dst;
-            const tm = targetNodeMat.clone(`flow-target-mat-${link.mesh}`);
-            const meshActive = activeMesh.has(link.mesh);
-            tm.alpha = meshActive || (meshFocus === ALL && sourceFocus === ALL) ? 1 : 0.22;
-            t.material = tm;
-            t.isPickable = true;
-            t.metadata = { hoverLabel: link.mesh };
-            targetSeen.add(link.mesh);
-          }
+          for (const [name, pos] of proxyByMeshInit.entries()) targetInit.set(name, pos);
 
-          const mid = src.add(dst).scale(0.5);
-          const fromCenter = mid.subtract(center);
-          const centerLen = Math.sqrt(
-            fromCenter.x * fromCenter.x + fromCenter.y * fromCenter.y + fromCenter.z * fromCenter.z,
-          );
-          const nx = centerLen > 1e-6 ? fromCenter.x / centerLen : 0;
-          const ny = centerLen > 1e-6 ? fromCenter.y / centerLen : 1;
-          const nz = centerLen > 1e-6 ? fromCenter.z / centerLen : 0;
-          const lift = (0.35 + (link.count / maxCount) * 0.75) * sizeScale;
-          const ctrl = new Vector3(
-            mid.x + nx * lift,
-            mid.y + ny * lift + 0.12 * sizeScale,
-            mid.z + nz * lift,
+          let cx = 0;
+          let cy = 0;
+          let cz = 0;
+          let targetN = 0;
+          for (const p of targetInit.values()) {
+            cx += p[0];
+            cy += p[1];
+            cz += p[2];
+            targetN++;
+          }
+          const center = new Vector3(
+            cx / Math.max(1, targetN),
+            cy / Math.max(1, targetN),
+            cz / Math.max(1, targetN),
           );
 
-          const path: InstanceType<typeof Vector3>[] = [];
-          const seg = 18;
-          for (let i = 0; i <= seg; i++) {
-            const t = i / seg;
-            const omt = 1 - t;
-            path.push(
-              new Vector3(
-                omt * omt * src.x + 2 * omt * t * ctrl.x + t * t * dst.x,
-                omt * omt * src.y + 2 * omt * t * ctrl.y + t * t * dst.y,
-                omt * omt * src.z + 2 * omt * t * ctrl.z + t * t * dst.z,
-              ),
-            );
+          let targetExtent = 1.8;
+          for (const p of targetInit.values()) {
+            const dx = p[0] - center.x;
+            const dy = p[1] - center.y;
+            const dz = p[2] - center.z;
+            targetExtent = Math.max(targetExtent, Math.sqrt(dx * dx + dy * dy + dz * dz));
           }
+          const sourceRadius = targetExtent * 0.75 + 1;
+          // Scale node/tube sizes with the scene extent so links stay visible on
+          // large (walkable) scenes, not just small viewer models.
+          const sizeScale = Math.max(1, targetExtent / 1.8);
 
-          const intensity = link.count / maxCount;
-          const [r, g, b] = heatRgb(intensity);
-          const tube = MeshBuilder.CreateTube(
-            `flow-link-${link.mesh}-${key}`,
-            {
-              path,
-              radius: (isActive ? 1 : 0.4) * (0.012 + 0.04 * intensity) * sizeScale,
-              tessellation: 8,
-              cap: 0,
-              sideOrientation: 0,
-            },
+          camera = new ArcRotateCamera(
+            "flow-cam",
+            Math.PI / 4,
+            Math.PI / 3,
+            targetExtent * 3.4,
+            center,
             scene,
           );
-          const m = new StandardMaterial(`flow-link-mat-${link.mesh}-${key}`, scene);
-          m.disableLighting = true;
-          m.emissiveColor = new Color3(r, g, b);
-          m.alpha = isActive ? 0.35 + 0.65 * intensity : 0.08;
-          tube.material = m;
-          tube.isPickable = true;
-          tube.metadata = { hoverLabel: link.mesh };
-        }
+          camera.attachControl(canvas, true);
+          disableWheelZoom(camera);
+          cameraRef.current = camera;
+          homeRef.current = {
+            target: center,
+            alpha: camera.alpha,
+            beta: camera.beta,
+            radius: camera.radius,
+          };
+          new HemisphericLight("flow-light", new Vector3(0.3, 1, 0.2), scene);
 
-        const camera = new ArcRotateCamera(
-          "flow-cam",
-          Math.PI / 4,
-          Math.PI / 3,
-          targetExtent * 3.4,
-          center,
-          scene,
-        );
-        camera.attachControl(canvas, true);
-        disableWheelZoom(camera);
-        cameraRef.current = camera;
-        homeRef.current = {
-          target: center,
-          alpha: camera.alpha,
-          beta: camera.beta,
-          radius: camera.radius,
-        };
-        new HemisphericLight("flow-light", new Vector3(0.3, 1, 0.2), scene);
-
-        // Faint source dome reference.
-        const dome = MeshBuilder.CreateSphere(
-          "flow-source-dome",
-          { diameter: sourceRadius * 2, segments: 20 },
-          scene,
-        );
-        dome.position = center;
-        const domeMat = new StandardMaterial("flow-source-dome-mat", scene);
-        domeMat.wireframe = true;
-        domeMat.disableLighting = true;
-        domeMat.emissiveColor = new Color3(0.16, 0.2, 0.28);
-        domeMat.alpha = 0.35;
-        dome.material = domeMat;
-        dome.isPickable = false;
-
-        // §7.8 slice 2: when one standpoint is selected, mark where that vantage
-        // sits in the scene (averaged origin world point) with a pin so the gated
-        // flow reads spatially against the proxy meshes.
-        const standpointOrigin = selectedStandpoint?.origin;
-        if (standpointOrigin) {
-          const pinPos = new Vector3(standpointOrigin[0], standpointOrigin[1], standpointOrigin[2]);
-          const pin = MeshBuilder.CreateSphere(
-            "flow-standpoint",
-            { diameter: 0.26 * sizeScale, segments: 10 },
+          // Faint source dome reference — depends only on the frozen framing, so
+          // it is built once as static content (not rebuilt on data sync).
+          const dome = MeshBuilder.CreateSphere(
+            "flow-source-dome",
+            { diameter: sourceRadius * 2, segments: 20 },
             scene,
           );
-          pin.position = pinPos;
-          const pinMat = new StandardMaterial("flow-standpoint-mat", scene);
-          pinMat.disableLighting = true;
-          pinMat.emissiveColor = new Color3(0.95, 0.45, 0.95);
-          pin.material = pinMat;
-          pin.isPickable = false;
-          const stem = MeshBuilder.CreateLines(
-            "flow-standpoint-stem",
-            { points: [pinPos, new Vector3(pinPos.x, center.y, pinPos.z)] },
-            scene,
-          );
-          stem.color = new Color3(0.95, 0.45, 0.95);
-          stem.isPickable = false;
+          dome.position = center;
+          const domeMat = new StandardMaterial("flow-source-dome-mat", scene);
+          domeMat.wireframe = true;
+          domeMat.disableLighting = true;
+          domeMat.emissiveColor = new Color3(0.16, 0.2, 0.28);
+          domeMat.alpha = 0.35;
+          dome.material = domeMat;
+          dome.isPickable = false;
+
+          const sync = () => {
+            clearContent();
+            const visibleNow = visibleRef.current;
+            if (visibleNow.length === 0) return;
+            const meshFocusNow = meshFocusRef.current;
+            const sourceFocusNow = sourceFocusRef.current;
+            const selectedStandpointNow = selectedStandpointRef.current;
+
+            // Rebuild target node positions from the current data (reusing the
+            // frozen center/scale so the world stays put under the fixed camera).
+            const proxyByMesh = new Map<string, [number, number, number]>();
+            for (const m of proxyMeshesRef.current) proxyByMesh.set(m.name, meshCenter(m));
+            const target = new Map<string, [number, number, number]>();
+            const ringNames = meshCountsRef.current
+              .map(([name]) => name)
+              .filter((name) => !proxyByMesh.has(name));
+            for (let i = 0; i < ringNames.length; i++) {
+              const name = ringNames[i]!;
+              const h = meshHash(name);
+              const a =
+                (i / Math.max(1, ringNames.length)) * Math.PI * 2 + ((h % 100) / 100) * 0.35;
+              target.set(name, [
+                Math.cos(a) * ringR,
+                ringY + ((h % 7) - 3) * 0.06,
+                Math.sin(a) * ringR,
+              ]);
+            }
+            for (const [name, pos] of proxyByMesh.entries()) target.set(name, pos);
+
+            const maxCount = visibleNow.reduce((m, l) => Math.max(m, l.count), 1);
+
+            const sourceNodeMat = new StandardMaterial("flow-source-node", scene);
+            sourceNodeMat.disableLighting = true;
+            sourceNodeMat.emissiveColor = new Color3(0.45, 0.75, 1);
+            const targetNodeMat = new StandardMaterial("flow-target-node", scene);
+            targetNodeMat.disableLighting = true;
+            targetNodeMat.emissiveColor = new Color3(1, 0.82, 0.42);
+            content.push(sourceNodeMat, targetNodeMat);
+
+            const sourceSeen = new Set<string>();
+            const targetSeen = new Set<string>();
+
+            const matchesFocus = (link: FlowLink): boolean => {
+              const sourceOk =
+                sourceFocusNow === ALL ||
+                sourceKey(link.azimuth_bin, link.elevation_bin) === sourceFocusNow;
+              const meshOk = meshFocusNow === ALL || link.mesh === meshFocusNow;
+              return sourceOk && meshOk;
+            };
+
+            const activeSource = new Set<string>();
+            const activeMesh = new Set<string>();
+            for (const link of visibleNow) {
+              if (!matchesFocus(link)) continue;
+              activeSource.add(sourceKey(link.azimuth_bin, link.elevation_bin));
+              activeMesh.add(link.mesh);
+            }
+
+            for (const link of visibleNow) {
+              const key = `${link.azimuth_bin}|${link.elevation_bin}`;
+              const targetPos = target.get(link.mesh);
+              if (!targetPos) continue;
+              const isActive = matchesFocus(link);
+
+              const az = ((link.azimuth_bin + 0.5) / gridSize) * Math.PI * 2 - Math.PI;
+              const el = ((link.elevation_bin + 0.5) / gridSize) * Math.PI - Math.PI / 2;
+              const ce = Math.cos(el);
+              const dirX = ce * Math.cos(az);
+              const dirY = Math.sin(el);
+              const dirZ = ce * Math.sin(az);
+              const src = new Vector3(
+                center.x + dirX * sourceRadius,
+                center.y + dirY * sourceRadius,
+                center.z + dirZ * sourceRadius,
+              );
+              const dst = new Vector3(targetPos[0], targetPos[1], targetPos[2]);
+
+              if (!sourceSeen.has(key)) {
+                const s = MeshBuilder.CreateSphere(
+                  `flow-src-${key}`,
+                  { diameter: 0.12 * sizeScale, segments: 6 },
+                  scene,
+                );
+                s.position = src;
+                const sm = sourceNodeMat.clone(`flow-src-mat-${key}`);
+                const srcActive = activeSource.has(key);
+                sm.alpha = srcActive || (meshFocusNow === ALL && sourceFocusNow === ALL) ? 1 : 0.22;
+                s.material = sm;
+                s.isPickable = false;
+                sourceSeen.add(key);
+                content.push(s, sm);
+              }
+              if (!targetSeen.has(link.mesh)) {
+                const t = MeshBuilder.CreateSphere(
+                  `flow-target-${link.mesh}`,
+                  { diameter: 0.2 * sizeScale, segments: 7 },
+                  scene,
+                );
+                t.position = dst;
+                const tm = targetNodeMat.clone(`flow-target-mat-${link.mesh}`);
+                const meshActive = activeMesh.has(link.mesh);
+                tm.alpha =
+                  meshActive || (meshFocusNow === ALL && sourceFocusNow === ALL) ? 1 : 0.22;
+                t.material = tm;
+                t.isPickable = true;
+                t.metadata = { hoverLabel: link.mesh };
+                targetSeen.add(link.mesh);
+                content.push(t, tm);
+              }
+
+              const mid = src.add(dst).scale(0.5);
+              const fromCenter = mid.subtract(center);
+              const centerLen = Math.sqrt(
+                fromCenter.x * fromCenter.x +
+                  fromCenter.y * fromCenter.y +
+                  fromCenter.z * fromCenter.z,
+              );
+              const nx = centerLen > 1e-6 ? fromCenter.x / centerLen : 0;
+              const ny = centerLen > 1e-6 ? fromCenter.y / centerLen : 1;
+              const nz = centerLen > 1e-6 ? fromCenter.z / centerLen : 0;
+              const lift = (0.35 + (link.count / maxCount) * 0.75) * sizeScale;
+              const ctrl = new Vector3(
+                mid.x + nx * lift,
+                mid.y + ny * lift + 0.12 * sizeScale,
+                mid.z + nz * lift,
+              );
+
+              const path: InstanceType<typeof Vector3>[] = [];
+              const seg = 18;
+              for (let i = 0; i <= seg; i++) {
+                const t = i / seg;
+                const omt = 1 - t;
+                path.push(
+                  new Vector3(
+                    omt * omt * src.x + 2 * omt * t * ctrl.x + t * t * dst.x,
+                    omt * omt * src.y + 2 * omt * t * ctrl.y + t * t * dst.y,
+                    omt * omt * src.z + 2 * omt * t * ctrl.z + t * t * dst.z,
+                  ),
+                );
+              }
+
+              const intensity = link.count / maxCount;
+              const [r, g, b] = heatRgb(intensity);
+              const tube = MeshBuilder.CreateTube(
+                `flow-link-${link.mesh}-${key}`,
+                {
+                  path,
+                  radius: (isActive ? 1 : 0.4) * (0.012 + 0.04 * intensity) * sizeScale,
+                  tessellation: 8,
+                  cap: 0,
+                  sideOrientation: 0,
+                },
+                scene,
+              );
+              const m = new StandardMaterial(`flow-link-mat-${link.mesh}-${key}`, scene);
+              m.disableLighting = true;
+              m.emissiveColor = new Color3(r, g, b);
+              m.alpha = isActive ? 0.35 + 0.65 * intensity : 0.08;
+              tube.material = m;
+              tube.isPickable = true;
+              tube.metadata = { hoverLabel: link.mesh };
+              content.push(tube, m);
+            }
+
+            // §7.8 slice 2: mark the selected standpoint's averaged origin with a
+            // pin so the gated flow reads spatially against the proxy meshes.
+            const standpointOrigin = selectedStandpointNow?.origin;
+            if (standpointOrigin) {
+              const pinPos = new Vector3(
+                standpointOrigin[0],
+                standpointOrigin[1],
+                standpointOrigin[2],
+              );
+              const pin = MeshBuilder.CreateSphere(
+                "flow-standpoint",
+                { diameter: 0.26 * sizeScale, segments: 10 },
+                scene,
+              );
+              pin.position = pinPos;
+              const pinMat = new StandardMaterial("flow-standpoint-mat", scene);
+              pinMat.disableLighting = true;
+              pinMat.emissiveColor = new Color3(0.95, 0.45, 0.95);
+              pin.material = pinMat;
+              pin.isPickable = false;
+              const stem = MeshBuilder.CreateLines(
+                "flow-standpoint-stem",
+                { points: [pinPos, new Vector3(pinPos.x, center.y, pinPos.z)] },
+                scene,
+              );
+              stem.color = new Color3(0.95, 0.45, 0.95);
+              stem.isPickable = false;
+              content.push(pin, pinMat, stem);
+            }
+          };
+          syncRef.current = sync;
+          sync();
         }
 
         engine.runRenderLoop(() => scene.render());
@@ -662,8 +887,10 @@ export function FlowSankey3DView({
           detachHover();
           detachFocus();
           setTip(null);
+          syncRef.current = null;
           cameraRef.current = null;
           homeRef.current = null;
+          clearContent();
           scene.dispose();
           engine.dispose();
         };
@@ -678,209 +905,13 @@ export function FlowSankey3DView({
       disposed = true;
       cleanup?.();
     };
-  }, [visible, gridSize, proxyMeshes, meshFocus, sourceFocus, selectedStandpoint, isTwoStage]);
+  }, [isTwoStage, gridSize, hasContent]);
 
-  // §7.8 slice 3 renderer — three-column flow. Kept as its own effect so it owns
-  // a fresh Babylon engine only while two-stage mode is active; toggling modes
-  // disposes one engine and builds the other.
+  // Repaint the data-driven content in place when the links / focus filters
+  // change — this never rebuilds the engine or reframes the camera.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    if (!isTwoStage) return;
-    if (twoStage.ribbons.length === 0) {
-      setPhase("empty");
-      return;
-    }
-
-    let disposed = false;
-    let cleanup: (() => void) | null = null;
-    setPhase("loading");
-    setError(null);
-
-    void (async () => {
-      try {
-        const [
-          { Engine },
-          { Scene },
-          { ArcRotateCamera },
-          { HemisphericLight },
-          { Vector3, Color3, Color4 },
-          { MeshBuilder },
-          { StandardMaterial },
-        ] = await Promise.all([
-          import("@babylonjs/core/Engines/engine.js"),
-          import("@babylonjs/core/scene.js"),
-          import("@babylonjs/core/Cameras/arcRotateCamera.js"),
-          import("@babylonjs/core/Lights/hemisphericLight.js"),
-          import("@babylonjs/core/Maths/math.js"),
-          import("@babylonjs/core/Meshes/meshBuilder.js"),
-          import("@babylonjs/core/Materials/standardMaterial.js"),
-          // Side-effect: registers Babylon's `Ray` so `scene.pick()` (hover
-          // overlay) works; deep imports tree-shake it out otherwise.
-          import("@babylonjs/core/Culling/ray.js"),
-        ]);
-        if (disposed) return;
-
-        const engine = new Engine(canvas, true, { preserveDrawingBuffer: false });
-        const scene = new Scene(engine);
-        scene.clearColor = new Color4(0.04, 0.05, 0.07, 1);
-
-        const ribbonActive = (r: TwoStageRibbon): boolean => {
-          const spOk = standpointFocus === ALL || r.standpointId === standpointFocus;
-          const gazeOk =
-            sourceFocus === ALL || sourceKey(r.azimuthBin, r.elevationBin) === sourceFocus;
-          const meshOk = meshFocus === ALL || r.meshId === meshFocus;
-          return spOk && gazeOk && meshOk;
-        };
-        const anyFocus = standpointFocus !== ALL || sourceFocus !== ALL || meshFocus !== ALL;
-
-        const activeNodes = new Set<string>();
-        for (const r of twoStage.ribbons) {
-          if (!ribbonActive(r)) continue;
-          activeNodes.add(r.standpointId);
-          activeNodes.add(r.gazeId);
-          activeNodes.add(r.meshId);
-        }
-
-        const nodeColor: Record<TwoStageKind, [number, number, number]> = {
-          standpoint: [0.95, 0.45, 0.95],
-          gaze: [0.45, 0.75, 1],
-          mesh: [1, 0.82, 0.42],
-        };
-        const nodeSize: Record<TwoStageKind, number> = { standpoint: 0.26, gaze: 0.13, mesh: 0.22 };
-        const allNodes = [...twoStage.standpoints, ...twoStage.gazes, ...twoStage.meshes];
-        const posById = new Map(allNodes.map((n) => [n.id, n.pos]));
-        const labelById = new Map(allNodes.map((n) => [n.id, n.label]));
-        for (const n of allNodes) {
-          const sphere = MeshBuilder.CreateSphere(
-            `ts-node-${n.kind}-${n.id}`,
-            { diameter: nodeSize[n.kind], segments: 8 },
-            scene,
-          );
-          sphere.position = new Vector3(n.pos[0], n.pos[1], n.pos[2]);
-          const mat = new StandardMaterial(`ts-node-mat-${n.kind}-${n.id}`, scene);
-          mat.disableLighting = true;
-          const [r, g, b] = nodeColor[n.kind];
-          mat.emissiveColor = new Color3(r, g, b);
-          mat.alpha = !anyFocus || activeNodes.has(n.id) ? 1 : 0.2;
-          sphere.material = mat;
-          sphere.isPickable = true;
-          sphere.metadata = { hoverLabel: n.label };
-        }
-
-        const arcSegment = (
-          a: [number, number, number],
-          b: [number, number, number],
-          lift: number,
-        ): InstanceType<typeof Vector3>[] => {
-          const ax = a[0];
-          const ay = a[1];
-          const az = a[2];
-          const bx = b[0];
-          const by = b[1];
-          const bz = b[2];
-          const ctrl = [(ax + bx) / 2, (ay + by) / 2 + lift, (az + bz) / 2] as const;
-          const out: InstanceType<typeof Vector3>[] = [];
-          const seg = 12;
-          for (let i = 0; i <= seg; i++) {
-            const t = i / seg;
-            const omt = 1 - t;
-            out.push(
-              new Vector3(
-                omt * omt * ax + 2 * omt * t * ctrl[0] + t * t * bx,
-                omt * omt * ay + 2 * omt * t * ctrl[1] + t * t * by,
-                omt * omt * az + 2 * omt * t * ctrl[2] + t * t * bz,
-              ),
-            );
-          }
-          return out;
-        };
-
-        for (const r of twoStage.ribbons) {
-          const spPos = posById.get(r.standpointId);
-          const gazePos = posById.get(r.gazeId);
-          const meshPos = posById.get(r.meshId);
-          if (!spPos || !gazePos || !meshPos) continue;
-          const intensity = r.count / twoStage.maxCount;
-          const lift = 0.18 + intensity * 0.5;
-          const path = [
-            ...arcSegment(spPos, gazePos, lift),
-            ...arcSegment(gazePos, meshPos, lift).slice(1),
-          ];
-          const isActive = ribbonActive(r);
-          const [cr, cg, cb] = heatRgb(intensity);
-          const tube = MeshBuilder.CreateTube(
-            `ts-link-${r.standpointId}-${r.gazeId}-${r.meshId}`,
-            {
-              path,
-              radius: (isActive ? 1 : 0.4) * (0.012 + 0.04 * intensity),
-              tessellation: 8,
-              cap: 0,
-              sideOrientation: 0,
-            },
-            scene,
-          );
-          const mat = new StandardMaterial(
-            `ts-link-mat-${r.standpointId}-${r.gazeId}-${r.meshId}`,
-            scene,
-          );
-          mat.disableLighting = true;
-          mat.emissiveColor = new Color3(cr, cg, cb);
-          mat.alpha = isActive ? 0.35 + 0.65 * intensity : anyFocus ? 0.06 : 0.18;
-          tube.material = mat;
-          tube.isPickable = true;
-          tube.metadata = { hoverLabel: labelById.get(r.meshId) ?? r.meshId };
-        }
-
-        const tsCenter = Vector3.Zero();
-        const camera = new ArcRotateCamera(
-          "ts-cam",
-          Math.PI / 2,
-          Math.PI / 2.4,
-          8.5,
-          tsCenter,
-          scene,
-        );
-        camera.attachControl(canvas, true);
-        disableWheelZoom(camera);
-        cameraRef.current = camera;
-        homeRef.current = {
-          target: tsCenter,
-          alpha: camera.alpha,
-          beta: camera.beta,
-          radius: camera.radius,
-        };
-        new HemisphericLight("ts-light", new Vector3(0.3, 1, 0.2), scene);
-
-        engine.runRenderLoop(() => scene.render());
-        const onResize = () => engine.resize();
-        window.addEventListener("resize", onResize);
-        const detachHover = attachMeshHover(scene, canvas, setTip);
-        const detachFocus = attachDoubleClickFocus(scene, canvas, camera);
-
-        setPhase("ready");
-        cleanup = () => {
-          window.removeEventListener("resize", onResize);
-          detachHover();
-          detachFocus();
-          setTip(null);
-          cameraRef.current = null;
-          homeRef.current = null;
-          scene.dispose();
-          engine.dispose();
-        };
-      } catch (err) {
-        if (disposed) return;
-        setPhase("error");
-        setError(err instanceof Error ? err.message : "Failed to render flow links.");
-      }
-    })();
-
-    return () => {
-      disposed = true;
-      cleanup?.();
-    };
-  }, [isTwoStage, twoStage, standpointFocus, sourceFocus, meshFocus]);
+    syncRef.current?.();
+  }, [visible, twoStage, proxyMeshes, meshFocus, sourceFocus, standpointFocus, selectedStandpoint]);
 
   return (
     <div className="relative">

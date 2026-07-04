@@ -77,10 +77,34 @@ export function WorldHeatmap3DView({
   const [markerShape, setMarkerShape] = useState<MarkerShape>("sphere");
   const [tip, setTip] = useState<HoverTip | null>(null);
 
+  // Latest data is read through refs so the heavy lifecycle effect (which builds
+  // the engine and frames the camera) does NOT re-run when live data refreshes —
+  // that teardown/rebuild is what made the panel flicker and snap the camera back
+  // to its default. Instead a live refresh only repaints the instance buffers in
+  // place (see the data effect below), leaving the engine and the user's camera
+  // untouched.
+  const voxelsRef = useRef(voxels);
+  const proxyMeshesRef = useRef(proxyMeshes);
+  const voxelLabelsRef = useRef(voxelLabels);
+  voxelsRef.current = voxels;
+  proxyMeshesRef.current = proxyMeshes;
+  voxelLabelsRef.current = voxelLabels;
+
+  // Imperative repaint installed by the lifecycle effect once the scene exists.
+  // Called by the data effect on every data change to update the voxel markers
+  // (and rebuild the proxy backdrop only when the scene geometry itself changed)
+  // without recreating the engine or moving the camera.
+  const syncRef = useRef<(() => void) | null>(null);
+
+  // The scene only needs (re)building when there is something to show or when a
+  // structural input changes (marker shape / cell size). Data churn keeps this
+  // boolean stable, so the lifecycle effect stays put across live refreshes.
+  const hasContent = voxels.length > 0 || proxyMeshes.length > 0;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (voxels.length === 0 && proxyMeshes.length === 0) {
+    if (!hasContent) {
       setPhase("empty");
       return;
     }
@@ -116,28 +140,24 @@ export function WorldHeatmap3DView({
         ]);
         if (disposed) return;
 
-        // Robust normalization (ADR 0040 §2): scale color/size by the p95 of hit
-        // counts rather than the global max, so a few hot voxels don't crush the
-        // contrast of an otherwise busy scene (the failure mode on large scenes).
-        const scaleMax = percentileMax(
-          voxels.map((v) => v.count),
-          0.95,
-        );
-
-        // World-space bounds to frame the camera. Prefer voxel centers; fall
-        // back to proxy AABB centers when there are no hit-points yet.
+        // Frame the camera from whatever data is present at build time. Prefer
+        // voxel centers; fall back to proxy AABB centers when there are no
+        // hit-points yet. This runs once per scene build, so subsequent live
+        // data updates never reframe / reset the camera under the user.
+        const voxels0 = voxelsRef.current;
+        const proxy0 = proxyMeshesRef.current;
         let cx = 0;
         let cy = 0;
         let cz = 0;
         let samples = 0;
-        for (const v of voxels) {
+        for (const v of voxels0) {
           cx += (v.vx + 0.5) * cellSize;
           cy += (v.vy + 0.5) * cellSize;
           cz += (v.vz + 0.5) * cellSize;
           samples++;
         }
         if (samples === 0) {
-          for (const m of proxyMeshes) {
+          for (const m of proxy0) {
             cx += (m.aabb[0] + m.aabb[3]) / 2;
             cy += (m.aabb[1] + m.aabb[4]) / 2;
             cz += (m.aabb[2] + m.aabb[5]) / 2;
@@ -146,13 +166,13 @@ export function WorldHeatmap3DView({
         }
         const center = new Vector3(cx / samples, cy / samples, cz / samples);
         let radius = cellSize * 4;
-        for (const v of voxels) {
+        for (const v of voxels0) {
           const dx = (v.vx + 0.5) * cellSize - center.x;
           const dy = (v.vy + 0.5) * cellSize - center.y;
           const dz = (v.vz + 0.5) * cellSize - center.z;
           radius = Math.max(radius, Math.sqrt(dx * dx + dy * dy + dz * dz));
         }
-        for (const m of proxyMeshes) {
+        for (const m of proxy0) {
           const dx = (m.aabb[0] + m.aabb[3]) / 2 - center.x;
           const dy = (m.aabb[1] + m.aabb[4]) / 2 - center.y;
           const dz = (m.aabb[2] + m.aabb[5]) / 2 - center.z;
@@ -182,9 +202,135 @@ export function WorldHeatmap3DView({
         };
         new HemisphericLight("world-light", new Vector3(0.4, 1, 0.3), scene);
 
+        // Size each marker relative to the SCENE, not the fixed voxel size, so
+        // its on-screen footprint is consistent whether the scene is a small
+        // viewer model or a large walkable level. Target ~2% of the scene
+        // radius, floored to a quarter voxel so tiny scenes still show a clear
+        // marker. `fitScale` converts that world size into an instance scale of
+        // the `cellSize * 0.9` base mesh. Fixed at build time (scene-relative).
+        const markerUnit = Math.max(radius * 0.02, cellSize * 0.25);
+        const fitScale = markerUnit / (cellSize * 0.9);
+        const baseRadius = camera.radius;
+
+        // The single voxel marker mesh, created once. Spheres read as a soft
+        // thermal cloud; cubes show axis-aligned occupancy. Both take the same
+        // per-instance matrices/colors, updated in place by `syncVoxels`.
+        const marker =
+          markerShape === "cube"
+            ? MeshBuilder.CreateBox("world-voxel", { size: cellSize * 0.9 }, scene)
+            : MeshBuilder.CreateSphere(
+                "world-voxel",
+                { diameter: cellSize * 0.9, segments: 6 },
+                scene,
+              );
+        const mat = new StandardMaterial("world-voxel-mat", scene);
+        mat.diffuseColor = new Color3(1, 1, 1);
+        mat.specularColor = new Color3(0, 0, 0);
+        marker.material = mat;
+
+        // Mutable per-instance state shared with the zoom observer so it always
+        // scales the current voxel set (rewritten wholesale by `syncVoxels`).
+        let instN = 0;
+        let matrices = new Float32Array(0);
+        let baseScales = new Float32Array(0);
+        let lastZoom = -1;
+
+        // Keep markers legible when zoomed out on large scenes: grow each marker
+        // with the camera distance so its on-screen size stays roughly constant.
+        // We only rewrite the scale diagonal of each instance matrix (translation
+        // untouched), and only when the zoom changes meaningfully.
+        const applyZoomScale = () => {
+          if (instN === 0) return;
+          const zoom = Math.min(8, Math.max(0.6, camera.radius / baseRadius));
+          if (Math.abs(zoom - lastZoom) < 0.01) return;
+          lastZoom = zoom;
+          for (let i = 0; i < instN; i++) {
+            const s = baseScales[i]! * zoom;
+            const o = i * 16;
+            matrices[o] = s;
+            matrices[o + 5] = s;
+            matrices[o + 10] = s;
+          }
+          marker.thinInstanceBufferUpdated("matrix");
+        };
+        scene.onBeforeRenderObservable.add(applyZoomScale);
+
+        // Repaint the voxel markers from the latest data (color/size by density),
+        // reusing the existing mesh. Called on every data refresh — cheap, and it
+        // never touches the engine or camera.
+        const syncVoxels = () => {
+          const vs = voxelsRef.current;
+          const labels = voxelLabelsRef.current;
+          const n = vs.length;
+          if (n === 0) {
+            instN = 0;
+            marker.isVisible = false;
+            return;
+          }
+          // Robust normalization (ADR 0040 §2): scale color/size by the p95 of
+          // hit counts rather than the global max, so a few hot voxels don't
+          // crush the contrast of an otherwise busy scene.
+          const scaleMax = percentileMax(
+            vs.map((v) => v.count),
+            0.95,
+          );
+          const nextMatrices = new Float32Array(n * 16);
+          const colors = new Float32Array(n * 4);
+          const nextBaseScales = new Float32Array(n);
+          for (let i = 0; i < n; i++) {
+            const v = vs[i]!;
+            const t = Math.min(1, v.count / scaleMax);
+            // Intensity modulates each marker between 50% and 100% of its size
+            // so hotspots read as larger without low cells vanishing.
+            const s = fitScale * (0.5 + 0.5 * t);
+            nextBaseScales[i] = s;
+            const m = Matrix.Scaling(s, s, s).multiply(
+              Matrix.Translation(
+                (v.vx + 0.5) * cellSize,
+                (v.vy + 0.5) * cellSize,
+                (v.vz + 0.5) * cellSize,
+              ),
+            );
+            m.copyToArray(nextMatrices, i * 16);
+            const [r, g, b] = heatRgb(t);
+            colors[i * 4] = r;
+            colors[i * 4 + 1] = g;
+            colors[i * 4 + 2] = b;
+            colors[i * 4 + 3] = 1;
+          }
+          instN = n;
+          matrices = nextMatrices;
+          baseScales = nextBaseScales;
+          marker.isVisible = true;
+          // Per-voxel hover labels (#145): opt-in. When the host supplies labels
+          // (the perf heatmap), make the markers pickable so hovering names the
+          // cell's honest metric; otherwise they stay non-pickable.
+          marker.isPickable = Boolean(labels);
+          marker.thinInstanceEnablePicking = Boolean(labels);
+          marker.metadata = labels ? { hoverLabels: labels } : null;
+          marker.thinInstanceSetBuffer("matrix", matrices, 16, false);
+          marker.thinInstanceSetBuffer("color", colors, 4, true);
+          // Re-apply the current zoom factor on top of the fresh base scales.
+          lastZoom = -1;
+          applyZoomScale();
+        };
+
         // Faint wireframe backdrop: one thin-instanced unit box per proxy AABB.
-        if (proxyMeshes.length > 0) {
-          const proxyBox = MeshBuilder.CreateBox("scene-proxy", { size: 1 }, scene);
+        // Rebuilt only when the scene geometry itself changes (tracked by a cheap
+        // signature) so a live data refresh doesn't churn it.
+        let proxyBox: ReturnType<typeof MeshBuilder.CreateBox> | null = null;
+        let proxySig = "\u0000";
+        const syncProxy = () => {
+          const proxyNow = proxyMeshesRef.current;
+          const sig = proxyNow.map((m) => `${m.name}:${m.aabb.join(",")}`).join("|");
+          if (sig === proxySig) return;
+          proxySig = sig;
+          if (proxyBox) {
+            proxyBox.dispose(false, true);
+            proxyBox = null;
+          }
+          if (proxyNow.length === 0) return;
+          proxyBox = MeshBuilder.CreateBox("scene-proxy", { size: 1 }, scene);
           const proxyMat = new StandardMaterial("scene-proxy-mat", scene);
           proxyMat.wireframe = true;
           proxyMat.disableLighting = true;
@@ -194,12 +340,12 @@ export function WorldHeatmap3DView({
           proxyBox.isPickable = true;
           proxyBox.thinInstanceEnablePicking = true;
           // Per-instance hover labels so hovering a proxy box names the mesh (#123).
-          proxyBox.metadata = { hoverLabels: proxyMeshes.map((m) => m.name) };
+          proxyBox.metadata = { hoverLabels: proxyNow.map((m) => m.name) };
 
-          const pn = proxyMeshes.length;
+          const pn = proxyNow.length;
           const proxyMatrices = new Float32Array(pn * 16);
           for (let i = 0; i < pn; i++) {
-            const a = proxyMeshes[i]!.aabb;
+            const a = proxyNow[i]!.aabb;
             const sx = Math.max(a[3] - a[0], 1e-3);
             const sy = Math.max(a[4] - a[1], 1e-3);
             const sz = Math.max(a[5] - a[2], 1e-3);
@@ -209,94 +355,14 @@ export function WorldHeatmap3DView({
             m.copyToArray(proxyMatrices, i * 16);
           }
           proxyBox.thinInstanceSetBuffer("matrix", proxyMatrices, 16, true);
-        }
+        };
 
-        if (voxels.length > 0) {
-          // Spheres read as a soft thermal cloud; cubes show axis-aligned
-          // occupancy. Both take the same per-instance matrices/colors.
-          const marker =
-            markerShape === "cube"
-              ? MeshBuilder.CreateBox("world-voxel", { size: cellSize * 0.9 }, scene)
-              : MeshBuilder.CreateSphere(
-                  "world-voxel",
-                  { diameter: cellSize * 0.9, segments: 6 },
-                  scene,
-                );
-          const mat = new StandardMaterial("world-voxel-mat", scene);
-          mat.diffuseColor = new Color3(1, 1, 1);
-          mat.specularColor = new Color3(0, 0, 0);
-          marker.material = mat;
-          // Per-voxel hover labels (#145): opt-in. When the host supplies labels
-          // (the perf heatmap), make the markers pickable so hovering names the
-          // cell's honest metric; otherwise they stay non-pickable as before.
-          if (voxelLabels) {
-            marker.isPickable = true;
-            marker.thinInstanceEnablePicking = true;
-            marker.metadata = { hoverLabels: voxelLabels };
-          }
-
-          const n = voxels.length;
-          const matrices = new Float32Array(n * 16);
-          const colors = new Float32Array(n * 4);
-          // Per-instance base scale (intensity-driven) kept so the render loop
-          // can re-apply it on top of the zoom factor without losing it.
-          const baseScales = new Float32Array(n);
-          // Size each marker relative to the SCENE, not the fixed voxel size, so
-          // its on-screen footprint is consistent whether the scene is a small
-          // viewer model or a large walkable level. Target ~2% of the scene
-          // radius, floored to a quarter voxel so tiny scenes still show a clear
-          // marker. `fitScale` converts that world size into an instance scale
-          // of the `cellSize * 0.9` base mesh.
-          const markerUnit = Math.max(radius * 0.02, cellSize * 0.25);
-          const fitScale = markerUnit / (cellSize * 0.9);
-          for (let i = 0; i < n; i++) {
-            const v = voxels[i]!;
-            const t = Math.min(1, v.count / scaleMax);
-            // Intensity modulates each marker between 50% and 100% of its size
-            // so hotspots read as larger without low cells vanishing.
-            const s = fitScale * (0.5 + 0.5 * t);
-            baseScales[i] = s;
-            const m = Matrix.Scaling(s, s, s).multiply(
-              Matrix.Translation(
-                (v.vx + 0.5) * cellSize,
-                (v.vy + 0.5) * cellSize,
-                (v.vz + 0.5) * cellSize,
-              ),
-            );
-            m.copyToArray(matrices, i * 16);
-            const [r, g, b] = heatRgb(t);
-            colors[i * 4] = r;
-            colors[i * 4 + 1] = g;
-            colors[i * 4 + 2] = b;
-            colors[i * 4 + 3] = 1;
-          }
-          marker.thinInstanceSetBuffer("matrix", matrices, 16, false);
-          marker.thinInstanceSetBuffer("color", colors, 4, true);
-
-          // Keep markers legible when zoomed out on large scenes: grow each
-          // marker with the camera distance so its on-screen size stays roughly
-          // constant. We only rewrite the scale diagonal of each instance matrix
-          // (translation untouched), and only when the zoom changes meaningfully.
-          const baseRadius = camera.radius;
-          let lastZoom = 0;
-          const applyZoomScale = () => {
-            // The base size is already scene-aware; this only keeps markers
-            // legible as the camera dollies in/out from the default framing.
-            const zoom = Math.min(8, Math.max(0.6, camera.radius / baseRadius));
-            if (Math.abs(zoom - lastZoom) < 0.01) return;
-            lastZoom = zoom;
-            for (let i = 0; i < n; i++) {
-              const s = baseScales[i]! * zoom;
-              const o = i * 16;
-              matrices[o] = s;
-              matrices[o + 5] = s;
-              matrices[o + 10] = s;
-            }
-            marker.thinInstanceBufferUpdated("matrix");
-          };
-          applyZoomScale();
-          scene.onBeforeRenderObservable.add(applyZoomScale);
-        }
+        const sync = () => {
+          syncProxy();
+          syncVoxels();
+        };
+        syncRef.current = sync;
+        sync();
 
         engine.runRenderLoop(() => scene.render());
         const onResize = () => engine.resize();
@@ -310,6 +376,7 @@ export function WorldHeatmap3DView({
           detachHover();
           detachFocus();
           setTip(null);
+          syncRef.current = null;
           cameraRef.current = null;
           homeRef.current = null;
           scene.dispose();
@@ -326,7 +393,18 @@ export function WorldHeatmap3DView({
       disposed = true;
       cleanup?.();
     };
-  }, [voxels, cellSize, proxyMeshes, markerShape, voxelLabels]);
+    // Structural inputs only: the scene is rebuilt when the marker shape or cell
+    // size changes, or when it first has something to show. Live `voxels` /
+    // `proxyMeshes` / `voxelLabels` updates are applied in place by the effect
+    // below without rebuilding — see `syncRef`.
+  }, [markerShape, cellSize, hasContent]);
+
+  // Repaint on every data change without recreating the engine or camera. When
+  // the scene isn't built yet (initial async load) this is a no-op; the
+  // lifecycle effect performs the first paint itself once ready.
+  useEffect(() => {
+    syncRef.current?.();
+  }, [voxels, proxyMeshes, voxelLabels]);
 
   // ADR 0040 §3: when the voxel list is a truncated top-N slice, surface the true
   // totals so cold spots / overall coverage read correctly. Number truncation is
