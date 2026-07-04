@@ -464,6 +464,12 @@ self.addEventListener("fetch", (event) => {
     (async () => {
       const cache = await caches.open(CACHE);
       const cached = await cache.match(request);
+      // Background revalidation. A rejected fetch (offline, or — commonly — an
+      // in-flight request aborted when the user switches views) resolves to
+      // `undefined` here rather than propagating: it's only used as a fallback
+      // when nothing is cached, and `respondWith` must never receive a
+      // non-Response value (that throws "Failed to convert value to 'Response'"
+      // and fails the resource load).
       const network = fetch(request)
         .then((response) => {
           if (response && response.ok && response.type === "basic") {
@@ -471,8 +477,11 @@ self.addEventListener("fetch", (event) => {
           }
           return response;
         })
-        .catch(() => cached);
-      return cached ?? network;
+        .catch(() => undefined);
+      // Guarantee a Response: cache hit → network result → a synthetic network
+      // error, so a missed cache + failed/aborted fetch can never yield
+      // `undefined`.
+      return cached ?? (await network) ?? Response.error();
     })(),
   );
 });
