@@ -39,6 +39,7 @@ import type {
   RenderScaleTruth as RenderScaleTruthData,
   SceneProxyMesh,
   SceneRetentionLink,
+  ViewCoverageBin,
   WorldHeatmapBin,
   XrLocomotionStat,
 } from "../api";
@@ -121,6 +122,11 @@ import {
   SCENE_RETENTION_SUBTITLE,
   SCENE_RETENTION_HELP,
 } from "./views/SceneRetentionFunnel";
+  ViewCoverageView,
+  VIEW_COVERAGE_TITLE,
+  VIEW_COVERAGE_SUBTITLE,
+  VIEW_COVERAGE_HELP,
+} from "./views/ViewCoverage";
 
 // --- 3D (Babylon-backed) view labels (Babylon-free copy) + lazy views. ------
 import {
@@ -582,6 +588,24 @@ export const perfDistributionPanel = definePanel<PerfDistributionData>({
 });
 
 /**
+ * 360° view-coverage histogram (#146) — React/HTML, half width. Sessions bucketed
+ * by how much of the object they actually looked at (0–25 / 25–50 / 50–75 /
+ * 75–100%), derived from the same `camera_sample` direction grid as the
+ * view-direction dome. No new capture; complements the dome ("where they looked")
+ * with a coverage gauge ("how much they saw").
+ */
+export const viewCoveragePanel = definePanel<ViewCoverageBin[]>({
+  id: "view-coverage",
+  title: VIEW_COVERAGE_TITLE,
+  subtitle: VIEW_COVERAGE_SUBTITLE,
+  help: VIEW_COVERAGE_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.viewCoverageHistogram(scoped(ctx)),
+  render: ({ data }) => <ViewCoverageView bins={data ?? []} />,
+});
+
+/**
  * Render-scale truth (#71, ADR 0021) — React/HTML stat block, half width. FPS
  * paired with the resolution the engine actually rendered at, flagging "good FPS
  * at a low render scale". A single aggregate row, so no client-only Babylon.
@@ -861,6 +885,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   blindSpotsPanel,
   pointerHeatmapPanel,
   cameraDomePanel,
+  viewCoveragePanel,
   floorPlanPanel,
   desireLinesPanel,
   meshKindsPanel,

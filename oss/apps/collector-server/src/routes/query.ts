@@ -538,6 +538,24 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     },
   );
 
+  // 360° view-coverage histogram (#146) — how much of the object each session
+  // saw, bucketed across sessions (0–25 / 25–50 / 50–75 / 75–100%). Derived from
+  // the same `camera_sample` direction grid as the view-direction dome; no schema
+  // change. Shares the camera-heatmap params (bins + scene/session + cameraMode).
+  r.get(
+    "/api/v1/coverage/view-histogram",
+    { schema: { querystring: cameraHeatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      const { cameraMode, ...rest } = req.query;
+      return store.viewCoverageHistogram(projectId, {
+        ...rest,
+        cameraType: cameraTypeForMode(cameraMode),
+      });
+    },
+  );
+
   // Floor-plan camera-position heatmap (ADR 0026) — the first-person analog of
   // the 2D pointer heatmap: where visitors stand/dwell on the X/Z ground plane.
   r.get(

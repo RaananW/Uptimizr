@@ -211,6 +211,17 @@ export interface DirectionBinRow {
   count: number;
 }
 
+/**
+ * One bucket of the 360° view-coverage histogram (#146): `bucket` is the
+ * inclusive lower bound (percent) of a 25-wide coverage band (`0`, `25`, `50`,
+ * `75`), and `sessions` is how many sessions fell in it. Coverage is the fraction
+ * of the view-direction dome grid a session's `camera_sample` directions visited.
+ */
+export interface ViewCoverageHistogramRow {
+  bucket: number;
+  sessions: number;
+}
+
 export interface ClickGazeRayRow {
   cam_vx: number;
   cam_vy: number;

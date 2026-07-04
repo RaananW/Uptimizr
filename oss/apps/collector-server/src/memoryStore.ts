@@ -93,6 +93,7 @@ export function createMemoryStore({
     gazeHeatmap: async () => [],
     gazeHeatmapStats: async () => ({ cells: 0, hits: 0 }),
     cameraHeatmap: async () => [],
+    viewCoverageHistogram: async () => [],
     cameraPositionHeatmap: async () => [],
     sessionTrajectory: async () => [],
     aggregateTrajectories: async () => [],

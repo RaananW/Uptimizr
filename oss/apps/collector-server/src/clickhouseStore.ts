@@ -1,5 +1,6 @@
 import {
   buildCameraDirectionHeatmap,
+  buildViewCoverageHistogram,
   buildCameraDistance,
   buildCameraPositionHeatmap,
   buildClickGazeRay,
@@ -65,6 +66,7 @@ import {
   type CapabilityChangeRow,
   type CameraGestureRow,
   type DirectionBinRow,
+  type ViewCoverageHistogramRow,
   type EventTypeCountRow,
   type FlowLinkRow,
   type FunnelStepResultRow,
@@ -169,6 +171,11 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
     },
     cameraHeatmap: (projectId, opts = {}) =>
       runClickhouseQuery<DirectionBinRow>(ch, buildCameraDirectionHeatmap(projectId, opts, d)),
+    viewCoverageHistogram: (projectId, opts = {}) =>
+      runClickhouseQuery<ViewCoverageHistogramRow>(
+        ch,
+        buildViewCoverageHistogram(projectId, opts, d),
+      ),
     cameraPositionHeatmap: (projectId, opts = {}) =>
       runClickhouseQuery<PositionBinRow>(ch, buildCameraPositionHeatmap(projectId, opts, d)),
     sessionTrajectory: (projectId, sessionId, opts = {}) =>

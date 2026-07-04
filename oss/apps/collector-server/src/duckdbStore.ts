@@ -1,5 +1,6 @@
 import {
   buildCameraDirectionHeatmap,
+  buildViewCoverageHistogram,
   buildCameraDistance,
   buildCameraPositionHeatmap,
   buildClickGazeRay,
@@ -77,6 +78,7 @@ import {
   type CapabilityChangeRow,
   type CameraGestureRow,
   type DirectionBinRow,
+  type ViewCoverageHistogramRow,
   type DuckdbClient,
   type EventTypeCountRow,
   type FlowLinkRow,
@@ -165,6 +167,11 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<DirectionBinRow>(
         db,
         buildCameraDirectionHeatmap(projectId, opts, duckdbDialect),
+      ),
+    viewCoverageHistogram: (projectId, opts = {}) =>
+      runDuckdbQuery<ViewCoverageHistogramRow>(
+        db,
+        buildViewCoverageHistogram(projectId, opts, duckdbDialect),
       ),
     cameraPositionHeatmap: (projectId, opts = {}) =>
       runDuckdbQuery<PositionBinRow>(
