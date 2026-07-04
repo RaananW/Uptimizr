@@ -21,6 +21,7 @@ import {
   buildXrAbandonment,
   buildInteractionsBySource,
   buildMeshDwell,
+  buildMeshBlindSpots,
   buildMeshInteractionKinds,
   buildPerfSummary,
   buildPerfDistribution,
@@ -66,6 +67,7 @@ import {
   type HeatmapBinRow,
   type MeshCountRow,
   type MeshDwellRow,
+  type MeshBlindSpotRow,
   type MeshInteractionKindRow,
   type MeshSourceCountRow,
   type MeshTrendPointRow,
@@ -185,6 +187,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<MeshTrendPointRow>(ch, buildTopMeshesTrend(projectId, opts, d)),
     meshDwell: (projectId, opts = {}) =>
       runClickhouseQuery<MeshDwellRow>(ch, buildMeshDwell(projectId, opts, d)),
+    meshBlindSpots: (projectId, opts = {}) =>
+      runClickhouseQuery<MeshBlindSpotRow>(ch, buildMeshBlindSpots(projectId, opts, d)),
     meshInteractionKinds: (projectId, opts = {}) =>
       runClickhouseQuery<MeshInteractionKindRow>(ch, buildMeshInteractionKinds(projectId, opts, d)),
     deadClicks: (projectId, opts = {}) =>

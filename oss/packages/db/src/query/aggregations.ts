@@ -855,6 +855,64 @@ export function buildMeshDwell(
 }
 
 /**
+ * Blind-spot / never-noticed meshes (#143): the inverse of the Top-meshes and
+ * part-popularity leaderboards. Cross-references what was *rendered* against what
+ * was *engaged with* — per mesh, the total `mesh_visibility` on-screen time vs.
+ * the count of `mesh_interaction` events and the `hover_dwell` hesitation. A mesh
+ * with high visibility but zero (or near-zero) interaction + hover is a blind
+ * spot: a product detail nobody noticed, or a prop/room that renders but nobody
+ * investigates.
+ *
+ * Engagement is deliberately the two *active-attention* signals the issue names —
+ * `mesh_interaction` (the source-neutral pick/hover/drag signal, ADR 0011) and
+ * `hover_dwell` (hover-without-action, #48). Passive gaze (`camera_sample`) is
+ * not engagement, and raw `pointer_click` is excluded because a mesh-hitting click
+ * already surfaces as a `mesh_interaction`. Both durations live in the shared
+ * `visible_ms` column (events.ts maps `mesh_visibility.visibleMs` and
+ * `hover_dwell.dwellMs` onto it), so the whole report is one grouped scan.
+ *
+ * `HAVING sum(visible_ms) WHERE mesh_visibility > 0` keeps only meshes that were
+ * actually seen (a blind spot must first be visible). Ranked by engagement
+ * ascending, then visibility descending, so the most-seen-yet-least-touched
+ * meshes rank first.
+ */
+export function buildMeshBlindSpots(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const limit = bag.add("limit", "u32", opts.limit ?? 25);
+  return {
+    query: `
+      SELECT
+        mesh,
+        sum(CASE WHEN event_type = 'mesh_visibility' THEN visible_ms ELSE 0 END) AS visible_ms,
+        sum(CASE WHEN event_type = 'mesh_visibility' THEN 1 ELSE 0 END) AS vis_samples,
+        sum(CASE WHEN event_type = 'mesh_interaction' THEN 1 ELSE 0 END) AS interactions,
+        sum(CASE WHEN event_type = 'hover_dwell' THEN visible_ms ELSE 0 END) AS hover_ms,
+        sum(CASE WHEN event_type = 'hover_dwell' THEN 1 ELSE 0 END) AS hover_episodes
+      FROM events
+      WHERE project_id = ${pid}
+        AND event_type IN ('mesh_visibility', 'mesh_interaction', 'hover_dwell')
+        AND mesh != ''${range}${scene}${session}
+      GROUP BY mesh
+      HAVING sum(CASE WHEN event_type = 'mesh_visibility' THEN visible_ms ELSE 0 END) > 0
+      ORDER BY
+        sum(CASE WHEN event_type = 'mesh_interaction' THEN 1 ELSE 0 END)
+          + sum(CASE WHEN event_type = 'hover_dwell' THEN 1 ELSE 0 END) ASC,
+        sum(CASE WHEN event_type = 'mesh_visibility' THEN visible_ms ELSE 0 END) DESC
+      LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * Interaction-kind breakdown (#72): per-mesh counts of each interaction *kind*
  * (hover / pick / click / drag / select / squeeze / grab / release / teleport)
  * from `mesh_interaction` events (ADR 0023). The dwell ranking says *which*

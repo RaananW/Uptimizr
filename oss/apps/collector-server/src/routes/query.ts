@@ -643,6 +643,20 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     },
   );
 
+  // Blind-spot / never-noticed meshes (#143) — per-mesh `mesh_visibility` time
+  // cross-referenced against `mesh_interaction` + `hover_dwell` engagement.
+  // Surfaces objects that render but are never noticed (the inverse of the
+  // most-interacted / part-popularity leaderboards).
+  r.get(
+    "/api/v1/meshes/blind-spots",
+    { schema: { querystring: heatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.meshBlindSpots(projectId, req.query);
+    },
+  );
+
   // Interaction-kind breakdown (#72, ADR 0023) — per-mesh counts of each
   // interaction kind (hover / pick / click / drag / …) from `mesh_interaction`
   // events; how an audience acts on objects, not just which ones draw attention.

@@ -79,6 +79,16 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
     meshDwell: async () => [
       { mesh: "Cube", visible_ms: 5000, centered_ms: 2000, max_screen_fraction: 0.51, samples: 2 },
     ],
+    meshBlindSpots: async () => [
+      {
+        mesh: "Engraving",
+        visible_ms: 12000,
+        vis_samples: 3,
+        interactions: 0,
+        hover_ms: 0,
+        hover_episodes: 0,
+      },
+    ],
     deadClicks: async () => [{ total_clicks: 10, dead_clicks: 3 }],
     rageClicks: async () => [
       { session_id: "s1", mesh: "Button", bucket: 1718532000000, clicks: 4 },
@@ -732,6 +742,46 @@ describe("collector app", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(received).toMatchObject({ scene: "lobby", session: "s1" });
+    await app.close();
+  });
+
+  it("returns blind-spot / never-noticed meshes for a valid API key (#143)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/meshes/blind-spots",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      {
+        mesh: "Engraving",
+        visible_ms: 12000,
+        vis_samples: 3,
+        interactions: 0,
+        hover_ms: 0,
+        hover_episodes: 0,
+      },
+    ]);
+    await app.close();
+  });
+
+  it("forwards scene/session/limit filters to the blind-spots store call (#143)", async () => {
+    let received: unknown;
+    const store = makeStore({
+      meshBlindSpots: async (_projectId, opts) => {
+        received = opts;
+        return [];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/meshes/blind-spots?scene=lobby&session=s1&limit=5",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received).toMatchObject({ scene: "lobby", session: "s1", limit: 5 });
     await app.close();
   });
 

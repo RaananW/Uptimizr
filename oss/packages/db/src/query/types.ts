@@ -265,6 +265,25 @@ export interface MeshDwellRow {
   samples: number;
 }
 
+/**
+ * Blind-spot / never-noticed mesh summary (#143): visibility vs. engagement per
+ * mesh. High `visible_ms` with low `interactions + hover_episodes` is a blind
+ * spot — rendered but never noticed.
+ */
+export interface MeshBlindSpotRow {
+  mesh: string;
+  /** Total on-screen time from `mesh_visibility` summaries, in ms (> 0). */
+  visible_ms: number;
+  /** Number of `mesh_visibility` summaries contributing to `visible_ms`. */
+  vis_samples: number;
+  /** Number of `mesh_interaction` events on the mesh (active engagement). */
+  interactions: number;
+  /** Total hover-without-action time from `hover_dwell` summaries, in ms. */
+  hover_ms: number;
+  /** Number of `hover_dwell` hesitation episodes on the mesh. */
+  hover_episodes: number;
+}
+
 /** Dead-click rate summary from `pointer_click` events (#46). */
 export interface DeadClickRow {
   /** Total clicks in range. */

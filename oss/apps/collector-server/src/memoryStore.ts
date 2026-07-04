@@ -102,6 +102,7 @@ export function createMemoryStore({
     topMeshesBySource: async () => [],
     topMeshesTrend: async () => [],
     meshDwell: async () => [],
+    meshBlindSpots: async () => [],
     meshInteractionKinds: async () => [],
     deadClicks: async () => [],
     rageClicks: async () => [],

@@ -21,6 +21,7 @@ import {
   buildXrAbandonment,
   buildInteractionsBySource,
   buildMeshDwell,
+  buildMeshBlindSpots,
   buildMeshInteractionKinds,
   buildPerfSummary,
   buildPerfDistribution,
@@ -79,6 +80,7 @@ import {
   type HeatmapBinRow,
   type MeshCountRow,
   type MeshDwellRow,
+  type MeshBlindSpotRow,
   type MeshInteractionKindRow,
   type MeshSourceCountRow,
   type MeshTrendPointRow,
@@ -188,6 +190,8 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<MeshTrendPointRow>(db, buildTopMeshesTrend(projectId, opts, duckdbDialect)),
     meshDwell: (projectId, opts = {}) =>
       runDuckdbQuery<MeshDwellRow>(db, buildMeshDwell(projectId, opts, duckdbDialect)),
+    meshBlindSpots: (projectId, opts = {}) =>
+      runDuckdbQuery<MeshBlindSpotRow>(db, buildMeshBlindSpots(projectId, opts, duckdbDialect)),
     meshInteractionKinds: (projectId, opts = {}) =>
       runDuckdbQuery<MeshInteractionKindRow>(
         db,

@@ -118,6 +118,34 @@ describe("CollectorApi", () => {
     expect(rows[0]).toEqual({ mesh: "door", bucket: 1718532000000, count: 3 });
   });
 
+  it("coerces blind-spot rows and hits the blind-spots endpoint (#143)", async () => {
+    const fetchMock = mockFetch([
+      {
+        mesh: "engraving",
+        visible_ms: "12000",
+        vis_samples: "3",
+        interactions: "0",
+        hover_ms: "0",
+        hover_episodes: "0",
+      },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.meshBlindSpots({ scene: "lobby", limit: 10 });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/meshes/blind-spots");
+    expect(rows[0]).toEqual({
+      mesh: "engraving",
+      visible_ms: 12000,
+      vis_samples: 3,
+      interactions: 0,
+      hover_ms: 0,
+      hover_episodes: 0,
+    });
+  });
+
   it("coerces the most-used input actions and hits the input-actions endpoint (#75)", async () => {
     const fetchMock = mockFetch([{ action: "rotate-left", source: "keyboard", count: "12" }]);
     vi.stubGlobal("fetch", fetchMock);
