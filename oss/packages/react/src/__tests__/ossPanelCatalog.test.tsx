@@ -4,6 +4,7 @@ import {
   ossPanelCatalog,
   topMeshesPanel,
   meshLeaderboardPanel,
+  blindSpotsPanel,
   pointerHeatmapPanel,
   cameraDomePanel,
   floorPlanPanel,
@@ -92,6 +93,7 @@ describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
     const individual = [
       topMeshesPanel,
       meshLeaderboardPanel,
+      blindSpotsPanel,
       pointerHeatmapPanel,
       cameraDomePanel,
       floorPlanPanel,

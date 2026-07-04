@@ -47,6 +47,7 @@ describe("duckdb parity (vs golden)", () => {
       "flowHeatmapByStandpoint",
       "topMeshes",
       "meshDwell",
+      "meshBlindSpots",
       "topMeshesBySource",
       "topMeshesTrend",
       "meshInteractionKinds",

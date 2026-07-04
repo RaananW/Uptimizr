@@ -24,6 +24,7 @@ import {
   buildFlowHeatmap,
   buildListSessions,
   buildMeshDwell,
+  buildMeshBlindSpots,
   buildMeshInteractionKinds,
   buildTopInputActions,
   buildDeadClicks,
@@ -352,6 +353,34 @@ export const PARITY_CASES: readonly ParityCase[] = [
     golden: [
       { mesh: "box", visible_ms: 4000, centered_ms: 1500, max_screen_fraction: 0.4, samples: 1 },
       { mesh: "sphere", visible_ms: 2000, centered_ms: 800, max_screen_fraction: 0.7, samples: 1 },
+    ],
+  },
+  {
+    name: "meshBlindSpots",
+    build: (d) => buildMeshBlindSpots(PID, PARITY_RANGE, d),
+    sortKeys: ["mesh"],
+    // Blind-spot report (#143): both mesh_visibility fixtures ("box", "sphere")
+    // were seen but have no mesh_interaction / hover_dwell in the parity set, so
+    // both are zero-engagement blind spots. Engagement-then-visibility ranking is
+    // covered by the DuckDB unit suite; parity checks the grouped visibility/
+    // engagement columns render identically on both engines.
+    golden: [
+      {
+        mesh: "box",
+        visible_ms: 4000,
+        vis_samples: 1,
+        interactions: 0,
+        hover_ms: 0,
+        hover_episodes: 0,
+      },
+      {
+        mesh: "sphere",
+        visible_ms: 2000,
+        vis_samples: 1,
+        interactions: 0,
+        hover_ms: 0,
+        hover_episodes: 0,
+      },
     ],
   },
   {

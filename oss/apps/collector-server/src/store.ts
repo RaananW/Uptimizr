@@ -18,6 +18,7 @@ import type {
   CameraGestureRow,
   MeshCountRow,
   MeshDwellRow,
+  MeshBlindSpotRow,
   MeshInteractionKindRow,
   MeshSourceCountRow,
   MeshTrendPointRow,
@@ -235,6 +236,16 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
   ): Promise<MeshDwellRow[]>;
+  /**
+   * Blind-spot / never-noticed meshes (#143): per mesh, `mesh_visibility`
+   * on-screen time cross-referenced against `mesh_interaction` + `hover_dwell`
+   * engagement. Surfaces objects that render but are never noticed (high
+   * visibility, zero/near-zero engagement) — the inverse of the leaderboard.
+   */
+  meshBlindSpots(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
+  ): Promise<MeshBlindSpotRow[]>;
   /**
    * Interaction-kind breakdown (#72, ADR 0023): per-mesh counts of each
    * interaction kind (hover / pick / click / drag / …) from `mesh_interaction`

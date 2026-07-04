@@ -99,6 +99,7 @@ export {
   ossPanelCatalog,
   topMeshesPanel,
   meshLeaderboardPanel,
+  blindSpotsPanel,
   pointerHeatmapPanel,
   cameraDomePanel,
   floorPlanPanel,
@@ -138,6 +139,7 @@ export {
 } from "./catalog/views/XrLocomotionComfort";
 export { PointerHeatmapView } from "./catalog/views/PointerHeatmap";
 export { TopMeshesView } from "./catalog/views/TopMeshes";
+export { BlindSpotReportView } from "./catalog/views/BlindSpotReport";
 
 // --- 3D / canvas helper libs (Babylon-free at module-eval; ADR 0014/0037). --
 // The panels' shared 3D helpers. Babylon is only referenced via type-only

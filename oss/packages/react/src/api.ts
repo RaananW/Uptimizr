@@ -37,6 +37,26 @@ export interface MeshCount {
 }
 
 /**
+ * One blind-spot / never-noticed mesh (#143): a mesh's `mesh_visibility`
+ * on-screen time cross-referenced against its `mesh_interaction` + `hover_dwell`
+ * engagement. High `visible_ms` with low `interactions + hover_episodes` is a
+ * blind spot — rendered but never noticed. The inverse of the leaderboard.
+ */
+export interface MeshBlindSpot {
+  mesh: string;
+  /** Total on-screen time from `mesh_visibility` summaries, in ms (> 0). */
+  visible_ms: number;
+  /** Number of `mesh_visibility` summaries contributing to `visible_ms`. */
+  vis_samples: number;
+  /** Number of `mesh_interaction` events on the mesh (active engagement). */
+  interactions: number;
+  /** Total hover-without-action time from `hover_dwell` summaries, in ms. */
+  hover_ms: number;
+  /** Number of `hover_dwell` hesitation episodes on the mesh. */
+  hover_episodes: number;
+}
+
+/**
  * One (mesh, interaction-kind) tally (#72): how many times each interaction kind
  * (hover / pick / click / drag / …) landed on a given mesh.
  */
@@ -603,6 +623,25 @@ export class CollectorApi {
   topMeshes(params?: QueryParams): Promise<MeshCount[]> {
     return this.get<MeshCount[]>("api/v1/meshes/top", params).then((rows) =>
       rows.map((r) => ({ ...r, count: Number(r.count) })),
+    );
+  }
+
+  /**
+   * Blind-spot / never-noticed meshes (#143): per mesh, on-screen visibility time
+   * cross-referenced against interaction + hover engagement. Ranked so the
+   * most-seen-yet-least-touched objects come first — the inverse of the
+   * most-interacted / part-popularity leaderboards.
+   */
+  meshBlindSpots(params?: QueryParams): Promise<MeshBlindSpot[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/meshes/blind-spots", params).then((rows) =>
+      rows.map((r) => ({
+        mesh: String(r.mesh ?? ""),
+        visible_ms: Number(r.visible_ms ?? 0),
+        vis_samples: Number(r.vis_samples ?? 0),
+        interactions: Number(r.interactions ?? 0),
+        hover_ms: Number(r.hover_ms ?? 0),
+        hover_episodes: Number(r.hover_episodes ?? 0),
+      })),
     );
   }
 

@@ -71,6 +71,43 @@ test("dashboard renders captured events end to end", async ({ page, request }) =
 });
 
 /**
+ * Blind-spot / never-noticed mesh report (#143). Drives a real session with
+ * object-dwell (`mesh_visibility`) capture on and a single centered mesh pick,
+ * so most of the scene renders on-screen but only one box is ever engaged. The
+ * Blind spots panel — the inverse of the mesh leaderboard — must surface the
+ * rendered-but-untouched geometry (the always-visible `ground`, never pickable)
+ * and flag it as "never engaged" via the full browser → SDK → collector →
+ * dashboard round trip.
+ */
+test("blind-spots panel surfaces rendered-but-never-noticed meshes", async ({ page, request }) => {
+  await enableAllCapture(page, "babylon");
+  const sessionId = await bootEngine(page, "babylon");
+  // A single centered pick engages one box; the ground + other boxes stay
+  // visible-but-untouched. driveInteractions clicks the center mesh exactly once.
+  await driveInteractions(page, { keyboard: true });
+  // mesh_visibility flushes on a 5s window, so allow a generous poll for the
+  // first object-dwell summary to reach the collector alongside the pick.
+  await waitForEventTypes(request, sessionId, ["mesh_visibility", "mesh_interaction"], 30_000);
+
+  await page.goto(DASHBOARD_URL);
+  await page.getByPlaceholder("http://localhost:4318").fill(COLLECTOR_URL);
+  await page.getByPlaceholder("utk_…").fill(API_KEY);
+  await page.getByRole("button", { name: /load/i }).click();
+
+  // The Blind spots section renders against the captured object-dwell data.
+  const blindSpots = page.locator("section", { hasText: "Blind spots" }).first();
+  await blindSpots.scrollIntoViewIfNeeded();
+  await expect(blindSpots.getByRole("heading", { name: "Blind spots" })).toBeVisible({
+    timeout: 20_000,
+  });
+  // The ground is always on-screen but is not pickable, so it is a canonical
+  // blind spot: high visibility, zero engagement.
+  await expect(blindSpots.getByText("ground", { exact: true })).toBeVisible();
+  // At least one entry is flagged as never engaged (no interaction + no hover).
+  await expect(blindSpots.getByText("never engaged").first()).toBeVisible();
+});
+
+/**
  * Smoke-level coverage for the 3D-panel controls shipped in #119–#123: the
  * view-direction dome's Markers/Skydome toggle and the Flow Sankey camera-mode /
  * two-stage toggles. We don't assert the WebGL canvas pixels (3D output isn't

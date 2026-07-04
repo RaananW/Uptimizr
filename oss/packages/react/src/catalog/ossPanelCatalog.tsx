@@ -28,6 +28,7 @@ import type {
   InputActionCount,
   InteractionSource,
   MeshCount,
+  MeshBlindSpot,
   MeshInteractionKind,
   MeshSourceCount,
   MeshTrendPoint,
@@ -67,6 +68,12 @@ import {
   MESH_LEADERBOARD_SUBTITLE,
   MESH_LEADERBOARD_HELP,
 } from "./views/MeshLeaderboard";
+import {
+  BlindSpotReportView,
+  BLIND_SPOTS_TITLE,
+  BLIND_SPOTS_SUBTITLE,
+  BLIND_SPOTS_HELP,
+} from "./views/BlindSpotReport";
 import {
   InputModalitySplitView,
   INPUT_MODALITY_TITLE,
@@ -321,6 +328,24 @@ export const topMeshesPanel = definePanel<MeshCount[], typeof TOP_MESHES_SETTING
       limit: ctx.settings.limit,
     }),
   render: ({ data }) => <TopMeshesView meshes={data ?? []} />,
+});
+
+/**
+ * Blind spots (#143) — React/HTML list, half width. The inverse of the mesh
+ * leaderboards: meshes with high `mesh_visibility` on-screen time but little or
+ * no `mesh_interaction` + `hover_dwell` engagement — rendered but never noticed.
+ * Ranked most-seen-yet-least-touched first (server-side). Depends on object-dwell
+ * capture being enabled; empty otherwise.
+ */
+export const blindSpotsPanel = definePanel<MeshBlindSpot[]>({
+  id: "blind-spots",
+  title: BLIND_SPOTS_TITLE,
+  subtitle: BLIND_SPOTS_SUBTITLE,
+  help: BLIND_SPOTS_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.meshBlindSpots({ ...scoped(ctx), limit: 25 }),
+  render: ({ data }) => <BlindSpotReportView meshes={data ?? []} />,
 });
 
 /** Pointer heatmap — 2D canvas, half width. */
@@ -807,6 +832,7 @@ export const divergencePanel = definePanel<DivergenceData, typeof DIVERGENCE_SET
 export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   topMeshesPanel,
   meshLeaderboardPanel,
+  blindSpotsPanel,
   pointerHeatmapPanel,
   cameraDomePanel,
   floorPlanPanel,

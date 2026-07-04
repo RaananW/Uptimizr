@@ -72,6 +72,30 @@ when the pointer moves to a different object (or off all geometry), and is **sup
 was clicked** during the hover — a click is an action, not hesitation. Each event carries `mesh`,
 `dwellMs`, and the originating input `source`.
 
+## Blind spots — never-noticed meshes
+
+Which objects **render but nobody notices**? The blind-spots report cross-references what was _seen_
+(`mesh_visibility`) against what was _engaged with_ (`mesh_interaction` + `hover_dwell`), surfacing
+meshes with lots of on-screen time but little or no interaction — the inverse of the most-interacted /
+part-popularity leaderboards. A retail engraving nobody spots, or a game prop/room that renders but
+nobody investigates (wasted art budget, or a missed secret area).
+
+It needs **no extra capture** beyond the two opt-in signals above: enable object dwell
+(`meshVisibility`) so meshes are recorded as visible, and optionally hover hesitation
+(`hoverDwell`) so hovers count as engagement. `mesh_interaction` is on by default.
+
+Read it back via `GET /api/v1/meshes/blind-spots`:
+
+```http
+GET /api/v1/meshes/blind-spots?since=...&limit=25
+x-api-key: your-project-api-key
+```
+
+Each row carries `visible_ms` + `vis_samples` (on-screen time), `interactions` (active picks/hovers),
+and `hover_ms` + `hover_episodes` (hesitation). Rows are ranked engagement-ascending then
+visibility-descending, so the most-seen-yet-least-touched meshes come first. Only meshes that were
+actually visible (`visible_ms > 0`) appear. The dashboard renders this as the **Blind spots** panel.
+
 ## Scene actors (`node_transform`) — opt-in
 
 Replay re-drives the visitor's own inputs, but scenes often contain objects that move on their **own** —
