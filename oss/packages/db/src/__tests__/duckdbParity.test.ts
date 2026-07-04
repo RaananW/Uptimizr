@@ -64,6 +64,7 @@ describe("duckdb parity (vs golden)", () => {
       "resourcePercentiles",
       "stabilityCounts",
       "graphicsDiagnosticCounts",
+      "errorHeatmap",
       "renderingTechnology",
       "deadClicks",
       "rageClicks",

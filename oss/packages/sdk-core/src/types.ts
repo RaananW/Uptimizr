@@ -11,6 +11,7 @@ import type {
   PageMeta,
   SceneMeta,
   SessionUser,
+  Vec3,
 } from "@uptimizr/schema";
 
 import type { AggregatorConfig } from "./aggregation/aggregator.js";
@@ -103,6 +104,16 @@ export interface CollectorContext {
   reportCapabilityChange(change: CapabilityChangeReport): void;
   /** Switch the active scene/area (ADR 0010); emits a `scene_change` marker. */
   setScene(sceneId: string): void;
+  /**
+   * Register a best-effort camera-position source (issue #154). A connector that
+   * can introspect the live camera calls this so the client stamps a world
+   * `position` on spatially-meaningful diagnostics (`runtime_error` /
+   * `graphics_diagnostic`) that don't already carry one — powering the spatial
+   * error heatmap. The provider returns `undefined` when no camera can be
+   * resolved; pass `undefined` to clear a previously-registered provider (e.g. on
+   * teardown). Errors thrown by the provider are swallowed and never break emit.
+   */
+  setPositionProvider(provider: (() => Vec3 | undefined) | undefined): void;
   /**
    * Register an aggregation channel for the offload-eligible per-frame math
    * (ADR 0031 follow-up, #10) and obtain a `snapshot` emitter. A connector calls

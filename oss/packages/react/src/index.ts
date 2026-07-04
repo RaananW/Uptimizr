@@ -113,6 +113,7 @@ export {
   perfChurnPanel,
   worldHeatmapPanel,
   perfHeatmapPanel,
+  errorHeatmapPanel,
   navigationMixPanel,
   xrLocomotionComfortPanel,
   sceneRetentionPanel,

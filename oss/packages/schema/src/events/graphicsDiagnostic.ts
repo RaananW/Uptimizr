@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineEvent } from "./defineEvent.js";
 import { LIMITS } from "../limits.js";
+import { vec3Schema } from "../primitives.js";
 import { graphicsApiSchema } from "./sessionStart.js";
 
 /**
@@ -85,5 +86,15 @@ export const graphicsDiagnosticSchema = defineEvent("graphics_diagnostic", {
    * (`message`/`code` then describe the first/representative incident).
    */
   count: z.number().int().positive().optional(),
+  /**
+   * Camera world position `[x, y, z]` at the moment the diagnostic fired, when the
+   * connector can supply it (best-effort, connector-side — issue #154). Reuses the
+   * already-promoted `position` column, so it needs no migration and powers the
+   * spatial error heatmap (voxel-binned diagnostic density) that reveals *where* in
+   * the scene GPU health degrades — around shader-heavy geometry or a specific
+   * region — not just *when*. For a rollup (`count = N`) this is the position of the
+   * first/representative incident. Absent when the connector cannot resolve a camera.
+   */
+  position: vec3Schema.optional(),
 });
 export type GraphicsDiagnosticEvent = z.infer<typeof graphicsDiagnosticSchema>;

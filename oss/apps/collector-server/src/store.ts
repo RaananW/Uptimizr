@@ -55,6 +55,7 @@ import type {
   RenderingTechnologyRow,
   RangeOptions,
   RegionOptions,
+  ErrorHeatmapOptions,
   SceneOptions,
   SceneRepresentation,
   SceneRepresentationSummary,
@@ -435,6 +436,20 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions,
   ): Promise<GraphicsDiagnosticCountRow[]>;
+  /**
+   * Spatial error heatmap (#154): voxel-binned world `position` of positioned
+   * `runtime_error` and `graphics_diagnostic` events — *where* in the scene things
+   * break. Optional `severity`/`category` narrow to engine diagnostics, `errorKind`
+   * to JS errors. Region-aware; reuses the promoted `position` column (no migration).
+   */
+  errorHeatmap(
+    projectId: string,
+    opts?: RangeOptions &
+      SceneOptions &
+      SessionOptions &
+      RegionOptions &
+      ErrorHeatmapOptions & { cellSize?: number; limit?: number },
+  ): Promise<WorldHeatmapBinRow[]>;
   /**
    * Always-on rendering-technology mix (#120, ADR 0021 part 1): `session_start`
    * counts crossed by `(api, backend, api_version, shading_language)` over the

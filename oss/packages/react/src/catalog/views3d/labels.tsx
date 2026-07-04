@@ -19,6 +19,9 @@ export const WORLD_HEATMAP_SUBTITLE =
 export const PERF_HEATMAP_TITLE = "Performance heatmap (3D)";
 export const PERF_HEATMAP_SUBTITLE =
   "Where FPS is bad in your scene — frame_perf samples voxel-binned by camera position; hot = slow. Drag to orbit, +/- to zoom, double-click to focus";
+export const ERROR_HEATMAP_TITLE = "Error heatmap (3D)";
+export const ERROR_HEATMAP_SUBTITLE =
+  "Where errors & engine diagnostics fired, voxel-binned by the camera position at the moment they hit — drag to orbit, double-click to focus";
 
 export const GAZE_CLICK_TITLE = "Gaze vs. click divergence";
 export const GAZE_CLICK_SUBTITLE =

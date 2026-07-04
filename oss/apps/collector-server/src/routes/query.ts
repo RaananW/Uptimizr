@@ -348,6 +348,24 @@ const coverageQueryParams = z.object({
  */
 const perfHeatmapQueryParams = coverageQueryParams;
 
+/**
+ * Error-heatmap params (#154): voxel `cellSize` + scene/session/region filters,
+ * plus optional `severity`/`category` (narrow to engine diagnostics) and
+ * `errorKind` (narrow to JS runtime errors) payload filters.
+ */
+const errorHeatmapQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  cellSize: z.coerce.number().positive().max(1000).optional(),
+  limit: z.coerce.number().int().positive().max(10000).optional(),
+  scene: sceneFilter,
+  session: sessionFilter,
+  region: regionFilter,
+  severity: z.string().min(1).max(64).optional(),
+  category: z.string().min(1).max(64).optional(),
+  errorKind: z.string().min(1).max(64).optional(),
+});
+
 /** Camera-distance params: reference `center` (3 coords) + `bucketSize` + filters. */
 const cameraDistanceQueryParams = z.object({
   since: z.coerce.number().int().optional(),
@@ -951,6 +969,27 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.graphicsDiagnosticCounts(projectId, req.query);
+    },
+  );
+
+  // Spatial error heatmap (#154) — voxel-binned world `position` of positioned
+  // runtime_error + graphics_diagnostic events; reveals *where* in the scene
+  // things break (clustering around geometry, shader-heavy areas, a level
+  // region). severity/category narrow to engine diagnostics, errorKind to JS
+  // errors. Only events carrying a best-effort position participate.
+  r.get(
+    "/api/v1/heatmaps/errors",
+    { schema: { querystring: errorHeatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      const { region, cellSize, ...rest } = req.query;
+      const resolved = await resolveSpatialCellSize(store, projectId, {
+        cellSize,
+        scene: rest.scene,
+        region,
+      });
+      return store.errorHeatmap(projectId, { ...rest, region, cellSize: resolved });
     },
   );
 

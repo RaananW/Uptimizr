@@ -159,6 +159,8 @@ import {
   WORLD_HEATMAP_SUBTITLE,
   PERF_HEATMAP_TITLE,
   PERF_HEATMAP_SUBTITLE,
+  ERROR_HEATMAP_TITLE,
+  ERROR_HEATMAP_SUBTITLE,
   GAZE_CLICK_TITLE,
   GAZE_CLICK_SUBTITLE,
   FLOW_SANKEY_TITLE,
@@ -281,6 +283,19 @@ const PERF_HEATMAP_SETTINGS = {
     type: "number",
     label: "Voxel size",
     help: "World-space voxel size for binning frame_perf samples by camera position. Larger voxels smooth the map; smaller ones sharpen where FPS drops.",
+    default: WORLD_CELL_SIZE,
+    min: 0.1,
+    max: 2,
+    step: 0.1,
+    unit: "m",
+  },
+} as const satisfies PanelSettings;
+
+const ERROR_HEATMAP_SETTINGS = {
+  cellSize: {
+    type: "number",
+    label: "Voxel size",
+    help: "World-space voxel size for binning error/diagnostic positions. Larger voxels smooth the heat; smaller ones sharpen where things break.",
     default: WORLD_CELL_SIZE,
     min: 0.1,
     max: 2,
@@ -781,6 +796,12 @@ interface PerfHeatmapData {
   proxyMeshes: SceneProxyMesh[];
 }
 
+/** Error heatmap data: positioned-error voxels + the scene-proxy backdrop. */
+interface ErrorHeatmapData {
+  voxels: WorldHeatmapBin[];
+  proxyMeshes: SceneProxyMesh[];
+}
+
 /**
  * Performance heatmap (3D) — where FPS is bad in the scene (#145). `frame_perf`
  * samples are voxel-binned by the camera position captured at each sample, then
@@ -839,6 +860,45 @@ export const perfHeatmapPanel = definePanel<PerfHeatmapData, typeof PERF_HEATMAP
       </Lazy3D>
     );
   },
+});
+
+/**
+ * Spatial error heatmap (#154) — Babylon scene, full width. Voxel-binned world
+ * `position` of positioned `runtime_error` + `graphics_diagnostic` events, drawn
+ * against the registered scene proxy backdrop (ADR 0014). Reuses the world-heatmap
+ * 3D view with error-flavored legend copy. Client-only (Babylon loads in the
+ * browser). The proxy is resolved alongside the voxels so the backdrop tracks the
+ * scene filter. Empty is the healthy case (only positioned errors participate).
+ */
+export const errorHeatmapPanel = definePanel<ErrorHeatmapData, typeof ERROR_HEATMAP_SETTINGS>({
+  id: "error-heatmap-3d",
+  title: ERROR_HEATMAP_TITLE,
+  subtitle: ERROR_HEATMAP_SUBTITLE,
+  span: 2,
+  surfaces: ["overview", "session"],
+  clientOnly: true,
+  settings: ERROR_HEATMAP_SETTINGS,
+  load: async (ctx) => {
+    const [voxels, proxyMeshes] = await Promise.all([
+      ctx.api.errorHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
+      resolveProxyMeshes(ctx),
+    ]);
+    return { voxels, proxyMeshes };
+  },
+  render: ({ data, ctx }) => (
+    <Lazy3D>
+      <WorldHeatmap3DLazy
+        voxels={data.voxels}
+        cellSize={ctx.settings.cellSize}
+        proxyMeshes={data.proxyMeshes}
+        legendTitle="Error density"
+        legendLow="fewer errors"
+        legendHigh="most errors"
+        legendNote="Each marker is a voxel where a runtime error or engine diagnostic fired, binned by the camera position at that moment. Color & size scale with the error count, normalized to the 95th-percentile cell so a few hotspots don't wash out the rest."
+        emptyLabel="No positioned errors in range."
+      />
+    </Lazy3D>
+  ),
 });
 
 /**
@@ -1026,6 +1086,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   perfChurnPanel,
   worldHeatmapPanel,
   perfHeatmapPanel,
+  errorHeatmapPanel,
   navigationMixPanel,
   xrLocomotionComfortPanel,
   sceneRetentionPanel,

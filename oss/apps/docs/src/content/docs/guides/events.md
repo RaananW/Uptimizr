@@ -119,6 +119,22 @@ shader-compile` (`error`; WebGL info logs on failure, WebGPU shader-module compi
 > is stripped unless the separate `captureShaderSource` sub-opt-in is set (off by default —
 > application IP). All length-capped text runs through `beforeSend`.
 
+## Spatial error heatmap (where errors happen)
+
+Both `runtime_error` and `graphics_diagnostic` carry an **optional** `position` — the best-effort
+camera position (`[x, y, z]`) at the moment the error or diagnostic fired. Connectors stamp it
+automatically: `@uptimizr/babylon` reads the tracked camera's `globalPosition`; connectors that
+can't resolve a camera simply omit it, and errors on pages without a 3D connector never carry one.
+Nothing is required of your app, and the field is additive — older events just omit it.
+
+With positions attached, the dashboard's **Error heatmap (3D)** panel voxel-bins them into the same
+world-space grid as the pointer/gaze heatmaps, so you can see _where_ in the scene things break —
+errors clustering around specific geometry, a shader-heavy area, or a level region — instead of only
+_when_. It's backed by `GET /api/v1/heatmaps/errors`, which accepts optional `severity`/`category`
+filters (narrowing to engine diagnostics) and `errorKind` (narrowing to JS errors). Position reuses
+the existing promoted column shared with `camera_sample`, so it inherits the same privacy posture —
+no new PII surface.
+
 ## Changing scenes / levels (`setScene`)
 
 A single session can span multiple scenes, areas, or levels — game levels, a viewer swapping models,

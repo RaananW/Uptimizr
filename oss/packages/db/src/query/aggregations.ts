@@ -24,6 +24,7 @@ import {
 import type {
   QuerySpec,
   CameraModeOptions,
+  ErrorHeatmapOptions,
   FunnelOptions,
   FunnelStepInput,
   RangeOptions,
@@ -1384,6 +1385,77 @@ export function buildGraphicsDiagnosticCounts(
       WHERE project_id = ${pid} AND event_type = 'graphics_diagnostic'${range}${scene}${session}
       GROUP BY severity, category, backend
       ORDER BY incidents DESC
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Spatial error heatmap (issue #154): voxel-bin the world `position` of
+ * positioned `runtime_error` and `graphics_diagnostic` events into a uniform grid
+ * of `cellSize`-sized cubes, returning the busiest `limit` voxels. This reveals
+ * *where* in the scene things break — errors/crashes clustering around specific
+ * geometry, a shader-heavy area, or a level region — instead of only *when*.
+ *
+ * `position` is best-effort connector-side (the camera pose at the moment the
+ * error/diagnostic fired), so only rows that carry a full 3-vector participate
+ * (`length(position) = 3`); errors from pages with no 3D connector are naturally
+ * excluded. Reuses the already-promoted `position` column — no migration.
+ *
+ * Optional {@link ErrorHeatmapOptions} filters (severity/category/errorKind) read
+ * from the `payload` JSON, mirroring {@link buildGraphicsDiagnosticCounts}: a
+ * severity/category filter narrows to engine diagnostics, an errorKind filter
+ * narrows to JS errors. `region` drill-down and `scene`/`session` scoping compose
+ * like the other spatial heatmaps.
+ */
+export function buildErrorHeatmap(
+  projectId: string,
+  opts: RangeOptions &
+    SceneOptions &
+    SessionOptions &
+    RegionOptions &
+    ErrorHeatmapOptions & { cellSize?: number; limit?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const cellSize = bag.add("cellSize", "f64", opts.cellSize ?? 1);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const region = regionClause(bag, opts, POSITION_COLS);
+  const limit = bag.add("limit", "u32", opts.limit ?? 1000);
+  const filters: string[] = [];
+  if (opts.severity != null && opts.severity.length > 0) {
+    filters.push(
+      `${d.jsonText("payload", "severity")} = ${bag.add("severity", "string", opts.severity)}`,
+    );
+  }
+  if (opts.category != null && opts.category.length > 0) {
+    filters.push(
+      `${d.jsonText("payload", "category")} = ${bag.add("category", "string", opts.category)}`,
+    );
+  }
+  if (opts.errorKind != null && opts.errorKind.length > 0) {
+    filters.push(
+      `${d.jsonText("payload", "kind")} = ${bag.add("errorKind", "string", opts.errorKind)}`,
+    );
+  }
+  const filter = filters.length ? ` AND ${filters.join(" AND ")}` : "";
+  return {
+    query: `
+      SELECT
+        floor(position[1] / ${cellSize}) AS vx,
+        floor(position[2] / ${cellSize}) AS vy,
+        floor(position[3] / ${cellSize}) AS vz,
+        count() AS count
+      FROM events
+      WHERE project_id = ${pid}
+        AND event_type IN ('runtime_error', 'graphics_diagnostic')
+        AND length(position) = 3${range}${scene}${session}${region}${filter}
+      GROUP BY vx, vy, vz
+      ORDER BY count DESC
+      LIMIT ${limit}
     `,
     query_params: bag.values,
   };

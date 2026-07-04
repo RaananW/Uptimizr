@@ -40,6 +40,25 @@ export interface SessionOptions {
 }
 
 /**
+ * Optional filters for the spatial error heatmap (issue #154). All are additive
+ * equality filters read from the event `payload`:
+ * - `severity` / `category` scope to `graphics_diagnostic` rows (a `runtime_error`
+ *   carries neither, so setting either excludes JS errors).
+ * - `errorKind` scopes to `runtime_error` rows by their `kind`
+ *   (`error` / `unhandledrejection`); a `graphics_diagnostic` carries no `kind`,
+ *   so setting it excludes engine diagnostics.
+ * Omit all three to bin every positioned error + diagnostic together.
+ */
+export interface ErrorHeatmapOptions {
+  /** `graphics_diagnostic` severity (`info` / `warning` / `error` / `fatal`). */
+  severity?: string;
+  /** `graphics_diagnostic` category (`context-loss` / `validation` / `shader-compile` / …). */
+  category?: string;
+  /** `runtime_error` kind (`error` / `unhandledrejection`). */
+  errorKind?: string;
+}
+
+/**
  * Axis-aligned bounding box in world space, encoded as
  * `[minX, minY, minZ, maxX, maxY, maxZ]` — structurally identical to the schema
  * `Aabb`, re-declared here so the query layer has no dependency on `@uptimizr/schema`.

@@ -1,5 +1,5 @@
 import { SCHEMA_VERSION, DEFAULT_SCENE_ID, sceneIdSchema } from "@uptimizr/schema";
-import type { AnyEvent, CollectRequest, CustomPropValue } from "@uptimizr/schema";
+import type { AnyEvent, CollectRequest, CustomPropValue, Vec3 } from "@uptimizr/schema";
 
 import { EventQueue } from "./queue.js";
 import { randomId } from "./idgen.js";
@@ -91,6 +91,15 @@ export class UptimizrClient {
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private errorCount = 0;
   private lastErrorKey: string | undefined;
+  /**
+   * Best-effort camera-position source (issue #154). A connector registers this
+   * via {@link CollectorContext.setPositionProvider}; the client queries it when
+   * emitting a spatially-meaningful diagnostic (`runtime_error` /
+   * `graphics_diagnostic`) that didn't already carry a `position`, so those events
+   * gain a world location for the spatial error heatmap. Returns `undefined` when
+   * no camera can be resolved; a throwing provider is swallowed (never breaks emit).
+   */
+  private positionProvider?: () => Vec3 | undefined;
   private readonly boundVisibility = () => this.onVisibilityChange();
   private readonly boundPageHide = () => {
     void this.stop("hidden");
@@ -186,6 +195,18 @@ export class UptimizrClient {
     }
   }
 
+  /**
+   * Register a best-effort camera-position source (issue #154). Connectors that
+   * can introspect the live camera (e.g. `@uptimizr/babylon`) call this so the
+   * client can stamp a world `position` on spatially-meaningful diagnostics
+   * (`runtime_error` / `graphics_diagnostic`) that don't already carry one,
+   * powering the spatial error heatmap. Pass `undefined` to clear it (e.g. on
+   * connector teardown). Last registration wins.
+   */
+  setPositionProvider(provider: (() => Vec3 | undefined) | undefined): void {
+    this.positionProvider = provider;
+  }
+
   /** Build the envelope and queue an event. */
   emit(input: EventInput): void {
     if (!this.started || this.config.disabled) {
@@ -217,6 +238,8 @@ export class UptimizrClient {
       ...(this.pageMeta ? { pageMeta: this.pageMeta } : {}),
     } as AnyEvent;
 
+    this.enrichPosition(event);
+
     const finalEvent = this.beforeSend ? this.beforeSend(event) : event;
     if (!finalEvent) {
       return;
@@ -225,6 +248,31 @@ export class UptimizrClient {
     this.queue.enqueue(finalEvent);
     if (this.queue.size >= this.config.batchSize) {
       void this.flush();
+    }
+  }
+
+  /**
+   * Attach a best-effort camera `position` to a spatially-meaningful diagnostic
+   * (issue #154). Only `runtime_error` / `graphics_diagnostic` are enriched, and
+   * only when the event doesn't already carry a `position` and a
+   * {@link positionProvider} is registered. Runs before `beforeSend` so deployers
+   * can still redact/drop it. A missing (`undefined`) or throwing provider leaves
+   * the event untouched — enrichment must never break emission.
+   */
+  private enrichPosition(event: AnyEvent): void {
+    if (event.type !== "runtime_error" && event.type !== "graphics_diagnostic") {
+      return;
+    }
+    if (this.positionProvider === undefined || (event as { position?: Vec3 }).position) {
+      return;
+    }
+    try {
+      const position = this.positionProvider();
+      if (position) {
+        (event as { position?: Vec3 }).position = position;
+      }
+    } catch (err) {
+      this.log("positionProvider threw; emitting without position", err);
     }
   }
 
@@ -414,6 +462,7 @@ export class UptimizrClient {
       trackInput: (action, opts) => this.trackInput(action, opts),
       reportCapabilityChange: (change) => this.reportCapabilityChange(change),
       setScene: (sceneId) => this.setScene(sceneId),
+      setPositionProvider: (provider) => this.setPositionProvider(provider),
       createAggregation: (config) => this.createAggregation(config),
       now: () => this.now(),
     };

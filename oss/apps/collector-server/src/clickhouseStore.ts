@@ -39,6 +39,7 @@ import {
   buildResourcePercentiles,
   buildStabilityCounts,
   buildGraphicsDiagnosticCounts,
+  buildErrorHeatmap,
   buildRenderingTechnology,
   buildPointerHeatmap,
   buildSceneCoverage,
@@ -253,6 +254,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
         ch,
         buildGraphicsDiagnosticCounts(projectId, opts, d),
       ),
+    errorHeatmap: (projectId, opts = {}) =>
+      runClickhouseQuery<WorldHeatmapBinRow>(ch, buildErrorHeatmap(projectId, opts, d)),
     renderingTechnology: (projectId, opts = {}) =>
       runClickhouseQuery<RenderingTechnologyRow>(ch, buildRenderingTechnology(projectId, opts, d)),
     sceneCoverage: (projectId, opts = {}) =>

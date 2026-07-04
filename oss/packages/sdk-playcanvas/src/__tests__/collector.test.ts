@@ -165,6 +165,7 @@ function makeCtx(now = { value: 1000 }) {
         ...(typeof opts.pressed === "boolean" ? { pressed: opts.pressed } : {}),
       } as EventInput),
     setScene: () => {},
+    setPositionProvider: () => {},
     createAggregation: (config: AggregatorConfig) => {
       // Mirror production: snapshots flow through a real main-thread aggregator
       // whose finalized events land in the same `events` sink, so the existing

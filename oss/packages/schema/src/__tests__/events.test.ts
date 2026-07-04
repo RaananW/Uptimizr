@@ -991,13 +991,28 @@ describe("browser & runtime lifecycle events", () => {
     ).toBe(false);
   });
 
-  it("rejects runtime_error with an over-long message", () => {
+  it("validates runtime_error with an optional position (#154)", () => {
+    const parsed = anyEventSchema.safeParse({
+      ...baseEnvelope,
+      type: "runtime_error",
+      kind: "error",
+      message: "boom",
+      position: [1.5, -2, 3],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect((parsed.data as { position?: number[] }).position).toEqual([1.5, -2, 3]);
+    }
+  });
+
+  it("rejects runtime_error with a malformed position (#154)", () => {
     expect(
       anyEventSchema.safeParse({
         ...baseEnvelope,
         type: "runtime_error",
         kind: "error",
-        message: "x".repeat(1025),
+        message: "boom",
+        position: [1, 2],
       }).success,
     ).toBe(false);
   });
@@ -1134,5 +1149,31 @@ describe("graphics_diagnostic (ADR 0021 part 2)", () => {
         }).success,
       ).toBe(false);
     }
+  });
+
+  it("validates an optional camera position (#154)", () => {
+    const parsed = anyEventSchema.safeParse({
+      ...baseEnvelope,
+      type: "graphics_diagnostic",
+      severity: "error",
+      category: "shader-compile",
+      position: [4, 5, 6],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect((parsed.data as GraphicsDiagnosticEvent).position).toEqual([4, 5, 6]);
+    }
+  });
+
+  it("rejects a malformed position (#154)", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "graphics_diagnostic",
+        severity: "error",
+        category: "shader-compile",
+        position: [1, 2, "z"],
+      }).success,
+    ).toBe(false);
   });
 });

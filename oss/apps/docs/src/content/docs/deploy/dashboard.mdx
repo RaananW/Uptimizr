@@ -39,6 +39,9 @@ with `x-api-key`. The key only ever reads its own project's data.
 - **Scene retention funnel** — a canned level-retention preset: session counts flowing scene → scene
   in observed order (from `scene_change` markers), with drop-off visible per source scene and **no
   funnel steps to author** (#147).
+- **Error heatmap (3D)** — voxel-binned world position of positioned `runtime_error` +
+  `graphics_diagnostic` events against the scene proxy backdrop, so you can see _where_ in the scene
+  things break. Empty is the healthy case; only errors carrying a best-effort camera position appear.
 - **Session replay** — re-drive a recorded session inside a scene (requires raw retention; see
   below).
 
@@ -79,7 +82,7 @@ effectively one standpoint, so _Aggregate / All_ is the natural view.
 
 ## Part-popularity leaderboard panel
 
-The **Part-popularity leaderboard** (#74) ranks meshes by how often people *act on* them, and adds
+The **Part-popularity leaderboard** (#74) ranks meshes by how often people _act on_ them, and adds
 two things the plain Mesh-rankings list doesn't: a per-row **trend sparkline** (rising/falling over
 the active range) and an **input-source split** (mouse / touch / keyboard / gamepad / XR) you can
 expand per row. It reads `GET /api/v1/meshes/sources` for the source split and
@@ -92,13 +95,13 @@ signal behind the view-direction heatmap) is deliberately **not** counted, so a 
 merely look at past won't out-rank one they actually click or drag.
 
 This is an intentional divergence from `GET /api/v1/meshes/top` (and the **Mesh rankings** panel),
-which counts *every* mesh-referencing event including gaze. Use Mesh-rankings for "what's in view"
+which counts _every_ mesh-referencing event including gaze. Use Mesh-rankings for "what's in view"
 and the leaderboard for "what gets used"; the two will diverge whenever gaze-only hits exist.
 :::
 
 ## Dead-zone report panel
 
-The **Dead-zone report** (#76) surfaces the *negative space* of a walkable scene: registered proxy
+The **Dead-zone report** (#76) surfaces the _negative space_ of a walkable scene: registered proxy
 meshes that visitors' cameras **never approached**. It answers "which parts of my scene is nobody
 getting near?" — the inverse of the coverage heatmap.
 
@@ -108,7 +111,7 @@ join):
 1. **Scene coverage** — `GET /api/v1/coverage` returns the occupied **camera-position voxels** (a 1
    world-unit grid) with a visit `count` each: where the audience actually stood.
 2. **The registered scene proxy** — the per-mesh bounding boxes (AABBs) from
-   `GET /api/v1/scenes/:id/representation` (ADR 0014): the geometry that *could* be visited.
+   `GET /api/v1/scenes/:id/representation` (ADR 0014): the geometry that _could_ be visited.
 
 For each proxy mesh it sums the visit counts of every coverage voxel whose centre falls inside that
 mesh's AABB, padded outward by one cell so "standing right next to it" still counts. That sum is the
@@ -120,8 +123,8 @@ selected range.
 :::caution[It measures proximity, not attention]
 "Dead" means **no camera got physically near the mesh**, not "nobody looked at it". A visitor can
 gaze across a room at a far wall without ever walking up to it — that wall can read as dead while
-still drawing gaze. Pair the dead-zone report with the view-direction heatmap to tell *unseen* (no
-gaze) apart from *unvisited* (no approach).
+still drawing gaze. Pair the dead-zone report with the view-direction heatmap to tell _unseen_ (no
+gaze) apart from _unvisited_ (no approach).
 :::
 
 The panel needs both a **walkable/first-person** scene (so there are camera-position samples to bin)
@@ -145,7 +148,7 @@ shows the ratio (bar + percent) alongside the raw `revisits / entries` and sessi
 first.
 
 This is the coarse-grid **revisit proxy** — a deliberately cheap first cut, not true reverse-segment
-path retracing. Tune `cellSize` to your scene: a larger cell only flags returning to a broad *area*,
+path retracing. Tune `cellSize` to your scene: a larger cell only flags returning to a broad _area_,
 a smaller cell catches tighter out-and-back loops.
 
 ## Reachability report panel

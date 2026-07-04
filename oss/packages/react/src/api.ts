@@ -646,6 +646,12 @@ export interface QueryParams {
   stallMs?: number;
   /** Funnel (#78): JSON-encoded array of step predicates; supply via {@link CollectorApi.funnel}. */
   steps?: string;
+  /** Error heatmap (#154): narrow to engine diagnostics of this `graphics_diagnostic.severity`. */
+  severity?: string;
+  /** Error heatmap (#154): narrow to engine diagnostics of this `graphics_diagnostic.category`. */
+  category?: string;
+  /** Error heatmap (#154): narrow to JS errors of this `runtime_error.kind`. */
+  errorKind?: string;
 }
 
 export class ApiError extends Error {
@@ -1005,6 +1011,23 @@ export class CollectorApi {
   /** World-space (3D) gaze heatmap voxels — camera-pose surface hits (ADR 0030). */
   gazeHeatmap(params?: QueryParams): Promise<WorldHeatmapBin[]> {
     return this.get<WorldHeatmapBin[]>("api/v1/heatmaps/gaze", params).then((rows) =>
+      rows.map((r) => ({
+        vx: Number(r.vx),
+        vy: Number(r.vy),
+        vz: Number(r.vz),
+        count: Number(r.count),
+      })),
+    );
+  }
+
+  /**
+   * Spatial error heatmap (#154): voxel-binned world `position` of positioned
+   * `runtime_error` + `graphics_diagnostic` events — *where* in the scene things
+   * break. Optional `severity`/`category` narrow to engine diagnostics; `errorKind`
+   * narrows to JS errors. Reuses the world-heatmap voxel shape.
+   */
+  errorHeatmap(params?: QueryParams): Promise<WorldHeatmapBin[]> {
+    return this.get<WorldHeatmapBin[]>("api/v1/heatmaps/errors", params).then((rows) =>
       rows.map((r) => ({
         vx: Number(r.vx),
         vy: Number(r.vy),

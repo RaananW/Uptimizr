@@ -178,4 +178,23 @@ export const PARITY_EVENTS: AnyEvent[] = [
     // s2's lone perf sample sits in voxel (10,0,0) — a distinct cell from s1's.
     position: [10, 0, 0],
   }),
+  // Positioned error + engine diagnostic (#154): both carry the best-effort camera
+  // `position` at the moment they fired, so the spatial error heatmap can bin them.
+  // Placed in the same voxel (2,0,3) at cellSize 1 to prove both event types
+  // aggregate together, and both scoped to s2/arena.
+  ev("graphics_diagnostic", PARITY_T0 + 15_000, {
+    sessionId: "s2",
+    sceneId: "arena",
+    severity: "error",
+    category: "shader-compile",
+    backend: "webgl2",
+    position: [2, 0, 3],
+  }),
+  ev("runtime_error", PARITY_T0 + 16_000, {
+    sessionId: "s2",
+    sceneId: "arena",
+    kind: "error",
+    message: "boom",
+    position: [2.5, 0.4, 3.2],
+  }),
 ];

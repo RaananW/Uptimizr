@@ -77,6 +77,7 @@ function makeCtx() {
     trackInput: vi.fn(),
     reportCapabilityChange: vi.fn(),
     setScene: vi.fn(),
+    setPositionProvider: vi.fn(),
     now: () => 0,
   } as unknown as CollectorContext;
   return { ctx, emit };

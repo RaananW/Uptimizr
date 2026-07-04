@@ -161,6 +161,7 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
       { severity: "fatal", category: "device-lost", backend: "webgpu", incidents: 2 },
       { severity: "warning", category: "validation", backend: "webgl2", incidents: 5 },
     ],
+    errorHeatmap: async () => [{ vx: 2, vy: 0, vz: 3, count: 4 }],
     renderingTechnology: async () => [
       {
         api: "webgpu",
@@ -1152,6 +1153,37 @@ describe("collector app", () => {
 
     // A read API key is still required (parity with the other query endpoints).
     const noKey = await app.inject({ method: "GET", url: "/api/v1/graphics-diagnostics" });
+    expect(noKey.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("returns the spatial error heatmap, threading cellSize + payload filters (#154)", async () => {
+    const captured: { projectId: string; opts: Record<string, unknown> }[] = [];
+    const store = makeStore({
+      errorHeatmap: async (projectId, opts = {}) => {
+        captured.push({ projectId, opts: opts as Record<string, unknown> });
+        return [{ vx: 2, vy: 0, vz: 3, count: 4 }];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/errors?cellSize=1&scene=lobby&session=s1&severity=error&errorKind=error",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([{ vx: 2, vy: 0, vz: 3, count: 4 }]);
+    expect(captured[0]!.projectId).toBe("p1");
+    expect(captured[0]!.opts).toMatchObject({
+      cellSize: 1,
+      scene: "lobby",
+      session: "s1",
+      severity: "error",
+      errorKind: "error",
+    });
+
+    // A read API key is still required.
+    const noKey = await app.inject({ method: "GET", url: "/api/v1/heatmaps/errors" });
     expect(noKey.statusCode).toBe(401);
     await app.close();
   });
