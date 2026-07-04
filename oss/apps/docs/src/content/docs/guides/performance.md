@@ -80,6 +80,29 @@ Babylon-only, on by default via `capture.compileStall`. Times Babylon's main-thr
 shader/pipeline compilation span — the #1 source of first-interaction hitches — reporting `durationMs`
 and `phase`. three.js has no equivalent engine hook.
 
+## Perf-driven churn (`GET /api/v1/perf/churn`)
+
+Perf distribution tells you _how_ the scene performs; this tells you whether a stutter actually
+**cost you the session**. It correlates perf dips against early session end (#144): of the sessions
+that ended in range (`sessions`), it reports how many ended within a window of an FPS dip or a
+compile stall (`churn_sessions`), and attributes the cause into `fps_churn_sessions` /
+`stall_churn_sessions`. A session hit by both a dip and a stall is counted under each cause but only
+once in the headline total, so the cause counts can sum to more than `churn_sessions`.
+
+It's **buildable from existing telemetry** — derived from `frame_perf`, `compile_stall` and
+`session_end`, with no schema change and aggregate counts only (no per-session identifiers leave the
+query, ADR 0003). Three query params tune the correlation (all optional):
+
+| Param          | Default | Meaning                                                                |
+| -------------- | ------- | ---------------------------------------------------------------------- |
+| `windowMs`     | `30000` | How long before a session's end a perf dip still counts as correlated. |
+| `fpsThreshold` | `30`    | A `frame_perf` sample below this FPS counts as an FPS dip.             |
+| `stallMs`      | `100`   | A `compile_stall` of at least this many ms counts as a stall.          |
+
+The dashboard renders it as the **"Perf-driven churn"** panel next to the performance-distribution
+panel: a headline perf-correlated churn rate plus the FPS-dip vs. compile-stall cause split, with the
+window and thresholds exposed as viewer-tunable sliders.
+
 ## Capability changes
 
 Fallbacks (WebGPU→WebGL2), quality/LOD auto-downgrades, and device recovery are **app-reported** via

@@ -437,6 +437,20 @@ export interface JankRate {
   worst_decile_rate: number;
 }
 
+/**
+ * Perf-correlated churn (#144): of the sessions that ended in range
+ * (`sessions`), how many ended within the configured window after an FPS dip or
+ * a `compile_stall` (`churn_sessions`), with the cause attributed. A session
+ * whose window held both causes is counted in each cause column but only once in
+ * `churn_sessions`, so the cause columns can sum to more than the total.
+ */
+export interface PerfChurn {
+  sessions: number;
+  churn_sessions: number;
+  fps_churn_sessions: number;
+  stall_churn_sessions: number;
+}
+
 /** FPS segmented by device class from `session_start.device` (ADR 0028 §2). */
 export interface PerfByDevice {
   engine: string;
@@ -591,6 +605,12 @@ export interface QueryParams {
   moveThreshold?: number;
   /** FPS histogram bin width (frames per second). */
   bucket?: number;
+  /** Perf-churn (#144): correlation window before session end, in ms (default 30000). */
+  windowMs?: number;
+  /** Perf-churn (#144): a `frame_perf` sample below this FPS counts as a dip (default 30). */
+  fpsThreshold?: number;
+  /** Perf-churn (#144): a `compile_stall` of at least this many ms counts (default 100). */
+  stallMs?: number;
   /** Funnel (#78): JSON-encoded array of step predicates; supply via {@link CollectorApi.funnel}. */
   steps?: string;
 }
@@ -812,6 +832,19 @@ export class CollectorApi {
         total_long_frames: Number(r.total_long_frames ?? 0),
         median_rate: Number(r.median_rate ?? 0),
         worst_decile_rate: Number(r.worst_decile_rate ?? 0),
+      };
+    });
+  }
+
+  /** Perf-correlated churn: ended sessions that followed an FPS dip / compile stall (#144). */
+  perfChurn(params?: QueryParams): Promise<PerfChurn> {
+    return this.get<Record<string, unknown>[]>("api/v1/perf/churn", params).then((rows) => {
+      const r = rows[0] ?? {};
+      return {
+        sessions: Number(r.sessions ?? 0),
+        churn_sessions: Number(r.churn_sessions ?? 0),
+        fps_churn_sessions: Number(r.fps_churn_sessions ?? 0),
+        stall_churn_sessions: Number(r.stall_churn_sessions ?? 0),
       };
     });
   }

@@ -122,6 +122,18 @@ const fpsHistogramQueryParams = heatmapQueryParams.extend({
   bucket: z.coerce.number().int().positive().max(240).optional(),
 });
 
+/**
+ * Perf-churn params (#144): range + scene/session filters plus the correlation
+ * thresholds. `windowMs` is capped at 24h so the window stays a "shortly after"
+ * signal; `fpsThreshold` at 240 (FPS) and `stallMs` at 60s bound the dip
+ * definition. All optional — the builder supplies defaults (30s / 30 FPS / 100ms).
+ */
+const perfChurnQueryParams = heatmapQueryParams.extend({
+  windowMs: z.coerce.number().int().positive().max(86_400_000).optional(),
+  fpsThreshold: z.coerce.number().positive().max(240).optional(),
+  stallMs: z.coerce.number().nonnegative().max(60_000).optional(),
+});
+
 /** Camera direction/position heatmap params: bins + scene/session + camera-mode. */
 const cameraHeatmapQueryParams = heatmapQueryParams.extend({ cameraMode: cameraModeFilter });
 
@@ -835,6 +847,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.jankRate(projectId, req.query);
+    },
+  );
+
+  // Perf-correlated churn (#144) — of the sessions that ended in range, how many
+  // ended within `windowMs` of an FPS dip or a compile_stall, with the cause
+  // attributed. Does a stutter actually cost sessions?
+  r.get(
+    "/api/v1/perf/churn",
+    { schema: { querystring: perfChurnQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.perfChurn(projectId, req.query);
     },
   );
 

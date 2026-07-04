@@ -118,6 +118,7 @@ export function createMemoryStore({
     fpsHistogram: async () => [],
     frameTimePercentiles: async () => [],
     jankRate: async () => [],
+    perfChurn: async () => [],
     perfByDevice: async () => [],
     perfByScene: async () => [],
     resourcePercentiles: async () => [],

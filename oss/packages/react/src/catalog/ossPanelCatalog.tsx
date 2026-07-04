@@ -32,6 +32,7 @@ import type {
   MeshInteractionKind,
   MeshSourceCount,
   MeshTrendPoint,
+  PerfChurn,
   PerfDistribution,
   PerfHeatmapVoxel,
   PositionBin,
@@ -94,6 +95,12 @@ import {
   PERF_DISTRIBUTION_SUBTITLE,
   PERF_DISTRIBUTION_HELP,
 } from "./views/PerfDistribution";
+import {
+  PerfChurnView,
+  PERF_CHURN_TITLE,
+  PERF_CHURN_SUBTITLE,
+  PERF_CHURN_HELP,
+} from "./views/PerfChurn";
 import {
   RenderScaleTruthView,
   RENDER_SCALE_TITLE,
@@ -299,6 +306,44 @@ const TOP_MESHES_SETTINGS = {
     min: 5,
     max: 100,
     step: 5,
+  },
+} as const satisfies PanelSettings;
+
+/**
+ * Perf-churn correlation settings (#144, ADR 0039): the window and dip thresholds
+ * that define "ended shortly after a perf dip", exposed as viewer-tunable sliders
+ * so a viewer can tighten the window or the FPS/stall bar without editing the
+ * panel. Each feeds the `perfChurn` read, re-running the panel's `load`.
+ */
+const PERF_CHURN_SETTINGS = {
+  windowSec: {
+    type: "number",
+    label: "Window",
+    help: "How long before a session's end a perf dip still counts as correlated.",
+    default: 30,
+    min: 5,
+    max: 300,
+    step: 5,
+    unit: "s",
+  },
+  fpsThreshold: {
+    type: "number",
+    label: "FPS dip below",
+    help: "A frame_perf sample below this FPS counts as a dip.",
+    default: 30,
+    min: 10,
+    max: 90,
+    step: 5,
+  },
+  stallMs: {
+    type: "number",
+    label: "Compile stall ≥",
+    help: "A compile_stall of at least this many milliseconds counts.",
+    default: 100,
+    min: 0,
+    max: 2000,
+    step: 50,
+    unit: "ms",
   },
 } as const satisfies PanelSettings;
 
@@ -607,6 +652,31 @@ export const viewCoveragePanel = definePanel<ViewCoverageBin[]>({
 });
 
 /**
+ * Perf-driven churn overlay (#144) — React/HTML, half width. Correlates FPS dips
+ * / compile stalls against early session end and reports a perf-correlated churn
+ * rate with its cause split, alongside the perf-distribution panel. Buildable-now:
+ * derived from existing `frame_perf`, `compile_stall`, `session_end` events via
+ * the `perfChurn` read — no schema change.
+ */
+export const perfChurnPanel = definePanel<PerfChurn, typeof PERF_CHURN_SETTINGS>({
+  id: "perf-churn",
+  title: PERF_CHURN_TITLE,
+  subtitle: PERF_CHURN_SUBTITLE,
+  help: PERF_CHURN_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  settings: PERF_CHURN_SETTINGS,
+  load: (ctx) =>
+    ctx.api.perfChurn({
+      ...scoped(ctx),
+      windowMs: ctx.settings.windowSec * 1000,
+      fpsThreshold: ctx.settings.fpsThreshold,
+      stallMs: ctx.settings.stallMs,
+    }),
+  render: ({ data }) => <PerfChurnView churn={data} />,
+});
+
+/**
  * Render-scale truth (#71, ADR 0021) — React/HTML stat block, half width. FPS
  * paired with the resolution the engine actually rendered at, flagging "good FPS
  * at a low render scale". A single aggregate row, so no client-only Babylon.
@@ -893,6 +963,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   inputModalityPanel,
   renderScalePanel,
   perfDistributionPanel,
+  perfChurnPanel,
   worldHeatmapPanel,
   perfHeatmapPanel,
   navigationMixPanel,

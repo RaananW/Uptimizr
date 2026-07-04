@@ -130,6 +130,9 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
     jankRate: async () => [
       { sessions: 3, total_long_frames: 14, median_rate: 2, worst_decile_rate: 5 },
     ],
+    perfChurn: async () => [
+      { sessions: 10, churn_sessions: 3, fps_churn_sessions: 2, stall_churn_sessions: 1 },
+    ],
     perfByDevice: async () => [
       {
         engine: "webgpu",
@@ -1030,6 +1033,44 @@ describe("collector app", () => {
     expect(jank.json()).toEqual([
       { sessions: 3, total_long_frames: 14, median_rate: 2, worst_decile_rate: 5 },
     ]);
+    await app.close();
+  });
+
+  it("returns perf-correlated churn for a valid API key (#144)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/perf/churn",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      { sessions: 10, churn_sessions: 3, fps_churn_sessions: 2, stall_churn_sessions: 1 },
+    ]);
+    await app.close();
+  });
+
+  it("forwards the churn thresholds to the perf-churn store call (#144)", async () => {
+    let received: unknown;
+    const store = makeStore({
+      perfChurn: async (_projectId, opts) => {
+        received = opts;
+        return [];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/perf/churn?windowMs=60000&fpsThreshold=24&stallMs=150&scene=lobby",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received).toMatchObject({
+      windowMs: 60000,
+      fpsThreshold: 24,
+      stallMs: 150,
+      scene: "lobby",
+    });
     await app.close();
   });
 
