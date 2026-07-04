@@ -23,6 +23,7 @@ import type {
   MeshTrendPointRow,
   InputActionCountRow,
   PositionBinRow,
+  PerfHeatmapVoxelRow,
   RageClickRow,
   NavigationStatsRow,
   XrRotationRateRow,
@@ -401,6 +402,15 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions & { cellSize?: number; limit?: number },
   ): Promise<CoverageVoxelRow[]>;
+  /**
+   * Spatial FPS heatmap (#145): `frame_perf` samples voxel-binned by their captured
+   * camera position, each cell reporting its sample count, mean FPS, and worst FPS.
+   * The spatial complement to the time-bucketed perf distribution.
+   */
+  perfHeatmap(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions & { cellSize?: number; limit?: number },
+  ): Promise<PerfHeatmapVoxelRow[]>;
   /**
    * Camera distance / zoom distribution (derived, scene-metrics §B): histogram of
    * camera-to-`center` distance, bucketed by `bucketSize` world units.

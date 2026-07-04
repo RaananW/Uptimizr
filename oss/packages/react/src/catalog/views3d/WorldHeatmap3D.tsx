@@ -36,6 +36,14 @@ interface WorldHeatmap3DViewProps {
    * spots and overall coverage aren't mistaken for the whole picture.
    */
   totals?: { cells: number; hits: number };
+  /**
+   * Optional per-voxel hover labels, indexed to match `voxels` (#145). When
+   * supplied, each marker becomes pickable and hovering it shows the label — used
+   * by the perf heatmap to surface the honest FPS behind each cell's heat, since
+   * the heat channel there encodes "slowness" rather than a raw count. Omit it
+   * (the default) for the pointer/gaze heatmaps, which stay non-pickable.
+   */
+  voxelLabels?: (string | null)[];
 }
 
 /**
@@ -59,6 +67,7 @@ export function WorldHeatmap3DView({
   legendNote = "Each marker is a voxel where the pointer hit your scene. Color & size scale with hits, normalized to the 95th-percentile cell so a few hotspots don't wash out the rest.",
   emptyLabel = "No 3D hit-points in range.",
   totals,
+  voxelLabels,
 }: WorldHeatmap3DViewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraRef = useRef<OrbitFocusCamera | null>(null);
@@ -217,6 +226,14 @@ export function WorldHeatmap3DView({
           mat.diffuseColor = new Color3(1, 1, 1);
           mat.specularColor = new Color3(0, 0, 0);
           marker.material = mat;
+          // Per-voxel hover labels (#145): opt-in. When the host supplies labels
+          // (the perf heatmap), make the markers pickable so hovering names the
+          // cell's honest metric; otherwise they stay non-pickable as before.
+          if (voxelLabels) {
+            marker.isPickable = true;
+            marker.thinInstanceEnablePicking = true;
+            marker.metadata = { hoverLabels: voxelLabels };
+          }
 
           const n = voxels.length;
           const matrices = new Float32Array(n * 16);
@@ -309,7 +326,7 @@ export function WorldHeatmap3DView({
       disposed = true;
       cleanup?.();
     };
-  }, [voxels, cellSize, proxyMeshes, markerShape]);
+  }, [voxels, cellSize, proxyMeshes, markerShape, voxelLabels]);
 
   // ADR 0040 §3: when the voxel list is a truncated top-N slice, surface the true
   // totals so cold spots / overall coverage read correctly. Number truncation is

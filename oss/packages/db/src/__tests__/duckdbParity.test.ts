@@ -76,6 +76,7 @@ describe("duckdb parity (vs golden)", () => {
       "timeseries",
       "eventTypeCounts",
       "sceneCoverage",
+      "perfHeatmap",
       "cameraDistance",
       "navigationStats",
       "xrRotationRate",

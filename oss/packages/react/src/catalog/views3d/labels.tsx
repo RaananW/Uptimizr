@@ -16,6 +16,10 @@ export const WORLD_HEATMAP_TITLE = "World heatmap (3D)";
 export const WORLD_HEATMAP_SUBTITLE =
   "Pointer hit-points voxel-binned in world space — drag to orbit, +/- to zoom, double-click to focus";
 
+export const PERF_HEATMAP_TITLE = "Performance heatmap (3D)";
+export const PERF_HEATMAP_SUBTITLE =
+  "Where FPS is bad in your scene — frame_perf samples voxel-binned by camera position; hot = slow. Drag to orbit, +/- to zoom, double-click to focus";
+
 export const GAZE_CLICK_TITLE = "Gaze vs. click divergence";
 export const GAZE_CLICK_SUBTITLE =
   "Where viewers look (gaze) vs. where they act (clicks), voxel-binned in world space — double-click to focus";

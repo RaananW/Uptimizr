@@ -123,6 +123,7 @@ export function createMemoryStore({
     graphicsDiagnosticCounts: async () => [],
     renderingTechnology: async () => [],
     sceneCoverage: async () => [],
+    perfHeatmap: async () => [],
     cameraDistance: async () => [],
     navigationStats: async () => [],
     xrRotationRate: async () => [],

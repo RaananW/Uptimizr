@@ -116,6 +116,7 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "timeseries",
       "eventTypeCounts",
       "sceneCoverage",
+      "perfHeatmap",
       "cameraDistance",
       "navigationStats",
       "xrRotationRate",

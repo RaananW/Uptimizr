@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { vec3Schema } from "../primitives.js";
 import { defineEvent } from "./defineEvent.js";
 
 /**
@@ -29,5 +30,14 @@ export const framePerfSchema = defineEvent("frame_perf", {
   dpr: z.number().positive().optional(),
   /** Engine render scale actually used (e.g. Babylon `hardwareScalingLevel` inverse); `1` = native. */
   renderScale: z.number().positive().optional(),
+  /**
+   * Camera world position `[x, y, z]` at the moment of this perf sample, when the
+   * connector captures it (#145). Optional and backward-compatible: it lets FPS be
+   * voxel-binned *spatially* ("FPS is bad in the boss room"), not only time-bucketed.
+   * Populated by the connector from the same camera as `camera_sample`, so it needs
+   * no separate stream and no nearest-in-time join. Stored in the already-promoted
+   * generic `position` column — no migration.
+   */
+  position: vec3Schema.optional(),
 });
 export type FramePerfEvent = z.infer<typeof framePerfSchema>;

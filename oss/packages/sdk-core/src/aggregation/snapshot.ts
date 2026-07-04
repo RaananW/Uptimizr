@@ -51,6 +51,12 @@ export interface PerfSnapshot {
   jankFrameMs: number;
   dpr?: number;
   renderScale?: number;
+  /**
+   * Camera world position at sample time, when the connector captures it (#145).
+   * Threaded straight onto the emitted `frame_perf` so FPS can be voxel-binned
+   * spatially. Omitted when no camera is resolvable (e.g. headless perf capture).
+   */
+  position?: Vec3;
 }
 
 /**

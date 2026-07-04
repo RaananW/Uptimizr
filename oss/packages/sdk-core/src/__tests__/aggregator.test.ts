@@ -100,6 +100,26 @@ describe("aggregator: perf channel", () => {
     expect(e).not.toHaveProperty("longFrames");
   });
 
+  it("threads an optional camera position onto the frame_perf event (#145)", () => {
+    const { agg, events } = collect();
+    agg.ingest({
+      channel: "perf",
+      frameTimes: new Float32Array(0),
+      fps: 45,
+      jankFrameMs: 50,
+      position: [1.5, 0, -3],
+    });
+    const e = events[0] as Record<string, unknown>;
+    expect(e.position).toEqual([1.5, 0, -3]);
+    expectValid(events[0]!);
+  });
+
+  it("omits position when the perf snapshot carries none", () => {
+    const { agg, events } = collect();
+    agg.ingest({ channel: "perf", frameTimes: new Float32Array(0), fps: 60, jankFrameMs: 50 });
+    expect(events[0] as Record<string, unknown>).not.toHaveProperty("position");
+  });
+
   it("suppresses idle FPS samples within the threshold but always emits the first", () => {
     const events: EventInput[] = [];
     const agg = createAggregator({

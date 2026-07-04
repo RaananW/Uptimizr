@@ -12,17 +12,32 @@ The perf channel samples on a slow timer (default ≈0.5 Hz; tune via
 [`sampling.perf`](/docs/guides/configuration/#capture-fidelity-sampling--preferred)). Beyond
 `fps` / `frameTimeMs` / `drawCalls`, each sample reports percentiles and resolution over the window:
 
-| Field                              | Meaning                                                                 |
-| ---------------------------------- | ----------------------------------------------------------------------- |
-| `frameTimeP95Ms`, `frameTimeP99Ms` | 95th/99th-percentile frame time over the window (jank tail).            |
-| `longFrames`                       | Count of frames slower than `jankFrameMs` (default `50`) in the window. |
-| `dpr`                              | Device pixel ratio.                                                     |
-| `renderScale`                      | Engine hardware-scaling factor (`1` = native, `<1` = downscaled).       |
+| Field                              | Meaning                                                                                             |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `frameTimeP95Ms`, `frameTimeP99Ms` | 95th/99th-percentile frame time over the window (jank tail).                                        |
+| `longFrames`                       | Count of frames slower than `jankFrameMs` (default `50`) in the window.                             |
+| `dpr`                              | Device pixel ratio.                                                                                 |
+| `renderScale`                      | Engine hardware-scaling factor (`1` = native, `<1` = downscaled).                                   |
+| `position`                         | Optional `[x, y, z]` camera world-position at the sample. Powers the **spatial FPS heatmap** below. |
 
 A steady FPS is meaningful telemetry, so the perf channel reports continuously by default. To dedupe a
 stable frame rate, set `suppressIdlePerfSamples: true` (and tune `perfFpsThreshold`). Read the summary
 from `GET /api/v1/perf`. `asset_load` events additionally carry an optional `ttiMs` alongside
 `loadMs` / `ttffMs`.
+
+### Spatial FPS heatmap — _where_ FPS drops
+
+`frame_perf` samples optionally carry the camera **`position`** at the moment they're taken, which
+lets the collector answer _where_ your scene runs slow — not just _when_. The **Babylon** connector
+fills `position` automatically from the tracked camera; other connectors can set it on the event they
+emit. It's fully backward-compatible: it reuses the same promoted `position` column as the other
+spatial events (no migration), and older SDKs that never send it simply don't appear in the map.
+
+Read the binned result from `GET /api/v1/heatmaps/perf` — it reuses the world heatmap's voxel grid and
+`cellSize` params and returns `vx,vy,vz,samples,avg_fps,min_fps` per cell, ordered `avg_fps ASC` so the
+jankiest voxels survive truncation. The dashboard renders it as the **Performance heatmap (3D)** panel:
+hot = slow (each voxel's colour/size scales with slowness so your worst spots stand out), and hovering a
+cell shows its average/min FPS and sample count.
 
 ### FPS by device, browser & OS
 

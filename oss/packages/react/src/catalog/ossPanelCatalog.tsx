@@ -32,6 +32,7 @@ import type {
   MeshSourceCount,
   MeshTrendPoint,
   PerfDistribution,
+  PerfHeatmapVoxel,
   PositionBin,
   QueryParams,
   RenderScaleTruth as RenderScaleTruthData,
@@ -113,6 +114,8 @@ import {
   CAMERA_DOME_SUBTITLE,
   WORLD_HEATMAP_TITLE,
   WORLD_HEATMAP_SUBTITLE,
+  PERF_HEATMAP_TITLE,
+  PERF_HEATMAP_SUBTITLE,
   GAZE_CLICK_TITLE,
   GAZE_CLICK_SUBTITLE,
   FLOW_SANKEY_TITLE,
@@ -220,6 +223,19 @@ const WORLD_HEATMAP_SETTINGS = {
     type: "number",
     label: "Voxel size",
     help: "World-space voxel size for binning pointer hits. Larger voxels smooth the heat; smaller ones sharpen spatial detail.",
+    default: WORLD_CELL_SIZE,
+    min: 0.1,
+    max: 2,
+    step: 0.1,
+    unit: "m",
+  },
+} as const satisfies PanelSettings;
+
+const PERF_HEATMAP_SETTINGS = {
+  cellSize: {
+    type: "number",
+    label: "Voxel size",
+    help: "World-space voxel size for binning frame_perf samples by camera position. Larger voxels smooth the map; smaller ones sharpen where FPS drops.",
     default: WORLD_CELL_SIZE,
     min: 0.1,
     max: 2,
@@ -591,6 +607,72 @@ export const worldHeatmapPanel = definePanel<WorldHeatmapData, typeof WORLD_HEAT
   ),
 });
 
+/** Perf (FPS) heatmap data: the raw perf voxels + the scene-proxy backdrop. */
+interface PerfHeatmapData {
+  voxels: PerfHeatmapVoxel[];
+  proxyMeshes: SceneProxyMesh[];
+}
+
+/**
+ * Performance heatmap (3D) — where FPS is bad in the scene (#145). `frame_perf`
+ * samples are voxel-binned by the camera position captured at each sample, then
+ * re-expressed for the shared {@link WorldHeatmap3DView}: the heat channel encodes
+ * *slowness* (`(maxAvgFps + 1) - avgFps`) so the slowest cells read hottest and
+ * biggest while every sampled voxel stays visible. Because the heat is a derived
+ * "slowness" score rather than a raw count, each marker also carries an honest
+ * per-voxel label (avg / min fps + sample count) surfaced on hover. Client-only
+ * (Babylon loads in the browser); the scene proxy is resolved alongside so the
+ * backdrop tracks the active scene filter (ADR 0014).
+ */
+export const perfHeatmapPanel = definePanel<PerfHeatmapData, typeof PERF_HEATMAP_SETTINGS>({
+  id: "perf-heatmap-3d",
+  title: PERF_HEATMAP_TITLE,
+  subtitle: PERF_HEATMAP_SUBTITLE,
+  span: 2,
+  surfaces: ["overview", "session"],
+  clientOnly: true,
+  settings: PERF_HEATMAP_SETTINGS,
+  load: async (ctx) => {
+    const [voxels, proxyMeshes] = await Promise.all([
+      ctx.api.perfHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
+      resolveProxyMeshes(ctx),
+    ]);
+    return { voxels, proxyMeshes };
+  },
+  render: ({ data, ctx }) => {
+    // Re-express FPS as a "slowness" heat: slowest cell → hottest/biggest, and
+    // every sampled voxel keeps a value ≥ 1 so nothing drops out of the render.
+    const maxAvgFps = data.voxels.reduce((m, v) => Math.max(m, v.avgFps), 0);
+    const heatVoxels: WorldHeatmapBin[] = data.voxels.map((v) => ({
+      vx: v.vx,
+      vy: v.vy,
+      vz: v.vz,
+      count: maxAvgFps + 1 - v.avgFps,
+    }));
+    const voxelLabels = data.voxels.map(
+      (v) =>
+        `${Math.round(v.avgFps)} fps avg · ${Math.round(v.minFps)} fps min · ${v.samples} sample${
+          v.samples === 1 ? "" : "s"
+        }`,
+    );
+    return (
+      <Lazy3D>
+        <WorldHeatmap3DLazy
+          voxels={heatVoxels}
+          cellSize={ctx.settings.cellSize}
+          proxyMeshes={data.proxyMeshes}
+          voxelLabels={voxelLabels}
+          legendTitle="FPS (slowest = hottest)"
+          legendLow="smooth"
+          legendHigh="janky"
+          legendNote="Each marker is a voxel where frame_perf was sampled, placed at the camera position. Color & size scale with slowness (lower FPS = hotter/bigger), so your worst-performing spots stand out. Hover a cell for its average/min FPS and sample count."
+          emptyLabel="No frame_perf samples with position in range. Position capture is opt-in — update your SDK to record where FPS drops."
+        />
+      </Lazy3D>
+    );
+  },
+});
+
 /**
  * Navigation-style mix — React/HTML breakdown, half width. Orbit vs. pan vs.
  * dolly vs. zoom vs. roll vs. fly share of deliberate camera navigation, plus
@@ -734,6 +816,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   renderScalePanel,
   perfDistributionPanel,
   worldHeatmapPanel,
+  perfHeatmapPanel,
   navigationMixPanel,
   xrLocomotionComfortPanel,
   deadZonePanel,

@@ -509,6 +509,21 @@ export interface CoverageVoxelRow {
   count: number;
 }
 
+/**
+ * One voxel of the spatial FPS heatmap (#145): `frame_perf` samples voxel-binned by
+ * their captured camera `position` into `cellSize`-sized cubes. `samples` is the
+ * `frame_perf` sample count in the cell, `avg_fps` its mean FPS, and `min_fps` its
+ * worst single sample — so the viewer can paint "where FPS is bad" in world space.
+ */
+export interface PerfHeatmapVoxelRow {
+  vx: number;
+  vy: number;
+  vz: number;
+  samples: number;
+  avg_fps: number;
+  min_fps: number;
+}
+
 /** One distance-histogram bucket: `bucket * bucketSize` world units from center. */
 export interface CameraDistanceBucketRow {
   bucket: number;

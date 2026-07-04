@@ -55,6 +55,7 @@ import {
   buildRenderingTechnology,
   buildPointerHeatmap,
   buildSceneCoverage,
+  buildPerfHeatmap,
   buildSessionTrajectory,
   buildAggregateTrajectories,
   buildTimeseries,
@@ -690,6 +691,18 @@ export const PARITY_CASES: readonly ParityCase[] = [
     golden: [
       { vx: 0, vy: 0, vz: 0, count: 2 },
       { vx: 10, vy: 0, vz: 0, count: 1 },
+    ],
+  },
+  {
+    name: "perfHeatmap",
+    build: (d) => buildPerfHeatmap(PID, { ...PARITY_RANGE, cellSize: 1 }, d),
+    sortKeys: ["vx", "vy", "vz"],
+    // frame_perf positions: s1 two samples fps 60 & 30 at [0,0,0]; s2 one sample
+    // fps 45 at [10,0,0]. Voxel-binned at size 1: cell (0,0,0) has 2 samples with
+    // avg 45 / min 30; cell (10,0,0) has 1 sample with avg 45 / min 45.
+    golden: [
+      { vx: 0, vy: 0, vz: 0, samples: 2, avg_fps: 45, min_fps: 30 },
+      { vx: 10, vy: 0, vz: 0, samples: 1, avg_fps: 45, min_fps: 45 },
     ],
   },
   {

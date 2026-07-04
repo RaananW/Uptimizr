@@ -106,6 +106,9 @@ export const PARITY_EVENTS: AnyEvent[] = [
     longFrames: 1,
     dpr: 2,
     renderScale: 1,
+    // Spatial FPS (#145): perf samples carry the camera position. Both s1 samples
+    // sit in voxel (0,0,0) at cellSize 1, so that cell averages 60/30 → 45 fps.
+    position: [0, 0, 0],
   }),
   ev("frame_perf", PARITY_T0 + 6_000, {
     fps: 30,
@@ -114,6 +117,7 @@ export const PARITY_EVENTS: AnyEvent[] = [
     longFrames: 5,
     dpr: 2,
     renderScale: 0.8,
+    position: [0, 0, 0],
   }),
   // Two bucketed mesh_visibility summaries (#37): dwell on "box" and "sphere".
   ev("mesh_visibility", PARITY_T0 + 7_000, {
@@ -171,5 +175,7 @@ export const PARITY_EVENTS: AnyEvent[] = [
     longFrames: 2,
     dpr: 1,
     renderScale: 1,
+    // s2's lone perf sample sits in voxel (10,0,0) — a distinct cell from s1's.
+    position: [10, 0, 0],
   }),
 ];

@@ -36,6 +36,7 @@ import {
   buildRenderingTechnology,
   buildPointerHeatmap,
   buildSceneCoverage,
+  buildPerfHeatmap,
   buildSessionTrajectory,
   buildAggregateTrajectories,
   buildRenderScaleTruth,
@@ -65,6 +66,7 @@ import {
   type CameraDistanceBucketRow,
   type ClickGazeRayRow,
   type CoverageVoxelRow,
+  type PerfHeatmapVoxelRow,
   type DeadClickRow,
   type RageClickRow,
   type HoverDwellRow,
@@ -256,6 +258,8 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       ),
     sceneCoverage: (projectId, opts = {}) =>
       runDuckdbQuery<CoverageVoxelRow>(db, buildSceneCoverage(projectId, opts, duckdbDialect)),
+    perfHeatmap: (projectId, opts = {}) =>
+      runDuckdbQuery<PerfHeatmapVoxelRow>(db, buildPerfHeatmap(projectId, opts, duckdbDialect)),
     cameraDistance: (projectId, opts = {}) =>
       runDuckdbQuery<CameraDistanceBucketRow>(
         db,

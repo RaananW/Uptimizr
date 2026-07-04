@@ -539,6 +539,10 @@ describe("babylonCollector", () => {
 
     vi.advanceTimersByTime(2000);
     expect(events.some((e) => e.type === "frame_perf")).toBe(true);
+    // Spatial FPS (#145): the perf sample is tagged with the tracked camera's
+    // world position (the mock camera's globalPosition), so FPS can be voxel-binned.
+    const perf = events.find((e) => e.type === "frame_perf") as Record<string, unknown>;
+    expect(perf.position).toEqual([1, 2, 3]);
 
     handle.stop();
     const before = events.length;

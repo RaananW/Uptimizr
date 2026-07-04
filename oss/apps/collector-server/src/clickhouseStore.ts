@@ -36,6 +36,7 @@ import {
   buildRenderingTechnology,
   buildPointerHeatmap,
   buildSceneCoverage,
+  buildPerfHeatmap,
   buildSessionTrajectory,
   buildAggregateTrajectories,
   buildRenderScaleTruth,
@@ -53,6 +54,7 @@ import {
   type CameraDistanceBucketRow,
   type ClickGazeRayRow,
   type CoverageVoxelRow,
+  type PerfHeatmapVoxelRow,
   type DeadClickRow,
   type RageClickRow,
   type HoverDwellRow,
@@ -232,6 +234,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<RenderingTechnologyRow>(ch, buildRenderingTechnology(projectId, opts, d)),
     sceneCoverage: (projectId, opts = {}) =>
       runClickhouseQuery<CoverageVoxelRow>(ch, buildSceneCoverage(projectId, opts, d)),
+    perfHeatmap: (projectId, opts = {}) =>
+      runClickhouseQuery<PerfHeatmapVoxelRow>(ch, buildPerfHeatmap(projectId, opts, d)),
     cameraDistance: (projectId, opts = {}) =>
       runClickhouseQuery<CameraDistanceBucketRow>(ch, buildCameraDistance(projectId, opts, d)),
     navigationStats: (projectId, opts = {}) =>

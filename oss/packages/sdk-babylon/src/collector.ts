@@ -1020,6 +1020,14 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
           engine as unknown as { getHardwareScalingLevel?: () => number }
         ).getHardwareScalingLevel?.();
         const renderScale = typeof scaling === "number" && scaling > 0 ? 1 / scaling : undefined;
+        // Spatial FPS (#145): tag the sample with the tracked camera's world
+        // position so perf can be voxel-binned in space, not just time. Read from
+        // the same camera as camera_sample (no separate stream). Omitted when no
+        // camera resolves (e.g. headless perf capture).
+        const perfCam = resolveTrackedCamera(scene, explicitCamera);
+        const position = perfCam
+          ? toVec3((perfCam as unknown as CameraView).globalPosition)
+          : undefined;
         snapshot({
           channel: "perf",
           frameTimes: frameTimeArray,
@@ -1027,6 +1035,7 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
           jankFrameMs,
           ...(typeof dpr === "number" && dpr > 0 ? { dpr } : {}),
           ...(renderScale !== undefined ? { renderScale } : {}),
+          ...(position ? { position } : {}),
         });
       };
 
