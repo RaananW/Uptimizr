@@ -43,6 +43,7 @@ import {
   buildErrorHeatmap,
   buildRenderingTechnology,
   buildPointerHeatmap,
+  buildMeshUvHeatmap,
   buildSceneCoverage,
   buildPerfHeatmap,
   buildSessionTrajectory,
@@ -160,6 +161,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<SessionSummaryRow>(ch, buildListSessions(projectId, opts, d)),
     pointerHeatmap: (projectId, opts = {}) =>
       runClickhouseQuery<HeatmapBinRow>(ch, buildPointerHeatmap(projectId, opts, d)),
+    meshUvHeatmap: (projectId, opts = {}) =>
+      runClickhouseQuery<HeatmapBinRow>(ch, buildMeshUvHeatmap(projectId, opts, d)),
     worldHeatmap: (projectId, opts = {}) =>
       runClickhouseQuery<WorldHeatmapBinRow>(ch, buildWorldHeatmap(projectId, opts, d)),
     worldHeatmapStats: async (projectId, opts = {}) => {

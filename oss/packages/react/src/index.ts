@@ -101,6 +101,7 @@ export {
   meshLeaderboardPanel,
   blindSpotsPanel,
   pointerHeatmapPanel,
+  meshUvHeatmapPanel,
   cameraDomePanel,
   viewCoveragePanel,
   floorPlanPanel,

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineEvent } from "./defineEvent.js";
-import { normalized2Schema, vec3Schema } from "../primitives.js";
+import { normalized2Schema, vec2Schema, vec3Schema } from "../primitives.js";
 import { inputSourceShape } from "./inputSource.js";
 
 /**
@@ -18,6 +18,14 @@ export const pointerClickSchema = defineEvent("pointer_click", {
   hitPoint: vec3Schema.optional(),
   /** Name of the mesh the pointer ray hit, if any. */
   hitMesh: z.string().optional(),
+  /**
+   * Texture-space UV `[u, v]` at the ray hit on `hitMesh`, when the connector can
+   * resolve it (e.g. Babylon `PickingInfo.getTextureCoordinates()`). Drives the
+   * per-mesh UV-space heatmap — where on an object's own surface attention lands,
+   * independent of where the object sits in the scene. Not clamped to `[0, 1]`:
+   * UVs can fall outside that range under texture wrapping/tiling.
+   */
+  uv: vec2Schema.optional(),
   /** Mouse/pointer button: 0 = primary, 1 = middle, 2 = secondary. */
   button: z.number().int().min(0).optional(),
   ...inputSourceShape,

@@ -51,6 +51,7 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
       },
     ],
     pointerHeatmap: async () => [{ gx: 1, gy: 2, count: 5 }],
+    meshUvHeatmap: async () => [{ gx: 1, gy: 2, count: 5 }],
     worldHeatmap: async () => [{ vx: 1, vy: 0, vz: -2, count: 7 }],
     worldHeatmapStats: async () => ({ cells: 12, hits: 34 }),
     gazeHeatmap: async () => [{ vx: 3, vy: 1, vz: -1, count: 6 }],
@@ -1499,6 +1500,37 @@ describe("collector app", () => {
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/heatmaps/pointer?source=telepathy",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("forwards the mesh + bins filters to the mesh-uv heatmap store call (#149)", async () => {
+    let received: unknown;
+    const store = makeStore({
+      meshUvHeatmap: async (_projectId, opts) => {
+        received = opts;
+        return [{ gx: 3, gy: 4, count: 8 }];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/mesh-uv?mesh=ProductBox&bins=16",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([{ gx: 3, gy: 4, count: 8 }]);
+    expect(received).toMatchObject({ mesh: "ProductBox", bins: 16 });
+    await app.close();
+  });
+
+  it("rejects a mesh-uv heatmap request without the required mesh param (#149)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/mesh-uv?bins=16",
       headers: { "x-api-key": "valid-key" },
     });
     expect(res.statusCode).toBe(400);

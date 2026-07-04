@@ -74,6 +74,12 @@ export const duckdbDialect: Dialect = {
   jsonInt(column, ...path) {
     return `TRY_CAST(json_extract_string(${column}, '$.${path.join(".")}') AS BIGINT)`;
   },
+  jsonFloat(column, ...path) {
+    // Numeric components index a JSON array (`$.uv[0]`); string components are
+    // object keys (`$.a.b`). DuckDB JSON paths accept both forms.
+    const p = path.map((k) => (/^\d+$/.test(k) ? `[${k}]` : `.${k}`)).join("");
+    return `TRY_CAST(json_extract_string(${column}, '$${p}') AS DOUBLE)`;
+  },
   // Rollup tables are exposed as DuckDB views (see migrations) that pre-group by
   // `(project_id, …, day)`, so each read GROUP BY yields exactly one source row
   // per group. The "merge" of a single precomputed value is the value itself.

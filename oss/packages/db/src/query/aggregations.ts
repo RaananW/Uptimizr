@@ -14,6 +14,7 @@ import {
   ParamBag,
   cameraModeClause,
   dayRangeClause,
+  meshClause,
   rangeClause,
   regionClause,
   sceneClause,
@@ -28,6 +29,7 @@ import type {
   FunnelOptions,
   FunnelStepInput,
   LoadBounceFunnelOptions,
+  MeshOptions,
   RangeOptions,
   RegionOptions,
   SceneOptions,
@@ -122,6 +124,57 @@ export function buildPointerHeatmap(
       WHERE project_id = ${pid}
         AND event_type IN ('pointer_move', 'pointer_click')
         AND length(screen) = 2${range}${scene}${source}${session}${cameraMode}
+      GROUP BY gx, gy
+      ORDER BY count DESC
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Per-mesh texture-space (UV) heatmap (#149): bin the `uv` texture coordinates of
+ * interaction events (`pointer_click`, `mesh_interaction`, `hover_dwell`) on one
+ * mesh into a `bins x bins` grid over the object's own `[0, 1]` UV space. This is
+ * the surface-attention companion to the world-space voxel heatmap — "which part
+ * of the product model gets attention", independent of where the object sits in
+ * the scene. `uv` rides in the JSON `payload` (no promoted column), so it is read
+ * with the dialect's `jsonFloat`. The promoted `mesh` column already coalesces a
+ * pointer hit's `hitMesh` with an interaction's `mesh`, so one filter spans all
+ * three event types. Output matches {@link buildPointerHeatmap}'s `HeatmapBinRow`
+ * (`gx`, `gy`, `count`) so it reuses the 2D heatmap renderer.
+ */
+export function buildMeshUvHeatmap(
+  projectId: string,
+  opts: RangeOptions &
+    SceneOptions &
+    SourceOptions &
+    SessionOptions &
+    MeshOptions & { bins?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const bins = bag.add("bins", "u32", opts.bins ?? 50);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const source = sourceClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const mesh = meshClause(bag, opts);
+  const u = d.jsonFloat("payload", "uv", "0");
+  const v = d.jsonFloat("payload", "uv", "1");
+  return {
+    query: `
+      SELECT gx, gy, count() AS count
+      FROM (
+        SELECT
+          floor(${u} * ${bins}) AS gx,
+          floor(${v} * ${bins}) AS gy
+        FROM events
+        WHERE project_id = ${pid}
+          AND event_type IN ('pointer_click', 'mesh_interaction', 'hover_dwell')
+          AND ${u} IS NOT NULL
+          AND ${v} IS NOT NULL${range}${scene}${source}${session}${mesh}
+      ) AS uv_hits
       GROUP BY gx, gy
       ORDER BY count DESC
     `,

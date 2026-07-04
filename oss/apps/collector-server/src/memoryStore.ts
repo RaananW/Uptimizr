@@ -88,6 +88,7 @@ export function createMemoryStore({
       });
     },
     pointerHeatmap: async () => [],
+    meshUvHeatmap: async () => [],
     worldHeatmap: async () => [],
     worldHeatmapStats: async () => ({ cells: 0, hits: 0 }),
     gazeHeatmap: async () => [],

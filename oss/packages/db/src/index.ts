@@ -43,6 +43,7 @@ export { clickhouseDialect, toClickhouseTimestamp } from "./query/clickhouseDial
 export {
   buildListSessions,
   buildPointerHeatmap,
+  buildMeshUvHeatmap,
   buildWorldHeatmap,
   buildWorldHeatmapStats,
   buildGazeHeatmap,
@@ -109,6 +110,7 @@ export type {
   SceneOptions,
   SourceOptions,
   SessionOptions,
+  MeshOptions,
   RegionOptions,
   ErrorHeatmapOptions,
   WorldAabb,

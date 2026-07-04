@@ -262,6 +262,7 @@ export function createAggregator(options: AggregatorOptions): Aggregator {
             mesh: snapshot.mesh,
             dwellMs: snapshot.dwellMs,
             ...(snapshot.source ? { source: snapshot.source } : {}),
+            ...(snapshot.uv ? { uv: snapshot.uv } : {}),
           } as EventInput);
           return;
       }

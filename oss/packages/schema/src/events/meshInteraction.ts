@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineEvent } from "./defineEvent.js";
-import { vec3Schema } from "../primitives.js";
+import { vec2Schema, vec3Schema } from "../primitives.js";
 import { inputSourceShape } from "./inputSource.js";
 import { LIMITS } from "../limits.js";
 
@@ -37,6 +37,13 @@ export const meshInteractionSchema = defineEvent("mesh_interaction", {
   kind: meshInteractionKindSchema,
   /** World-space point of interaction, when available. */
   point: vec3Schema.optional(),
+  /**
+   * Texture-space UV `[u, v]` at the interaction point on `mesh`, when the
+   * connector can resolve it (e.g. Babylon `PickingInfo.getTextureCoordinates()`).
+   * Drives the per-mesh UV-space heatmap. Not clamped to `[0, 1]`: UVs can fall
+   * outside that range under texture wrapping/tiling.
+   */
+  uv: vec2Schema.optional(),
   ...inputSourceShape,
 });
 export type MeshInteractionEvent = z.infer<typeof meshInteractionSchema>;

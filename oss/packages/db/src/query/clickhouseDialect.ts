@@ -108,6 +108,14 @@ export const clickhouseDialect: Dialect = {
     const keys = path.map((p) => `'${p}'`).join(", ");
     return `JSONExtract(${column}, ${keys}, 'Nullable(Int64)')`;
   },
+  jsonFloat(column, ...path) {
+    // Numeric components index a JSON array. ClickHouse array indices are 1-based
+    // in JSONExtract, so a 0-based component `n` maps to `n + 1`; string
+    // components stay quoted object keys. `Nullable(Float64)` yields NULL on a
+    // miss (parity with DuckDB's TRY_CAST).
+    const keys = path.map((p) => (/^\d+$/.test(p) ? String(Number(p) + 1) : `'${p}'`)).join(", ");
+    return `JSONExtract(${column}, ${keys}, 'Nullable(Float64)')`;
+  },
   // Single-tenant rollups are plain views (pre-grouped by day), so each group has
   // exactly one source row and the "merge" of a single precomputed value is a
   // plain pass-through aggregate. (AggregatingMergeTree `-Merge` combinators are

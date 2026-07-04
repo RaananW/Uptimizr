@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineEvent } from "./defineEvent.js";
 import { inputSourceShape } from "./inputSource.js";
+import { vec2Schema } from "../primitives.js";
 
 /**
  * Hover hesitation (#48, design §D) — the pointer lingered over an object
@@ -24,6 +25,13 @@ export const hoverDwellSchema = defineEvent("hover_dwell", {
   mesh: z.string().min(1),
   /** Milliseconds the pointer dwelt on the object without acting on it. */
   dwellMs: z.number().nonnegative(),
+  /**
+   * Texture-space UV `[u, v]` where the pointer last dwelt on `mesh`, when the
+   * connector can resolve it (e.g. Babylon `PickingInfo.getTextureCoordinates()`).
+   * Feeds the per-mesh UV-space heatmap. Not clamped to `[0, 1]`: UVs can fall
+   * outside that range under texture wrapping/tiling.
+   */
+  uv: vec2Schema.optional(),
   ...inputSourceShape,
 });
 export type HoverDwellEvent = z.infer<typeof hoverDwellSchema>;

@@ -143,6 +143,15 @@ const pointerHeatmapQueryParams = heatmapQueryParams.extend({
   cameraMode: cameraModeFilter,
 });
 
+/**
+ * Per-mesh UV (texture-space) heatmap params (#149): the pointer-heatmap filters
+ * plus a required `mesh` name — the object whose UV space we bin.
+ */
+const meshUvHeatmapQueryParams = heatmapQueryParams.extend({
+  source: sourceFilter,
+  mesh: z.string().min(1).max(256),
+});
+
 /** Rage-click params: pointer filters + burst window (sec) and repeat threshold. */
 const rageClickQueryParams = pointerHeatmapQueryParams.extend({
   interval: z.coerce.number().int().positive().max(60).optional(),
@@ -509,6 +518,16 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
         ...rest,
         cameraType: cameraTypeForMode(cameraMode),
       });
+    },
+  );
+
+  r.get(
+    "/api/v1/heatmaps/mesh-uv",
+    { schema: { querystring: meshUvHeatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.meshUvHeatmap(projectId, req.query);
     },
   );
 

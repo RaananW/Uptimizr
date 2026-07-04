@@ -38,6 +38,7 @@ import {
   buildPerfHeatmap,
   buildPerfSummary,
   buildPointerHeatmap,
+  buildMeshUvHeatmap,
   buildRageClicks,
   buildRenderScaleTruth,
   buildResourcePercentiles,
@@ -103,6 +104,7 @@ interface DemoOpts {
   scene?: string;
   source?: string;
   session?: string;
+  mesh?: string;
   cameraType?: string;
   minRepeats?: number;
   center?: [number, number, number];
@@ -147,6 +149,7 @@ function readOpts(sp: URLSearchParams): DemoOpts {
     scene: str(sp, "scene"),
     source: str(sp, "source"),
     session: str(sp, "session"),
+    mesh: str(sp, "mesh"),
     cameraType: cameraTypeForMode(sp.get("cameraMode")),
     minRepeats: num(sp, "minRepeats"),
     region: parseRegion(sp.get("region")),
@@ -204,6 +207,7 @@ const SPATIAL_HEATMAP_ROUTES = new Set<string>([
 export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/sessions": (pid, o) => buildListSessions(pid, o, duckdbDialect),
   "/api/v1/heatmaps/pointer": (pid, o) => buildPointerHeatmap(pid, o, duckdbDialect),
+  "/api/v1/heatmaps/mesh-uv": (pid, o) => buildMeshUvHeatmap(pid, o, duckdbDialect),
   "/api/v1/heatmaps/camera": (pid, o) => buildCameraDirectionHeatmap(pid, o, duckdbDialect),
   "/api/v1/heatmaps/position": (pid, o) => buildCameraPositionHeatmap(pid, o, duckdbDialect),
   "/api/v1/heatmaps/click-rays": (pid, o) => buildClickGazeRay(pid, o, duckdbDialect),
