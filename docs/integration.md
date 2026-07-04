@@ -793,6 +793,24 @@ reads for a locked first-person scene are the cursor-independent ones: the
 **world-space gaze heatmap** (above), the **floor-plan position heatmap**, and the
 **session trajectory** (ADR 0026).
 
+### Texture-space attention (`uv`) — automatic
+
+When a pointer/gaze ray hits a mesh, the connector also reads the hit's **UV
+(texture) coordinate** from the raycast result (Babylon
+`PickingInfo.getTextureCoordinates()`) and attaches it as an optional
+`uv: [u, v]` on `pointer_click`, `mesh_interaction`, and `hover_dwell` (#149). It
+answers _where on a single object's surface_ attention lands — the per-mesh,
+texture-space companion to the world-space heatmap. No configuration is required:
+`uv` rides the existing `clicks` / `meshPicks` / `hoverDwell` capture channels and
+is simply omitted when the engine can't resolve a coordinate (a mesh with no UVs,
+a miss, or a non-Babylon connector that doesn't expose it yet).
+
+`uv` is **not clamped** — values may fall outside `[0, 1]` under texture
+wrapping/tiling, matching the engine's own coordinate. It rides in the event
+`payload` (no promoted column, no migration), and the collector bins it into a
+per-mesh grid via `GET /api/v1/heatmaps/mesh-uv` (§4), surfaced by the dashboard's
+**Mesh UV heatmap** panel.
+
 ---
 
 ## 3. Replay
@@ -1086,6 +1104,7 @@ correctly). The dashboard's 3D world heatmap also normalizes color/size to the
 | ------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | `GET`  | `/api/v1/sessions`                | Recent sessions (id, visitor, event count, start/end).                                                                                                                                                                                                                                                                                                                                                                                           | `limit`, `cameraMode`                                                                                |
 | `GET`  | `/api/v1/heatmaps/pointer`        | 2D pointer heatmap bins.                                                                                                                                                                                                                                                                                                                                                                                                                         | `bins`, `scene`, `source`, `session`, `cameraMode`                                                   |
+| `GET`  | `/api/v1/heatmaps/mesh-uv`        | Per-mesh texture-space (UV) heatmap (#149): interaction `uv` coordinates on one mesh binned into a `bins`×`bins` grid over its own UV space. `mesh` is **required**. Same `{ gx, gy, count }` row shape as `/heatmaps/pointer`.                                                                                                                                                                                                                  | `mesh` (required), `bins`, `scene`, `source`, `session`                                              |
 | `GET`  | `/api/v1/heatmaps/world`          | 3D world-space pointer heatmap (ADR 0010). `cellSize` defaults to the scene/region bounds when omitted (ADR 0040).                                                                                                                                                                                                                                                                                                                               | `cellSize`, `region`, `scene`, `source`, `cameraMode`                                                |
 | `GET`  | `/api/v1/heatmaps/world/stats`    | World-heatmap totals (ADR 0040 §3): `{ cellSize, cells, hits }` — the true occupied-cell + hit counts behind the truncated `/heatmaps/world` voxels, with the effective `cellSize`. No `limit`.                                                                                                                                                                                                                                                  | `cellSize`, `region`, `scene`, `source`, `cameraMode`                                                |
 | `GET`  | `/api/v1/heatmaps/gaze`           | 3D world-space **gaze** heatmap (ADR 0030): voxel-binned `camera_sample.hit_point` — where the audience _looked_ on the geometry. Same grid/row shape as `/heatmaps/world`; requires `capture.gaze`.                                                                                                                                                                                                                                             | `cellSize`, `region`, `scene`, `session`, `cameraMode`                                               |

@@ -511,6 +511,18 @@ describe("hover_dwell (hesitation / interactivity discoverability, design §D)",
       anyEventSchema.safeParse({ ...baseEnvelope, type: "hover_dwell", dwellMs: 10 }).success,
     ).toBe(false);
   });
+
+  it("accepts an optional texture-space uv (#149)", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "hover_dwell",
+        mesh: "config-knob",
+        dwellMs: 400,
+        uv: [0.25, 0.75],
+      }).success,
+    ).toBe(true);
+  });
 });
 
 describe("compile_stall (shader / pipeline compile hitch, design §C)", () => {
@@ -861,6 +873,47 @@ describe("input-source-agnostic interactions (ADR 0011)", () => {
       ray: { origin: [0, 1, 0], direction: [0, 0, -1] },
     });
     expect(parsed.success).toBe(true);
+  });
+
+  it("accepts an optional texture-space uv on pointer_click and mesh_interaction (#149)", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "pointer_click",
+        screen: [0.5, 0.5],
+        hitMesh: "sneaker",
+        uv: [0.1, 0.9],
+      }).success,
+    ).toBe(true);
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "mesh_interaction",
+        mesh: "sneaker",
+        kind: "pick",
+        uv: [1.4, -0.2],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a uv that is not a 2-tuple of numbers (#149)", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "pointer_click",
+        screen: [0.5, 0.5],
+        uv: [0.5],
+      }).success,
+    ).toBe(false);
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "mesh_interaction",
+        mesh: "sneaker",
+        kind: "pick",
+        uv: ["a", "b"],
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects an interaction whose source is outside the vocabulary", () => {

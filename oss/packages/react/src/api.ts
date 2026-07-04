@@ -667,6 +667,8 @@ export interface QueryParams {
   errorKind?: string;
   /** Load→bounce funnel (#152): comma-separated ascending ms band boundaries; supply via {@link CollectorApi.loadBounce}. */
   bands?: string;
+  /** Per-mesh UV heatmap (#149): the mesh whose texture space is binned (required for that endpoint). */
+  mesh?: string;
 }
 
 export class ApiError extends Error {
@@ -713,6 +715,11 @@ export class CollectorApi {
 
   pointerHeatmap(params?: QueryParams): Promise<HeatmapBin[]> {
     return this.get<HeatmapBin[]>("api/v1/heatmaps/pointer", params);
+  }
+
+  /** Per-mesh texture-space (UV) heatmap (#149): requires a `mesh` param. */
+  meshUvHeatmap(params?: QueryParams): Promise<HeatmapBin[]> {
+    return this.get<HeatmapBin[]>("api/v1/heatmaps/mesh-uv", params);
   }
 
   cameraHeatmap(params?: QueryParams): Promise<DirectionBin[]> {

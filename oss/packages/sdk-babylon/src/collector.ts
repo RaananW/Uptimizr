@@ -40,7 +40,7 @@ import type {
 } from "@uptimizr/sdk-core";
 import type { Aabb, InputSource } from "@uptimizr/schema";
 import { resolveTrackedCamera } from "./scene.js";
-import { clamp01, toVec3, toQuat } from "./vec.js";
+import { clamp01, toVec3, toQuat, toVec2 } from "./vec.js";
 
 /**
  * Map a DOM pointer's `pointerType` to an Uptimizr {@link InputSource} (ADR
@@ -439,6 +439,20 @@ interface GazePickInfo {
 }
 interface ScenePicker {
   pickWithRay(ray: unknown, predicate?: (mesh: AbstractMesh) => boolean): GazePickInfo | null;
+}
+
+/**
+ * Resolve the texture-space UV `[u, v]` at a pick hit (#149) via Babylon's
+ * `PickingInfo.getTextureCoordinates()`. Accessed structurally (guarded) so the
+ * connector keeps `@babylonjs/core` a peer dependency and tolerates picks from
+ * meshes without UVs. Returns `undefined` on a miss so the `uv` field stays unset.
+ */
+function pickUv(pick: unknown): [number, number] | undefined {
+  const getUv = (pick as { getTextureCoordinates?: () => { x: number; y: number } | null } | null)
+    ?.getTextureCoordinates;
+  if (typeof getUv !== "function") return undefined;
+  const uv = getUv.call(pick);
+  return uv && typeof uv.x === "number" && typeof uv.y === "number" ? toVec2(uv) : undefined;
 }
 
 /**
@@ -978,6 +992,9 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
       let hoverStartMs = 0;
       let hoverActed = false;
       let hoverSource: InputSource | undefined;
+      // Texture-space UV where the current hover episode last sat (#149), when the
+      // connector can resolve it from the pick; emitted with the hover_dwell summary.
+      let hoverUv: [number, number] | undefined;
       let lastPose: CameraPose | undefined;
       // Per-window frame-time samples for jank percentiles (#41). Filled every
       // render tick (see the perf frame observer below) and drained each perf
@@ -1328,12 +1345,14 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
                 mesh: hoverMesh,
                 dwellMs: Math.round(dwellMs),
                 ...(hoverSource ? { source: hoverSource } : {}),
+                ...(hoverUv ? { uv: hoverUv } : {}),
               });
             }
           }
           hoverMesh = null;
           hoverActed = false;
           hoverSource = undefined;
+          hoverUv = undefined;
         };
         // Flush a trailing hover on stop so the last episode isn't dropped.
         if (want.hoverDwell) renderObservers.push(() => flushHover(ctx.now()));
@@ -1355,6 +1374,8 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
             : info.pickInfo;
           const hitPoint = pick?.hit && pick.pickedPoint ? toVec3(pick.pickedPoint) : undefined;
           const hitMesh = pick?.hit && pick.pickedMesh ? pick.pickedMesh.name : undefined;
+          // Texture-space UV at the hit (#149): only meaningful when a mesh was hit.
+          const uv = pick?.hit && pick.pickedMesh ? pickUv(pick) : undefined;
           const source = pointerSource(info);
 
           // Hover hesitation (#48): track the object under the pointer across
@@ -1372,7 +1393,12 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
                   hoverStartMs = ctx.now();
                   hoverActed = false;
                   hoverSource = source;
+                  hoverUv = uv;
                 }
+              } else if (target != null && uv) {
+                // Still hovering the same mesh — keep the latest resolvable UV so
+                // the dwell summary points at where the pointer settled (#149).
+                hoverUv = uv;
               }
             } else if (
               (info.type === POINTER.TAP || info.type === POINTER.DOWN) &&
@@ -1445,6 +1471,7 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
               screen,
               ...(hitPoint ? { hitPoint } : {}),
               ...(hitMesh ? { hitMesh } : {}),
+              ...(uv ? { uv } : {}),
               ...(typeof info.event?.button === "number" ? { button: info.event.button } : {}),
               ...(source ? { source } : {}),
             });
@@ -1456,6 +1483,7 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
               mesh: pick.pickedMesh.name,
               kind: "pick",
               ...(pick.pickedPoint ? { point: toVec3(pick.pickedPoint) } : {}),
+              ...(uv ? { uv } : {}),
               ...(source ? { source } : {}),
             });
           }

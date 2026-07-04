@@ -39,6 +39,12 @@ export interface SessionOptions {
   session?: string;
 }
 
+/** Optional single-mesh filter (per-object aggregations, e.g. the UV heatmap, #149). */
+export interface MeshOptions {
+  /** Restrict the aggregate to one mesh/object name. Omit for all meshes. */
+  mesh?: string;
+}
+
 /**
  * Optional filters for the spatial error heatmap (issue #154). All are additive
  * equality filters read from the event `payload`:

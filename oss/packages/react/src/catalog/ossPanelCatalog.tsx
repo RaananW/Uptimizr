@@ -138,6 +138,12 @@ import {
   POINTER_HEATMAP_TITLE,
   POINTER_HEATMAP_SUBTITLE,
 } from "./views/PointerHeatmap";
+import {
+  MeshUvHeatmapView,
+  MESH_UV_HEATMAP_TITLE,
+  MESH_UV_HEATMAP_SUBTITLE,
+  MESH_UV_HEATMAP_HELP,
+} from "./views/MeshUvHeatmap";
 import { TopMeshesView, TOP_MESHES_TITLE, TOP_MESHES_SUBTITLE } from "./views/TopMeshes";
 import {
   SceneRetentionFunnelView,
@@ -254,6 +260,18 @@ const POINTER_HEATMAP_SETTINGS = {
     type: "number",
     label: "Grid resolution",
     help: "Bins per axis for the 2D pointer grid. More bins sharpen detail; fewer smooth the heat.",
+    default: POINTER_BINS,
+    min: 10,
+    max: 120,
+    step: 10,
+  },
+} as const satisfies PanelSettings;
+
+const MESH_UV_HEATMAP_SETTINGS = {
+  bins: {
+    type: "number",
+    label: "Grid resolution",
+    help: "Bins per axis for the mesh UV grid. More bins sharpen surface detail; fewer smooth the heat.",
     default: POINTER_BINS,
     min: 10,
     max: 120,
@@ -458,6 +476,38 @@ export const pointerHeatmapPanel = definePanel<HeatmapBin[], typeof POINTER_HEAT
   settings: POINTER_HEATMAP_SETTINGS,
   load: (ctx) => ctx.api.pointerHeatmap({ ...scoped(ctx), bins: ctx.settings.bins }),
   render: ({ data, ctx }) => <PointerHeatmapView bins={data ?? []} gridSize={ctx.settings.bins} />,
+});
+
+/**
+ * Mesh UV (texture-space) heatmap (#149) — 2D canvas, half width. Loads the top
+ * meshes to populate an interactive picker, then self-fetches the selected mesh's
+ * UV-binned interaction heat in the view (defaulting to the most-interacted mesh).
+ */
+export const meshUvHeatmapPanel = definePanel<MeshCount[], typeof MESH_UV_HEATMAP_SETTINGS>({
+  id: "mesh-uv-heatmap",
+  title: MESH_UV_HEATMAP_TITLE,
+  subtitle: MESH_UV_HEATMAP_SUBTITLE,
+  help: MESH_UV_HEATMAP_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  clientOnly: true,
+  settings: MESH_UV_HEATMAP_SETTINGS,
+  load: (ctx) =>
+    ctx.api.topMeshes({
+      ...scoped(ctx),
+      source: undefined,
+      scene: undefined,
+      limit: 100,
+    }),
+  render: ({ data, ctx }) => (
+    <MeshUvHeatmapView
+      meshes={data ?? []}
+      gridSize={ctx.settings.bins}
+      fetchHeatmap={(mesh) =>
+        ctx.api.meshUvHeatmap({ ...scoped(ctx), mesh, bins: ctx.settings.bins })
+      }
+    />
+  ),
 });
 
 /** View-direction dome — 3D Babylon scene, full width. */
@@ -1100,6 +1150,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   meshLeaderboardPanel,
   blindSpotsPanel,
   pointerHeatmapPanel,
+  meshUvHeatmapPanel,
   cameraDomePanel,
   viewCoveragePanel,
   floorPlanPanel,

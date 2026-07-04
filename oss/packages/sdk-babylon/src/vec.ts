@@ -5,6 +5,11 @@ export function toVec3(v: Vector3 | { x: number; y: number; z: number }): [numbe
   return [v.x, v.y, v.z];
 }
 
+/** Convert a Babylon `Vector2` (or any `{x,y}`) into a plain `[x, y]` tuple. */
+export function toVec2(v: { x: number; y: number }): [number, number] {
+  return [v.x, v.y];
+}
+
 /**
  * Convert a Babylon `Quaternion` (or any `{x,y,z,w}`) into a plain `[x, y, z, w]`
  * tuple for the `node_transform` wire shape (ADR 0027). Babylon's world frame is

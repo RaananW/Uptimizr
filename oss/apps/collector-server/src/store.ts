@@ -64,6 +64,7 @@ import type {
   SceneRow,
   SourceOptions,
   SessionOptions,
+  MeshOptions,
   SessionMeta,
   SessionSummaryRow,
   SpatialStatsRow,
@@ -104,6 +105,20 @@ export interface CollectorStore {
       SourceOptions &
       SessionOptions &
       CameraModeOptions & { bins?: number },
+  ): Promise<HeatmapBinRow[]>;
+  /**
+   * Per-mesh texture-space (UV) heatmap (#149): bin the `uv` texture coordinates
+   * of interaction events on one mesh into a `bins x bins` grid over the object's
+   * own UV space — the surface-attention companion to {@link worldHeatmap}. Pass
+   * `mesh` to scope it to a single object (the usual per-product view).
+   */
+  meshUvHeatmap(
+    projectId: string,
+    opts?: RangeOptions &
+      SceneOptions &
+      SourceOptions &
+      SessionOptions &
+      MeshOptions & { bins?: number },
   ): Promise<HeatmapBinRow[]>;
   /** World-space (3D) pointer heatmap: voxel-binned raycast hit points. */
   worldHeatmap(

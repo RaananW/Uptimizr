@@ -411,6 +411,31 @@ describe("builtinPanels — data-resolution settings (ADR 0039, #79)", () => {
     expect(pointerHeatmap).toHaveBeenCalledWith(expect.objectContaining({ bins: 80 }));
   });
 
+  it("mesh-uv-heatmap loads the mesh list and its view self-fetches at the resolved bins (#149)", async () => {
+    const panel = builtinPanels.find((p) => p.id === "mesh-uv-heatmap");
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(1);
+    expect(panel?.clientOnly).toBe(true);
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+    expect(panel?.settings?.bins).toMatchObject({ type: "number", default: 50 });
+
+    // `load` fetches the top meshes to populate the picker.
+    const topMeshes = vi.fn().mockResolvedValue([{ mesh: "Box", count: 9 }]);
+    const meshUvHeatmap = vi.fn().mockResolvedValue([{ gx: 1, gy: 1, count: 3 }]);
+    const ctx = makeCtx({ params: {}, settings: { bins: 60 }, api: { topMeshes, meshUvHeatmap } });
+    const meshes = await panel?.load?.(ctx);
+    expect(topMeshes).toHaveBeenCalled();
+    expect(meshes).toEqual([{ mesh: "Box", count: 9 }]);
+
+    // The rendered view threads a `fetchHeatmap(mesh)` that hits the UV endpoint
+    // with the required `mesh` + resolved `bins`.
+    const el = panel?.render?.({ data: meshes, ctx } as never) as {
+      props: { fetchHeatmap: (mesh: string) => Promise<unknown> };
+    };
+    await el.props.fetchHeatmap("Box");
+    expect(meshUvHeatmap).toHaveBeenCalledWith(expect.objectContaining({ mesh: "Box", bins: 60 }));
+  });
+
   it("camera-dome exposes a direction-resolution setting and loads at the resolved bins", async () => {
     const panel = builtinPanels.find((p) => p.id === "camera-dome-3d");
     expect(panel?.settings?.bins).toMatchObject({ type: "number", default: 36, step: 6 });

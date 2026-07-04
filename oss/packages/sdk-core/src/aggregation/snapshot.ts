@@ -122,6 +122,8 @@ export interface HoverSnapshot {
   mesh: string;
   dwellMs: number;
   source?: string;
+  /** Texture-space UV `[u, v]` where the pointer dwelt on the mesh (#149), when resolvable. */
+  uv?: [number, number];
 }
 
 /** The union the aggregator ingests. */

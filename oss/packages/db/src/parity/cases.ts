@@ -59,6 +59,7 @@ import {
   buildErrorHeatmap,
   buildRenderingTechnology,
   buildPointerHeatmap,
+  buildMeshUvHeatmap,
   buildSceneCoverage,
   buildPerfHeatmap,
   buildSessionTrajectory,
@@ -118,6 +119,27 @@ export const PARITY_CASES: readonly ParityCase[] = [
       { gx: 5, gy: 5, count: 2 },
       { gx: 9, gy: 9, count: 1 },
     ],
+  },
+  {
+    // Per-mesh UV heatmap (#149): the three fixture clicks carry texture-space uv
+    // — box [0.15,0.25], sphere [0.95,0.85], floor [0.55,0.45]. With bins=10 each
+    // lands in a distinct cell (floor(u*10), floor(v*10)); unfiltered spans all
+    // three meshes.
+    name: "meshUvHeatmap",
+    build: (d) => buildMeshUvHeatmap(PID, { ...PARITY_RANGE, bins: 10 }, d),
+    sortKeys: ["gx", "gy"],
+    golden: [
+      { gx: 1, gy: 2, count: 1 },
+      { gx: 5, gy: 4, count: 1 },
+      { gx: 9, gy: 8, count: 1 },
+    ],
+  },
+  {
+    // Same builder filtered to a single mesh: only the box click's uv survives.
+    name: "meshUvHeatmapByMesh",
+    build: (d) => buildMeshUvHeatmap(PID, { ...PARITY_RANGE, bins: 10, mesh: "box" }, d),
+    sortKeys: ["gx", "gy"],
+    golden: [{ gx: 1, gy: 2, count: 1 }],
   },
   {
     name: "worldHeatmap",

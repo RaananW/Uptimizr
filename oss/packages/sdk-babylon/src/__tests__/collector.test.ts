@@ -327,6 +327,50 @@ describe("babylonCollector", () => {
     handle.stop();
   });
 
+  it("attaches texture-space uv to pointer_click from the pick (#149)", () => {
+    const { scene, onPointerObservable } = makeScene();
+    const { ctx, events } = makeCtx();
+    const handle = babylonCollector({ scene }).start(ctx)!;
+
+    onPointerObservable.trigger({
+      type: POINTER_TAP,
+      event: { button: 0 },
+      pickInfo: {
+        hit: true,
+        pickedPoint: { x: 1, y: 2, z: 3 },
+        pickedMesh: { name: "Sneaker" },
+        getTextureCoordinates: () => ({ x: 0.25, y: 0.75 }),
+      },
+    });
+    expect(events.find((e) => e.type === "pointer_click")).toMatchObject({
+      type: "pointer_click",
+      hitMesh: "Sneaker",
+      uv: [0.25, 0.75],
+    });
+    handle.stop();
+  });
+
+  it("omits uv on pointer_click when the mesh has no texture coordinates (#149)", () => {
+    const { scene, onPointerObservable } = makeScene();
+    const { ctx, events } = makeCtx();
+    const handle = babylonCollector({ scene }).start(ctx)!;
+
+    onPointerObservable.trigger({
+      type: POINTER_TAP,
+      event: { button: 0 },
+      pickInfo: {
+        hit: true,
+        pickedPoint: { x: 1, y: 2, z: 3 },
+        pickedMesh: { name: "Sneaker" },
+        getTextureCoordinates: () => null,
+      },
+    });
+    const click = events.find((e) => e.type === "pointer_click");
+    expect(click).toMatchObject({ type: "pointer_click", hitMesh: "Sneaker" });
+    expect(click).not.toHaveProperty("uv");
+    handle.stop();
+  });
+
   it("reports the crosshair (centre) and re-picks at the viewport centre while pointer-locked (ADR 0034)", () => {
     const { scene, onPointerObservable, engine } = makeScene();
     // Stale cursor far from centre — locked it must be ignored in favour of centre.
@@ -559,6 +603,29 @@ describe("babylonCollector", () => {
       mesh: "Door",
       kind: "pick",
       point: [7, 8, 9],
+    });
+    handle.stop();
+  });
+
+  it("attaches texture-space uv to mesh_interaction from the pick (#149)", () => {
+    const { scene, onPointerObservable } = makeScene();
+    const { ctx, events } = makeCtx();
+    const handle = babylonCollector({ scene }).start(ctx)!;
+
+    onPointerObservable.trigger({
+      type: POINTER_PICK,
+      event: {},
+      pickInfo: {
+        hit: true,
+        pickedPoint: { x: 7, y: 8, z: 9 },
+        pickedMesh: { name: "Door" },
+        getTextureCoordinates: () => ({ x: 0.1, y: 0.2 }),
+      },
+    });
+    expect(events.find((e) => e.type === "mesh_interaction")).toMatchObject({
+      type: "mesh_interaction",
+      mesh: "Door",
+      uv: [0.1, 0.2],
     });
     handle.stop();
   });
@@ -884,6 +951,34 @@ describe("babylonCollector", () => {
       dwellMs: 800,
       source: "mouse",
     });
+    handle.stop();
+  });
+
+  it("attaches texture-space uv to hover_dwell from the last hover pick (#149)", () => {
+    const { scene, onPointerObservable } = makeScene();
+    const now = { value: 1000 };
+    const { ctx, events } = makeCtx(now);
+    const handle = babylonCollector({
+      scene,
+      capture: { camera: false, perf: false, hoverDwell: true },
+      hoverDwell: { minDwellMs: 500 },
+    }).start(ctx)!;
+
+    const over = (name: string, uv: { x: number; y: number }) => ({
+      type: POINTER_MOVE,
+      event: { pointerType: "mouse" },
+      pickInfo: { hit: true, pickedMesh: { name }, getTextureCoordinates: () => uv },
+    });
+    onPointerObservable.trigger(over("Cube", { x: 0.4, y: 0.6 }));
+    now.value = 1400;
+    // Still on Cube — the latest UV should win.
+    onPointerObservable.trigger(over("Cube", { x: 0.45, y: 0.55 }));
+    now.value = 1800;
+    onPointerObservable.trigger(over("Sphere", { x: 0.1, y: 0.1 }));
+
+    const hovers = events.filter((e) => e.type === "hover_dwell");
+    expect(hovers).toHaveLength(1);
+    expect(hovers[0]).toMatchObject({ type: "hover_dwell", mesh: "Cube", uv: [0.45, 0.55] });
     handle.stop();
   });
 

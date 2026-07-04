@@ -43,6 +43,7 @@ import {
   buildErrorHeatmap,
   buildRenderingTechnology,
   buildPointerHeatmap,
+  buildMeshUvHeatmap,
   buildSceneCoverage,
   buildPerfHeatmap,
   buildSessionTrajectory,
@@ -154,6 +155,8 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<SessionSummaryRow>(db, buildListSessions(projectId, opts, duckdbDialect)),
     pointerHeatmap: (projectId, opts = {}) =>
       runDuckdbQuery<HeatmapBinRow>(db, buildPointerHeatmap(projectId, opts, duckdbDialect)),
+    meshUvHeatmap: (projectId, opts = {}) =>
+      runDuckdbQuery<HeatmapBinRow>(db, buildMeshUvHeatmap(projectId, opts, duckdbDialect)),
     worldHeatmap: (projectId, opts = {}) =>
       runDuckdbQuery<WorldHeatmapBinRow>(db, buildWorldHeatmap(projectId, opts, duckdbDialect)),
     worldHeatmapStats: async (projectId, opts = {}) => {

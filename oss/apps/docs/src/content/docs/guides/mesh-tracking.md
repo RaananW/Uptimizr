@@ -24,6 +24,29 @@ Mesh attribution relies on your meshes having **stable names**. Procedurally-gen
 names (`Box.001`, `Box.002`, …) fragment the ranking. Give interactive meshes deliberate, stable names.
 :::
 
+## Texture-space attention (`uv`) — automatic
+
+Which _region of a single mesh_ draws the eye? When a pointer/gaze ray hits geometry, the connector reads
+the hit's **UV (texture) coordinate** from the raycast result (Babylon `PickingInfo.getTextureCoordinates()`)
+and attaches it as an optional `uv: [u, v]` on `pointer_click`, `mesh_interaction`, and `hover_dwell`. It's
+the per-mesh, texture-space companion to the world-space heatmap — think "which part of the product label do
+people click".
+
+There's nothing to configure: `uv` rides the existing `meshPicks` / `clicks` / `hoverDwell` channels and is
+simply omitted when the engine can't resolve a coordinate (a mesh with no UVs, a miss, or a connector that
+doesn't expose it yet). Values are **not clamped** to `[0, 1]` — they follow the engine under texture
+wrapping/tiling. The field rides in the event `payload`, so there's no schema migration.
+
+Read a per-mesh UV grid back via `GET /api/v1/heatmaps/mesh-uv` (the `mesh` param is required):
+
+```http
+GET /api/v1/heatmaps/mesh-uv?mesh=product-hero&bins=40&since=...
+x-api-key: your-project-api-key
+```
+
+It returns the same `{ gx, gy, count }` bins as the 2D pointer heatmap, and the dashboard's **Mesh UV
+heatmap** panel renders it with an interactive mesh picker (defaulting to the most-interacted mesh).
+
 ## Object dwell (`meshVisibility`) — opt-in
 
 How long was an object actually **on screen**, and how long did the viewer **look at** it? Off by

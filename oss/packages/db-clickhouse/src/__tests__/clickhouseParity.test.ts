@@ -69,10 +69,12 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
     }
   });
 
-  it("covers all 53 aggregations", () => {
+  it("covers all 59 aggregations", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
+      "meshUvHeatmap",
+      "meshUvHeatmapByMesh",
       "worldHeatmap",
       "worldHeatmapStats",
       "worldHeatmapRegion",

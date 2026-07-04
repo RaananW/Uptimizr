@@ -21,6 +21,7 @@ import type {
   SceneOptions,
   SourceOptions,
   SessionOptions,
+  MeshOptions,
   RegionOptions,
 } from "./types.js";
 
@@ -75,6 +76,15 @@ export interface Dialect {
    * the `payload` JSON). Path components are trusted compile-time constants.
    */
   jsonInt(column: string, ...path: string[]): string;
+  /**
+   * Extract a nested **nullable float** value from a JSON text column by key
+   * path, e.g. `jsonFloat("payload", "uv", "0")`. Numeric path components index
+   * into a JSON array (0-based, dialect-normalized). Returns NULL when the key is
+   * absent or not numeric, so callers can filter or coalesce. Used for float
+   * fields that live only in the `payload` JSON (e.g. texture-space `uv`, #149).
+   * Path components are trusted compile-time constants, never user input.
+   */
+  jsonFloat(column: string, ...path: string[]): string;
   // --- rollup merge combinators (AggregatingMergeTree on ClickHouse) ---
   countMerge(stateExpr: string): string;
   avgMerge(stateExpr: string): string;
@@ -142,6 +152,12 @@ export function sourceClause(bag: ParamBag, opts: SourceOptions): string {
 export function sessionClause(bag: ParamBag, opts: SessionOptions): string {
   if (opts.session == null || opts.session.length === 0) return "";
   return ` AND session_id = ${bag.add("session", "string", opts.session)}`;
+}
+
+/** Build a `mesh` equality predicate, or `""` when no mesh is given (#149). */
+export function meshClause(bag: ParamBag, opts: MeshOptions): string {
+  if (opts.mesh == null || opts.mesh.length === 0) return "";
+  return ` AND mesh = ${bag.add("mesh", "string", opts.mesh)}`;
 }
 
 /**
