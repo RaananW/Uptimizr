@@ -27,6 +27,7 @@ import {
   buildXrAbandonment,
   buildPerfDaily,
   buildPerfSummary,
+  buildPerfHeatmap,
   buildPointerHeatmap,
   buildSceneCoverage,
   buildTimeseries,
@@ -462,6 +463,36 @@ describe("duckdb store", () => {
     // Three distinct positions -> three occupied voxels, one visit each.
     expect(voxels).toHaveLength(3);
     expect(voxels.reduce((n, v) => n + Number(v.count), 0)).toBe(3);
+  });
+
+  it("bins frame_perf samples into a spatial FPS heatmap by position (#145)", async () => {
+    // Two samples in one voxel (fps 60 & 30 -> avg 45, min 30) and one in another
+    // voxel (fps 20 -> the worst cell). ORDER BY avg_fps ASC surfaces it first.
+    const PERF_EVENTS: AnyEvent[] = [
+      base("frame_perf", T0 + 1_000, { fps: 60, position: [0.2, 0, 0.2] }),
+      base("frame_perf", T0 + 2_000, { fps: 30, position: [0.7, 0, 0.7] }),
+      base("frame_perf", T0 + 3_000, { fps: 20, position: [5.5, 0, 0] }),
+      // No position -> excluded (length(position) != 3).
+      base("frame_perf", T0 + 4_000, { fps: 15 }),
+    ];
+    await insertEvents(db, PERF_EVENTS);
+    const voxels = await runDuckdbQuery<{
+      vx: number;
+      vy: number;
+      vz: number;
+      samples: number;
+      avg_fps: number;
+      min_fps: number;
+    }>(db, buildPerfHeatmap(PID, { ...RANGE, cellSize: 1 }, duckdbDialect));
+    expect(voxels).toHaveLength(2);
+    // Worst-FPS-first: the fps-20 cell leads.
+    expect(Number(voxels[0]!.vx)).toBe(5);
+    expect(Number(voxels[0]!.avg_fps)).toBe(20);
+    expect(Number(voxels[0]!.samples)).toBe(1);
+    const busy = voxels.find((v) => Number(v.vx) === 0)!;
+    expect(Number(busy.samples)).toBe(2);
+    expect(Number(busy.avg_fps)).toBe(45);
+    expect(Number(busy.min_fps)).toBe(30);
   });
 
   it("histograms camera distance to a center", async () => {

@@ -245,6 +245,21 @@ export interface CoverageVoxel {
   count: number;
 }
 
+/**
+ * One voxel of the spatial FPS heatmap (#145): `frame_perf` samples binned by their
+ * captured camera position. `samples` is the sample count in the cell, `avgFps` its
+ * mean FPS, and `minFps` its worst single sample — so the viewer can paint *where*
+ * performance degrades in world space.
+ */
+export interface PerfHeatmapVoxel {
+  vx: number;
+  vy: number;
+  vz: number;
+  samples: number;
+  avgFps: number;
+  minFps: number;
+}
+
 /** One bucket of the camera-to-center distance histogram (zoom, #39). */
 export interface CameraDistanceBucket {
   bucket: number;
@@ -972,6 +987,20 @@ export class CollectorApi {
         vy: Number(r.vy),
         vz: Number(r.vz),
         count: Number(r.count ?? 0),
+      })),
+    );
+  }
+
+  /** Spatial FPS heatmap voxels — where FPS is bad in world space (#145). */
+  perfHeatmap(params?: QueryParams): Promise<PerfHeatmapVoxel[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/heatmaps/perf", params).then((rows) =>
+      rows.map((r) => ({
+        vx: Number(r.vx),
+        vy: Number(r.vy),
+        vz: Number(r.vz),
+        samples: Number(r.samples ?? 0),
+        avgFps: Number(r.avg_fps ?? 0),
+        minFps: Number(r.min_fps ?? 0),
       })),
     );
   }

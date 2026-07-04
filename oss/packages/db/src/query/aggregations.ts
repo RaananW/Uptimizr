@@ -1837,6 +1837,52 @@ export function buildSceneCoverage(
 }
 
 /**
+ * Spatial FPS heatmap (#145): voxel-bin `frame_perf` samples by their captured
+ * camera `position` into a uniform grid of `cellSize`-sized cubes, reporting each
+ * occupied cell's sample count, mean FPS, and worst single FPS. This answers
+ * *where* performance degrades ("FPS is bad in the boss room"), the spatial
+ * complement to the time-bucketed {@link buildPerfDistribution}/{@link buildFpsHistogram}.
+ *
+ * It reads the same promoted `position` column the camera-position heatmaps use —
+ * `frame_perf` now carries an optional camera position, filled by the connector at
+ * sample time — so no join against the separately-sampled `camera_sample` stream is
+ * needed. Rows are ordered worst-FPS-first so the capped top-`limit` slice surfaces
+ * the jankiest cells rather than an arbitrary corner of the scene.
+ */
+export function buildPerfHeatmap(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions & { cellSize?: number; limit?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const cellSize = bag.add("cellSize", "f64", opts.cellSize ?? 1);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const limit = bag.add("limit", "u32", opts.limit ?? 2000);
+  return {
+    query: `
+      SELECT
+        floor(position[1] / ${cellSize}) AS vx,
+        floor(position[2] / ${cellSize}) AS vy,
+        floor(position[3] / ${cellSize}) AS vz,
+        count() AS samples,
+        avg(fps) AS avg_fps,
+        min(fps) AS min_fps
+      FROM events
+      WHERE project_id = ${pid}
+        AND event_type = 'frame_perf'
+        AND length(position) = 3${range}${scene}${session}
+      GROUP BY vx, vy, vz
+      ORDER BY avg_fps ASC
+      LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * Camera distance / zoom distribution (derived, scene-metrics §B): histogram the
  * distance from the camera *position* of each `camera_sample` to a reference
  * `center` (the scene-AABB center, passed in world units; defaults to the

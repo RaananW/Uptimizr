@@ -69,21 +69,30 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
     }
   });
 
-  it("covers all 40 aggregations", () => {
+  it("covers all 53 aggregations", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
       "worldHeatmap",
+      "worldHeatmapStats",
+      "worldHeatmapRegion",
       "gazeHeatmap",
+      "gazeHeatmapStats",
       "cameraDirectionHeatmap",
       "cameraPositionHeatmap",
       "sessionTrajectory",
+      "aggregateTrajectories",
       "clickGazeRay",
       "flowHeatmap",
       "flowHeatmapByStandpoint",
       "topMeshes",
       "meshDwell",
+      "topMeshesBySource",
+      "topMeshesTrend",
+      "meshInteractionKinds",
+      "topInputActions",
       "perfSummary",
+      "renderScaleTruth",
       "perfDistribution",
       "fpsHistogram",
       "frameTimePercentiles",
@@ -92,6 +101,8 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "perfByScene",
       "resourcePercentiles",
       "stabilityCounts",
+      "graphicsDiagnosticCounts",
+      "renderingTechnology",
       "deadClicks",
       "rageClicks",
       "hoverDwell",
@@ -105,12 +116,14 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "timeseries",
       "eventTypeCounts",
       "sceneCoverage",
+      "perfHeatmap",
       "cameraDistance",
       "navigationStats",
       "xrRotationRate",
       "xrSourceUsage",
       "xrAbandonment",
       "interactionsBySource",
+      "funnel",
     ]);
   });
 

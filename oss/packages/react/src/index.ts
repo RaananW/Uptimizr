@@ -108,6 +108,7 @@ export {
   renderScalePanel,
   perfDistributionPanel,
   worldHeatmapPanel,
+  perfHeatmapPanel,
   navigationMixPanel,
   deadZonePanel,
   flowPanel,

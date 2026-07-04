@@ -165,6 +165,7 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
       },
     ],
     sceneCoverage: async () => [{ vx: 0, vy: 0, vz: 0, count: 3 }],
+    perfHeatmap: async () => [{ vx: 0, vy: 0, vz: 0, samples: 3, avg_fps: 45, min_fps: 30 }],
     cameraDistance: async () => [{ bucket: 2, count: 4 }],
     navigationStats: async () => [
       {
@@ -1357,6 +1358,26 @@ describe("collector app", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual([{ vx: 0, vy: 0, vz: 0, count: 3 }]);
+    expect(received).toMatchObject({ cellSize: 2, scene: "lobby", session: "s1" });
+    await app.close();
+  });
+
+  it("forwards cell size + scene + session to the perf-heatmap store call (#145)", async () => {
+    let received: unknown;
+    const store = makeStore({
+      perfHeatmap: async (_projectId, opts) => {
+        received = opts;
+        return [{ vx: 5, vy: 0, vz: 0, samples: 2, avg_fps: 45, min_fps: 30 }];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/perf?cellSize=2&scene=lobby&session=s1",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([{ vx: 5, vy: 0, vz: 0, samples: 2, avg_fps: 45, min_fps: 30 }]);
     expect(received).toMatchObject({ cellSize: 2, scene: "lobby", session: "s1" });
     await app.close();
   });

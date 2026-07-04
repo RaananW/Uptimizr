@@ -13,6 +13,7 @@ import {
   renderScalePanel,
   perfDistributionPanel,
   worldHeatmapPanel,
+  perfHeatmapPanel,
   navigationMixPanel,
   deadZonePanel,
   flowPanel,
@@ -24,6 +25,7 @@ import type { PanelContext, PanelDataContext, PanelDefinition } from "../index";
 const PANEL_3D_IDS = new Set([
   "camera-dome-3d",
   "world-heatmap-3d",
+  "perf-heatmap-3d",
   "flow-sankey-3d", // gitleaks:allow — panel id, not a secret
   "gaze-click-divergence-3d",
 ]);
@@ -67,7 +69,7 @@ function renderPanel(panel: PanelDefinition<unknown>): ReactElement {
 
 describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
   it("exposes the complete OSS panel set", () => {
-    expect(ossPanelCatalog).toHaveLength(15);
+    expect(ossPanelCatalog).toHaveLength(16);
   });
 
   it("every entry is a valid PanelDefinition with a unique id", () => {
@@ -98,6 +100,7 @@ describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
       renderScalePanel,
       perfDistributionPanel,
       worldHeatmapPanel,
+      perfHeatmapPanel,
       navigationMixPanel,
       deadZonePanel,
       flowPanel,

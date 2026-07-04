@@ -362,6 +362,37 @@ describe("performance depth (design §C)", () => {
     ).toBe(false);
   });
 
+  it("accepts a frame_perf carrying an optional camera position (#145)", () => {
+    const parsed = anyEventSchema.safeParse({
+      ...baseEnvelope,
+      type: "frame_perf",
+      fps: 45,
+      position: [1.5, 0, -3],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts a frame_perf without a position (position is optional)", () => {
+    expect(
+      anyEventSchema.safeParse({ ...baseEnvelope, type: "frame_perf", fps: 60 }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a frame_perf whose position is not a 3-tuple of numbers", () => {
+    expect(
+      anyEventSchema.safeParse({ ...baseEnvelope, type: "frame_perf", fps: 60, position: [1, 2] })
+        .success,
+    ).toBe(false);
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "frame_perf",
+        fps: 60,
+        position: [1, 2, "x"],
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts an asset_load with a distinct time-to-interactive", () => {
     const parsed = anyEventSchema.safeParse({
       ...baseEnvelope,

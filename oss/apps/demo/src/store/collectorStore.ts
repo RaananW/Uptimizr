@@ -28,6 +28,7 @@ import {
   buildPerfByDevice,
   buildPerfByScene,
   buildPerfDistribution,
+  buildPerfHeatmap,
   buildPerfSummary,
   buildPointerHeatmap,
   buildRageClicks,
@@ -224,6 +225,7 @@ export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/rendering-technology": (pid, o) => buildRenderingTechnology(pid, o, duckdbDialect),
   "/api/v1/camera-gestures": (pid, o) => buildCameraGestures(pid, o, duckdbDialect),
   "/api/v1/coverage": (pid, o) => buildSceneCoverage(pid, o, duckdbDialect),
+  "/api/v1/heatmaps/perf": (pid, o) => buildPerfHeatmap(pid, o, duckdbDialect),
   "/api/v1/camera/distance": (pid, o, sp) =>
     buildCameraDistance(pid, { ...o, center: parseCenter(sp) }, duckdbDialect),
   "/api/v1/navigation": (pid, o) => buildNavigationStats(pid, o, duckdbDialect),

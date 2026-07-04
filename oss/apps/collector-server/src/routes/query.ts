@@ -312,6 +312,13 @@ const coverageQueryParams = z.object({
   session: sessionFilter,
 });
 
+/**
+ * Spatial FPS heatmap params (#145): voxel `cellSize` + scene/session filters + a
+ * result cap. Same shape as the coverage heatmap — the difference is the metric
+ * (per-voxel FPS from `frame_perf`), not the filters.
+ */
+const perfHeatmapQueryParams = coverageQueryParams;
+
 /** Camera-distance params: reference `center` (3 coords) + `bucketSize` + filters. */
 const cameraDistanceQueryParams = z.object({
   since: z.coerce.number().int().optional(),
@@ -899,6 +906,18 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.sceneCoverage(projectId, req.query);
+    },
+  );
+
+  // Spatial FPS heatmap (#145) — where FPS is bad in world space: frame_perf
+  // samples voxel-binned by their captured camera position (avg/min FPS per cell).
+  r.get(
+    "/api/v1/heatmaps/perf",
+    { schema: { querystring: perfHeatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.perfHeatmap(projectId, req.query);
     },
   );
 

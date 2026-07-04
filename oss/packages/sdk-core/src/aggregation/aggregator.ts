@@ -125,6 +125,7 @@ export function createAggregator(options: AggregatorOptions): Aggregator {
       ...(percentiles ?? {}),
       ...(typeof s.dpr === "number" && s.dpr > 0 ? { dpr: s.dpr } : {}),
       ...(s.renderScale !== undefined ? { renderScale: s.renderScale } : {}),
+      ...(s.position ? { position: s.position } : {}),
     } as EventInput);
   }
 
