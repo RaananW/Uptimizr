@@ -28,6 +28,8 @@ with `x-api-key`. The key only ever reads its own project's data.
   per-mesh input-source split, scoped to active interactions so passive gaze doesn't inflate the
   ranking), interaction-kind breakdown, object dwell, hover hesitation, and a **blind-spots** report
   (meshes rendered but never noticed — high visibility, little engagement; #143).
+- **Configurator variants** — a **variant → conversion leaderboard** ranking `custom` variant events
+  by views, with dwell and an in-panel picker for per-variant conversion rate (see below).
 - **Input** — an **input-modality split** (mouse/touch/keyboard/gamepad/XR share) with the most-used
   app-level shortcuts.
 - **Performance** — FPS/frame-time summaries with percentile aggregation, a **performance
@@ -98,6 +100,20 @@ This is an intentional divergence from `GET /api/v1/meshes/top` (and the **Mesh 
 which counts _every_ mesh-referencing event including gaze. Use Mesh-rankings for "what's in view"
 and the leaderboard for "what gets used"; the two will diverge whenever gaze-only hits exist.
 :::
+
+## Variant → conversion leaderboard panel
+
+The **Variant → conversion leaderboard** (#150) is built for 3D **product configurators**: the
+colour, material, and trim swaps a scene emits as `custom` events. It ranks each variant (a
+`custom` event grouped by its `name`) by **views**, and shows distinct **sessions** and the mean
+**dwell** before the shopper switched variant or converted. It reads
+`GET /api/v1/variant-leaderboard`.
+
+Pick a **success event** from the in-panel dropdown — its options are the variant names discovered
+in the current range — to reveal each variant's **conversion rate**: the share of sessions that
+fired the success event at or after first viewing that variant. Until one is chosen, the conversion
+column shows `—`. Nothing is authored or persisted; the variant and success events are the ones your
+scene already emits, so there is no schema change.
 
 ## Dead-zone report panel
 

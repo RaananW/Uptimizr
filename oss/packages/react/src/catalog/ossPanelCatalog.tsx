@@ -43,6 +43,7 @@ import type {
   RenderScaleTruth as RenderScaleTruthData,
   SceneProxyMesh,
   SceneRetentionLink,
+  VariantLeaderboardRow,
   ViewCoverageBin,
   WorldHeatmapBin,
   XrLocomotionStat,
@@ -87,6 +88,12 @@ import {
   BLIND_SPOTS_SUBTITLE,
   BLIND_SPOTS_HELP,
 } from "./views/BlindSpotReport";
+import {
+  VariantLeaderboardView,
+  VARIANT_LEADERBOARD_TITLE,
+  VARIANT_LEADERBOARD_SUBTITLE,
+  VARIANT_LEADERBOARD_HELP,
+} from "./views/VariantLeaderboard";
 import {
   InputModalitySplitView,
   INPUT_MODALITY_TITLE,
@@ -1145,10 +1152,24 @@ export const divergencePanel = definePanel<DivergenceData, typeof DIVERGENCE_SET
  * entire panel set from this array and adds only chrome + layout. Self-hosters
  * append their own `PanelDefinition`s (build-time registration).
  */
+export const variantLeaderboardPanel = definePanel<VariantLeaderboardRow[]>({
+  id: "variant-leaderboard",
+  title: VARIANT_LEADERBOARD_TITLE,
+  subtitle: VARIANT_LEADERBOARD_SUBTITLE,
+  help: VARIANT_LEADERBOARD_HELP,
+  span: 1,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.variantLeaderboard({}, scoped(ctx)),
+  render: ({ data, ctx }) => (
+    <VariantLeaderboardView initialRows={data ?? []} api={ctx.api} params={scoped(ctx)} />
+  ),
+});
+
 export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   topMeshesPanel,
   meshLeaderboardPanel,
   blindSpotsPanel,
+  variantLeaderboardPanel,
   pointerHeatmapPanel,
   meshUvHeatmapPanel,
   cameraDomePanel,

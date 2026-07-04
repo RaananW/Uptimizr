@@ -29,6 +29,7 @@ import type {
   FunnelOptions,
   FunnelStepInput,
   LoadBounceFunnelOptions,
+  VariantLeaderboardOptions,
   MeshOptions,
   RangeOptions,
   RegionOptions,
@@ -2989,6 +2990,159 @@ export function buildLoadBounceFunnel(
       WHERE lm.load_ms IS NOT NULL
       GROUP BY band
       ORDER BY band ASC
+    `,
+    query_params: bag.values,
+  };
+}
+
+function leaderboardPredicate(bag: ParamBag, step: FunnelStepInput, prefix: string): string {
+  const parts = [`event_type = ${bag.add(`${prefix}Type`, "string", step.type)}`];
+  if (step.name != null && step.name.length > 0) {
+    parts.push(`name = ${bag.add(`${prefix}Name`, "string", step.name)}`);
+  }
+  if (step.mesh != null && step.mesh.length > 0) {
+    parts.push(`mesh = ${bag.add(`${prefix}Mesh`, "string", step.mesh)}`);
+  }
+  return parts.join(" AND ");
+}
+
+/**
+ * Variant → conversion leaderboard for product configurators (#150).
+ *
+ * A **variant** is an event matching the `variant` predicate (default: every
+ * `custom` event), grouped by its promoted `name` column — the color / material /
+ * SKU discriminator configurators emit as custom-event names (payload `props` are
+ * not portably queryable, so `name` is the grouping key; ADR 0038). Per variant
+ * the leaderboard reports:
+ *
+ * - **views** — how many matching events fired, and over how many distinct
+ *   **sessions**;
+ * - **conversions** — distinct sessions that fired the optional `conversion`
+ *   event at or after their first view of that variant (ordered, first-touch);
+ *   `0` when no `conversion` predicate is supplied. The consumer derives the rate
+ *   as `conversions / sessions`;
+ * - **avg_dwell_ms** — the mean gap from each view to the next *boundary* in the
+ *   same session: a later view of a **different** variant (a switch) or a later
+ *   conversion event. A re-view of the *same* variant is not a boundary. Views
+ *   with no later boundary are excluded from the average.
+ *
+ * Implementation — a CTE chain using only `JOIN` / `min` / `avg` / `count` /
+ * `UNION ALL` (no window or ASOF functions), so it renders identically on DuckDB
+ * (OSS) and ClickHouse (scale tier) (ADR 0020) and is injection-safe. Session
+ * scope (range / scene / camera-mode) applies to both the variant and conversion
+ * event sets. Ranked by views, capped to `limit`.
+ *
+ * The predicates come from the caller (request input / CLI / hosted) — OSS has no
+ * authoring surface (ADR 0038).
+ */
+export function buildVariantLeaderboard(
+  projectId: string,
+  opts: VariantLeaderboardOptions,
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const cameraMode = cameraModeClause(bag, d, projectId, opts);
+  const limit = bag.add("limit", "u32", opts.limit ?? 50);
+
+  const variantPred = leaderboardPredicate(bag, opts.variant ?? { type: "custom" }, "v");
+  const hasConversion = opts.conversion != null;
+  const conversionPred = hasConversion
+    ? leaderboardPredicate(bag, opts.conversion as FunnelStepInput, "c")
+    : "";
+
+  // Every variant event: (session, variant name, ts). `name` is the discriminator.
+  const ctes: string[] = [
+    `variant_views AS (
+        SELECT session_id, name AS variant, ts
+        FROM events
+        WHERE project_id = ${pid} AND ${variantPred}${range}${scene}${cameraMode}
+      )`,
+  ];
+
+  // Conversion events (optional): (session, ts), same session scope.
+  if (hasConversion) {
+    ctes.push(`conversions AS (
+        SELECT session_id, ts
+        FROM events
+        WHERE project_id = ${pid} AND ${conversionPred}${range}${scene}${cameraMode}
+      )`);
+  }
+
+  // Per-view aggregates: total views and distinct sessions per variant.
+  ctes.push(`view_counts AS (
+        SELECT variant, count() AS views, count(DISTINCT session_id) AS sessions
+        FROM variant_views
+        GROUP BY variant
+      )`);
+
+  // First time each session saw each variant — the ordered anchor for conversion.
+  ctes.push(`first_view AS (
+        SELECT session_id, variant, min(ts) AS t0
+        FROM variant_views
+        GROUP BY session_id, variant
+      )`);
+
+  // Distinct sessions that converted at/after first seeing the variant (ordered).
+  if (hasConversion) {
+    ctes.push(`converted AS (
+        SELECT fv.variant AS variant, count(DISTINCT fv.session_id) AS conversions
+        FROM first_view fv
+        JOIN conversions c ON c.session_id = fv.session_id AND c.ts >= fv.t0
+        GROUP BY fv.variant
+      )`);
+  }
+
+  // Boundaries for dwell: every variant view (carrying its variant, is_conv = 0)
+  // plus every conversion event (is_conv = 1). A view's next boundary is the
+  // earliest later boundary that is a conversion OR a different variant.
+  const boundaryParts = [
+    `SELECT session_id, ts, variant AS b_variant, 0 AS is_conv FROM variant_views`,
+  ];
+  if (hasConversion) {
+    boundaryParts.push(`SELECT session_id, ts, '' AS b_variant, 1 AS is_conv FROM conversions`);
+  }
+  ctes.push(`boundaries AS (
+        ${boundaryParts.join("\n        UNION ALL ")}
+      )`);
+
+  // Per view: gap to its next boundary. The JOIN drops views with no boundary,
+  // so they are excluded from the average (as specified).
+  ctes.push(`view_dwell AS (
+        SELECT v.variant AS variant,
+               ${d.epochMs("min(b.ts)")} - ${d.epochMs("v.ts")} AS dwell_ms
+        FROM variant_views v
+        JOIN boundaries b
+          ON b.session_id = v.session_id
+         AND b.ts > v.ts
+         AND NOT (b.is_conv = 0 AND b.b_variant = v.variant)
+        GROUP BY v.session_id, v.variant, v.ts
+      )`);
+
+  ctes.push(`dwell AS (
+        SELECT variant, avg(dwell_ms) AS avg_dwell_ms
+        FROM view_dwell
+        GROUP BY variant
+      )`);
+
+  const conversionsSelect = hasConversion ? `coalesce(cv.conversions, 0)` : `0`;
+  const convJoin = hasConversion ? `\n      LEFT JOIN converted cv ON cv.variant = vc.variant` : "";
+
+  return {
+    query: `
+      WITH ${ctes.join(",\n      ")}
+      SELECT
+        vc.variant AS variant,
+        vc.views AS views,
+        vc.sessions AS sessions,
+        ${conversionsSelect} AS conversions,
+        coalesce(dw.avg_dwell_ms, 0) AS avg_dwell_ms
+      FROM view_counts vc
+      LEFT JOIN dwell dw ON dw.variant = vc.variant${convJoin}
+      ORDER BY vc.views DESC, vc.variant ASC
+      LIMIT ${limit}
     `,
     query_params: bag.values,
   };

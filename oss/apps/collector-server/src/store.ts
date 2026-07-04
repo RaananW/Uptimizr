@@ -15,6 +15,8 @@ import type {
   SceneRetentionRow,
   LoadBounceFunnelOptions,
   LoadBounceBandRow,
+  VariantLeaderboardOptions,
+  VariantLeaderboardRow,
   HeatmapBinRow,
   HoverDwellRow,
   CompileStallRow,
@@ -620,6 +622,19 @@ export interface CollectorStore {
    * applies when omitted); no schema change — derived from existing events.
    */
   loadBounceFunnel(projectId: string, opts?: LoadBounceFunnelOptions): Promise<LoadBounceBandRow[]>;
+
+  /**
+   * Variant → conversion leaderboard for product configurators (#150): per
+   * variant (a `custom` event grouped by its `name`), the view count, distinct
+   * sessions, conversions to an optional "success" event, and mean dwell before
+   * the next variant switch or conversion. Like the funnel, the `variant` /
+   * `conversion` predicates are supplied by the caller (OSS is a passive viewer,
+   * ADR 0038); ranked by views and capped by `limit`.
+   */
+  variantLeaderboard(
+    projectId: string,
+    opts: VariantLeaderboardOptions,
+  ): Promise<VariantLeaderboardRow[]>;
   /** Ordered session timeline for replay (gated by raw-session retention). */
   getSessionEvents(projectId: string, sessionId: string): Promise<AnyEvent[]>;
   /**
