@@ -26,6 +26,7 @@ import {
   buildMeshDwell,
   buildMeshBlindSpots,
   buildMeshInteractionKinds,
+  buildReachability,
   buildPerfSummary,
   buildPerfDistribution,
   buildFpsHistogram,
@@ -77,6 +78,7 @@ import {
   type MeshDwellRow,
   type MeshBlindSpotRow,
   type MeshInteractionKindRow,
+  type ReachabilityBinRow,
   type MeshSourceCountRow,
   type MeshTrendPointRow,
   type InputActionCountRow,
@@ -206,6 +208,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<MeshBlindSpotRow>(ch, buildMeshBlindSpots(projectId, opts, d)),
     meshInteractionKinds: (projectId, opts = {}) =>
       runClickhouseQuery<MeshInteractionKindRow>(ch, buildMeshInteractionKinds(projectId, opts, d)),
+    reachability: (projectId, opts = {}) =>
+      runClickhouseQuery<ReachabilityBinRow>(ch, buildReachability(projectId, opts, d)),
     deadClicks: (projectId, opts = {}) =>
       runClickhouseQuery<DeadClickRow>(ch, buildDeadClicks(projectId, opts, d)),
     rageClicks: (projectId, opts = {}) =>

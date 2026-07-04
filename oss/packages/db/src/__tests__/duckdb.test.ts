@@ -11,6 +11,7 @@ import {
   buildListSessions,
   buildMeshDwell,
   buildMeshInteractionKinds,
+  buildReachability,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -647,6 +648,54 @@ describe("duckdb store", () => {
     expect(byPair).toEqual({ "door/hover": 2, "door/click": 1, "lever/drag": 1 });
     // Ranked by count: the two door hovers lead.
     expect(rows[0]).toMatchObject({ mesh: "door", kind: "hover" });
+  });
+
+  it("histograms interaction distance per mesh from the standpoint (#151)", async () => {
+    await insertEvents(db, [
+      // Standpoint at the origin; two panels interacted with from here.
+      base("camera_sample", T0 + 1_000, { position: [0, 0, 0], direction: [0, 0, 1] }),
+      // "near" panel: right at the standpoint → distance 0 → bucket 0.
+      base("mesh_interaction", T0 + 2_000, { mesh: "near", kind: "pick", point: [0, 0, 0] }),
+      // "far" panel: [3,4,0] is 5 units away → bucket 5. Two interactions.
+      base("mesh_interaction", T0 + 3_000, { mesh: "far", kind: "pick", point: [3, 4, 0] }),
+      base("mesh_interaction", T0 + 4_000, { mesh: "far", kind: "pick", point: [3, 4, 0] }),
+      // Camera moves to [10,0,0]; the next interaction measures from THIS sample
+      // (nearest preceding), so [10,0,0] is distance 0 → bucket 0.
+      base("camera_sample", T0 + 5_000, { position: [10, 0, 0], direction: [0, 0, 1] }),
+      base("mesh_interaction", T0 + 6_000, { mesh: "near", kind: "pick", point: [10, 0, 0] }),
+      // An interaction with no missing world point is dropped (no hit_point).
+      base("mesh_interaction", T0 + 7_000, { mesh: "ghost", kind: "hover" }),
+    ]);
+    const rows = await runDuckdbQuery<{
+      mesh: string;
+      bucket: number;
+      count: number;
+      avg_distance: number;
+    }>(db, buildReachability(PID, { ...RANGE, bucketSize: 1 }, duckdbDialect));
+    const byPair = Object.fromEntries(
+      rows.map((r) => [`${r.mesh}/${Number(r.bucket)}`, Number(r.count)]),
+    );
+    expect(byPair).toEqual({ "far/5": 2, "near/0": 2 });
+    // The world point without a hit_point is not measurable and drops out.
+    expect(rows.some((r) => r.mesh === "ghost")).toBe(false);
+    // Ranked by count with ties broken deterministically; the far band carries
+    // the reported mean distance of 5.
+    const far = rows.find((r) => r.mesh === "far");
+    expect(Number(far?.avg_distance)).toBeCloseTo(5, 5);
+  });
+
+  it("drops interactions that precede every camera sample (#151)", async () => {
+    await insertEvents(db, [
+      // Interaction before any camera sample → no preceding standpoint → dropped.
+      base("mesh_interaction", T0 + 1_000, { mesh: "early", kind: "pick", point: [1, 1, 1] }),
+      base("camera_sample", T0 + 2_000, { position: [0, 0, 0], direction: [0, 0, 1] }),
+      base("mesh_interaction", T0 + 3_000, { mesh: "late", kind: "pick", point: [0, 0, 0] }),
+    ]);
+    const rows = await runDuckdbQuery<{ mesh: string; bucket: number; count: number }>(
+      db,
+      buildReachability(PID, { ...RANGE, bucketSize: 1 }, duckdbDialect),
+    );
+    expect(rows.map((r) => r.mesh)).toEqual(["late"]);
   });
 
   it("splits per-mesh interaction counts by input source (#74)", async () => {

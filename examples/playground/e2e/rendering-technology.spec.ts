@@ -66,7 +66,11 @@ test("rendering-technology panel renders the always-on api/backend/shading-langu
   await expect(panel.getByRole("heading", { name: "Rendering technology" })).toBeVisible({
     timeout: 20_000,
   });
-  await expect(panel.getByText("By API", { exact: true })).toBeVisible();
+  // The dashboard now hosts many panels, so this one can sit below the fold on a
+  // short CI viewport; scroll it into view so its (lazily rendered) body mounts
+  // before we assert on the api/backend/shading-language breakdown.
+  await panel.scrollIntoViewIfNeeded();
+  await expect(panel.getByText("By API", { exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(panel.getByText("By backend", { exact: true })).toBeVisible();
   await expect(panel.getByText("By shading language", { exact: true })).toBeVisible();
   await expect(panel.getByText("webgpu")).toBeVisible();

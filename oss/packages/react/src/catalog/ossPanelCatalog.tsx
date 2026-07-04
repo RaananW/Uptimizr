@@ -37,6 +37,7 @@ import type {
   PerfHeatmapVoxel,
   PositionBin,
   QueryParams,
+  ReachabilityBin,
   RenderScaleTruth as RenderScaleTruthData,
   SceneProxyMesh,
   SceneRetentionLink,
@@ -65,6 +66,13 @@ import {
   MESH_KINDS_SUBTITLE,
   MESH_KINDS_HELP,
 } from "./views/MeshInteractionKinds";
+import {
+  ReachabilityView,
+  REACHABILITY_TITLE,
+  REACHABILITY_SUBTITLE,
+  REACHABILITY_HELP,
+  DEFAULT_REACH_THRESHOLD,
+} from "./views/Reachability";
 import {
   MeshLeaderboardView,
   MESH_LEADERBOARD_TITLE,
@@ -195,6 +203,8 @@ const CAMERA_BINS = 36;
 const FLOOR_CELL_SIZE = 1;
 /** Voxel size (world units) for the 3D world (click) heatmap. */
 const WORLD_CELL_SIZE = 0.5;
+/** Distance-band width (world units) for the reachability histogram (#151). */
+const REACH_BUCKET_SIZE = 0.5;
 /** Max aggregate flow links drawn before the panel caps for legibility. */
 const FLOW_MAX_LINKS = 80;
 
@@ -491,6 +501,30 @@ export const meshKindsPanel = definePanel<MeshInteractionKind[]>({
   surfaces: ["overview", "session"],
   load: (ctx) => ctx.api.meshKinds({ ...scoped(ctx), limit: 200 }),
   render: ({ data }) => <MeshInteractionKindsView rows={data ?? []} />,
+});
+
+/**
+ * Reachability report (#151) — React/HTML, half width. Per-mesh mean distance
+ * between where the user stood and what they interacted with (derived server-side
+ * by ASOF-joining `mesh_interaction` points to the nearest preceding
+ * `camera_sample`). Flags meshes/UI reached from beyond comfortable range.
+ */
+export const reachabilityPanel = definePanel<ReachabilityBin[]>({
+  id: "reachability-report",
+  title: REACHABILITY_TITLE,
+  subtitle: REACHABILITY_SUBTITLE,
+  help: REACHABILITY_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) =>
+    ctx.api.reachability({ ...scoped(ctx), bucketSize: REACH_BUCKET_SIZE, limit: 500 }),
+  render: ({ data }) => (
+    <ReachabilityView
+      bins={data ?? []}
+      bucketSize={REACH_BUCKET_SIZE}
+      threshold={DEFAULT_REACH_THRESHOLD}
+    />
+  ),
 });
 
 /** Aim the per-mesh trend at ~24 buckets across the active range for a sparkline. */
@@ -960,6 +994,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   floorPlanPanel,
   desireLinesPanel,
   meshKindsPanel,
+  reachabilityPanel,
   inputModalityPanel,
   renderScalePanel,
   perfDistributionPanel,

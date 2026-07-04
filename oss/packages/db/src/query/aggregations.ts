@@ -1005,6 +1005,81 @@ export function buildMeshInteractionKinds(
 }
 
 /**
+ * Reachability report (#151): how far each interacted mesh sat from where the
+ * user actually stood. ASOF-join every `mesh_interaction` that carries a world
+ * `point` (→ `hit_point`) to the nearest **preceding** `camera_sample` in the
+ * same session, take the Euclidean standpoint→hit distance, and histogram it per
+ * mesh in `bucketSize`-wide world-unit bands. Meshes/UI whose interactions
+ * cluster in far bands are consistently reached from an uncomfortable range —
+ * actionable feedback for VR UI placement and first-person layout.
+ *
+ * The standpoint is the click-time camera **position** (the shared coordinate
+ * frame, ADR 0018); interactions with no preceding camera sample in range can't
+ * be measured, so the inner ASOF join drops them. Same nearest-in-time caveat as
+ * the click-gaze / navigation joins: camera samples are frequent enough that the
+ * approximation is sound for discrete interaction events. Honors the shared
+ * scene/source/session filters (source constrains the *interaction* side only —
+ * a `camera_sample`'s `source` is the realized `'mouse'` default, ADR 0011).
+ */
+export function buildReachability(
+  projectId: string,
+  opts: RangeOptions &
+    SceneOptions &
+    SourceOptions &
+    SessionOptions & { bucketSize?: number; limit?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const bucketSize = bag.add("bucketSize", "f64", opts.bucketSize ?? 0.5);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const source = sourceClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const limit = bag.add("limit", "u32", opts.limit ?? 500);
+  return {
+    query: `
+      SELECT
+        seg.mesh AS mesh,
+        floor(seg.dist / ${bucketSize}) AS bucket,
+        count() AS count,
+        avg(seg.dist) AS avg_distance
+      FROM (
+        SELECT
+          i.mesh AS mesh,
+          sqrt(
+            (i.hx - m.px) * (i.hx - m.px) +
+            (i.hy - m.py) * (i.hy - m.py) +
+            (i.hz - m.pz) * (i.hz - m.pz)
+          ) AS dist
+        FROM (
+          SELECT session_id, ts, mesh,
+            hit_point[1] AS hx, hit_point[2] AS hy, hit_point[3] AS hz
+          FROM events
+          WHERE project_id = ${pid}
+            AND event_type = 'mesh_interaction'
+            AND mesh != ''
+            AND length(hit_point) = 3${range}${scene}${source}${session}
+        ) AS i
+        ${d.asofInnerJoin} (
+          SELECT session_id, ts,
+            position[1] AS px, position[2] AS py, position[3] AS pz
+          FROM events
+          WHERE project_id = ${pid}
+            AND event_type = 'camera_sample'
+            AND length(position) = 3${range}${scene}${session}
+        ) AS m
+        ON i.session_id = m.session_id AND i.ts >= m.ts
+      ) AS seg
+      GROUP BY mesh, bucket
+      ORDER BY count DESC
+      LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * Dead-click rate (#46): of all `pointer_click` events, how many hit nothing
  * (the hit-test missed, so `mesh` is empty / no `hitMesh`). A high dead-click
  * rate is a 3D discoverability problem — users click where they expect something

@@ -154,6 +154,12 @@ const meshTrendQueryParams = pointerHeatmapQueryParams.extend({
   interval: z.coerce.number().int().positive().max(31_536_000).optional(),
 });
 
+/** Reachability params (#151): pointer filters + a distance-band `bucketSize` (world units). */
+const reachabilityQueryParams = pointerHeatmapQueryParams.extend({
+  bucketSize: z.coerce.number().positive().max(1000).optional(),
+  limit: z.coerce.number().int().positive().max(10000).optional(),
+});
+
 /** World heatmap params: a positive voxel `cellSize` (world units) instead of bins. */
 const worldHeatmapQueryParams = z.object({
   since: z.coerce.number().int().optional(),
@@ -715,6 +721,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.meshInteractionKinds(projectId, req.query);
+    },
+  );
+
+  // Reachability report (#151) — per-mesh histogram of the standpoint→interaction
+  // distance (ASOF-joins `mesh_interaction` world points to the nearest preceding
+  // `camera_sample`). Far bands flag meshes/UI reached from an uncomfortable range.
+  r.get(
+    "/api/v1/meshes/reachability",
+    { schema: { querystring: reachabilityQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.reachability(projectId, req.query);
     },
   );
 

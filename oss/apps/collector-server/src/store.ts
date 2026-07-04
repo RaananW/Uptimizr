@@ -23,6 +23,7 @@ import type {
   MeshDwellRow,
   MeshBlindSpotRow,
   MeshInteractionKindRow,
+  ReachabilityBinRow,
   MeshSourceCountRow,
   MeshTrendPointRow,
   InputActionCountRow,
@@ -272,6 +273,20 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SourceOptions & SessionOptions & { limit?: number },
   ): Promise<MeshInteractionKindRow[]>;
+  /**
+   * Reachability report (#151): per-mesh histogram of the standpoint→interaction
+   * distance — how far each interacted mesh sat from the click-time camera
+   * position. Far distance bands flag meshes/UI reached from an uncomfortable
+   * range (VR/first-person layout feedback). Derived by ASOF-joining
+   * `mesh_interaction` world points to the nearest preceding `camera_sample`.
+   */
+  reachability(
+    projectId: string,
+    opts?: RangeOptions &
+      SceneOptions &
+      SourceOptions &
+      SessionOptions & { bucketSize?: number; limit?: number },
+  ): Promise<ReachabilityBinRow[]>;
   /**
    * Dead-click rate (#46): total clicks vs. clicks that hit empty space, from
    * `pointer_click` events. The consumer derives the rate.

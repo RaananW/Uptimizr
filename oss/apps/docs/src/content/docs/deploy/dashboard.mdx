@@ -130,9 +130,25 @@ empty-state when no proxy is registered, and a "widen the range" hint when there
 samples in range. See [Scene proxy](/docs/connectors/babylon/#scene-proxy-3d-heatmap-backdrop) for
 registering a proxy with `scanSceneProxy`.
 
-## Build for production
+## Reachability report panel
 
-The dashboard builds to a deployable Next.js app:
+The **Reachability report** (#151) answers "was anything interactive placed out of comfortable
+reach?" — critical for VR/first-person UIs where a panel or button can end up too far from where the
+visitor actually stood.
+
+**How it works.** It reads `GET /api/v1/meshes/reachability`, which ASOF-joins each
+`mesh_interaction` world hit-point to the **nearest preceding** `camera_sample` in the same session
+and bins the standpoint→interaction distance into `bucketSize`-wide world-unit bands per mesh
+(default `0.5`). The panel folds each mesh's bands into a **count-weighted mean distance**, ranks
+meshes **farthest-mean first**, and flags any whose mean clears a comfortable-reach threshold (≈2
+world units by default) so out-of-reach UI stands out.
+
+:::note[World units are scene-defined]
+The bucket size and reach threshold are heuristics in your scene's world units, not absolutes.
+Interactions with no preceding camera sample can't be measured and are dropped.
+:::
+
+## Build for production
 
 ```bash
 pnpm --filter @uptimizr/dashboard build

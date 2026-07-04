@@ -26,6 +26,7 @@ import {
   buildMeshDwell,
   buildMeshBlindSpots,
   buildMeshInteractionKinds,
+  buildReachability,
   buildPerfSummary,
   buildPerfDistribution,
   buildFpsHistogram,
@@ -90,6 +91,7 @@ import {
   type MeshDwellRow,
   type MeshBlindSpotRow,
   type MeshInteractionKindRow,
+  type ReachabilityBinRow,
   type MeshSourceCountRow,
   type MeshTrendPointRow,
   type InputActionCountRow,
@@ -212,6 +214,8 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
         db,
         buildMeshInteractionKinds(projectId, opts, duckdbDialect),
       ),
+    reachability: (projectId, opts = {}) =>
+      runDuckdbQuery<ReachabilityBinRow>(db, buildReachability(projectId, opts, duckdbDialect)),
     deadClicks: (projectId, opts = {}) =>
       runDuckdbQuery<DeadClickRow>(db, buildDeadClicks(projectId, opts, duckdbDialect)),
     rageClicks: (projectId, opts = {}) =>

@@ -77,6 +77,20 @@ export interface MeshInteractionKind {
 }
 
 /**
+ * One (mesh, distance-band) tally for the reachability report (#151): how many
+ * interactions with `mesh` landed in the band `bucket * bucketSize` ..
+ * `(bucket+1) * bucketSize` world units from the click-time camera standpoint,
+ * plus the mean distance within that band. Far bands flag meshes/UI reached from
+ * an uncomfortable range.
+ */
+export interface ReachabilityBin {
+  mesh: string;
+  bucket: number;
+  count: number;
+  avg_distance: number;
+}
+
+/**
  * One (mesh, source) tally (#74): a mesh's interaction count broken out by the
  * input `source` (mouse / touch / xr-controller / …). Summing a mesh's rows
  * reproduces its overall interaction total, so the leaderboard derives both the
@@ -705,6 +719,22 @@ export class CollectorApi {
         mesh: String(r.mesh ?? ""),
         kind: String(r.kind ?? ""),
         count: Number(r.count ?? 0),
+      })),
+    );
+  }
+
+  /**
+   * Reachability report (#151): per-mesh histogram of the standpoint→interaction
+   * distance in `bucketSize`-wide world-unit bands, with each band's mean
+   * distance. Far bands flag meshes/UI reached from an uncomfortable range.
+   */
+  reachability(params?: QueryParams): Promise<ReachabilityBin[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/meshes/reachability", params).then((rows) =>
+      rows.map((r) => ({
+        mesh: String(r.mesh ?? ""),
+        bucket: Number(r.bucket ?? 0),
+        count: Number(r.count ?? 0),
+        avg_distance: Number(r.avg_distance ?? 0),
       })),
     );
   }
