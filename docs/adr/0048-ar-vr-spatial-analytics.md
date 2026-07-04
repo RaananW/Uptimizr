@@ -1,6 +1,6 @@
 # ADR 0048: AR/VR spatial analytics — placement, boundary proximity, tracking quality
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-07-04
 - **Deciders:** Project owner, engineering
 
