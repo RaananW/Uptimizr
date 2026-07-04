@@ -1,5 +1,12 @@
 # @uptimizr/dashboard
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [dc740f3]
+  - @uptimizr/react@0.7.0
+
 ## 0.3.1
 
 ### Patch Changes
