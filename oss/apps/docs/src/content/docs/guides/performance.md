@@ -12,12 +12,12 @@ The perf channel samples on a slow timer (default ≈0.5 Hz; tune via
 [`sampling.perf`](/docs/guides/configuration/#capture-fidelity-sampling--preferred)). Beyond
 `fps` / `frameTimeMs` / `drawCalls`, each sample reports percentiles and resolution over the window:
 
-| Field                              | Meaning                                                                 |
-| ---------------------------------- | ----------------------------------------------------------------------- |
-| `frameTimeP95Ms`, `frameTimeP99Ms` | 95th/99th-percentile frame time over the window (jank tail).            |
-| `longFrames`                       | Count of frames slower than `jankFrameMs` (default `50`) in the window. |
-| `dpr`                              | Device pixel ratio.                                                     |
-| `renderScale`                      | Engine hardware-scaling factor (`1` = native, `<1` = downscaled).       |
+| Field                              | Meaning                                                                                             |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `frameTimeP95Ms`, `frameTimeP99Ms` | 95th/99th-percentile frame time over the window (jank tail).                                        |
+| `longFrames`                       | Count of frames slower than `jankFrameMs` (default `50`) in the window.                             |
+| `dpr`                              | Device pixel ratio.                                                                                 |
+| `renderScale`                      | Engine hardware-scaling factor (`1` = native, `<1` = downscaled).                                   |
 | `position`                         | Optional `[x, y, z]` camera world-position at the sample. Powers the **spatial FPS heatmap** below. |
 
 A steady FPS is meaningful telemetry, so the perf channel reports continuously by default. To dedupe a

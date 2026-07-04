@@ -373,9 +373,9 @@ describe("performance depth (design §C)", () => {
   });
 
   it("accepts a frame_perf without a position (position is optional)", () => {
-    expect(
-      anyEventSchema.safeParse({ ...baseEnvelope, type: "frame_perf", fps: 60 }).success,
-    ).toBe(true);
+    expect(anyEventSchema.safeParse({ ...baseEnvelope, type: "frame_perf", fps: 60 }).success).toBe(
+      true,
+    );
   });
 
   it("rejects a frame_perf whose position is not a 3-tuple of numbers", () => {
