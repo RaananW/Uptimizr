@@ -130,6 +130,24 @@ empty-state when no proxy is registered, and a "widen the range" hint when there
 samples in range. See [Scene proxy](/docs/connectors/babylon/#scene-proxy-3d-heatmap-backdrop) for
 registering a proxy with `scanSceneProxy`.
 
+## Backtracking hotspots panel
+
+The **Backtracking hotspots** panel (#153) ranks scenes/areas by how often visitors **re-walk the
+same area** — a confusion signal that desire lines alone don't show. A player who keeps returning to
+the same spot is a strong hint of a dead end, a missed cue, or a puzzle that isn't reading clearly.
+
+**How it works.** It reads `GET /api/v1/backtrack`, which reuses the same `camera_sample` position
+stream that feeds desire lines. Each session's positions are binned onto a coarse X/Z grid
+(`cellSize`, default 2 world units); **consecutive samples in one cell are collapsed** into a single
+_cell entry_, so standing still or dwelling never counts. Re-entering a cell you had already left is
+a **revisit**. Per scene the panel pools `backtrack_ratio = revisits ÷ entries` across sessions and
+shows the ratio (bar + percent) alongside the raw `revisits / entries` and session count, worst
+first.
+
+This is the coarse-grid **revisit proxy** — a deliberately cheap first cut, not true reverse-segment
+path retracing. Tune `cellSize` to your scene: a larger cell only flags returning to a broad *area*,
+a smaller cell catches tighter out-and-back loops.
+
 ## Reachability report panel
 
 The **Reachability report** (#151) answers "was anything interactive placed out of comfortable

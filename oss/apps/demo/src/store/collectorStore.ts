@@ -1,4 +1,5 @@
 import {
+  buildBacktrackRatio,
   buildCameraDirectionHeatmap,
   buildCameraDistance,
   buildCameraGestures,
@@ -251,6 +252,7 @@ export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/camera/distance": (pid, o, sp) =>
     buildCameraDistance(pid, { ...o, center: parseCenter(sp) }, duckdbDialect),
   "/api/v1/navigation": (pid, o) => buildNavigationStats(pid, o, duckdbDialect),
+  "/api/v1/backtrack": (pid, o) => buildBacktrackRatio(pid, o, duckdbDialect),
   "/api/v1/xr/rotation": (pid, o) => buildXrRotationRate(pid, o, duckdbDialect),
   "/api/v1/xr/sources": (pid, o) => buildXrSourceUsage(pid, o, duckdbDialect),
   "/api/v1/xr/abandonment": (pid, o) => buildXrAbandonment(pid, o, duckdbDialect),

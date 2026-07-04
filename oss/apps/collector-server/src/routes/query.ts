@@ -371,6 +371,16 @@ const navigationQueryParams = z.object({
   session: sessionFilter,
 });
 
+/** Backtrack-ratio params: coarse-grid `cellSize` + scene/session filters. */
+const backtrackQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  cellSize: z.coerce.number().positive().max(1000).optional(),
+  limit: z.coerce.number().int().positive().max(1000).optional(),
+  scene: sceneFilter,
+  session: sessionFilter,
+});
+
 /** XR rotation-rate params: `rapidTurn` (rad) threshold + scene/session filters. */
 const xrRotationQueryParams = z.object({
   since: z.coerce.number().int().optional(),
@@ -1034,6 +1044,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.navigationStats(projectId, req.query);
+    },
+  );
+
+  // Path-retrace / backtracking ratio (#153) — per-scene leaderboard of how often
+  // visitors re-walk a coarse grid cell (the confusion / unclear-signage signal),
+  // derived from the same camera-position stream as desire lines.
+  r.get(
+    "/api/v1/backtrack",
+    { schema: { querystring: backtrackQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.backtrackRatio(projectId, req.query);
     },
   );
 

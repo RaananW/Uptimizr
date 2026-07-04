@@ -18,6 +18,7 @@ import {
   buildSceneRetention,
   buildListSessions,
   buildNavigationStats,
+  buildBacktrackRatio,
   buildXrRotationRate,
   buildXrSourceUsage,
   buildXrAbandonment,
@@ -83,6 +84,7 @@ import {
   type MeshTrendPointRow,
   type InputActionCountRow,
   type NavigationStatsRow,
+  type BacktrackRatioRow,
   type XrRotationRateRow,
   type XrSourceUsageRow,
   type XrAbandonmentRow,
@@ -261,6 +263,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<CameraDistanceBucketRow>(ch, buildCameraDistance(projectId, opts, d)),
     navigationStats: (projectId, opts = {}) =>
       runClickhouseQuery<NavigationStatsRow>(ch, buildNavigationStats(projectId, opts, d)),
+    backtrackRatio: (projectId, opts = {}) =>
+      runClickhouseQuery<BacktrackRatioRow>(ch, buildBacktrackRatio(projectId, opts, d)),
     xrRotationRate: (projectId, opts = {}) =>
       runClickhouseQuery<XrRotationRateRow>(ch, buildXrRotationRate(projectId, opts, d)),
     xrSourceUsage: (projectId, opts = {}) =>

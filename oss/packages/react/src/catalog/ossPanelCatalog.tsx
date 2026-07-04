@@ -19,6 +19,7 @@ import type { PanelContext, PanelDefinition, PanelSettings } from "../panels/con
 import { pickInterval } from "../filters";
 import type {
   AggregateTrajectoryPoint,
+  BacktrackRatioStat,
   CameraGestureStat,
   CoverageVoxel,
   DirectionBin,
@@ -125,6 +126,12 @@ import {
   XR_LOCOMOTION_TITLE,
   XR_LOCOMOTION_SUBTITLE,
 } from "./views/XrLocomotionComfort";
+import {
+  BacktrackRatioView,
+  BACKTRACK_TITLE,
+  BACKTRACK_SUBTITLE,
+  BACKTRACK_HELP,
+} from "./views/BacktrackRatio";
 import {
   PointerHeatmapView,
   POINTER_HEATMAP_TITLE,
@@ -886,6 +893,24 @@ export const sceneRetentionPanel = definePanel<SceneRetentionLink[]>({
   render: ({ data }) => <SceneRetentionFunnelView links={data ?? []} />,
 });
 
+/**
+ * Backtracking hotspots (#153) — React/HTML leaderboard, half width. Ranks
+ * scenes/areas by how often visitors re-walk a coarse grid cell (the
+ * confusion / unclear-signage signal), derived from the same `camera_sample`
+ * position stream as desire lines. Consecutive dwell samples collapse, so this
+ * measures returning to an area — not standing still.
+ */
+export const backtrackPanel = definePanel<BacktrackRatioStat[]>({
+  id: "backtrack-ratio",
+  title: BACKTRACK_TITLE,
+  subtitle: BACKTRACK_SUBTITLE,
+  help: BACKTRACK_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.backtrackRatio({ ...scoped(ctx), source: undefined }),
+  render: ({ data }) => <BacktrackRatioView stats={data ?? []} />,
+});
+
 /** Aggregate gaze→mesh flow data: position-aware links + the scene-proxy backdrop. */
 interface FlowData {
   links: FlowLink[];
@@ -1004,6 +1029,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   navigationMixPanel,
   xrLocomotionComfortPanel,
   sceneRetentionPanel,
+  backtrackPanel,
   deadZonePanel,
   flowPanel,
   divergencePanel,

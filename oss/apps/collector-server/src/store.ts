@@ -31,6 +31,7 @@ import type {
   PerfHeatmapVoxelRow,
   RageClickRow,
   NavigationStatsRow,
+  BacktrackRatioRow,
   XrRotationRateRow,
   XrSourceUsageRow,
   XrAbandonmentRow,
@@ -485,6 +486,15 @@ export interface CollectorStore {
       SceneOptions &
       SessionOptions & { moveThreshold?: number; limit?: number },
   ): Promise<NavigationStatsRow[]>;
+  /**
+   * Path-retrace / backtracking ratio (#153): a per-scene leaderboard of how
+   * often visitors re-walk a coarse grid cell, derived from the `camera_sample`
+   * position stream — a confusion / unclear-signage signal.
+   */
+  backtrackRatio(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions & { cellSize?: number; limit?: number },
+  ): Promise<BacktrackRatioRow[]>;
   /**
    * XR motion-sickness proxy (#50, scene-metrics §F): per-session head/view
    * rotation rate over the `camera_sample` pose stream — rapid view rotation is
