@@ -302,6 +302,17 @@ const funnelQueryParams = z.object({
   steps: z.string().min(1).max(8192),
 });
 
+/**
+ * Scene-retention params (#147): a time range plus an optional result cap. No
+ * scene filter — the canned preset's whole value is the *cross-scene* flow, so
+ * scoping to one scene would defeat it.
+ */
+const sceneRetentionQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  limit: z.coerce.number().int().positive().max(10000).optional(),
+});
+
 /** Scene-coverage params: voxel `cellSize` + scene/session filters + result cap. */
 const coverageQueryParams = z.object({
   since: z.coerce.number().int().optional(),
@@ -1095,6 +1106,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       steps: result.data,
     });
   });
+
+  // Canned scene/level retention funnel (#147) — session counts flowing scene →
+  // scene in observed order, built directly from `scene_change` markers with no
+  // caller-authored steps (the zero-config complement to `/api/v1/funnel`).
+  r.get(
+    "/api/v1/scene-retention",
+    { schema: { querystring: sceneRetentionQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.sceneRetention(projectId, req.query);
+    },
+  );
 
   // Ordered session timeline for replay — gated by raw-session retention (ADR 0003).
   // Negotiates NDJSON (`Accept: application/x-ndjson` or `?format=ndjson`): when

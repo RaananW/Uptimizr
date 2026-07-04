@@ -29,6 +29,7 @@ import type {
   RangeOptions,
   RegionOptions,
   SceneOptions,
+  SceneRetentionOptions,
   SessionOptions,
   SourceOptions,
   TimeseriesOptions,
@@ -2408,6 +2409,67 @@ export function buildFunnel(projectId: string, opts: FunnelOptions, d: Dialect):
       WITH ${ctes.join(",\n      ")}
       ${counts}
       ORDER BY step ASC
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Canned scene/level retention funnel (#147): session counts flowing scene →
+ * scene in the order they were observed, built directly from `scene_change`
+ * markers with **no caller-authored steps** (the zero-config complement to the
+ * ADR 0038 funnel). Each `scene_change` envelope carries the scene now active in
+ * `scene_id`, so a session's ordered `scene_change` targets are the levels it
+ * moved through; every **consecutive pair** is a directed link.
+ *
+ * Semantics — for one session, order its `scene_change` events by `ts`; the link
+ * `A → B` exists whenever `B`'s marker is the *next* `scene_change` after an `A`
+ * marker. A link's weight is the number of **distinct sessions** that made that
+ * consecutive transition, so it reads as level-to-level retention. Sessions with
+ * a single `scene_change` contribute no link (there is no "from").
+ *
+ * Implementation — `sc` is the per-session ordered `scene_change` stream; `nxt`
+ * finds, for each marker, the timestamp of the very next marker in the same
+ * session via a self-join + `MIN` (no window/ASOF functions, so it renders
+ * identically on DuckDB and ClickHouse — the same parity discipline as
+ * {@link buildFunnel}); joining that back to `sc` resolves the `to_scene`. The
+ * final `GROUP BY` counts distinct sessions per `(from_scene, to_scene)` pair.
+ * A same-timestamp tie between two markers can fan out to multiple `to` rows;
+ * this is a benign edge case for a preset over human-paced scene switches.
+ */
+export function buildSceneRetention(
+  projectId: string,
+  opts: SceneRetentionOptions,
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const limit = bag.add("limit", "u32", opts.limit ?? 100);
+
+  return {
+    query: `
+      WITH sc AS (
+        SELECT session_id, ts, scene_id
+        FROM events
+        WHERE project_id = ${pid} AND event_type = 'scene_change'${range}
+      ),
+      nxt AS (
+        SELECT a.session_id AS session_id, a.ts AS from_ts, a.scene_id AS from_scene,
+               min(b.ts) AS to_ts
+        FROM sc a JOIN sc b ON b.session_id = a.session_id AND b.ts > a.ts
+        GROUP BY a.session_id, a.ts, a.scene_id
+      ),
+      links AS (
+        SELECT nxt.session_id AS session_id, nxt.from_scene AS from_scene,
+               sc.scene_id AS to_scene
+        FROM nxt JOIN sc ON sc.session_id = nxt.session_id AND sc.ts = nxt.to_ts
+      )
+      SELECT from_scene, to_scene, count(DISTINCT session_id) AS sessions
+      FROM links
+      GROUP BY from_scene, to_scene
+      ORDER BY sessions DESC, from_scene ASC, to_scene ASC
+      LIMIT ${limit}
     `,
     query_params: bag.values,
   };

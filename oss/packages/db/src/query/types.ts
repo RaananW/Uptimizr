@@ -660,3 +660,26 @@ export interface FunnelStepResultRow {
   step: number;
   sessions: number;
 }
+
+/**
+ * Options for {@link "./aggregations".buildSceneRetention} (#147): the standard
+ * time range plus an optional cap on the number of returned links. There is no
+ * scene filter — the preset's whole point is the *cross-scene* flow, so scoping
+ * to a single scene would defeat it.
+ */
+export interface SceneRetentionOptions extends RangeOptions {
+  /** Max links returned (busiest first). Defaults applied by the caller. */
+  limit?: number;
+}
+
+/**
+ * One directed scene-to-scene retention link (#147): how many distinct sessions
+ * made the consecutive transition `from_scene → to_scene`, derived purely from
+ * the observed order of `scene_change` events. This is the canned "level funnel"
+ * preset — a zero-config complement to the caller-authored funnel (ADR 0038).
+ */
+export interface SceneRetentionRow {
+  from_scene: string;
+  to_scene: string;
+  sessions: number;
+}
