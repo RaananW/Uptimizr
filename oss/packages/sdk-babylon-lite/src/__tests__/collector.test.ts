@@ -78,6 +78,7 @@ function makeCtx(now = { value: 1000 }) {
     emit: (e: EventInput) => events.push(e),
     track: () => {},
     setScene: () => {},
+    setPositionProvider: () => {},
     createAggregation: (config: AggregatorConfig) => {
       // Mirror production: snapshots flow through a real main-thread aggregator
       // whose finalized events land in the same `events` sink, so the existing

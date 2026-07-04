@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineEvent } from "./defineEvent.js";
+import { vec3Schema } from "../primitives.js";
 
 /** Which browser channel produced the error. */
 export const runtimeErrorKindSchema = z.enum(["error", "unhandledrejection"]);
@@ -24,5 +25,14 @@ export const runtimeErrorSchema = defineEvent("runtime_error", {
   colno: z.number().int().nonnegative().optional(),
   /** Stack trace (truncated). */
   stack: z.string().max(4096).optional(),
+  /**
+   * Camera world position `[x, y, z]` at the moment the error fired, when the
+   * connector can supply it (best-effort, connector-side — issue #154). Reuses the
+   * already-promoted `position` column, so it needs no migration and powers the
+   * spatial error heatmap (voxel-binned error density) that reveals *where* in the
+   * scene errors cluster, not just *when*. Absent for pages with no 3D connector
+   * (e.g. plain `sdk-core` error capture).
+   */
+  position: vec3Schema.optional(),
 });
 export type RuntimeErrorEvent = z.infer<typeof runtimeErrorSchema>;

@@ -125,6 +125,7 @@ export function createMemoryStore({
     resourcePercentiles: async () => [],
     stabilityCounts: async () => [],
     graphicsDiagnosticCounts: async () => [],
+    errorHeatmap: async () => [],
     renderingTechnology: async () => [],
     sceneCoverage: async () => [],
     perfHeatmap: async () => [],

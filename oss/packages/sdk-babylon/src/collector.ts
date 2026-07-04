@@ -940,6 +940,22 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
         visibility: { centeredCos: visCenteredCos, boundingBox: visBoundingBox, boundsEps: 1e-3 },
       };
       const snapshot = ctx.createAggregation(aggregatorConfig);
+      // Best-effort camera position for spatial diagnostics (issue #154): the
+      // client stamps this onto `runtime_error` / `graphics_diagnostic` events
+      // (which originate outside the render loop) so the spatial error heatmap can
+      // show *where* in the scene things break. Reuses the same tracked-camera
+      // resolution as `camera_sample`; returns `undefined` when no camera is
+      // resolvable or its position isn't finite yet, so the field stays absent
+      // rather than carrying garbage.
+      ctx.setPositionProvider(() => {
+        const cam = resolveTrackedCamera(scene, explicitCamera);
+        if (!cam) return undefined;
+        const p = (cam as unknown as CameraView).globalPosition;
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) {
+          return undefined;
+        }
+        return toVec3(p);
+      });
       const timers: ReturnType<typeof setInterval>[] = [];
       const renderObservers: Array<() => void> = [];
       let pointerObserver: Observer<PointerInfo> | null = null;
@@ -1610,6 +1626,7 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
         stop() {
           flushUncapturedErrors();
           stopped = true;
+          ctx.setPositionProvider(undefined);
           for (const t of timers) clearInterval(t);
           for (const detach of renderObservers) detach();
           renderObservers.length = 0;

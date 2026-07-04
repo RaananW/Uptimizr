@@ -79,6 +79,7 @@ function makeScene() {
 
 function makeCtx(now = { value: 1000 }, config: Record<string, unknown> = {}) {
   const events: EventInput[] = [];
+  const state: { positionProvider?: (() => [number, number, number] | undefined) | undefined } = {};
   const ctx = {
     config: config as never,
     sessionId: "s1",
@@ -97,6 +98,9 @@ function makeCtx(now = { value: 1000 }, config: Record<string, unknown> = {}) {
         ...(typeof opts.pressed === "boolean" ? { pressed: opts.pressed } : {}),
       } as EventInput),
     setScene: () => {},
+    setPositionProvider: (provider: (() => [number, number, number] | undefined) | undefined) => {
+      state.positionProvider = provider;
+    },
     createAggregation: (config: AggregatorConfig) => {
       // Mirror production: snapshots flow through a real main-thread aggregator
       // whose finalized events land in the same `events` sink, so the existing
@@ -106,7 +110,7 @@ function makeCtx(now = { value: 1000 }, config: Record<string, unknown> = {}) {
     },
     now: () => now.value,
   } satisfies CollectorContext;
-  return { ctx, events, now };
+  return { ctx, events, now, state };
 }
 
 describe("babylonCollector", () => {
@@ -126,6 +130,37 @@ describe("babylonCollector", () => {
       target: [0, 0, 0],
       fov: 0.8,
     });
+    handle.stop();
+  });
+
+  it("registers a best-effort camera position provider and clears it on stop (#154)", () => {
+    const { scene } = makeScene();
+    const { ctx, state } = makeCtx();
+    const handle = babylonCollector({ scene, capture: { perf: false } }).start(ctx)!;
+
+    // While running, the provider returns the tracked camera's global position —
+    // the client stamps this onto runtime_error / graphics_diagnostic events.
+    expect(typeof state.positionProvider).toBe("function");
+    expect(state.positionProvider!()).toEqual([1, 2, 3]);
+
+    handle.stop();
+    // Teardown clears the provider so no stale camera is referenced.
+    expect(state.positionProvider).toBeUndefined();
+  });
+
+  it("position provider returns undefined when the camera position isn't finite (#154)", () => {
+    const { scene } = makeScene();
+    (
+      scene as unknown as { activeCamera: { globalPosition: { x: number; y: number; z: number } } }
+    ).activeCamera.globalPosition = {
+      x: Number.NaN,
+      y: 0,
+      z: 0,
+    };
+    const { ctx, state } = makeCtx();
+    const handle = babylonCollector({ scene, capture: { perf: false } }).start(ctx)!;
+
+    expect(state.positionProvider!()).toBeUndefined();
     handle.stop();
   });
 

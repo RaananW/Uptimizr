@@ -20,6 +20,7 @@ import {
   buildResourcePercentiles,
   buildStabilityCounts,
   buildGraphicsDiagnosticCounts,
+  buildErrorHeatmap,
   buildRenderingTechnology,
   buildCapabilityChanges,
   buildNavigationStats,
@@ -1034,6 +1035,61 @@ describe("duckdb store", () => {
     // by-backend all sum to the same grand total of 8 incidents.
     const total = rows.reduce((n, r) => n + Number(r.incidents), 0);
     expect(total).toBe(8);
+  });
+
+  it("bins positioned runtime_error + graphics_diagnostic into a spatial error heatmap (#154)", async () => {
+    await insertEvents(db, [
+      // Two positioned events in the same voxel (2,0,3) — one JS error, one engine
+      // diagnostic — prove both event types aggregate together.
+      base("runtime_error", T0 + 1_000, {
+        kind: "error",
+        message: "boom",
+        position: [2, 0, 3],
+      }),
+      base("graphics_diagnostic", T0 + 2_000, {
+        severity: "error",
+        category: "shader-compile",
+        backend: "webgl2",
+        position: [2.5, 0.4, 3.2],
+      }),
+      // A third error in a different voxel (10,0,0).
+      base("runtime_error", T0 + 3_000, {
+        kind: "error",
+        message: "later",
+        position: [10, 0, 0],
+      }),
+      // An error with no position is excluded (best-effort, connector-side only).
+      base("runtime_error", T0 + 4_000, { kind: "error", message: "no-pos" }),
+      // A camera_sample carries a position but is not an error/diagnostic — excluded.
+      base("camera_sample", T0 + 5_000, { position: [2, 0, 3], direction: [0, 0, 1] }),
+    ]);
+
+    const rows = await runDuckdbQuery<{ vx: number; vy: number; vz: number; count: number }>(
+      db,
+      buildErrorHeatmap(PID, { ...RANGE, cellSize: 1 }, duckdbDialect),
+    );
+    const voxel = (vx: number, vy: number, vz: number) =>
+      rows.find((r) => Number(r.vx) === vx && Number(r.vy) === vy && Number(r.vz) === vz);
+
+    // Both positioned events floor into voxel (2,0,3); the lone error sits at (10,0,0).
+    expect(rows).toHaveLength(2);
+    expect(Number(voxel(2, 0, 3)!.count)).toBe(2);
+    expect(Number(voxel(10, 0, 0)!.count)).toBe(1);
+
+    // severity/category filters narrow to engine diagnostics only.
+    const diagnosticsOnly = await runDuckdbQuery<{ count: number }>(
+      db,
+      buildErrorHeatmap(PID, { ...RANGE, cellSize: 1, category: "shader-compile" }, duckdbDialect),
+    );
+    expect(diagnosticsOnly).toHaveLength(1);
+    expect(Number(diagnosticsOnly[0]!.count)).toBe(1);
+
+    // an errorKind filter narrows to JS runtime errors only.
+    const errorsOnly = await runDuckdbQuery<{ vx: number; count: number }>(
+      db,
+      buildErrorHeatmap(PID, { ...RANGE, cellSize: 1, errorKind: "error" }, duckdbDialect),
+    );
+    expect(errorsOnly.reduce((n, r) => n + Number(r.count), 0)).toBe(2);
   });
 
   it("counts session_start.graphics by api/backend/version/shading-language, always-on (#120)", async () => {

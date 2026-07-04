@@ -67,6 +67,15 @@ export default defineConfig({
         COLLECTOR_PORT: String(COLLECTOR_PORT),
         COLLECTOR_CORS_ORIGINS: `${PLAYGROUND_URL},${DASHBOARD_URL}`,
         ENABLE_RAW_SESSION_RETENTION: "1",
+        // Lift the per-IP rate limit for the harness. In production the 600/60s
+        // default (keyed on client IP) is sensible protection, but here the
+        // browser SDK POSTs, the dashboard's panel queries, and the specs'
+        // `request.get` read-backs all originate from a single loopback IP. As
+        // the suite grew (one data-seeding panel spec per analytics feature) the
+        // cumulative request volume began tripping 600/60s mid-run, so a read-back
+        // (e.g. `GET /sessions/:id/events`) would intermittently get a 429 and the
+        // assertion `expect(res.ok()).toBeTruthy()` failed non-deterministically.
+        COLLECTOR_RATE_LIMIT_MAX: "1000000",
       },
     },
     {

@@ -26,6 +26,7 @@ function makeCtx(captureGraphicsDiagnostics: boolean, captureShaderSource = fals
     trackInput: () => {},
     reportCapabilityChange: () => {},
     setScene: () => {},
+    setPositionProvider: () => {},
     createAggregation: () => () => {},
     now: () => 0,
   } as unknown as CollectorContext;

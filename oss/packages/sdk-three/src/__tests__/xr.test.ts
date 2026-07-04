@@ -65,6 +65,7 @@ function makeCtx() {
     trackInput: vi.fn(),
     reportCapabilityChange: vi.fn(),
     setScene: vi.fn(),
+    setPositionProvider: vi.fn(),
     createAggregation: (config: AggregatorConfig) => {
       const aggregator = createAggregator({ ...config, emit: (e) => emit(e) });
       return (s: Snapshot) => aggregator.ingest(s);

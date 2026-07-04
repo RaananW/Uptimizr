@@ -102,6 +102,7 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "resourcePercentiles",
       "stabilityCounts",
       "graphicsDiagnosticCounts",
+      "errorHeatmap",
       "renderingTechnology",
       "deadClicks",
       "rageClicks",

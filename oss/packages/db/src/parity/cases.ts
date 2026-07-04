@@ -55,6 +55,7 @@ import {
   buildResourcePercentiles,
   buildStabilityCounts,
   buildGraphicsDiagnosticCounts,
+  buildErrorHeatmap,
   buildRenderingTechnology,
   buildPointerHeatmap,
   buildSceneCoverage,
@@ -104,7 +105,7 @@ export const PARITY_CASES: readonly ParityCase[] = [
     ignoreColumns: ["started_at", "ended_at"],
     golden: [
       { session_id: "s1", visitor_id: "", events: 9 },
-      { session_id: "s2", visitor_id: "", events: 5 },
+      { session_id: "s2", visitor_id: "", events: 7 },
     ],
   },
   {
@@ -570,11 +571,21 @@ export const PARITY_CASES: readonly ParityCase[] = [
     name: "graphicsDiagnosticCounts",
     build: (d) => buildGraphicsDiagnosticCounts(PID, PARITY_RANGE, d),
     sortKeys: ["severity", "category", "backend"],
-    // No graphics_diagnostic fixtures in the parity set (capture is off by
-    // default), so the crossed roll-up is empty. Validates the JSON extraction,
+    // One positioned graphics_diagnostic fixture (#154): severity=error,
+    // category=shader-compile, backend=webgl2. Validates the JSON extraction,
     // the nullable-int `count` coalesce, and the GROUP/ORDER render identically on
     // both engines (#16).
-    golden: [],
+    golden: [{ severity: "error", category: "shader-compile", backend: "webgl2", incidents: 1 }],
+  },
+  {
+    name: "errorHeatmap",
+    build: (d) => buildErrorHeatmap(PID, PARITY_RANGE, d),
+    sortKeys: ["vx", "vy", "vz"],
+    // Spatial error heatmap (#154): the positioned graphics_diagnostic ([2,0,3])
+    // and runtime_error ([2.5,0.4,3.2]) both floor to voxel (2,0,3) at cellSize 1,
+    // proving both event types bin together. Validates the position voxel bin and
+    // the count roll-up render identically on both engines.
+    golden: [{ vx: 2, vy: 0, vz: 3, count: 2 }],
   },
   {
     name: "renderingTechnology",
@@ -689,9 +700,11 @@ export const PARITY_CASES: readonly ParityCase[] = [
     golden: [
       { day: PARITY_DAY, event_type: "camera_sample", events: 3 },
       { day: PARITY_DAY, event_type: "frame_perf", events: 3 },
+      { day: PARITY_DAY, event_type: "graphics_diagnostic", events: 1 },
       { day: PARITY_DAY, event_type: "mesh_visibility", events: 2 },
       { day: PARITY_DAY, event_type: "pointer_click", events: 3 },
       { day: PARITY_DAY, event_type: "pointer_move", events: 1 },
+      { day: PARITY_DAY, event_type: "runtime_error", events: 1 },
       { day: PARITY_DAY, event_type: "session_start", events: 2 },
     ],
   },
@@ -701,7 +714,7 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["scene_id"],
     ignoreColumns: ["last_seen"],
     golden: [
-      { scene_id: "arena", events: 5 },
+      { scene_id: "arena", events: 7 },
       { scene_id: "lobby", events: 9 },
     ],
   },
@@ -709,7 +722,7 @@ export const PARITY_CASES: readonly ParityCase[] = [
     name: "timeseries",
     build: (d) => buildTimeseries(PID, { ...PARITY_RANGE, interval: 60 }, d),
     sortKeys: ["bucket"],
-    golden: [{ bucket: PARITY_T0, events: 14, avg_fps: 45 }],
+    golden: [{ bucket: PARITY_T0, events: 16, avg_fps: 45 }],
   },
   {
     name: "eventTypeCounts",
@@ -718,9 +731,11 @@ export const PARITY_CASES: readonly ParityCase[] = [
     golden: [
       { event_type: "camera_sample", count: 3 },
       { event_type: "frame_perf", count: 3 },
+      { event_type: "graphics_diagnostic", count: 1 },
       { event_type: "mesh_visibility", count: 2 },
       { event_type: "pointer_click", count: 3 },
       { event_type: "pointer_move", count: 1 },
+      { event_type: "runtime_error", count: 1 },
       { event_type: "session_start", count: 2 },
     ],
   },

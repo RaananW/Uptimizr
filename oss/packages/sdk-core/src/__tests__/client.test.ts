@@ -528,3 +528,97 @@ describe("UptimizrClient lifecycle capture", () => {
     }
   });
 });
+
+describe("position enrichment (#154)", () => {
+  const errorConfig = (transport: Transport) => ({
+    ...baseConfig(transport),
+    captureGraphicsDiagnostics: true,
+  });
+
+  it("stamps the provider position on runtime_error and graphics_diagnostic", async () => {
+    const m = mockTransport();
+    const collector: Collector = {
+      name: "positioned",
+      start: (ctx) => {
+        ctx.setPositionProvider(() => [1, 2, 3]);
+        ctx.emit({ type: "graphics_diagnostic", severity: "error", category: "shader-compile" });
+      },
+    };
+    const client = new UptimizrClient(errorConfig(m.transport)).use(collector);
+    client.start();
+    // A runtime_error emitted through the public API is enriched by the same seam.
+    client.emit({ type: "runtime_error", kind: "error", message: "boom" });
+    await client.flush();
+
+    const events = m.batches.flatMap((b) => b.events);
+    const diag = events.find((e) => e.type === "graphics_diagnostic")!;
+    const err = events.find((e) => e.type === "runtime_error")!;
+    expect((diag as { position?: number[] }).position).toEqual([1, 2, 3]);
+    expect((err as { position?: number[] }).position).toEqual([1, 2, 3]);
+    for (const e of events) expect(anyEventSchema.safeParse(e).success).toBe(true);
+  });
+
+  it("does not overwrite a position the connector already set", async () => {
+    const m = mockTransport();
+    const collector: Collector = {
+      name: "explicit",
+      start: (ctx) => {
+        ctx.setPositionProvider(() => [9, 9, 9]);
+        ctx.emit({
+          type: "graphics_diagnostic",
+          severity: "error",
+          category: "validation",
+          position: [4, 5, 6],
+        });
+      },
+    };
+    const client = new UptimizrClient(errorConfig(m.transport)).use(collector);
+    client.start();
+    await client.flush();
+
+    const diag = m.batches.flatMap((b) => b.events).find((e) => e.type === "graphics_diagnostic")!;
+    expect((diag as { position?: number[] }).position).toEqual([4, 5, 6]);
+  });
+
+  it("leaves non-spatial events and unprovided errors untouched", async () => {
+    const m = mockTransport();
+    const collector: Collector = {
+      name: "no-provider",
+      start: (ctx) => {
+        // Provider returns undefined (no resolvable camera) → no position added.
+        ctx.setPositionProvider(() => undefined);
+        ctx.emit({ type: "graphics_diagnostic", severity: "info", category: "context-loss" });
+        ctx.emit({ type: "custom", name: "click", props: { x: 1 } });
+      },
+    };
+    const client = new UptimizrClient(errorConfig(m.transport)).use(collector);
+    client.start();
+    await client.flush();
+
+    const events = m.batches.flatMap((b) => b.events);
+    const diag = events.find((e) => e.type === "graphics_diagnostic")!;
+    const custom = events.find((e) => e.type === "custom")!;
+    expect((diag as { position?: number[] }).position).toBeUndefined();
+    expect((custom as { position?: number[] }).position).toBeUndefined();
+  });
+
+  it("swallows a throwing provider and still emits", async () => {
+    const m = mockTransport();
+    const collector: Collector = {
+      name: "throwing",
+      start: (ctx) => {
+        ctx.setPositionProvider(() => {
+          throw new Error("camera gone");
+        });
+        ctx.emit({ type: "graphics_diagnostic", severity: "fatal", category: "device-lost" });
+      },
+    };
+    const client = new UptimizrClient(errorConfig(m.transport)).use(collector);
+    client.start();
+    await client.flush();
+
+    const diag = m.batches.flatMap((b) => b.events).find((e) => e.type === "graphics_diagnostic")!;
+    expect(diag).toBeDefined();
+    expect((diag as { position?: number[] }).position).toBeUndefined();
+  });
+});

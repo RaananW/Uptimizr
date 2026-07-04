@@ -39,6 +39,7 @@ import {
   buildResourcePercentiles,
   buildStabilityCounts,
   buildGraphicsDiagnosticCounts,
+  buildErrorHeatmap,
   buildRenderingTechnology,
   buildPointerHeatmap,
   buildSceneCoverage,
@@ -274,6 +275,8 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
         db,
         buildGraphicsDiagnosticCounts(projectId, opts, duckdbDialect),
       ),
+    errorHeatmap: (projectId, opts = {}) =>
+      runDuckdbQuery<WorldHeatmapBinRow>(db, buildErrorHeatmap(projectId, opts, duckdbDialect)),
     renderingTechnology: (projectId, opts = {}) =>
       runDuckdbQuery<RenderingTechnologyRow>(
         db,
