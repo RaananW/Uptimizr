@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useEffect } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { CollectorApi, type FlowLink, type QueryParams, type SceneProxyMesh } from "@/lib/api";
+import { CollectorApi, type FlowLink, type QueryParams, type SceneProxyMesh } from "../../api";
 import {
   buildTwoStageGraph,
   voxelKey,
@@ -10,8 +10,8 @@ import {
   type TwoStageCaps,
   type TwoStageKind,
   type TwoStageRibbon,
-} from "@/lib/flowGraph";
-import { heatRgb } from "@/lib/heat";
+} from "../lib/flowGraph";
+import { heatRgb } from "../../heat";
 import {
   attachDoubleClickFocus,
   disableWheelZoom,
@@ -19,11 +19,10 @@ import {
   stepZoom,
   type OrbitFocusCamera,
   type OrbitHome,
-} from "@/lib/orbitZoom";
-import { attachMeshHover, type HoverTip } from "@/lib/sceneHover";
-import { HeatLegend } from "./HeatLegend";
-import { Panel } from "./Panel";
-import { ZoomButtons } from "./ZoomButtons";
+} from "../lib/orbitZoom";
+import { attachMeshHover, type HoverTip } from "../lib/sceneHover";
+import { HeatLegend } from "../views/HeatLegend";
+import { ZoomButtons } from "../views/ZoomButtons";
 
 type Phase = "loading" | "ready" | "empty" | "error";
 type ViewMode = "aggregate" | "twostage";
@@ -1010,34 +1009,6 @@ export function FlowSankey3DView({
         </div>
       )}
     </div>
-  );
-}
-
-export const FLOW_SANKEY_TITLE = "Flow Sankey (3D)";
-export const FLOW_SANKEY_SUBTITLE =
-  "Direction-bin → mesh links (aggregate), or standpoint → gaze → mesh (two-stage) — double-click to focus";
-
-/** "?" help content shared by the chrome wrapper and the registered panel. */
-export const FLOW_SANKEY_HELP = (
-  <>
-    Each <strong>source</strong> is a camera <em>gaze-direction bin</em> — a cell on the sphere of
-    where viewers were looking (grouped by azimuth/elevation). Each <strong>target</strong> is a{" "}
-    <em>mesh that was clicked</em>. A ribbon&apos;s thickness is how many clicks on that mesh
-    happened while viewers looked from that direction, so you can see which viewpoints drive
-    interaction with which objects. When the scene reports <em>standpoints</em> (where the viewer
-    stood, §7.8), pick one to gate the flow to clicks made from that vantage — a pin marks it in the
-    scene. &quot;All standpoints&quot; is the aggregate view. Switch to <strong>Two-stage</strong>{" "}
-    for a three-column <em>standpoint → gaze sector → mesh</em> flow with a birdview minimap; the
-    busiest standpoints/meshes are kept and the tail folds into an &quot;Other&quot; node.
-  </>
-);
-
-/** Chrome-wrapped flow Sankey for legacy call sites (overview surface). */
-export function FlowSankey3D(props: Parameters<typeof FlowSankey3DView>[0]) {
-  return (
-    <Panel title={FLOW_SANKEY_TITLE} subtitle={FLOW_SANKEY_SUBTITLE} help={FLOW_SANKEY_HELP}>
-      <FlowSankey3DView {...props} />
-    </Panel>
   );
 }
 

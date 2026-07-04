@@ -1,6 +1,5 @@
-import type { MeshSourceCount, MeshTrendPoint } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
-import { Panel } from "./Panel";
+import type { MeshSourceCount, MeshTrendPoint } from "../../api";
+import { formatNumber } from "../../format";
 
 export const MESH_LEADERBOARD_TITLE = "Part-popularity leaderboard";
 export const MESH_LEADERBOARD_SUBTITLE = "Ranked meshes, with trend and input split";
@@ -177,24 +176,5 @@ export function MeshLeaderboardView({
         </li>
       ))}
     </ol>
-  );
-}
-
-/** Chrome-wrapped leaderboard for legacy call sites. */
-export function MeshLeaderboard({
-  sources,
-  trend,
-}: {
-  sources: MeshSourceCount[];
-  trend: MeshTrendPoint[];
-}) {
-  return (
-    <Panel
-      title={MESH_LEADERBOARD_TITLE}
-      subtitle={MESH_LEADERBOARD_SUBTITLE}
-      help={MESH_LEADERBOARD_HELP}
-    >
-      <MeshLeaderboardView sources={sources} trend={trend} />
-    </Panel>
   );
 }

@@ -1,6 +1,5 @@
-import type { InputActionCount, InteractionSource } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
-import { Panel } from "./Panel";
+import type { InputActionCount, InteractionSource } from "../../api";
+import { formatNumber } from "../../format";
 
 export const INPUT_MODALITY_TITLE = "Input-modality split";
 export const INPUT_MODALITY_SUBTITLE = "Keyboard / gamepad / touch / XR — and top shortcuts";
@@ -128,24 +127,5 @@ export function InputModalitySplitView({
         )}
       </div>
     </div>
-  );
-}
-
-/** Chrome-wrapped input-modality split for legacy call sites. */
-export function InputModalitySplit({
-  sources,
-  actions,
-}: {
-  sources: InteractionSource[];
-  actions: InputActionCount[];
-}) {
-  return (
-    <Panel
-      title={INPUT_MODALITY_TITLE}
-      subtitle={INPUT_MODALITY_SUBTITLE}
-      help={INPUT_MODALITY_HELP}
-    >
-      <InputModalitySplitView sources={sources} actions={actions} />
-    </Panel>
   );
 }

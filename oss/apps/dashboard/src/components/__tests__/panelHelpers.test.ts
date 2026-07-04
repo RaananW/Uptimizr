@@ -8,9 +8,7 @@ import type {
   MeshTrendPoint,
   SceneProxyMesh,
 } from "@/lib/api";
-import { buildLeaderboard } from "@/components/MeshLeaderboard";
-import { buildModalitySplit } from "@/components/InputModalitySplit";
-import { buildDeadZones } from "@/components/DeadZoneReport";
+import { buildLeaderboard, buildModalitySplit, buildDeadZones } from "@uptimizr/react";
 import { foldGraphicsDiagnostics } from "@/components/GraphicsDiagnostics";
 import { foldRenderingTechnology } from "@/components/RenderingTechnology";
 

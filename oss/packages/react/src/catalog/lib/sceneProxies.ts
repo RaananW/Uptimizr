@@ -10,7 +10,7 @@
 // bridges two areas — a ramp/stairway — is registered in both, so dedup keeps a
 // single copy).
 
-import type { CollectorApi, QueryParams, SceneProxyMesh } from "@/lib/api";
+import type { CollectorApi, QueryParams, SceneProxyMesh } from "../../api";
 
 /**
  * Fetch and merge the registered proxy geometry for every active scene/area into

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { SceneProxyMesh, WorldHeatmapBin } from "@/lib/api";
-import { heatRgb, percentileMax } from "@/lib/heat";
+import type { SceneProxyMesh, WorldHeatmapBin } from "../../api";
+import { heatRgb, percentileMax } from "../../heat";
 import {
   attachDoubleClickFocus,
   disableWheelZoom,
@@ -10,21 +10,15 @@ import {
   stepZoom,
   type OrbitFocusCamera,
   type OrbitHome,
-} from "@/lib/orbitZoom";
-import { attachMeshHover, type HoverTip } from "@/lib/sceneHover";
-import { HeatLegend } from "./HeatLegend";
-import { Panel } from "./Panel";
-import { ZoomButtons } from "./ZoomButtons";
+} from "../lib/orbitZoom";
+import { attachMeshHover, type HoverTip } from "../lib/sceneHover";
+import { HeatLegend } from "../views/HeatLegend";
+import { ZoomButtons } from "../views/ZoomButtons";
 
 type Phase = "loading" | "ready" | "empty" | "error";
 
 /** Base mesh used to draw each populated voxel. */
 type MarkerShape = "sphere" | "cube";
-
-/** Default panel chrome copy for the world (click) heatmap. */
-export const WORLD_HEATMAP_TITLE = "World heatmap (3D)";
-export const WORLD_HEATMAP_SUBTITLE =
-  "Pointer hit-points voxel-binned in world space — drag to orbit, +/- to zoom, double-click to focus";
 
 /** Props shared by the body view and the chrome-wrapped legacy component. */
 interface WorldHeatmap3DViewProps {
@@ -52,8 +46,8 @@ interface WorldHeatmap3DViewProps {
  * AABBs are drawn as a faint wireframe backdrop so hotspots read against the
  * developer's actual scene (ADR 0014). Babylon loads dynamically (browser-only).
  *
- * The host supplies title/subtitle via the ADR 0036 panel contract;
- * {@link WorldHeatmap3D} wraps this in panel chrome for legacy call sites.
+ * The host supplies title/subtitle via the ADR 0036 panel contract (the OSS
+ * catalog's `worldHeatmapPanel`, or a host wrapping this view in its own chrome).
  */
 export function WorldHeatmap3DView({
   voxels,
@@ -368,19 +362,6 @@ export function WorldHeatmap3DView({
         </div>
       )}
     </div>
-  );
-}
-
-/** Chrome-wrapped world heatmap for legacy call sites (the click + gaze mounts). */
-export function WorldHeatmap3D({
-  title = WORLD_HEATMAP_TITLE,
-  subtitle = WORLD_HEATMAP_SUBTITLE,
-  ...view
-}: { title?: string; subtitle?: string } & WorldHeatmap3DViewProps) {
-  return (
-    <Panel title={title} subtitle={subtitle}>
-      <WorldHeatmap3DView {...view} />
-    </Panel>
   );
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "@uptimizr/react",
   "version": "0.6.0",
-  "description": "Embeddable React analytics panels for the Uptimizr collector — sessions, pointer heatmap, view-direction heatmap, and performance summary. Reads the collector query API through a shared client; configure once with <UptimizrProvider>.",
+  "description": "Embeddable React analytics panels for the Uptimizr collector — the complete, portable OSS panel catalog (sessions, pointer/world/view-direction heatmaps, mesh leaderboards, flow, divergence, performance, and more). Reads the collector query API through a shared client; configure once with <UptimizrProvider>. Babylon.js is an optional, code-split peer.",
   "keywords": [
     "uptimizr",
     "analytics",
@@ -31,6 +31,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./panels-3d": {
+      "types": "./dist/panels3d.d.ts",
+      "import": "./dist/panels3d.js"
     }
   },
   "files": [
@@ -48,9 +52,19 @@
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
-    "react-dom": "^18.0.0 || ^19.0.0"
+    "react-dom": "^18.0.0 || ^19.0.0",
+    "@babylonjs/core": "^7.0.0 || ^8.0.0 || ^9.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@babylonjs/core": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@uptimizr/heatmap": "workspace:*"
   },
   "devDependencies": {
+    "@babylonjs/core": "^9.14.0",
     "@testing-library/react": "^16.1.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

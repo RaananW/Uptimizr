@@ -36,11 +36,12 @@ import {
   type TimeWindow,
 } from "@/lib/filters";
 import { parseTimestamp } from "@/lib/format";
-import { mergeSceneProxies } from "@/lib/sceneProxies";
+import { mergeSceneProxies } from "@uptimizr/react";
 import { useLivePresence, useLiveStream, type LiveEvent } from "@/lib/live";
 import type { PanelContext, PanelDefinition, RemotePanelError } from "@uptimizr/react";
 import { mergePanels } from "@uptimizr/react";
 import { PanelHost } from "@/panels/PanelHost";
+import { Panel } from "@/components/Panel";
 import { builtinPanels } from "@/panels/registry";
 import { useRemotePanels } from "@/panels/useRemotePanels";
 import { RemotePanelErrors } from "@/panels/RemotePanelErrors";
@@ -65,13 +66,14 @@ const SessionReplay = dynamic(
   () => import("@/components/SessionReplay").then((m) => m.SessionReplay),
   { ssr: false },
 );
-const WorldHeatmap3D = dynamic(
-  () => import("@/components/WorldHeatmap3D").then((m) => m.WorldHeatmap3D),
+const WorldHeatmap3DView = dynamic(
+  () => import("@uptimizr/react/panels-3d").then((m) => m.WorldHeatmap3DView),
   { ssr: false },
 );
-const ClickRays3D = dynamic(() => import("@/components/ClickRays3D").then((m) => m.ClickRays3D), {
-  ssr: false,
-});
+const ClickRays3DView = dynamic(
+  () => import("@uptimizr/react/panels-3d").then((m) => m.ClickRays3DView),
+  { ssr: false },
+);
 
 const CAMERA_BINS = 36;
 const WORLD_CELL_SIZE = 0.5;
@@ -1004,25 +1006,33 @@ export default function Page() {
           <InputSourceBreakdown rows={data.sources} />
           <CameraDirectionHeatmap bins={data.camera} gridSize={CAMERA_BINS} />
           <div className="lg:col-span-2">
-            <WorldHeatmap3D
-              voxels={data.gaze}
-              cellSize={WORLD_CELL_SIZE}
-              proxyMeshes={data.proxyMeshes}
+            <Panel
               title="Gaze heatmap (3D)"
               subtitle="Camera-pose gaze hit-points voxel-binned in world space — what viewers actually look at"
-              legendTitle="Gaze density"
-              legendLow="few looks"
-              legendHigh="most looks"
-              legendNote="Each marker is a voxel where the camera-forward (gaze) ray hit your scene. Enable gaze capture in the SDK to populate this."
-              emptyLabel="No gaze hit-points in range. Enable gaze capture in the SDK."
-            />
+            >
+              <WorldHeatmap3DView
+                voxels={data.gaze}
+                cellSize={WORLD_CELL_SIZE}
+                proxyMeshes={data.proxyMeshes}
+                legendTitle="Gaze density"
+                legendLow="few looks"
+                legendHigh="most looks"
+                legendNote="Each marker is a voxel where the camera-forward (gaze) ray hit your scene. Enable gaze capture in the SDK to populate this."
+                emptyLabel="No gaze hit-points in range. Enable gaze capture in the SDK."
+              />
+            </Panel>
           </div>
           <div className="lg:col-span-2">
-            <ClickRays3D
-              rays={data.clickRays}
-              cellSize={WORLD_CELL_SIZE}
-              proxyMeshes={data.proxyMeshes}
-            />
+            <Panel
+              title="Click rays (3D)"
+              subtitle="Each click joined to the view it was made from — gate by viewpoint or focus a mesh; double-click to recenter"
+            >
+              <ClickRays3DView
+                rays={data.clickRays}
+                cellSize={WORLD_CELL_SIZE}
+                proxyMeshes={data.proxyMeshes}
+              />
+            </Panel>
           </div>
           <div className="lg:col-span-2">
             <SessionsTable sessions={data.sessions} onSelect={openSession} />

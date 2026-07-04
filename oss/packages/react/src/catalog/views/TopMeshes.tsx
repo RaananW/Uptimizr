@@ -1,6 +1,5 @@
-import type { MeshCount } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
-import { Panel } from "./Panel";
+import type { MeshCount } from "../../api";
+import { formatNumber } from "../../format";
 
 export function TopMeshesView({ meshes }: { meshes: MeshCount[] }) {
   const max = meshes.reduce((m, x) => Math.max(m, x.count), 0);
@@ -28,12 +27,3 @@ export function TopMeshesView({ meshes }: { meshes: MeshCount[] }) {
 
 export const TOP_MESHES_TITLE = "Top meshes";
 export const TOP_MESHES_SUBTITLE = "Most-interacted meshes";
-
-/** Chrome-wrapped Top meshes for legacy call sites (overview + session surfaces). */
-export function TopMeshes({ meshes }: { meshes: MeshCount[] }) {
-  return (
-    <Panel title={TOP_MESHES_TITLE} subtitle={TOP_MESHES_SUBTITLE}>
-      <TopMeshesView meshes={meshes} />
-    </Panel>
-  );
-}

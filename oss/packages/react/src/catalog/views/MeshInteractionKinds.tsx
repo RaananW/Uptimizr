@@ -1,6 +1,5 @@
-import type { MeshInteractionKind } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
-import { Panel } from "./Panel";
+import type { MeshInteractionKind } from "../../api";
+import { formatNumber } from "../../format";
 
 export const MESH_KINDS_TITLE = "Interaction kinds";
 export const MESH_KINDS_SUBTITLE = "How visitors act on each mesh";
@@ -101,14 +100,5 @@ export function MeshInteractionKindsView({
         ))}
       </ul>
     </div>
-  );
-}
-
-/** Chrome-wrapped interaction-kind breakdown for legacy call sites. */
-export function MeshInteractionKinds({ rows }: { rows: MeshInteractionKind[] }) {
-  return (
-    <Panel title={MESH_KINDS_TITLE} subtitle={MESH_KINDS_SUBTITLE} help={MESH_KINDS_HELP}>
-      <MeshInteractionKindsView rows={rows} />
-    </Panel>
   );
 }

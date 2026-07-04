@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ClickRay, SceneProxyMesh } from "@/lib/api";
-import { heatRgb } from "@/lib/heat";
+import type { ClickRay, SceneProxyMesh } from "../../api";
+import { heatRgb } from "../../heat";
 import {
   attachDoubleClickFocus,
   disableWheelZoom,
@@ -10,11 +10,10 @@ import {
   stepZoom,
   type OrbitFocusCamera,
   type OrbitHome,
-} from "@/lib/orbitZoom";
-import { attachMeshHover, type HoverTip } from "@/lib/sceneHover";
-import { HeatLegend } from "./HeatLegend";
-import { Panel } from "./Panel";
-import { ZoomButtons } from "./ZoomButtons";
+} from "../lib/orbitZoom";
+import { attachMeshHover, type HoverTip } from "../lib/sceneHover";
+import { HeatLegend } from "../views/HeatLegend";
+import { ZoomButtons } from "../views/ZoomButtons";
 
 type Phase = "loading" | "ready" | "empty" | "error";
 
@@ -44,7 +43,7 @@ function voxelKey(v: readonly [number, number, number]): string {
  * came from, with spoke length/color scaled by click volume ("where were people
  * standing when they clicked this?"). Babylon loads dynamically (browser-only).
  */
-export function ClickRays3D({
+export function ClickRays3DView({
   rays,
   cellSize,
   proxyMeshes = [],
@@ -380,72 +379,65 @@ export function ClickRays3D({
   }, [rays, cellSize, proxyMeshes, focusKey, meshFocus]);
 
   return (
-    <Panel
-      title="Click rays (3D)"
-      subtitle="Each click joined to the view it was made from — gate by viewpoint or focus a mesh; double-click to recenter"
-    >
-      <div className="relative">
-        <canvas
-          ref={canvasRef}
-          className="aspect-video w-full rounded-lg border border-edge bg-ink"
-        />
-        {tip ? (
-          <div
-            className="pointer-events-none absolute z-10 max-w-[16rem] truncate rounded border border-edge bg-ink/90 px-1.5 py-0.5 text-xs text-white shadow backdrop-blur"
-            style={{ left: tip.x + 12, top: tip.y + 12 }}
-          >
-            {tip.label}
-          </div>
-        ) : null}
-        {phase === "ready" ? (
-          <>
-            <div className="absolute left-3 top-3 flex gap-2">
-              <RaysSelect
-                label="Viewpoint"
-                value={focusKey}
-                onChange={setFocusKey}
-                allLabel="All viewpoints"
-                options={viewpoints.map((v) => ({
-                  value: v.key,
-                  label: `(${v.voxel.join(", ")}) · ${v.count}`,
-                }))}
-              />
-              <RaysSelect
-                label="Mesh rose"
-                value={meshFocus}
-                onChange={setMeshFocus}
-                allLabel="No mesh focus"
-                options={meshes.map((m) => ({ value: m.name, label: `${m.name} · ${m.count}` }))}
-              />
-            </div>
-            <ZoomButtons
-              onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)}
-              onReset={() =>
-                cameraRef.current &&
-                homeRef.current &&
-                resetFocus(cameraRef.current, homeRef.current)
-              }
+    <div className="relative">
+      <canvas
+        ref={canvasRef}
+        className="aspect-video w-full rounded-lg border border-edge bg-ink"
+      />
+      {tip ? (
+        <div
+          className="pointer-events-none absolute z-10 max-w-[16rem] truncate rounded border border-edge bg-ink/90 px-1.5 py-0.5 text-xs text-white shadow backdrop-blur"
+          style={{ left: tip.x + 12, top: tip.y + 12 }}
+        >
+          {tip.label}
+        </div>
+      ) : null}
+      {phase === "ready" ? (
+        <>
+          <div className="absolute left-3 top-3 flex gap-2">
+            <RaysSelect
+              label="Viewpoint"
+              value={focusKey}
+              onChange={setFocusKey}
+              allLabel="All viewpoints"
+              options={viewpoints.map((v) => ({
+                value: v.key,
+                label: `(${v.voxel.join(", ")}) · ${v.count}`,
+              }))}
             />
-            <HeatLegend
-              title="Click volume"
-              lowLabel="few clicks"
-              highLabel="most clicks"
-              note="Lines run from the camera position (bright eye) to where the click landed. Pick a viewpoint to see only clicks made from there; pick a mesh to see which directions its clicks came from."
+            <RaysSelect
+              label="Mesh rose"
+              value={meshFocus}
+              onChange={setMeshFocus}
+              allLabel="No mesh focus"
+              options={meshes.map((m) => ({ value: m.name, label: `${m.name} · ${m.count}` }))}
             />
-          </>
-        ) : (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-fg-muted">
-            {phase === "loading"
-              ? "Rendering…"
-              : phase === "empty"
-                ? "No correlated clicks in range."
-                : phase === "error"
-                  ? (error ?? "Click rays unavailable.")
-                  : null}
           </div>
-        )}
-      </div>
-    </Panel>
+          <ZoomButtons
+            onZoom={(f) => cameraRef.current && stepZoom(cameraRef.current, f)}
+            onReset={() =>
+              cameraRef.current && homeRef.current && resetFocus(cameraRef.current, homeRef.current)
+            }
+          />
+          <HeatLegend
+            title="Click volume"
+            lowLabel="few clicks"
+            highLabel="most clicks"
+            note="Lines run from the camera position (bright eye) to where the click landed. Pick a viewpoint to see only clicks made from there; pick a mesh to see which directions its clicks came from."
+          />
+        </>
+      ) : (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-fg-muted">
+          {phase === "loading"
+            ? "Rendering…"
+            : phase === "empty"
+              ? "No correlated clicks in range."
+              : phase === "error"
+                ? (error ?? "Click rays unavailable.")
+                : null}
+        </div>
+      )}
+    </div>
   );
 }
 

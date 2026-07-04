@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { PositionBin } from "@/lib/api";
-import { heatColor } from "@/lib/format";
+import type { PositionBin } from "../../api";
+import { heatColor } from "../../format";
 import { HeatLegend } from "./HeatLegend";
-import { Panel } from "./Panel";
 
 const SIZE = 360;
 const PAD = 8;
@@ -102,14 +101,5 @@ export function FloorPlanHeatmapView({
         </p>
       ) : null}
     </>
-  );
-}
-
-/** Chrome-wrapped floor plan for legacy call sites (overview surface). */
-export function FloorPlanHeatmap({ bins, cellSize }: { bins: PositionBin[]; cellSize: number }) {
-  return (
-    <Panel title={FLOOR_PLAN_TITLE} subtitle={FLOOR_PLAN_SUBTITLE} help={FLOOR_PLAN_HELP}>
-      <FloorPlanHeatmapView bins={bins} cellSize={cellSize} />
-    </Panel>
   );
 }

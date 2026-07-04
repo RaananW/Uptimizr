@@ -1,6 +1,5 @@
-import type { RenderScaleTruth as RenderScaleTruthData } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
-import { Panel } from "./Panel";
+import type { RenderScaleTruth as RenderScaleTruthData } from "../../api";
+import { formatNumber } from "../../format";
 
 export const RENDER_SCALE_TITLE = "Render-scale truth";
 export const RENDER_SCALE_SUBTITLE = "Is that FPS real, or downscaled?";
@@ -49,14 +48,5 @@ export function RenderScaleTruthView({ data }: { data: RenderScaleTruthData }) {
         </p>
       ) : null}
     </div>
-  );
-}
-
-/** Chrome-wrapped render-scale truth for legacy call sites. */
-export function RenderScaleTruth({ data }: { data: RenderScaleTruthData }) {
-  return (
-    <Panel title={RENDER_SCALE_TITLE} subtitle={RENDER_SCALE_SUBTITLE} help={RENDER_SCALE_HELP}>
-      <RenderScaleTruthView data={data} />
-    </Panel>
   );
 }

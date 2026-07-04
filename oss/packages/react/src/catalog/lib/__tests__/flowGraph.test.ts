@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FlowLink } from "@uptimizr/react";
+import type { FlowLink } from "../../../api";
 import {
   buildTwoStageGraph,
   OTHER_MESH,
