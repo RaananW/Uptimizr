@@ -69,7 +69,7 @@ test("view-coverage panel renders the per-session coverage histogram", async ({
   // The headline stat and the four fixed coverage bands are present with data,
   // not the empty state.
   await expect(panel.getByText("Sessions that saw <25% of the object")).toBeVisible();
-  await expect(panel.getByText("0–25%")).toBeVisible();
-  await expect(panel.getByText("75–100%")).toBeVisible();
+  await expect(panel.getByText("0–25%", { exact: true })).toBeVisible();
+  await expect(panel.getByText("75–100%", { exact: true })).toBeVisible();
   await expect(panel.getByText("No view-direction samples in range.")).toHaveCount(0);
 });

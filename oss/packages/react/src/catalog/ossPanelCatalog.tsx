@@ -122,6 +122,7 @@ import {
   SCENE_RETENTION_SUBTITLE,
   SCENE_RETENTION_HELP,
 } from "./views/SceneRetentionFunnel";
+import {
   ViewCoverageView,
   VIEW_COVERAGE_TITLE,
   VIEW_COVERAGE_SUBTITLE,
