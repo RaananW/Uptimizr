@@ -983,13 +983,7 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
-      const { region, cellSize, ...rest } = req.query;
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
-      return store.errorHeatmap(projectId, { ...rest, region, cellSize: resolved });
+      return store.errorHeatmap(projectId, req.query);
     },
   );
 

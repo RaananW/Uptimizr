@@ -10,6 +10,7 @@ import {
   buildDeadClicks,
   buildAggregateTrajectories,
   buildDistinctScenes,
+  buildErrorHeatmap,
   buildEventTypeCounts,
   buildFlowHeatmap,
   buildFpsHistogram,
@@ -107,6 +108,9 @@ interface DemoOpts {
   groupByOrigin?: boolean;
   originVoxel?: [number, number, number];
   region?: WorldAabb;
+  severity?: string;
+  category?: string;
+  errorKind?: string;
 }
 
 /** Map the dashboard camera-mode toggle to the stored `cameraType` (mirrors query.ts). */
@@ -145,6 +149,9 @@ function readOpts(sp: URLSearchParams): DemoOpts {
     cameraType: cameraTypeForMode(sp.get("cameraMode")),
     minRepeats: num(sp, "minRepeats"),
     region: parseRegion(sp.get("region")),
+    severity: str(sp, "severity"),
+    category: str(sp, "category"),
+    errorKind: str(sp, "errorKind"),
   };
 }
 
@@ -249,6 +256,7 @@ export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/coverage": (pid, o) => buildSceneCoverage(pid, o, duckdbDialect),
   "/api/v1/heatmaps/perf": (pid, o) => buildPerfHeatmap(pid, o, duckdbDialect),
   "/api/v1/coverage/view-histogram": (pid, o) => buildViewCoverageHistogram(pid, o, duckdbDialect),
+  "/api/v1/heatmaps/errors": (pid, o) => buildErrorHeatmap(pid, o, duckdbDialect),
   "/api/v1/camera/distance": (pid, o, sp) =>
     buildCameraDistance(pid, { ...o, center: parseCenter(sp) }, duckdbDialect),
   "/api/v1/navigation": (pid, o) => buildNavigationStats(pid, o, duckdbDialect),
