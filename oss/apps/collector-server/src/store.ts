@@ -10,6 +10,8 @@ import type {
   FlowLinkRow,
   FunnelStepInput,
   FunnelStepResultRow,
+  SceneRetentionOptions,
+  SceneRetentionRow,
   HeatmapBinRow,
   HoverDwellRow,
   CompileStallRow,
@@ -521,6 +523,15 @@ export interface CollectorStore {
     projectId: string,
     opts: RangeOptions & SceneOptions & CameraModeOptions & { steps: readonly FunnelStepInput[] },
   ): Promise<FunnelStepResultRow[]>;
+  /**
+   * Canned scene/level retention funnel (#147): session counts flowing scene →
+   * scene in observed order, built directly from `scene_change` markers with no
+   * caller-authored steps. Each row is `(from_scene, to_scene, sessions)` — the
+   * number of distinct sessions that made that consecutive transition — so
+   * level-to-level drop-off is visible with zero configuration. Complements the
+   * caller-authored funnel (ADR 0038).
+   */
+  sceneRetention(projectId: string, opts: SceneRetentionOptions): Promise<SceneRetentionRow[]>;
   /** Ordered session timeline for replay (gated by raw-session retention). */
   getSessionEvents(projectId: string, sessionId: string): Promise<AnyEvent[]>;
   /**

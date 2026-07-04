@@ -14,6 +14,7 @@ import {
   buildEventTypeCounts,
   buildFlowHeatmap,
   buildFunnel,
+  buildSceneRetention,
   buildListSessions,
   buildNavigationStats,
   buildXrRotationRate,
@@ -80,6 +81,7 @@ import {
   type EventTypeCountRow,
   type FlowLinkRow,
   type FunnelStepResultRow,
+  type SceneRetentionRow,
   type HeatmapBinRow,
   type MeshCountRow,
   type MeshDwellRow,
@@ -294,6 +296,8 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<EventTypeCountRow>(db, buildEventTypeCounts(projectId, opts, duckdbDialect)),
     funnel: (projectId, opts) =>
       runDuckdbQuery<FunnelStepResultRow>(db, buildFunnel(projectId, opts, duckdbDialect)),
+    sceneRetention: (projectId, opts) =>
+      runDuckdbQuery<SceneRetentionRow>(db, buildSceneRetention(projectId, opts, duckdbDialect)),
     getSessionEvents: (projectId, sessionId) => duckdbGetSessionEvents(db, projectId, sessionId),
     streamSessionEvents: (projectId, sessionId) =>
       duckdbStreamSessionEvents(db, projectId, sessionId),

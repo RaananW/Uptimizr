@@ -1116,6 +1116,7 @@ correctly). The dashboard's 3D world heatmap also normalizes color/size to the
 | `GET`  | `/api/v1/timeseries`              | Event-volume buckets over time (`bucket` epoch-ms, `events`, `avg_fps`) — the time dimension.                                                                                                                                                                                                                                                                                                                                       | `scene`, `interval` (sec), `type`                                                             |
 | `GET`  | `/api/v1/event-counts`            | Per-event-type counts over the range (powers the scene-health panel).                                                                                                                                                                                                                                                                                                                                                               | `scene`                                                                                       |
 | `GET`  | `/api/v1/funnel`                  | Ordered, per-session conversion funnel (ADR 0038, #78): how many sessions reach each step of a caller-supplied sequence (`step`, `sessions`). Steps come in via the `steps` query param — there is no authoring surface in OSS.                                                                                                                                                                                                     | `steps` (JSON, required), `scene`, `cameraMode`                                               |
+| `GET`  | `/api/v1/scene-retention`         | Canned scene/level retention funnel (#147): session counts flowing scene → scene in observed order (`from_scene`, `to_scene`, `sessions`), built directly from `scene_change` markers — no steps to author. Busiest links first.                                                                                                                                                                                                    | `limit`                                                                                       |
 | `GET`  | `/api/v1/sessions/:id/meta`       | Coarse session descriptor (device/scene/user).                                                                                                                                                                                                                                                                                                                                                                                      | —                                                                                             |
 | `GET`  | `/api/v1/sessions/:id/trajectory` | One session's ordered walked path (ADR 0026): `camera_sample` positions oldest-first (`ts,x,y,z`).                                                                                                                                                                                                                                                                                                                                  | `scene`, `limit`                                                                              |
 | `GET`  | `/api/v1/paths`                   | Aggregate desire lines (ADR 0037): every session's `camera_sample` path binned onto the X/Z ground grid (`session_id,ts,gx,gz`), ordered per session — the crowd's common routes overlaid as low-opacity poly-lines (#73).                                                                                                                                                                                                          | `cellSize`, `limit`, `scene`, `cameraMode`                                                    |
@@ -1205,6 +1206,40 @@ const rows = await api.funnel(
   { scene: "lobby" },
 );
 ```
+
+### Scene retention (`/api/v1/scene-retention`) — canned preset (#147)
+
+A **zero-config** complement to the caller-authored funnel above, aimed at the
+"level 1 → level 2 → level 3 retention" case. It is built directly from
+`scene_change` markers (ADR 0010) — each marker's envelope `sceneId` is the scene
+now active — so a session's ordered scene targets are the levels it moved through
+and **no steps need authoring**.
+
+**Semantics** — for each session, its `scene_change` targets are ordered by time;
+every **consecutive pair** is a directed link `from_scene → to_scene`. A link's
+weight is the number of **distinct sessions** that made that transition, so it
+reads as level-to-level retention. A session with a single `scene_change`
+contributes no link (there is no "from"). Results are ordered busiest-first and
+capped by `limit` (default 100). There is deliberately no `scene` filter — the
+value is the cross-scene flow.
+
+```bash
+curl -H "x-api-key: $KEY" \
+  --get "https://collect.example.com/api/v1/scene-retention" --data-urlencode "limit=50"
+# → [{ "from_scene": "lobby", "to_scene": "gallery", "sessions": 128 },
+#    { "from_scene": "gallery", "to_scene": "checkout", "sessions": 37 }]
+```
+
+From the client:
+
+```ts
+const links = await api.sceneRetention({ limit: 50 });
+// → [{ from: "lobby", to: "gallery", sessions: 128 }, …]
+```
+
+The dashboard renders this as the **Scene retention funnel** panel (grouped
+scene → scene bars with drop-off) — a built-in `PanelDefinition` in
+`@uptimizr/react`, registered like every other panel (ADR 0036).
 
 ---
 

@@ -38,6 +38,7 @@ import type {
   QueryParams,
   RenderScaleTruth as RenderScaleTruthData,
   SceneProxyMesh,
+  SceneRetentionLink,
   WorldHeatmapBin,
   XrLocomotionStat,
 } from "../api";
@@ -114,6 +115,12 @@ import {
   POINTER_HEATMAP_SUBTITLE,
 } from "./views/PointerHeatmap";
 import { TopMeshesView, TOP_MESHES_TITLE, TOP_MESHES_SUBTITLE } from "./views/TopMeshes";
+import {
+  SceneRetentionFunnelView,
+  SCENE_RETENTION_TITLE,
+  SCENE_RETENTION_SUBTITLE,
+  SCENE_RETENTION_HELP,
+} from "./views/SceneRetentionFunnel";
 
 // --- 3D (Babylon-backed) view labels (Babylon-free copy) + lazy views. ------
 import {
@@ -731,6 +738,25 @@ export const xrLocomotionComfortPanel = definePanel<XrLocomotionStat[]>({
   render: ({ data }) => <XrLocomotionComfortView stats={data ?? []} />,
 });
 
+/**
+ * Scene/level retention funnel (#147) — React/HTML, half width. A canned Sankey
+ * preset built directly from `scene_change` markers: session counts flowing
+ * scene → scene in observed order, weighted by distinct sessions, so
+ * level-to-level drop-off is visible with zero configuration (the complement to
+ * the caller-authored funnel, ADR 0038). Overview-only — it's a crowd view of
+ * how visitors move between areas, not a single-session drill-down.
+ */
+export const sceneRetentionPanel = definePanel<SceneRetentionLink[]>({
+  id: "scene-retention-funnel",
+  title: SCENE_RETENTION_TITLE,
+  subtitle: SCENE_RETENTION_SUBTITLE,
+  help: SCENE_RETENTION_HELP,
+  span: 1,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.sceneRetention({ ...scoped(ctx), scene: undefined, limit: 50 }),
+  render: ({ data }) => <SceneRetentionFunnelView links={data ?? []} />,
+});
+
 /** Aggregate gaze→mesh flow data: position-aware links + the scene-proxy backdrop. */
 interface FlowData {
   links: FlowLink[];
@@ -845,6 +871,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   perfHeatmapPanel,
   navigationMixPanel,
   xrLocomotionComfortPanel,
+  sceneRetentionPanel,
   deadZonePanel,
   flowPanel,
   divergencePanel,

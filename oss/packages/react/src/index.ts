@@ -112,6 +112,7 @@ export {
   perfHeatmapPanel,
   navigationMixPanel,
   xrLocomotionComfortPanel,
+  sceneRetentionPanel,
   deadZonePanel,
   flowPanel,
   divergencePanel,
@@ -137,6 +138,7 @@ export {
   comfortCorrelation,
   sessionDurationMs,
 } from "./catalog/views/XrLocomotionComfort";
+export { SceneRetentionFunnelView } from "./catalog/views/SceneRetentionFunnel";
 export { PointerHeatmapView } from "./catalog/views/PointerHeatmap";
 export { TopMeshesView } from "./catalog/views/TopMeshes";
 export { BlindSpotReportView } from "./catalog/views/BlindSpotReport";

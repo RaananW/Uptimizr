@@ -33,6 +33,9 @@ with `x-api-key`. The key only ever reads its own project's data.
   never approach), XR rotation and source usage, and a **VR comfort & locomotion** panel (teleport
   vs. smooth-locomotion vs. navigate mix for XR sessions, correlated with early exits — a
   motion-discomfort proxy).
+- **Scene retention funnel** — a canned level-retention preset: session counts flowing scene → scene
+  in observed order (from `scene_change` markers), with drop-off visible per source scene and **no
+  funnel steps to author** (#147).
 - **Session replay** — re-drive a recorded session inside a scene (requires raw retention; see
   below).
 

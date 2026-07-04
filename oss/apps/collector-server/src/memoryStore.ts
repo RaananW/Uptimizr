@@ -235,6 +235,42 @@ export function createMemoryStore({
       }
       return counts.map((sessions, step) => ({ step, sessions }));
     },
+    sceneRetention: async (_projectId, opts) => {
+      // Per session, the ordered `scene_change` targets; each consecutive pair
+      // is a directed link weighted by distinct sessions (mirrors the SQL
+      // builder's semantics, #147). Sessions with < 2 markers contribute none.
+      const bySession = new Map<string, AnyEvent[]>();
+      for (const e of forProject()) {
+        if (e.type !== "scene_change" || !inRange(e, opts)) continue;
+        const list = bySession.get(e.sessionId) ?? [];
+        list.push(e);
+        bySession.set(e.sessionId, list);
+      }
+
+      // Count each session at most once per (from, to) link.
+      const sessionsByLink = new Map<string, Set<string>>();
+      for (const [sessionId, list] of bySession) {
+        const scenes = [...list].sort((a, b) => a.ts - b.ts).map(sceneOf);
+        for (let i = 1; i < scenes.length; i++) {
+          const key = `${scenes[i - 1]}\u0000${scenes[i]}`;
+          const set = sessionsByLink.get(key) ?? new Set<string>();
+          set.add(sessionId);
+          sessionsByLink.set(key, set);
+        }
+      }
+
+      const rows = [...sessionsByLink].map(([key, set]) => {
+        const [from_scene, to_scene] = key.split("\u0000");
+        return { from_scene: from_scene ?? "", to_scene: to_scene ?? "", sessions: set.size };
+      });
+      rows.sort(
+        (a, b) =>
+          b.sessions - a.sessions ||
+          a.from_scene.localeCompare(b.from_scene) ||
+          a.to_scene.localeCompare(b.to_scene),
+      );
+      return rows.slice(0, opts.limit ?? 100);
+    },
     getSessionEvents: async (_projectId, sessionId) => forSession(sessionId),
     streamSessionEvents: async function* (_projectId, sessionId) {
       for (const e of forSession(sessionId)) yield e;

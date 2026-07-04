@@ -14,6 +14,7 @@ import {
   buildFpsHistogram,
   buildFrameTimePercentiles,
   buildFunnel,
+  buildSceneRetention,
   buildGazeHeatmap,
   buildGazeHeatmapStats,
   buildGraphicsDiagnosticCounts,
@@ -242,6 +243,7 @@ export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/timeseries": (pid, o) => buildTimeseries(pid, o, duckdbDialect),
   "/api/v1/event-counts": (pid, o) => buildEventTypeCounts(pid, o, duckdbDialect),
   "/api/v1/paths": (pid, o) => buildAggregateTrajectories(pid, o, duckdbDialect),
+  "/api/v1/scene-retention": (pid, o) => buildSceneRetention(pid, o, duckdbDialect),
 };
 
 function parseVoxel(raw: string | null): [number, number, number] | undefined {

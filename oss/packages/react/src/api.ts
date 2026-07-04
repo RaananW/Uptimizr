@@ -257,6 +257,21 @@ export interface FunnelStepResult {
   sessions: number;
 }
 
+/**
+ * One directed scene-to-scene retention link (#147): how many distinct sessions
+ * made the consecutive transition `from → to`, derived from the observed order of
+ * `scene_change` markers. This is the canned "level funnel" preset — a zero-config
+ * complement to the caller-authored funnel (ADR 0038); no steps to author.
+ */
+export interface SceneRetentionLink {
+  /** Scene the session moved *from* (the previous scene_change target). */
+  from: string;
+  /** Scene the session moved *to* (the next scene_change target). */
+  to: string;
+  /** Distinct sessions that made this consecutive transition. */
+  sessions: number;
+}
+
 /** An occupied camera-position voxel (scene coverage / dead zones, #38). */
 export interface CoverageVoxel {
   vx: number;
@@ -1040,6 +1055,23 @@ export class CollectorApi {
       steps: JSON.stringify(steps),
     }).then((rows) =>
       rows.map((r) => ({ step: Number(r.step), sessions: Number(r.sessions ?? 0) })),
+    );
+  }
+
+  /**
+   * Canned scene/level retention funnel (#147). Session counts flowing scene →
+   * scene in observed order, built directly from `scene_change` markers — no
+   * steps to author (the zero-config complement to {@link CollectorApi.funnel}).
+   * Each row is a consecutive transition `from → to` weighted by distinct
+   * sessions, busiest first. `limit` caps the number of links.
+   */
+  sceneRetention(params?: QueryParams): Promise<SceneRetentionLink[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/scene-retention", params).then((rows) =>
+      rows.map((r) => ({
+        from: String(r.from_scene ?? ""),
+        to: String(r.to_scene ?? ""),
+        sessions: Number(r.sessions ?? 0),
+      })),
     );
   }
 
