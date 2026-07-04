@@ -516,7 +516,8 @@ export const reachabilityPanel = definePanel<ReachabilityBin[]>({
   help: REACHABILITY_HELP,
   span: 1,
   surfaces: ["overview", "session"],
-  load: (ctx) => ctx.api.reachability({ ...scoped(ctx), bucketSize: REACH_BUCKET_SIZE, limit: 500 }),
+  load: (ctx) =>
+    ctx.api.reachability({ ...scoped(ctx), bucketSize: REACH_BUCKET_SIZE, limit: 500 }),
   render: ({ data }) => (
     <ReachabilityView
       bins={data ?? []}

@@ -84,8 +84,8 @@ export function ReachabilityView({
   if (rows.length === 0) {
     return (
       <p className="text-sm text-fg-muted">
-        No measurable interactions in range. Reachability needs mesh_interaction events with a
-        world point plus preceding camera_sample positions in the same session.
+        No measurable interactions in range. Reachability needs mesh_interaction events with a world
+        point plus preceding camera_sample positions in the same session.
       </p>
     );
   }
