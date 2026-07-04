@@ -52,6 +52,7 @@ import {
   buildTopMeshesBySource,
   buildTopMeshesTrend,
   buildViewCoverageHistogram,
+  buildVariantLeaderboard,
   buildWorldHeatmap,
   buildWorldHeatmapStats,
   buildXrAbandonment,
@@ -68,6 +69,7 @@ import {
 } from "@uptimizr/db/query";
 import {
   anyEventSchema,
+  funnelStepSchema,
   funnelStepsSchema,
   sceneProxySchema,
   type AnyEvent,
@@ -186,6 +188,7 @@ export const DEMO_SPECIAL_GET_ROUTES = [
   "/api/v1/scene-representations",
   "/api/v1/scenes/:sceneId/representation",
   "/api/v1/funnel",
+  "/api/v1/variant-leaderboard",
   // Large-scene spatial routes (ADR 0040): handled out-of-band because they need
   // an async, bounds-driven `cellSize` (from the scene registry / region box) that
   // the synchronous {@link READ_ROUTES} builder table can't resolve, and the two
@@ -471,6 +474,44 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
           { ...readOpts(sp), steps: result.data as readonly FunnelStepInput[] },
           duckdbDialect,
         ),
+      );
+      return ok(rows);
+    }
+
+    // Variant → conversion leaderboard (#150): optional single-step `variant` and
+    // `conversion` predicates (JSON), validated against the shared
+    // `funnelStepSchema`, mirroring the collector's `GET /api/v1/variant-leaderboard`
+    // (400 on bad input). Both are optional — omit for the default all-custom view.
+    if (path === "/api/v1/variant-leaderboard") {
+      const parsePredicate = (raw: string, field: string) => {
+        let json: unknown;
+        try {
+          json = JSON.parse(raw);
+        } catch {
+          return { error: `${field} must be a JSON object` };
+        }
+        const result = funnelStepSchema.safeParse(json);
+        if (!result.success) return { error: `invalid ${field}` };
+        return { data: result.data as FunnelStepInput };
+      };
+
+      let variant: FunnelStepInput | undefined;
+      const variantRaw = sp.get("variant");
+      if (variantRaw != null) {
+        const p = parsePredicate(variantRaw, "variant");
+        if (p.error) return { status: 400, body: { error: p.error } };
+        variant = p.data;
+      }
+      let conversion: FunnelStepInput | undefined;
+      const conversionRaw = sp.get("conversion");
+      if (conversionRaw != null) {
+        const p = parsePredicate(conversionRaw, "conversion");
+        if (p.error) return { status: 400, body: { error: p.error } };
+        conversion = p.data;
+      }
+
+      const rows = await db.all(
+        buildVariantLeaderboard(pid, { ...readOpts(sp), variant, conversion }, duckdbDialect),
       );
       return ok(rows);
     }

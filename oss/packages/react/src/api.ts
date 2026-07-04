@@ -309,6 +309,22 @@ export interface LoadBounceBand {
   bounced: number;
 }
 
+/**
+ * One row of the variant → conversion leaderboard (#150): a single variant (a
+ * `custom` event grouped by its `name`) with its view count, distinct sessions,
+ * conversions to the chosen success event, mean dwell (ms) before the next
+ * variant switch/conversion, and the derived conversion rate (`conversions /
+ * sessions`, `0` when unviewed).
+ */
+export interface VariantLeaderboardRow {
+  variant: string;
+  views: number;
+  sessions: number;
+  conversions: number;
+  avgDwellMs: number;
+  conversionRate: number;
+}
+
 /** An occupied camera-position voxel (scene coverage / dead zones, #38). */
 export interface CoverageVoxel {
   vx: number;
@@ -669,6 +685,16 @@ export interface QueryParams {
   bands?: string;
   /** Per-mesh UV heatmap (#149): the mesh whose texture space is binned (required for that endpoint). */
   mesh?: string;
+  /**
+   * Variant leaderboard (#150): JSON-encoded single {@link FunnelStep} predicate
+   * selecting which events count as variant views (default `{ type: "custom" }`).
+   */
+  variant?: string;
+  /**
+   * Variant leaderboard (#150): JSON-encoded single {@link FunnelStep} predicate
+   * for the "success" event used to compute conversion rate; omit for no conversion.
+   */
+  conversion?: string;
 }
 
 export class ApiError extends Error {
@@ -1239,6 +1265,38 @@ export class CollectorApi {
         sessions: Number(r.sessions ?? 0),
         bounced: Number(r.bounced ?? 0),
       })),
+    );
+  }
+
+  /**
+   * Variant → conversion leaderboard (#150). Ranks variants — `custom` events
+   * grouped by their `name` — by view count, and reports distinct sessions, mean
+   * dwell before the next variant switch/conversion, and (when `conversion` is
+   * supplied) the conversion rate to that success event. `variant` selects which
+   * events count as views (default `{ type: "custom" }`); both predicates reuse
+   * the funnel-step shape (ADR 0038). Read-only; the caller supplies the events.
+   */
+  variantLeaderboard(
+    opts: { variant?: FunnelStep; conversion?: FunnelStep } = {},
+    params?: QueryParams,
+  ): Promise<VariantLeaderboardRow[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/variant-leaderboard", {
+      ...params,
+      variant: opts.variant ? JSON.stringify(opts.variant) : undefined,
+      conversion: opts.conversion ? JSON.stringify(opts.conversion) : undefined,
+    }).then((rows) =>
+      rows.map((r) => {
+        const sessions = Number(r.sessions ?? 0);
+        const conversions = Number(r.conversions ?? 0);
+        return {
+          variant: String(r.variant),
+          views: Number(r.views ?? 0),
+          sessions,
+          conversions,
+          avgDwellMs: Number(r.avg_dwell_ms ?? 0),
+          conversionRate: sessions > 0 ? conversions / sessions : 0,
+        };
+      }),
     );
   }
 

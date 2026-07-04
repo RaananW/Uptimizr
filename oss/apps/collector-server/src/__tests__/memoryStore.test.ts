@@ -96,4 +96,33 @@ describe("memory store", () => {
       { step: 2, sessions: 1 },
     ]);
   });
+
+  it("computes a variant leaderboard with views, conversions, and dwell (#150)", async () => {
+    const store = createMemoryStore({ projectId: "p1", apiKey: "k1" });
+    const c = (sessionId: string, name: string, ts: number) =>
+      evt({ type: "custom", sessionId, ts, name } as Partial<AnyEvent> & { type: string });
+    await store.insertEvents([
+      // sA: red → blue → add_to_cart (converts after both).
+      c("sA", "red", 0),
+      c("sA", "blue", 2000),
+      c("sA", "add_to_cart", 5000),
+      // sB: red → red (same-variant re-view) → green; never converts.
+      c("sB", "red", 1000),
+      c("sB", "red", 4000),
+      c("sB", "green", 8000),
+      // sC: blue only.
+      c("sC", "blue", 0),
+    ]);
+    const rows = await store.variantLeaderboard("p1", {
+      conversion: { type: "custom", name: "add_to_cart" },
+    });
+    const byVariant = Object.fromEntries(rows.map((r) => [r.variant, r]));
+    // Ranked by views: red (3), blue (2), then add_to_cart / green tie by name.
+    expect(rows.map((r) => r.variant)).toEqual(["red", "blue", "add_to_cart", "green"]);
+    expect(byVariant.red).toMatchObject({ views: 3, sessions: 2, conversions: 1 });
+    expect(byVariant.red.avg_dwell_ms).toBeCloseTo(13000 / 3, 3);
+    expect(byVariant.blue).toMatchObject({ views: 2, sessions: 2, conversions: 1 });
+    expect(byVariant.blue.avg_dwell_ms).toBeCloseTo(3000, 3);
+    expect(byVariant.green).toMatchObject({ views: 1, conversions: 0, avg_dwell_ms: 0 });
+  });
 });

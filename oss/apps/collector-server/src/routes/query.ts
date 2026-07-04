@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { Readable } from "node:stream";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { sceneProxySchema, funnelStepsSchema } from "@uptimizr/schema";
+import { sceneProxySchema, funnelStepsSchema, funnelStepSchema } from "@uptimizr/schema";
 import { defaultCellSizeForBounds, type WorldAabb } from "@uptimizr/db";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
@@ -370,6 +370,24 @@ const loadBounceQueryParams = z.object({
       }
       return parts;
     }),
+});
+
+/**
+ * Variant-leaderboard params (#150): a time range, optional scene/camera-mode
+ * scope, an optional `variant` predicate (JSON funnel-step; defaults to every
+ * `custom` event), an optional `conversion` predicate (JSON funnel-step — the
+ * "success" event), and a result cap. Predicates are validated against the
+ * shared `funnelStepSchema` in the handler. Like the funnel, there is no
+ * authoring surface — the caller supplies the predicates (ADR 0038).
+ */
+const variantLeaderboardQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  scene: sceneFilter,
+  cameraMode: cameraModeFilter,
+  variant: z.string().min(1).max(2048).optional(),
+  conversion: z.string().min(1).max(2048).optional(),
+  limit: z.coerce.number().int().positive().max(500).optional(),
 });
 
 /** Scene-coverage params: voxel `cellSize` + scene/session filters + result cap. */
@@ -1303,6 +1321,59 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       if (!projectId) return reply;
       const { since, until, scene, bands } = req.query;
       return store.loadBounceFunnel(projectId, { since, until, scene, bands });
+    },
+  );
+
+  // Variant → conversion leaderboard for product configurators (#150) — per
+  // variant (a `custom` event grouped by its `name`), the views, distinct
+  // sessions, conversions to an optional "success" event, and mean dwell before
+  // the next switch/conversion. `variant`/`conversion` are JSON-encoded step
+  // predicates validated against the shared `funnelStepSchema`; like the funnel,
+  // OSS is a passive viewer and the caller supplies them (ADR 0038).
+  r.get(
+    "/api/v1/variant-leaderboard",
+    { schema: { querystring: variantLeaderboardQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      const { since, until, scene, cameraMode, variant, conversion, limit } = req.query;
+
+      const parsePredicate = (raw: string, field: string) => {
+        let json: unknown;
+        try {
+          json = JSON.parse(raw);
+        } catch {
+          return { error: `${field} must be a JSON object` as const };
+        }
+        const result = funnelStepSchema.safeParse(json);
+        if (!result.success) {
+          return { error: `invalid ${field}` as const, issues: result.error.issues };
+        }
+        return { data: result.data };
+      };
+
+      let variantPred;
+      if (variant != null) {
+        const p = parsePredicate(variant, "variant");
+        if (p.error) return reply.code(400).send({ error: p.error, details: p.issues });
+        variantPred = p.data;
+      }
+      let conversionPred;
+      if (conversion != null) {
+        const p = parsePredicate(conversion, "conversion");
+        if (p.error) return reply.code(400).send({ error: p.error, details: p.issues });
+        conversionPred = p.data;
+      }
+
+      return store.variantLeaderboard(projectId, {
+        since,
+        until,
+        scene,
+        cameraType: cameraTypeForMode(cameraMode),
+        variant: variantPred,
+        conversion: conversionPred,
+        limit,
+      });
     },
   );
 

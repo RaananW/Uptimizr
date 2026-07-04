@@ -1155,6 +1155,7 @@ correctly). The dashboard's 3D world heatmap also normalizes color/size to the
 | `GET`  | `/api/v1/sessions/:id/trajectory` | One session's ordered walked path (ADR 0026): `camera_sample` positions oldest-first (`ts,x,y,z`).                                                                                                                                                                                                                                                                                                                                               | `scene`, `limit`                                                                                     |
 | `GET`  | `/api/v1/paths`                   | Aggregate desire lines (ADR 0037): every session's `camera_sample` path binned onto the X/Z ground grid (`session_id,ts,gx,gz`), ordered per session — the crowd's common routes overlaid as low-opacity poly-lines (#73).                                                                                                                                                                                                                       | `cellSize`, `limit`, `scene`, `cameraMode`                                                           |
 | `GET`  | `/api/v1/sessions/:id/events`     | Ordered raw event stream for replay. Requires `ENABLE_RAW_SESSION_RETENTION` (ADR 0003); otherwise `403`.                                                                                                                                                                                                                                                                                                                                        | —                                                                                                    |
+| `GET`  | `/api/v1/variant-leaderboard`     | Variant → conversion leaderboard (#150): ranks `custom` events grouped by their `name` (a configurator variant) by `views`, with `sessions`, `conversions`, and `avg_dwell_ms` (mean dwell before the next variant switch/conversion). Optional `conversion` predicate adds the per-variant conversion rate. Read-only; the caller supplies the variant/success predicates.                                                                      | `variant` (JSON), `conversion` (JSON), `limit`, `scene`, `cameraMode`, `session`                     |
 
 ### Scene registry (representations)
 
@@ -1307,6 +1308,63 @@ const rows = await api.loadBounce({ bands: [1000, 3000, 5000], scene: "lobby" })
 
 The OSS dashboard ships a **Load → bounce funnel** panel that renders these bands
 with a bounce-rate bar per band.
+
+---
+
+### Variant leaderboard (`/api/v1/variant-leaderboard`) — configurators (#150)
+
+A **variant → conversion leaderboard** ranks the variants of a 3D product
+configurator — colour, material, or trim swaps your scene emits as `custom` events
+— by how much attention each gets and how well each converts. A variant is a
+`custom` event grouped by its promoted `name` column (the `props`/payload blob is
+not a queryable column, so grouping is by name). Like funnels, the collector only
+computes the aggregation — it authors nothing.
+
+Per variant the endpoint returns:
+
+| Column         | Meaning                                                                                                                                                                                                |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `variant`      | the custom-event `name` (the variant identifier)                                                                                                                                                       |
+| `views`        | total matching events                                                                                                                                                                                  |
+| `sessions`     | distinct sessions that viewed it                                                                                                                                                                       |
+| `conversions`  | distinct sessions that fired the success event at/after first viewing it (0 without one)                                                                                                               |
+| `avg_dwell_ms` | mean dwell from each view to the next boundary — a later _different_ variant view **or** (when configured) a conversion; views with no later boundary are excluded, so `0` means "no measurable dwell" |
+
+Two optional single-predicate params reuse the funnel-step shape (`type` /`name` /
+`mesh` equality):
+
+- **`variant`** — selects which events count as variant views. Default
+  `{ "type": "custom" }` (every custom event, grouped by name).
+- **`conversion`** — the "success" event for the conversion rate. Omit it and
+  `conversions` is `0` for every row (views-only).
+
+**Conversion rate** is derived client-side by `CollectorApi.variantLeaderboard` as
+`conversions / sessions` (ordered and session-based: the success event must occur at
+or after the session first saw the variant). Rows are ranked by `views` (then variant
+name); `limit` defaults to 50.
+
+```bash
+CONV='{"type":"custom","name":"add_to_cart"}'
+curl -H "x-api-key: $KEY" \
+  --get "https://collect.example.com/api/v1/variant-leaderboard" \
+  --data-urlencode "conversion=$CONV" --data-urlencode "scene=shop"
+# → [{ "variant": "red", "views": 128, "sessions": 96, "conversions": 41, "avg_dwell_ms": 5200 }, …]
+```
+
+From the client:
+
+```ts
+const rows = await api.variantLeaderboard(
+  { conversion: { type: "custom", name: "add_to_cart" } },
+  { scene: "shop" },
+);
+// rows[0] → { variant, views, sessions, conversions, avgDwellMs, conversionRate }
+```
+
+The dashboard's **Variant → conversion leaderboard** panel loads the ranked variants
+with no success event selected, then lets the viewer pick one from an in-panel
+dropdown (its options are the discovered variant names) to reveal per-variant
+conversion rates — no authoring surface, no schema change.
 
 ---
 

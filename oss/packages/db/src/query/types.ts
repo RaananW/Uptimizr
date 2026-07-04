@@ -814,3 +814,45 @@ export interface LoadBounceBandRow {
   sessions: number;
   bounced: number;
 }
+
+/**
+ * Options for {@link "./aggregations".buildVariantLeaderboard} (#150) — the
+ * variant → conversion leaderboard for product configurators.
+ *
+ * A **variant** is a `custom` event grouped by its promoted `name` column (color
+ * / material / SKU swaps are emitted as custom events; `props`/payload are not
+ * portably queryable, so `name` is the discriminator — see ADR 0038 §"Step
+ * predicate"). `variant` scopes *which* events are variants (defaults to every
+ * `custom` event); `conversion` is the optional "success" event predicate. Both
+ * reuse the funnel-step predicate shape so matching is pure, promoted-column
+ * equality — dialect-agnostic and injection-safe. `label` is ignored by SQL.
+ */
+export interface VariantLeaderboardOptions extends RangeOptions, SceneOptions, CameraModeOptions {
+  /** Predicate selecting the variant events; defaults to `{ type: "custom" }`. */
+  variant?: FunnelStepInput;
+  /**
+   * Optional "success" event predicate. When supplied, the leaderboard reports
+   * per-variant conversions (sessions that fired it at/after their first view of
+   * the variant) and counts it as a dwell boundary; when omitted, only views and
+   * switch-boundary dwell are reported.
+   */
+  conversion?: FunnelStepInput;
+  /** Max ranked variants returned (by view count). */
+  limit?: number;
+}
+
+/**
+ * One leaderboard row (#150): a single variant (`name`) with how many times it
+ * was viewed, over how many distinct sessions, how many of those sessions
+ * converted, and the mean dwell before the next boundary (a switch to a
+ * different variant or the conversion event). `conversions` is `0` when no
+ * `conversion` predicate was supplied; the consumer derives the rate as
+ * `conversions / sessions`.
+ */
+export interface VariantLeaderboardRow {
+  variant: string;
+  views: number;
+  sessions: number;
+  conversions: number;
+  avg_dwell_ms: number;
+}

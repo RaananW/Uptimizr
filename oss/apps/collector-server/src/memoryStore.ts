@@ -278,6 +278,110 @@ export function createMemoryStore({
       return rows.slice(0, opts.limit ?? 100);
     },
     loadBounceFunnel: async () => [],
+    variantLeaderboard: async (_projectId, opts) => {
+      const nameOf = (e: AnyEvent): string => {
+        const r = e as AnyEvent & Record<string, unknown>;
+        for (const k of ["name", "phase", "kind", "action"]) {
+          if (typeof r[k] === "string") return r[k] as string;
+        }
+        return "";
+      };
+      const meshOf = (e: AnyEvent): string => {
+        const r = e as AnyEvent & Record<string, unknown>;
+        if (typeof r.mesh === "string") return r.mesh;
+        if (typeof r.hitMesh === "string") return r.hitMesh;
+        return "";
+      };
+      type Pred = { type: string; name?: string; mesh?: string };
+      const matches = (e: AnyEvent, step: Pred): boolean =>
+        e.type === step.type &&
+        (step.name == null || step.name.length === 0 || nameOf(e) === step.name) &&
+        (step.mesh == null || step.mesh.length === 0 || meshOf(e) === step.mesh);
+      const scoped = (e: AnyEvent): boolean =>
+        inRange(e, opts) &&
+        (opts.scene == null || opts.scene.length === 0 || sceneOf(e) === opts.scene);
+
+      const variantStep: Pred = opts.variant ?? { type: "custom" };
+      const conversionStep = opts.conversion;
+
+      // (session → sorted variant views) and (session → sorted conversion ts).
+      const viewsBySession = new Map<string, { variant: string; ts: number }[]>();
+      const convBySession = new Map<string, number[]>();
+      for (const e of forProject()) {
+        if (!scoped(e)) continue;
+        if (matches(e, variantStep)) {
+          const list = viewsBySession.get(e.sessionId) ?? [];
+          list.push({ variant: nameOf(e), ts: e.ts });
+          viewsBySession.set(e.sessionId, list);
+        }
+        if (conversionStep != null && matches(e, conversionStep)) {
+          const list = convBySession.get(e.sessionId) ?? [];
+          list.push(e.ts);
+          convBySession.set(e.sessionId, list);
+        }
+      }
+
+      type Acc = {
+        views: number;
+        sessions: Set<string>;
+        converted: Set<string>;
+        dwellSum: number;
+        dwellSamples: number;
+      };
+      const acc = new Map<string, Acc>();
+      const get = (v: string): Acc => {
+        let a = acc.get(v);
+        if (a == null) {
+          a = { views: 0, sessions: new Set(), converted: new Set(), dwellSum: 0, dwellSamples: 0 };
+          acc.set(v, a);
+        }
+        return a;
+      };
+
+      for (const [session, views] of viewsBySession) {
+        const convTs = convBySession.get(session) ?? [];
+        // First view of each variant in this session (ordered anchor).
+        const firstView = new Map<string, number>();
+        for (const { variant, ts } of views) {
+          if (!firstView.has(variant) || ts < (firstView.get(variant) as number)) {
+            firstView.set(variant, ts);
+          }
+        }
+        for (const { variant, ts } of views) {
+          const a = get(variant);
+          a.views += 1;
+          a.sessions.add(session);
+          // Next boundary: earliest later conversion OR later different-variant view.
+          let boundary = Infinity;
+          for (const c of convTs) if (c > ts && c < boundary) boundary = c;
+          for (const other of views) {
+            if (other.ts > ts && other.variant !== variant && other.ts < boundary) {
+              boundary = other.ts;
+            }
+          }
+          if (boundary !== Infinity) {
+            a.dwellSum += boundary - ts;
+            a.dwellSamples += 1;
+          }
+        }
+        // Conversions: sessions that fired the conversion at/after first view.
+        if (conversionStep != null) {
+          for (const [variant, t0] of firstView) {
+            if (convTs.some((c) => c >= t0)) get(variant).converted.add(session);
+          }
+        }
+      }
+
+      const rows = [...acc.entries()].map(([variant, a]) => ({
+        variant,
+        views: a.views,
+        sessions: a.sessions.size,
+        conversions: a.converted.size,
+        avg_dwell_ms: a.dwellSamples > 0 ? a.dwellSum / a.dwellSamples : 0,
+      }));
+      rows.sort((x, y) => y.views - x.views || (x.variant < y.variant ? -1 : 1));
+      return rows.slice(0, opts.limit ?? 50);
+    },
     getSessionEvents: async (_projectId, sessionId) => forSession(sessionId),
     streamSessionEvents: async function* (_projectId, sessionId) {
       for (const e of forSession(sessionId)) yield e;

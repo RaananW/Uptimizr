@@ -5,6 +5,7 @@ import {
   topMeshesPanel,
   meshLeaderboardPanel,
   blindSpotsPanel,
+  variantLeaderboardPanel,
   pointerHeatmapPanel,
   meshUvHeatmapPanel,
   cameraDomePanel,
@@ -81,7 +82,7 @@ function renderPanel(panel: PanelDefinition<unknown>): ReactElement {
 
 describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
   it("exposes the complete OSS panel set", () => {
-    expect(ossPanelCatalog).toHaveLength(26);
+    expect(ossPanelCatalog).toHaveLength(27);
   });
 
   it("every entry is a valid PanelDefinition with a unique id", () => {
@@ -104,6 +105,7 @@ describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
       topMeshesPanel,
       meshLeaderboardPanel,
       blindSpotsPanel,
+      variantLeaderboardPanel,
       pointerHeatmapPanel,
       meshUvHeatmapPanel,
       cameraDomePanel,

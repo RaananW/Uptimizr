@@ -17,6 +17,7 @@ import {
   buildFunnel,
   buildSceneRetention,
   buildLoadBounceFunnel,
+  buildVariantLeaderboard,
   buildListSessions,
   buildNavigationStats,
   buildBacktrackRatio,
@@ -91,6 +92,7 @@ import {
   type FunnelStepResultRow,
   type SceneRetentionRow,
   type LoadBounceBandRow,
+  type VariantLeaderboardRow,
   type HeatmapBinRow,
   type MeshCountRow,
   type MeshDwellRow,
@@ -327,6 +329,11 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<SceneRetentionRow>(db, buildSceneRetention(projectId, opts, duckdbDialect)),
     loadBounceFunnel: (projectId, opts = {}) =>
       runDuckdbQuery<LoadBounceBandRow>(db, buildLoadBounceFunnel(projectId, opts, duckdbDialect)),
+    variantLeaderboard: (projectId, opts) =>
+      runDuckdbQuery<VariantLeaderboardRow>(
+        db,
+        buildVariantLeaderboard(projectId, opts, duckdbDialect),
+      ),
     getSessionEvents: (projectId, sessionId) => duckdbGetSessionEvents(db, projectId, sessionId),
     streamSessionEvents: (projectId, sessionId) =>
       duckdbStreamSessionEvents(db, projectId, sessionId),

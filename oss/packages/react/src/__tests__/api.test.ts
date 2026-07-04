@@ -235,6 +235,41 @@ describe("CollectorApi", () => {
     expect(parsed.searchParams.has("bands")).toBe(false);
   });
 
+  it("encodes variant/conversion predicates and derives the conversion rate (#150)", async () => {
+    const fetchMock = mockFetch([
+      { variant: "red", views: "6", sessions: "4", conversions: "3", avg_dwell_ms: "1500" },
+      { variant: "blue", views: "2", sessions: "2", conversions: "0", avg_dwell_ms: "0" },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.variantLeaderboard(
+      { conversion: { type: "custom", name: "add_to_cart" } },
+      { scene: "shop", limit: 10 },
+    );
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe(
+      "http://localhost:4318/api/v1/variant-leaderboard",
+    );
+    expect(parsed.searchParams.get("scene")).toBe("shop");
+    expect(parsed.searchParams.get("limit")).toBe("10");
+    expect(JSON.parse(parsed.searchParams.get("conversion") ?? "{}")).toEqual({
+      type: "custom",
+      name: "add_to_cart",
+    });
+    expect(parsed.searchParams.get("variant")).toBeNull();
+    expect(rows[0]).toEqual({
+      variant: "red",
+      views: 6,
+      sessions: 4,
+      conversions: 3,
+      avgDwellMs: 1500,
+      conversionRate: 0.75,
+    });
+    expect(rows[1].conversionRate).toBe(0);
+  });
+
   it("coerces camera-gesture rows and hits the camera-gestures endpoint", async () => {
     const fetchMock = mockFetch([
       { kind: "orbit", gestures: "9", total_ms: "4500", avg_ms: "500", max_ms: "1200" },

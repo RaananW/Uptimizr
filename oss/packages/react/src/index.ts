@@ -100,6 +100,7 @@ export {
   topMeshesPanel,
   meshLeaderboardPanel,
   blindSpotsPanel,
+  variantLeaderboardPanel,
   pointerHeatmapPanel,
   meshUvHeatmapPanel,
   cameraDomePanel,

@@ -243,6 +243,10 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
       { band: 0, sessions: 20, bounced: 3 },
       { band: 3, sessions: 8, bounced: 6 },
     ],
+    variantLeaderboard: async () => [
+      { variant: "red", views: 12, sessions: 8, conversions: 3, avg_dwell_ms: 4200 },
+      { variant: "blue", views: 7, sessions: 5, conversions: 1, avg_dwell_ms: 3100 },
+    ],
     getSessionEvents: async () => [],
     streamSessionEvents: async function* () {},
     getSessionMeta: async () => ({
@@ -536,6 +540,73 @@ describe("collector app", () => {
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/load-bounce?bands=3000,1000",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("returns the variant leaderboard for a valid API key (#150)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/variant-leaderboard",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      { variant: "red", views: 12, sessions: 8, conversions: 3, avg_dwell_ms: 4200 },
+      { variant: "blue", views: 7, sessions: 5, conversions: 1, avg_dwell_ms: 3100 },
+    ]);
+    await app.close();
+  });
+
+  it("forwards parsed variant/conversion predicates + filters to the store (#150)", async () => {
+    let received: unknown;
+    const store = makeStore({
+      variantLeaderboard: async (_projectId, opts) => {
+        received = opts;
+        return [];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const variant = JSON.stringify({ type: "custom", name: "swatch" });
+    const conversion = JSON.stringify({ type: "custom", name: "add_to_cart" });
+    const res = await app.inject({
+      method: "GET",
+      url:
+        `/api/v1/variant-leaderboard?scene=lobby&cameraMode=viewer&limit=10` +
+        `&variant=${encodeURIComponent(variant)}&conversion=${encodeURIComponent(conversion)}`,
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received).toMatchObject({
+      scene: "lobby",
+      cameraType: "arc-rotate",
+      limit: 10,
+      variant: { type: "custom", name: "swatch" },
+      conversion: { type: "custom", name: "add_to_cart" },
+    });
+    await app.close();
+  });
+
+  it("rejects a variant-leaderboard conversion that is not valid JSON with 400 (#150)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/variant-leaderboard?conversion=not-json",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("rejects a variant-leaderboard predicate with an invalid event type with 400 (#150)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const conversion = JSON.stringify({ type: "not_an_event" });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/variant-leaderboard?conversion=${encodeURIComponent(conversion)}`,
       headers: { "x-api-key": "valid-key" },
     });
     expect(res.statusCode).toBe(400);
