@@ -174,6 +174,37 @@ describe("CollectorApi", () => {
     });
   });
 
+  it("coerces XR locomotion rows and hits the xr/locomotion endpoint (#148)", async () => {
+    const fetchMock = mockFetch([
+      {
+        session_id: "xr1",
+        fly_gestures: "12",
+        navigate_gestures: "2",
+        teleports: "3",
+        locomotion_ms: "4200",
+        started_at: "2024-06-16 10:00:00.000",
+        ended_at: "2024-06-16 10:00:25.000",
+      },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.xrLocomotion({ scene: "arena", session: "xr1" });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/xr/locomotion");
+    expect(parsed.searchParams.get("scene")).toBe("arena");
+    expect(rows[0]).toEqual({
+      session_id: "xr1",
+      fly_gestures: 12,
+      navigate_gestures: 2,
+      teleports: 3,
+      locomotion_ms: 4200,
+      started_at: "2024-06-16 10:00:00.000",
+      ended_at: "2024-06-16 10:00:25.000",
+    });
+  });
+
   it("coerces graphics-diagnostic counts and hits the graphics-diagnostics endpoint (#16)", async () => {
     const fetchMock = mockFetch([
       { severity: "fatal", category: "device-lost", backend: "webgpu", incidents: "2" },

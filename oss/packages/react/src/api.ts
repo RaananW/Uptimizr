@@ -286,6 +286,31 @@ export interface InteractionSource {
   sessions: number;
 }
 
+/**
+ * Per-XR-session locomotion + comfort row (#148): the locomotion-style mix for
+ * one session that used an XR input source, plus its wall-clock span so the
+ * dashboard can correlate heavy locomotion (a motion-sickness risk) with early
+ * exits. A teleport emits both a `fly` gesture and a `mesh_interaction
+ * { kind: "teleport" }` (ADR 0025), so `fly_gestures` counts smooth + teleport
+ * flies while `teleports` isolates the discrete jumps; smooth locomotion is
+ * `fly_gestures - teleports`.
+ */
+export interface XrLocomotionStat {
+  session_id: string;
+  /** `camera_gesture { kind: "fly" }` count (smooth thumbstick + teleport flies). */
+  fly_gestures: number;
+  /** `camera_gesture { kind: "navigate" }` count (untyped user-bracketed moves). */
+  navigate_gestures: number;
+  /** `mesh_interaction { kind: "teleport" }` count (discrete viewpoint jumps). */
+  teleports: number;
+  /** Total time spent in fly + navigate gestures, in ms. */
+  locomotion_ms: number;
+  /** First event timestamp for the session (engine-formatted). */
+  started_at: string;
+  /** Last event timestamp for the session (engine-formatted). */
+  ended_at: string;
+}
+
 /** Input-source vocabulary for the pointer/world heatmap filter (ADR 0011). */
 export type InputSource =
   | "mouse"
@@ -1021,6 +1046,25 @@ export class CollectorApi {
         source: String(r.source ?? ""),
         count: Number(r.count ?? 0),
         sessions: Number(r.sessions ?? 0),
+      })),
+    );
+  }
+
+  /**
+   * XR locomotion & comfort (#148): per XR session, its locomotion-style mix
+   * (fly / navigate / teleport counts + duration) and wall-clock span. Drives the
+   * VR comfort & locomotion panel.
+   */
+  xrLocomotion(params?: QueryParams): Promise<XrLocomotionStat[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/xr/locomotion", params).then((rows) =>
+      rows.map((r) => ({
+        session_id: String(r.session_id ?? ""),
+        fly_gestures: Number(r.fly_gestures ?? 0),
+        navigate_gestures: Number(r.navigate_gestures ?? 0),
+        teleports: Number(r.teleports ?? 0),
+        locomotion_ms: Number(r.locomotion_ms ?? 0),
+        started_at: String(r.started_at ?? ""),
+        ended_at: String(r.ended_at ?? ""),
       })),
     );
   }

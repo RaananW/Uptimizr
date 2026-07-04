@@ -2168,6 +2168,59 @@ export function buildXrAbandonment(
 }
 
 /**
+ * XR locomotion & comfort (#148): per session that used an XR input source, its
+ * locomotion-style breakdown and wall-clock span. This turns the existing
+ * `camera_gesture` / `mesh_interaction` streams into a comfort signal for VR
+ * developers — constant smooth `fly` locomotion (a motion-sickness risk) vs.
+ * teleport-dominant sessions — and lets the consumer correlate heavy locomotion
+ * with early exits (a short span, a discomfort / "rage-quit" proxy).
+ *
+ * A teleport emits **both** a `camera_gesture { kind: "fly" }` and a
+ * `mesh_interaction { kind: "teleport" }` (ADR 0025), so `fly_gestures` counts
+ * every fly (smooth + teleport) while `teleports` isolates the discrete jumps;
+ * the consumer derives smooth locomotion as `fly_gestures - teleports`. Sessions
+ * with no XR input are omitted entirely (same XR-session gate as
+ * {@link buildXrAbandonment}). Wall-clock bounds are engine-specific and excluded
+ * from parity; the counts are compared.
+ */
+export function buildXrLocomotionComfort(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const limit = bag.add("limit", "u32", opts.limit ?? 500);
+  return {
+    query: `
+      SELECT
+        session_id,
+        sum(CASE WHEN event_type = 'camera_gesture' AND name = 'fly' THEN 1 ELSE 0 END) AS fly_gestures,
+        sum(CASE WHEN event_type = 'camera_gesture' AND name = 'navigate' THEN 1 ELSE 0 END) AS navigate_gestures,
+        sum(CASE WHEN event_type = 'mesh_interaction' AND name = 'teleport' THEN 1 ELSE 0 END) AS teleports,
+        sum(CASE WHEN event_type = 'camera_gesture' AND name IN ('fly', 'navigate') THEN visible_ms ELSE 0 END) AS locomotion_ms,
+        min(ts) AS started_at,
+        max(ts) AS ended_at
+      FROM events
+      WHERE project_id = ${pid}${range}${scene}${session}
+        AND session_id IN (
+          SELECT session_id
+          FROM events
+          WHERE project_id = ${pid}
+            AND source IN ${XR_SOURCES}
+        )
+      GROUP BY session_id
+      ORDER BY locomotion_ms DESC
+      LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * Render one funnel step's predicate against the wide `events` columns (ADR
  * 0038). Every field compiles to plain equality on a promoted column, so the
  * predicate is engine-agnostic and parameter-bound (injection-safe): `type` →

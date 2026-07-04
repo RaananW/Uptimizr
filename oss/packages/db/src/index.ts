@@ -90,6 +90,7 @@ export {
   buildXrRotationRate,
   buildXrSourceUsage,
   buildXrAbandonment,
+  buildXrLocomotionComfort,
   buildInteractionsBySource,
   buildFunnel,
 } from "./query/aggregations.js";
@@ -149,6 +150,7 @@ export type {
   XrRotationRateRow,
   XrSourceUsageRow,
   XrAbandonmentRow,
+  XrLocomotionRow,
   InteractionSourceRow,
   FunnelStepInput,
   FunnelOptions,

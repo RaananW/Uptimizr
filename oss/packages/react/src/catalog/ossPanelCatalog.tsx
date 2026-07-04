@@ -37,6 +37,7 @@ import type {
   RenderScaleTruth as RenderScaleTruthData,
   SceneProxyMesh,
   WorldHeatmapBin,
+  XrLocomotionStat,
 } from "../api";
 import { mergeSceneProxies } from "./lib/sceneProxies";
 
@@ -94,6 +95,11 @@ import {
   NAVIGATION_MIX_TITLE,
   NAVIGATION_MIX_SUBTITLE,
 } from "./views/NavigationMix";
+import {
+  XrLocomotionComfortView,
+  XR_LOCOMOTION_TITLE,
+  XR_LOCOMOTION_SUBTITLE,
+} from "./views/XrLocomotionComfort";
 import {
   PointerHeatmapView,
   POINTER_HEATMAP_TITLE,
@@ -601,6 +607,23 @@ export const navigationMixPanel = definePanel<CameraGestureStat[]>({
   render: ({ data }) => <NavigationMixView stats={data ?? []} />,
 });
 
+/**
+ * VR comfort & locomotion (#148) — React/HTML breakdown, half width. The XR-
+ * focused companion to the navigation-style mix: for sessions using an XR input
+ * source, the teleport vs. smooth-locomotion vs. navigate share plus a heavy-vs-
+ * light locomotion / early-exit correlation, all from existing `camera_gesture` +
+ * `mesh_interaction` + session-span data (ADR 0025). No schema change.
+ */
+export const xrLocomotionComfortPanel = definePanel<XrLocomotionStat[]>({
+  id: "xr-locomotion-comfort",
+  title: XR_LOCOMOTION_TITLE,
+  subtitle: XR_LOCOMOTION_SUBTITLE,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.xrLocomotion({ ...scoped(ctx), source: undefined }),
+  render: ({ data }) => <XrLocomotionComfortView stats={data ?? []} />,
+});
+
 /** Aggregate gaze→mesh flow data: position-aware links + the scene-proxy backdrop. */
 interface FlowData {
   links: FlowLink[];
@@ -712,6 +735,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   perfDistributionPanel,
   worldHeatmapPanel,
   navigationMixPanel,
+  xrLocomotionComfortPanel,
   deadZonePanel,
   flowPanel,
   divergencePanel,

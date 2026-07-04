@@ -19,6 +19,7 @@ import {
   buildXrRotationRate,
   buildXrSourceUsage,
   buildXrAbandonment,
+  buildXrLocomotionComfort,
   buildInteractionsBySource,
   buildMeshDwell,
   buildMeshInteractionKinds,
@@ -74,6 +75,7 @@ import {
   type XrRotationRateRow,
   type XrSourceUsageRow,
   type XrAbandonmentRow,
+  type XrLocomotionRow,
   type InteractionSourceRow,
   type PerfSummaryRow,
   type RenderScaleTruthRow,
@@ -240,6 +242,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<XrSourceUsageRow>(ch, buildXrSourceUsage(projectId, opts, d)),
     xrAbandonment: (projectId, opts = {}) =>
       runClickhouseQuery<XrAbandonmentRow>(ch, buildXrAbandonment(projectId, opts, d)),
+    xrLocomotion: (projectId, opts = {}) =>
+      runClickhouseQuery<XrLocomotionRow>(ch, buildXrLocomotionComfort(projectId, opts, d)),
     interactionsBySource: (projectId, opts = {}) =>
       runClickhouseQuery<InteractionSourceRow>(ch, buildInteractionsBySource(projectId, opts, d)),
     topInputActions: (projectId, opts = {}) =>
