@@ -109,6 +109,7 @@ export {
   inputModalityPanel,
   renderScalePanel,
   perfDistributionPanel,
+  perfChurnPanel,
   worldHeatmapPanel,
   perfHeatmapPanel,
   navigationMixPanel,
@@ -132,6 +133,7 @@ export { InputModalitySplitView, buildModalitySplit } from "./catalog/views/Inpu
 export { DeadZoneReportView, buildDeadZones } from "./catalog/views/DeadZoneReport";
 export { PerfDistributionView } from "./catalog/views/PerfDistribution";
 export { ViewCoverageView } from "./catalog/views/ViewCoverage";
+export { PerfChurnView } from "./catalog/views/PerfChurn";
 export { RenderScaleTruthView } from "./catalog/views/RenderScaleTruth";
 export { NavigationMixView } from "./catalog/views/NavigationMix";
 export {

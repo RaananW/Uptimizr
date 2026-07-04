@@ -29,6 +29,7 @@ import {
   buildNavigationStats,
   buildPerfByDevice,
   buildPerfByScene,
+  buildPerfChurn,
   buildPerfDistribution,
   buildPerfHeatmap,
   buildPerfSummary,
@@ -221,6 +222,17 @@ export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/perf/fps-histogram": (pid, o) => buildFpsHistogram(pid, o, duckdbDialect),
   "/api/v1/perf/frame-time": (pid, o) => buildFrameTimePercentiles(pid, o, duckdbDialect),
   "/api/v1/perf/jank": (pid, o) => buildJankRate(pid, o, duckdbDialect),
+  "/api/v1/perf/churn": (pid, o, sp) =>
+    buildPerfChurn(
+      pid,
+      {
+        ...o,
+        windowMs: num(sp, "windowMs"),
+        fpsThreshold: num(sp, "fpsThreshold"),
+        stallMs: num(sp, "stallMs"),
+      },
+      duckdbDialect,
+    ),
   "/api/v1/perf/by-device": (pid, o) => buildPerfByDevice(pid, o, duckdbDialect),
   "/api/v1/perf/by-scene": (pid, o) => buildPerfByScene(pid, o, duckdbDialect),
   "/api/v1/perf/resource-percentiles": (pid, o) => buildResourcePercentiles(pid, o, duckdbDialect),

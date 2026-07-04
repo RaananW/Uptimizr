@@ -31,6 +31,7 @@ import {
   buildFpsHistogram,
   buildFrameTimePercentiles,
   buildJankRate,
+  buildPerfChurn,
   buildPerfByDevice,
   buildPerfByScene,
   buildResourcePercentiles,
@@ -92,6 +93,7 @@ import {
   type FpsHistogramRow,
   type FrameTimePercentileRow,
   type JankRateRow,
+  type PerfChurnRow,
   type PerfByDeviceRow,
   type PerfBySceneRow,
   type ResourcePercentileRow,
@@ -230,6 +232,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<FrameTimePercentileRow>(ch, buildFrameTimePercentiles(projectId, opts, d)),
     jankRate: (projectId, opts = {}) =>
       runClickhouseQuery<JankRateRow>(ch, buildJankRate(projectId, opts, d)),
+    perfChurn: (projectId, opts = {}) =>
+      runClickhouseQuery<PerfChurnRow>(ch, buildPerfChurn(projectId, opts, d)),
     perfByDevice: (projectId, opts = {}) =>
       runClickhouseQuery<PerfByDeviceRow>(ch, buildPerfByDevice(projectId, opts, d)),
     perfByScene: (projectId, opts = {}) =>

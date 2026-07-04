@@ -406,6 +406,43 @@ export interface PerfDistributionRow {
   p95_fps: number;
 }
 
+/**
+ * Options for {@link "./aggregations".buildPerfChurn} (#144): the standard
+ * range / scene / session scope plus the correlation thresholds. All three
+ * thresholds have defaults so the panel can call with just a scope.
+ */
+export interface PerfChurnOptions extends RangeOptions, SceneOptions, SessionOptions {
+  /**
+   * How long before a session's end a perf dip still counts as correlated, in
+   * milliseconds (default 30000). A larger window attributes more distant dips
+   * to the churn; a smaller one demands the dip be the last thing the user saw.
+   */
+  windowMs?: number;
+  /** A `frame_perf` sample counts as an FPS dip when `fps` is below this (default 30). */
+  fpsThreshold?: number;
+  /** A `compile_stall` counts when its main-thread duration (ms) is at least this (default 100). */
+  stallMs?: number;
+}
+
+/**
+ * Perf-correlated churn (#144): a single-row correlation between perf dips and
+ * early session end. Of the sessions that ended in range (`sessions`),
+ * `churn_sessions` ended within the configured window after an FPS dip or a
+ * `compile_stall`. `fps_churn_sessions` / `stall_churn_sessions` attribute the
+ * cause; a session that hit both is counted in each cause column but only once
+ * in `churn_sessions`, so the cause columns can sum to more than the total.
+ */
+export interface PerfChurnRow {
+  /** Distinct sessions with a `session_end` in the range/scene/session scope. */
+  sessions: number;
+  /** Ended sessions with ≥1 qualifying dip in `[end - windowMs, end]`. */
+  churn_sessions: number;
+  /** Churned sessions whose window contained a low-FPS `frame_perf` sample. */
+  fps_churn_sessions: number;
+  /** Churned sessions whose window contained a `compile_stall`. */
+  stall_churn_sessions: number;
+}
+
 /** One bin of the per-session-median FPS histogram (ADR 0028 §1). */
 export interface FpsHistogramRow {
   /** Inclusive lower bound (FPS) of the bin. */

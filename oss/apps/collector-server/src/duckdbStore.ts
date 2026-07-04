@@ -31,6 +31,7 @@ import {
   buildFpsHistogram,
   buildFrameTimePercentiles,
   buildJankRate,
+  buildPerfChurn,
   buildPerfByDevice,
   buildPerfByScene,
   buildResourcePercentiles,
@@ -105,6 +106,7 @@ import {
   type FpsHistogramRow,
   type FrameTimePercentileRow,
   type JankRateRow,
+  type PerfChurnRow,
   type PerfByDeviceRow,
   type PerfBySceneRow,
   type ResourcePercentileRow,
@@ -248,6 +250,8 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       ),
     jankRate: (projectId, opts = {}) =>
       runDuckdbQuery<JankRateRow>(db, buildJankRate(projectId, opts, duckdbDialect)),
+    perfChurn: (projectId, opts = {}) =>
+      runDuckdbQuery<PerfChurnRow>(db, buildPerfChurn(projectId, opts, duckdbDialect)),
     perfByDevice: (projectId, opts = {}) =>
       runDuckdbQuery<PerfByDeviceRow>(db, buildPerfByDevice(projectId, opts, duckdbDialect)),
     perfByScene: (projectId, opts = {}) =>

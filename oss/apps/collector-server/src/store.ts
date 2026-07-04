@@ -40,6 +40,8 @@ import type {
   FpsHistogramRow,
   FrameTimePercentileRow,
   JankRateRow,
+  PerfChurnOptions,
+  PerfChurnRow,
   PerfByDeviceRow,
   PerfBySceneRow,
   ResourcePercentileRow,
@@ -374,6 +376,13 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions,
   ): Promise<JankRateRow[]>;
+  /**
+   * Perf-correlated churn (#144): of the sessions that ended in range, how many
+   * ended within `windowMs` of an FPS dip (`fps < fpsThreshold`) or a
+   * `compile_stall` of at least `stallMs`, with the cause attributed. A single
+   * correlation row — does a stutter actually cost sessions?
+   */
+  perfChurn(projectId: string, opts?: PerfChurnOptions): Promise<PerfChurnRow[]>;
   /**
    * FPS by device class (ADR 0028 §2): per-session median FPS attributed to the
    * `session_start.device` block (graphics backend, mobile flag, GPU renderer) —

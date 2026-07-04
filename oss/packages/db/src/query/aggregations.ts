@@ -1656,6 +1656,93 @@ export function buildJankRate(
 }
 
 /**
+ * Perf-correlated churn (#144): does a stutter actually cost sessions? Correlates
+ * perf dips against early session end. Of the sessions that ended in range
+ * (`sessions`), `churn_sessions` ended within `windowMs` of an FPS dip (a
+ * `frame_perf` sample below `fpsThreshold`) or a `compile_stall` of at least
+ * `stallMs` — the felt hitches that plausibly drove the user away, as opposed to
+ * background noise that the perf-distribution panel averages over.
+ *
+ * Semantics — a session churns iff it has a `session_end` **and** at least one
+ * qualifying dip whose timestamp lies in `[end - windowMs, end]` (its earliest
+ * `session_end` is the anchor). `fps_churn_sessions` / `stall_churn_sessions`
+ * attribute the cause; a session whose window held both is counted in each cause
+ * column but only once in `churn_sessions`, so the cause columns can sum to more
+ * than the total.
+ *
+ * Implementation — an `ends` CTE (each session's first `session_end`) joined to a
+ * `dips` CTE (the qualifying `frame_perf` / `compile_stall` rows) on `session_id`,
+ * with the window enforced through the dialect's `epochMs` so the timestamp math
+ * is engine-neutral. This uses only `JOIN` / `min` / `max` / `count` — **no window
+ * or ASOF functions** — so it renders identically on DuckDB (OSS) and ClickHouse
+ * (scale tier). Aggregating over the (possibly empty) `correlated` set always
+ * yields one row; the `sessions` denominator is an uncorrelated scalar sub-select
+ * so it stands even when nothing churned. Privacy (ADR 0003): aggregate counts
+ * only, no per-session identifiers leave the query.
+ */
+export function buildPerfChurn(
+  projectId: string,
+  opts: RangeOptions &
+    SceneOptions &
+    SessionOptions & {
+      windowMs?: number;
+      fpsThreshold?: number;
+      stallMs?: number;
+    },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const windowMs = bag.add("windowMs", "u32", opts.windowMs ?? 30_000);
+  const fpsThreshold = bag.add("fpsThreshold", "f64", opts.fpsThreshold ?? 30);
+  const stallMs = bag.add("stallMs", "f64", opts.stallMs ?? 100);
+  const dipTs = d.epochMs("dips.ts");
+  const endTs = d.epochMs("ends.end_ts");
+  return {
+    query: `
+      WITH ends AS (
+        SELECT session_id, min(ts) AS end_ts
+        FROM events
+        WHERE project_id = ${pid} AND event_type = 'session_end'${range}${scene}${session}
+        GROUP BY session_id
+      ),
+      dips AS (
+        SELECT
+          session_id,
+          ts,
+          CASE WHEN event_type = 'frame_perf' THEN 1 ELSE 0 END AS is_fps,
+          CASE WHEN event_type = 'compile_stall' THEN 1 ELSE 0 END AS is_stall
+        FROM events
+        WHERE project_id = ${pid}${range}${scene}${session}
+          AND (
+            (event_type = 'frame_perf' AND fps < ${fpsThreshold})
+            OR (event_type = 'compile_stall' AND visible_ms >= ${stallMs})
+          )
+      ),
+      correlated AS (
+        SELECT
+          ends.session_id AS session_id,
+          max(dips.is_fps) AS had_fps,
+          max(dips.is_stall) AS had_stall
+        FROM ends JOIN dips ON ends.session_id = dips.session_id
+        WHERE ${dipTs} <= ${endTs} AND ${dipTs} >= ${endTs} - ${windowMs}
+        GROUP BY ends.session_id
+      )
+      SELECT
+        (SELECT count() FROM ends) AS sessions,
+        count() AS churn_sessions,
+        sum(had_fps) AS fps_churn_sessions,
+        sum(had_stall) AS stall_churn_sessions
+      FROM correlated
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * FPS segmented by device class, computed **per-session then aggregated** (ADR
  * 0028 §2). Each session's median FPS is attributed to the graphics backend,
  * mobile flag, and GPU `renderer` recorded in its `session_start.device` block,
