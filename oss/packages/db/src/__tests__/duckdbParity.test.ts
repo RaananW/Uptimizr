@@ -89,6 +89,7 @@ describe("duckdb parity (vs golden)", () => {
       "xrLocomotion",
       "interactionsBySource",
       "funnel",
+      "loadBounceFunnel",
     ]);
   });
 

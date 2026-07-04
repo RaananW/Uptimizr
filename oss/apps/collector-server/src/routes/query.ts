@@ -331,6 +331,38 @@ const sceneRetentionQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(10000).optional(),
 });
 
+/**
+ * Load → bounce funnel params (#152): a time range, optional scene scope, and
+ * `bands` — an optional comma-separated list of ascending positive millisecond
+ * boundaries (max 16) that define the load-time buckets. Omit `bands` to use the
+ * collector's default `[1000, 3000, 5000]`.
+ */
+const loadBounceQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  scene: sceneFilter,
+  bands: z
+    .string()
+    .max(256)
+    .optional()
+    .transform((val, ctx): number[] | undefined => {
+      if (val == null || val.length === 0) return undefined;
+      const parts = val.split(",").map((s) => Number(s.trim()));
+      const invalid =
+        parts.some((n) => !Number.isFinite(n) || n <= 0) ||
+        parts.length > 16 ||
+        parts.some((n, i) => i > 0 && n <= (parts[i - 1] ?? 0));
+      if (invalid) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "bands must be up to 16 strictly-ascending positive millisecond values",
+        });
+        return z.NEVER;
+      }
+      return parts;
+    }),
+});
+
 /** Scene-coverage params: voxel `cellSize` + scene/session filters + result cap. */
 const coverageQueryParams = z.object({
   since: z.coerce.number().int().optional(),
@@ -1235,6 +1267,23 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.sceneRetention(projectId, req.query);
+    },
+  );
+
+  // Load → bounce/abandon funnel (#152) — bucket sessions by their initial
+  // `asset_load` load time and report, per band, how many bounced (no
+  // `pointer_*` / `mesh_interaction` / `camera_gesture` at/after that load).
+  // `bands` are optional caller-supplied ascending ms boundaries; the store
+  // applies a sensible default when omitted. Derived from existing events — no
+  // schema change.
+  r.get(
+    "/api/v1/load-bounce",
+    { schema: { querystring: loadBounceQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      const { since, until, scene, bands } = req.query;
+      return store.loadBounceFunnel(projectId, { since, until, scene, bands });
     },
   );
 

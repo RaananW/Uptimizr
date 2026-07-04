@@ -121,6 +121,7 @@ export {
   deadZonePanel,
   flowPanel,
   divergencePanel,
+  loadBounceFunnelPanel,
 } from "./catalog/ossPanelCatalog";
 
 // --- Panel view components (2D / HTML / canvas — Babylon-free). --------------
@@ -147,6 +148,7 @@ export {
   sessionDurationMs,
 } from "./catalog/views/XrLocomotionComfort";
 export { SceneRetentionFunnelView } from "./catalog/views/SceneRetentionFunnel";
+export { LoadBounceFunnelView, LOAD_BANDS } from "./catalog/views/LoadBounceFunnel";
 export { PointerHeatmapView } from "./catalog/views/PointerHeatmap";
 export { TopMeshesView } from "./catalog/views/TopMeshes";
 export { BlindSpotReportView } from "./catalog/views/BlindSpotReport";

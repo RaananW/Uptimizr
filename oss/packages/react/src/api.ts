@@ -296,6 +296,19 @@ export interface SceneRetentionLink {
   sessions: number;
 }
 
+/**
+ * One load-time band of the load→bounce funnel (#152): how many sessions loaded
+ * within band `band` (0-based, ascending load time) and, of those, how many
+ * **bounced** — produced no interaction (`pointer_*` / `mesh_interaction` /
+ * `camera_gesture`) at/after their initial `asset_load`. The view derives the
+ * bounce rate (`bounced / sessions`) and labels each band from its boundaries.
+ */
+export interface LoadBounceBand {
+  band: number;
+  sessions: number;
+  bounced: number;
+}
+
 /** An occupied camera-position voxel (scene coverage / dead zones, #38). */
 export interface CoverageVoxel {
   vx: number;
@@ -652,6 +665,8 @@ export interface QueryParams {
   category?: string;
   /** Error heatmap (#154): narrow to JS errors of this `runtime_error.kind`. */
   errorKind?: string;
+  /** Load→bounce funnel (#152): comma-separated ascending ms band boundaries; supply via {@link CollectorApi.loadBounce}. */
+  bands?: string;
 }
 
 export class ApiError extends Error {
@@ -1194,6 +1209,28 @@ export class CollectorApi {
         from: String(r.from_scene ?? ""),
         to: String(r.to_scene ?? ""),
         sessions: Number(r.sessions ?? 0),
+      })),
+    );
+  }
+
+  /**
+   * Load → bounce/abandon funnel (#152): sessions bucketed by initial-load band,
+   * with the count that bounced (no interaction at/after load) per band. `bands`
+   * is an ascending list of ms boundaries; omit it to use the collector default.
+   * The consumer derives the bounce rate and attaches band labels.
+   */
+  loadBounce(
+    params?: Omit<QueryParams, "bands"> & { bands?: number[] },
+  ): Promise<LoadBounceBand[]> {
+    const { bands, ...rest } = params ?? {};
+    return this.get<Record<string, unknown>[]>("api/v1/load-bounce", {
+      ...rest,
+      ...(bands != null && bands.length > 0 ? { bands: bands.join(",") } : {}),
+    }).then((rows) =>
+      rows.map((r) => ({
+        band: Number(r.band ?? 0),
+        sessions: Number(r.sessions ?? 0),
+        bounced: Number(r.bounced ?? 0),
       })),
     );
   }

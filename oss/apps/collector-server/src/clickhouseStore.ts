@@ -16,6 +16,7 @@ import {
   buildFlowHeatmap,
   buildFunnel,
   buildSceneRetention,
+  buildLoadBounceFunnel,
   buildListSessions,
   buildNavigationStats,
   buildBacktrackRatio,
@@ -75,6 +76,7 @@ import {
   type FlowLinkRow,
   type FunnelStepResultRow,
   type SceneRetentionRow,
+  type LoadBounceBandRow,
   type HeatmapBinRow,
   type MeshCountRow,
   type MeshDwellRow,
@@ -290,6 +292,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<FunnelStepResultRow>(ch, buildFunnel(projectId, opts, d)),
     sceneRetention: (projectId, opts) =>
       runClickhouseQuery<SceneRetentionRow>(ch, buildSceneRetention(projectId, opts, d)),
+    loadBounceFunnel: (projectId, opts = {}) =>
+      runClickhouseQuery<LoadBounceBandRow>(ch, buildLoadBounceFunnel(projectId, opts, d)),
     getSessionEvents: (projectId, sessionId) => chGetSessionEvents(ch, projectId, sessionId),
     streamSessionEvents: (projectId, sessionId) => chStreamSessionEvents(ch, projectId, sessionId),
     getSessionMeta: (projectId, sessionId) => chGetSessionMeta(ch, projectId, sessionId),

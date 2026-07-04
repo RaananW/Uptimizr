@@ -101,6 +101,7 @@ export {
   buildInteractionsBySource,
   buildFunnel,
   buildSceneRetention,
+  buildLoadBounceFunnel,
 } from "./query/aggregations.js";
 export type {
   QuerySpec,
@@ -173,6 +174,8 @@ export type {
   FunnelStepResultRow,
   SceneRetentionOptions,
   SceneRetentionRow,
+  LoadBounceFunnelOptions,
+  LoadBounceBandRow,
 } from "./query/types.js";
 
 // --- DuckDB (OSS single-file store, ADR 0020) ---
