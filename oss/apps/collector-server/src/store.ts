@@ -28,6 +28,7 @@ import type {
   XrRotationRateRow,
   XrSourceUsageRow,
   XrAbandonmentRow,
+  XrLocomotionRow,
   InteractionSourceRow,
   PerfSummaryRow,
   PerfDistributionRow,
@@ -449,6 +450,15 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
   ): Promise<XrAbandonmentRow[]>;
+  /**
+   * XR locomotion & comfort (#148): per XR session, its locomotion-style
+   * breakdown (fly / navigate / teleport counts + duration) and wall-clock span,
+   * so heavy locomotion can be correlated with early exits (a discomfort proxy).
+   */
+  xrLocomotion(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
+  ): Promise<XrLocomotionRow[]>;
   /**
    * Input-source breakdown (ADR 0011): per `(event_type, source)`, how many
    * interactions came from each input source (mouse / touch / xr-controller /

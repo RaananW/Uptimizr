@@ -567,6 +567,33 @@ export interface XrAbandonmentRow {
 }
 
 /**
+ * Per-XR-session locomotion + comfort row (#148): the locomotion-style breakdown
+ * for one session that used an XR input source, plus its wall-clock span so the
+ * consumer can correlate heavy locomotion with early exits (a discomfort proxy).
+ *
+ * A teleport emits **both** a `camera_gesture { kind: "fly" }` (the resulting
+ * viewpoint jump) and a `mesh_interaction { kind: "teleport" }` (the target pick)
+ * per ADR 0025, so `fly_gestures` counts all thumbstick + teleport flies while
+ * `teleports` isolates the discrete jumps — the consumer derives smooth
+ * locomotion as `fly_gestures - teleports`.
+ */
+export interface XrLocomotionRow {
+  session_id: string;
+  /** `camera_gesture { kind: "fly" }` count — smooth thumbstick + teleport flies. */
+  fly_gestures: number;
+  /** `camera_gesture { kind: "navigate" }` count — untyped user-bracketed moves. */
+  navigate_gestures: number;
+  /** `mesh_interaction { kind: "teleport" }` count — discrete viewpoint jumps. */
+  teleports: number;
+  /** Total time spent in fly + navigate gestures, in ms (from `visible_ms`). */
+  locomotion_ms: number;
+  /** First event timestamp for the session (engine-formatted; excluded from parity). */
+  started_at: string;
+  /** Last event timestamp for the session (engine-formatted; excluded from parity). */
+  ended_at: string;
+}
+
+/**
  * One funnel step predicate (ADR 0038): the structural subset of a
  * `@uptimizr/schema` `FunnelStep` the aggregation compiles to SQL. Each field
  * maps to a promoted column — `type`→`event_type`, `name`→the `name` column

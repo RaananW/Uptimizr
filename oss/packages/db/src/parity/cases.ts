@@ -37,6 +37,7 @@ import {
   buildXrRotationRate,
   buildXrSourceUsage,
   buildXrAbandonment,
+  buildXrLocomotionComfort,
   buildInteractionsBySource,
   buildFunnel,
   buildPerfDaily,
@@ -746,6 +747,14 @@ export const PARITY_CASES: readonly ParityCase[] = [
   {
     name: "xrAbandonment",
     build: (d) => buildXrAbandonment(PID, PARITY_RANGE, d),
+    sortKeys: ["session_id"],
+    ignoreColumns: ["started_at", "ended_at"],
+    // No session used an XR input source in the fixtures, so none qualifies.
+    golden: [],
+  },
+  {
+    name: "xrLocomotion",
+    build: (d) => buildXrLocomotionComfort(PID, PARITY_RANGE, d),
     sortKeys: ["session_id"],
     ignoreColumns: ["started_at", "ended_at"],
     // No session used an XR input source in the fixtures, so none qualifies.

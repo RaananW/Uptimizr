@@ -967,6 +967,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     },
   );
 
+  // XR locomotion & comfort (#148) — per XR session, its locomotion-style mix
+  // (fly / navigate / teleport + duration) and wall-clock span, so heavy
+  // locomotion can be correlated with early exits (a discomfort proxy).
+  r.get(
+    "/api/v1/xr/locomotion",
+    { schema: { querystring: heatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.xrLocomotion(projectId, req.query);
+    },
+  );
+
   // Input-source breakdown (ADR 0011) — per (event_type, source), how many
   // interactions came from each input source (mouse / touch / xr-controller /
   // hand / …) and across how many sessions. Turns `source` into an insight.

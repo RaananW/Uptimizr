@@ -109,6 +109,7 @@ export {
   perfDistributionPanel,
   worldHeatmapPanel,
   navigationMixPanel,
+  xrLocomotionComfortPanel,
   deadZonePanel,
   flowPanel,
   divergencePanel,
@@ -128,6 +129,12 @@ export { DeadZoneReportView, buildDeadZones } from "./catalog/views/DeadZoneRepo
 export { PerfDistributionView } from "./catalog/views/PerfDistribution";
 export { RenderScaleTruthView } from "./catalog/views/RenderScaleTruth";
 export { NavigationMixView } from "./catalog/views/NavigationMix";
+export {
+  XrLocomotionComfortView,
+  locomotionMix,
+  comfortCorrelation,
+  sessionDurationMs,
+} from "./catalog/views/XrLocomotionComfort";
 export { PointerHeatmapView } from "./catalog/views/PointerHeatmap";
 export { TopMeshesView } from "./catalog/views/TopMeshes";
 

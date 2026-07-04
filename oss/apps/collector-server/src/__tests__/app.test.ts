@@ -198,6 +198,17 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
         ended_at: "2024-06-16 10:00:08.000",
       },
     ],
+    xrLocomotion: async () => [
+      {
+        session_id: "s1",
+        fly_gestures: 12,
+        navigate_gestures: 2,
+        teleports: 3,
+        locomotion_ms: 4200,
+        started_at: "2024-06-16 10:00:00.000",
+        ended_at: "2024-06-16 10:00:25.000",
+      },
+    ],
     interactionsBySource: async () => [
       { event_type: "pointer_click", source: "mouse", count: 18, sessions: 3 },
       { event_type: "mesh_interaction", source: "xr-controller", count: 5, sessions: 2 },
@@ -1216,6 +1227,28 @@ describe("collector app", () => {
         xr_interactions: 6,
         started_at: "2024-06-16 10:00:00.000",
         ended_at: "2024-06-16 10:00:08.000",
+      },
+    ]);
+    await app.close();
+  });
+
+  it("returns XR locomotion & comfort rows for a valid API key (#148)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/xr/locomotion?scene=arena&session=s1",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      {
+        session_id: "s1",
+        fly_gestures: 12,
+        navigate_gestures: 2,
+        teleports: 3,
+        locomotion_ms: 4200,
+        started_at: "2024-06-16 10:00:00.000",
+        ended_at: "2024-06-16 10:00:25.000",
       },
     ]);
     await app.close();
