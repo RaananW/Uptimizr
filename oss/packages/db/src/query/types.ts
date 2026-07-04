@@ -155,6 +155,20 @@ export interface MeshInteractionKindRow {
 }
 
 /**
+ * One (mesh, distance-band) tally for the reachability report (#151): how many
+ * interactions with `mesh` landed `bucket * bucketSize` .. `(bucket+1) *
+ * bucketSize` world units from the click-time camera standpoint, plus the mean
+ * distance within that band. Far bands flag meshes/UI reached from an
+ * uncomfortable range.
+ */
+export interface ReachabilityBinRow {
+  mesh: string;
+  bucket: number;
+  count: number;
+  avg_distance: number;
+}
+
+/**
  * One (mesh, source) tally (#74): the most-interacted-mesh count broken out by
  * the input `source` (mouse / touch / xr-controller / …). Summing a mesh's rows
  * reproduces its overall interaction total.

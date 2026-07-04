@@ -105,6 +105,7 @@ export function createMemoryStore({
     meshDwell: async () => [],
     meshBlindSpots: async () => [],
     meshInteractionKinds: async () => [],
+    reachability: async () => [],
     deadClicks: async () => [],
     rageClicks: async () => [],
     hoverDwell: async () => [],

@@ -51,6 +51,7 @@ describe("duckdb parity (vs golden)", () => {
       "topMeshesBySource",
       "topMeshesTrend",
       "meshInteractionKinds",
+      "reachability",
       "topInputActions",
       "perfSummary",
       "renderScaleTruth",

@@ -1581,6 +1581,32 @@ describe("collector app", () => {
     await app.close();
   });
 
+  it("forwards the bucket size to the reachability store call and returns bins (#151)", async () => {
+    let received: unknown;
+    const store = makeStore({
+      reachability: async (_projectId, opts) => {
+        received = opts;
+        return [
+          { mesh: "far-panel", bucket: 4, count: 7, avg_distance: 4.6 },
+          { mesh: "near-panel", bucket: 0, count: 12, avg_distance: 0.3 },
+        ];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/meshes/reachability?bucketSize=1&scene=lobby&source=xr-controller",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      { mesh: "far-panel", bucket: 4, count: 7, avg_distance: 4.6 },
+      { mesh: "near-panel", bucket: 0, count: 12, avg_distance: 0.3 },
+    ]);
+    expect(received).toMatchObject({ bucketSize: 1, scene: "lobby", source: "xr-controller" });
+    await app.close();
+  });
+
   it("gates the replay timeline behind raw-session retention", async () => {
     const app = await buildApp({ store: makeStore(), config });
     const res = await app.inject({

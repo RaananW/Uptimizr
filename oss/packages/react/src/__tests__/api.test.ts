@@ -73,6 +73,28 @@ describe("CollectorApi", () => {
     expect(data.downscaled_share).toBeCloseTo(0.25, 5);
   });
 
+  it("maps reachability bins and forwards the bucket size (#151)", async () => {
+    const fetchMock = mockFetch([
+      { mesh: "far-panel", bucket: "4", count: "7", avg_distance: "4.6" },
+      { mesh: "near-panel", bucket: "0", count: "12", avg_distance: "0.3" },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.reachability({ bucketSize: 1, scene: "lobby" });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe(
+      "http://localhost:4318/api/v1/meshes/reachability",
+    );
+    expect(parsed.searchParams.get("bucketSize")).toBe("1");
+    expect(parsed.searchParams.get("scene")).toBe("lobby");
+    expect(rows).toEqual([
+      { mesh: "far-panel", bucket: 4, count: 7, avg_distance: 4.6 },
+      { mesh: "near-panel", bucket: 0, count: 12, avg_distance: 0.3 },
+    ]);
+  });
+
   it("returns a zero downscaled share when nothing reported a render scale", async () => {
     vi.stubGlobal("fetch", mockFetch([{ samples: "0", scale_samples: "0" }]));
     const api = new CollectorApi("http://localhost:4318", "k");

@@ -106,6 +106,7 @@ export {
   floorPlanPanel,
   desireLinesPanel,
   meshKindsPanel,
+  reachabilityPanel,
   inputModalityPanel,
   renderScalePanel,
   perfDistributionPanel,
@@ -128,6 +129,7 @@ export { ZoomButtons } from "./catalog/views/ZoomButtons";
 export { FloorPlanHeatmapView } from "./catalog/views/FloorPlanHeatmap";
 export { DesireLinesView } from "./catalog/views/DesireLines";
 export { MeshInteractionKindsView } from "./catalog/views/MeshInteractionKinds";
+export { ReachabilityView, summarizeReachability } from "./catalog/views/Reachability";
 export { MeshLeaderboardView, buildLeaderboard } from "./catalog/views/MeshLeaderboard";
 export { InputModalitySplitView, buildModalitySplit } from "./catalog/views/InputModalitySplit";
 export { DeadZoneReportView, buildDeadZones } from "./catalog/views/DeadZoneReport";

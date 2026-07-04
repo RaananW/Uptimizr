@@ -26,6 +26,7 @@ import {
   buildMeshDwell,
   buildMeshBlindSpots,
   buildMeshInteractionKinds,
+  buildReachability,
   buildTopInputActions,
   buildDeadClicks,
   buildRageClicks,
@@ -419,6 +420,16 @@ export const PARITY_CASES: readonly ParityCase[] = [
     // No `mesh_interaction` fixtures in the parity set, so the per-(mesh,kind)
     // breakdown is empty. Validates the GROUP/ORDER renders identically (empty)
     // on both engines (#72); real grouping is covered by the DuckDB unit suite.
+    golden: [],
+  },
+  {
+    name: "reachability",
+    build: (d) => buildReachability(PID, { ...PARITY_RANGE, bucketSize: 1 }, d),
+    sortKeys: ["mesh", "bucket"],
+    // No `mesh_interaction` fixtures in the parity set, so the per-(mesh,band)
+    // distance histogram is empty. Validates the ASOF-join + GROUP/ORDER render
+    // identically (empty) on both engines (#151); real per-mesh distance
+    // bucketing is covered by the DuckDB unit suite.
     golden: [],
   },
   {

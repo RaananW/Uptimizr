@@ -26,6 +26,7 @@ import {
   buildMeshBlindSpots,
   buildMeshDwell,
   buildMeshInteractionKinds,
+  buildReachability,
   buildNavigationStats,
   buildPerfByDevice,
   buildPerfByScene,
@@ -93,6 +94,7 @@ interface DemoOpts {
   limit?: number;
   cellSize?: number;
   bucket?: number;
+  bucketSize?: number;
   interval?: number;
   type?: string;
   scene?: string;
@@ -133,6 +135,7 @@ function readOpts(sp: URLSearchParams): DemoOpts {
     limit: num(sp, "limit"),
     cellSize: num(sp, "cellSize"),
     bucket: num(sp, "bucket"),
+    bucketSize: num(sp, "bucketSize"),
     interval: num(sp, "interval"),
     type: str(sp, "type"),
     scene: str(sp, "scene"),
@@ -209,6 +212,7 @@ export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/meshes/sources": (pid, o) => buildTopMeshesBySource(pid, o, duckdbDialect),
   "/api/v1/meshes/trend": (pid, o) => buildTopMeshesTrend(pid, o, duckdbDialect),
   "/api/v1/meshes/kinds": (pid, o) => buildMeshInteractionKinds(pid, o, duckdbDialect),
+  "/api/v1/meshes/reachability": (pid, o) => buildReachability(pid, o, duckdbDialect),
   "/api/v1/meshes/dwell": (pid, o) => buildMeshDwell(pid, o, duckdbDialect),
   "/api/v1/meshes/blind-spots": (pid, o) => buildMeshBlindSpots(pid, o, duckdbDialect),
   "/api/v1/clicks/dead": (pid, o) => buildDeadClicks(pid, o, duckdbDialect),
