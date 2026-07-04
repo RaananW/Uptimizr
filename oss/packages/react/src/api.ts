@@ -31,6 +31,16 @@ export interface DirectionBin {
   count: number;
 }
 
+/**
+ * One bucket of the 360° view-coverage histogram (#146): `bucket` is the
+ * inclusive lower bound (percent) of a 25-wide coverage band (`0`, `25`, `50`,
+ * `75`) and `sessions` is how many sessions saw that fraction of the object.
+ */
+export interface ViewCoverageBin {
+  bucket: number;
+  sessions: number;
+}
+
 export interface MeshCount {
   mesh: string;
   count: number;
@@ -633,6 +643,14 @@ export class CollectorApi {
 
   cameraHeatmap(params?: QueryParams): Promise<DirectionBin[]> {
     return this.get<DirectionBin[]>("api/v1/heatmaps/camera", params);
+  }
+
+  /** 360° view-coverage histogram: sessions bucketed by how much of the object they saw (#146). */
+  viewCoverageHistogram(params?: QueryParams): Promise<ViewCoverageBin[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/coverage/view-histogram", params).then(
+      (rows) =>
+        rows.map((r) => ({ bucket: Number(r.bucket ?? 0), sessions: Number(r.sessions ?? 0) })),
+    );
   }
 
   topMeshes(params?: QueryParams): Promise<MeshCount[]> {

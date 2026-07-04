@@ -19,6 +19,9 @@ with `x-api-key`. The key only ever reads its own project's data.
 ## What it shows
 
 - **View-direction & pointer heatmaps** — 2D panels and full 3D against a scene proxy backdrop.
+- **View coverage** — a 360° coverage gauge that buckets sessions by how much of the object they
+  actually looked at (0–25 / 25–50 / 50–75 / 75–100%), derived from the same camera view-direction
+  grid as the dome — the "did they rotate it to see the back?" number.
 - **Flow Sankey** — gaze→click flow links rendered in 3D, with position-aware **standpoint** gating,
   a **two-stage** (standpoint → gaze → mesh) view, and a camera-mode toggle (see below).
 - **Mesh rankings** — most-interacted meshes, a **part-popularity leaderboard** (trend sparkline +

@@ -102,6 +102,7 @@ export {
   blindSpotsPanel,
   pointerHeatmapPanel,
   cameraDomePanel,
+  viewCoveragePanel,
   floorPlanPanel,
   desireLinesPanel,
   meshKindsPanel,
@@ -130,6 +131,7 @@ export { MeshLeaderboardView, buildLeaderboard } from "./catalog/views/MeshLeade
 export { InputModalitySplitView, buildModalitySplit } from "./catalog/views/InputModalitySplit";
 export { DeadZoneReportView, buildDeadZones } from "./catalog/views/DeadZoneReport";
 export { PerfDistributionView } from "./catalog/views/PerfDistribution";
+export { ViewCoverageView } from "./catalog/views/ViewCoverage";
 export { RenderScaleTruthView } from "./catalog/views/RenderScaleTruth";
 export { NavigationMixView } from "./catalog/views/NavigationMix";
 export {

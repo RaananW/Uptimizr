@@ -6,6 +6,7 @@ import type {
   CoverageVoxelRow,
   DeadClickRow,
   DirectionBinRow,
+  ViewCoverageHistogramRow,
   EventTypeCountRow,
   FlowLinkRow,
   FunnelStepInput,
@@ -146,6 +147,18 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions & CameraModeOptions & { bins?: number },
   ): Promise<DirectionBinRow[]>;
+  /**
+   * 360° view-coverage histogram (#146): how much of a 3D object each session
+   * actually looked at, bucketed across sessions. Each session's `camera_sample`
+   * directions are binned into the view-direction dome grid; the fraction of the
+   * `bins × bins` cells it visited is its coverage score, and sessions are grouped
+   * into 25%-wide coverage buckets (`0`/`25`/`50`/`75`). Purely derived — no schema
+   * change.
+   */
+  viewCoverageHistogram(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions & CameraModeOptions & { bins?: number },
+  ): Promise<ViewCoverageHistogramRow[]>;
   /**
    * Top-down "floor plan" camera-position heatmap (ADR 0026): `camera_sample`
    * world positions binned on the X/Z ground plane. The first-person analog of

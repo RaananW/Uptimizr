@@ -336,6 +336,60 @@ export function buildCameraDirectionHeatmap(
 }
 
 /**
+ * 360° view-coverage histogram (#146): how much of a 3D object each session
+ * actually looked at, bucketed across sessions. Each session's `camera_sample`
+ * `direction` samples are binned into the **same** azimuth/elevation grid as the
+ * view-direction dome ({@link buildCameraDirectionHeatmap}); the fraction of the
+ * `bins × bins` cells a session visited is its coverage score (0–100%). Sessions
+ * are then grouped into four coverage buckets — `0` (0–25%), `25` (25–50%), `50`
+ * (50–75%), `75` (75–100%) — answering "how many visitors saw <25% of the
+ * product". A single integer `bin_id = azimuth_bin * bins + elevation_bin` keeps
+ * the distinct-cell count cross-dialect (no `COUNT(DISTINCT a, b)`), and
+ * `least(floor(pct / 25), 3)` folds a full-coverage (100%) session into the top
+ * bucket instead of a spurious fifth `100` bucket. Purely derived from the
+ * existing `camera_sample` stream — no schema change.
+ */
+export function buildViewCoverageHistogram(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions & CameraModeOptions & { bins?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const bins = bag.add("bins", "u32", opts.bins ?? 36);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const cameraMode = cameraModeClause(bag, d, projectId, opts);
+  return {
+    query: `
+      SELECT
+        least(floor(coverage_pct / 25), 3) * 25 AS bucket,
+        count() AS sessions
+      FROM (
+        SELECT
+          session_id,
+          count(DISTINCT bin_id) * 100.0 / (${bins} * ${bins}) AS coverage_pct
+        FROM (
+          SELECT
+            session_id,
+            floor((atan2(direction[3], direction[1]) + pi()) / (2 * pi()) * ${bins}) * ${bins}
+              + floor((asin(direction[2] / greatest(${d.vectorNorm("direction")}, 1e-6)) + pi() / 2) / pi() * ${bins}) AS bin_id
+          FROM events
+          WHERE project_id = ${pid}
+            AND event_type = 'camera_sample'
+            AND length(direction) = 3${range}${scene}${session}${cameraMode}
+        ) binned
+        GROUP BY session_id
+      ) per_session
+      GROUP BY bucket
+      ORDER BY bucket ASC
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * Top-down "floor plan" camera-position heatmap (ADR 0026): bin `camera_sample`
  * world positions onto the X/Z ground plane in `cellSize`-sized cells, tracking the
  * mean height per cell. For first-person (`cameraType: "free"`) sessions this is
