@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { HeatmapBin, MeshCount } from "../../api";
 import { PointerHeatmapCanvas } from "../../panels/views";
@@ -27,6 +27,17 @@ export function MeshUvHeatmapView({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Hold the fetcher in a ref so its (per-render) identity never drives the
+  // fetch effect — otherwise the inline `fetchHeatmap` closure the host passes
+  // would re-run the effect on every render and make the panel flicker under
+  // live updates.
+  const fetchRef = useRef(fetchHeatmap);
+  fetchRef.current = fetchHeatmap;
+  // Track the last selection we fetched so we can tell a user-driven mesh switch
+  // (show the loading placeholder) apart from a background data refresh (repaint
+  // in place, keeping the current heatmap on screen).
+  const fetchedForRef = useRef<string | null>(null);
+
   // Keep the selection valid as the mesh list changes (filters/range switch).
   useEffect(() => {
     if (options.length === 0) {
@@ -36,15 +47,26 @@ export function MeshUvHeatmapView({
     }
   }, [options, selected]);
 
+  // Fetch the selected mesh's UV bins. Re-runs when the selection changes OR when
+  // the mesh list refreshes (`meshes` gets a new reference on each live refetch),
+  // so the heatmap stays current. The "Loading…" placeholder only appears on a
+  // selection change / first load — a background refresh swaps the new bins in
+  // place without tearing the canvas down, so the panel no longer flickers
+  // several times a second on the live dashboard.
   useEffect(() => {
     if (!selected) {
       setBins([]);
+      setLoading(false);
+      fetchedForRef.current = null;
       return;
     }
+    const selectionChanged = fetchedForRef.current !== selected;
+    fetchedForRef.current = selected;
     let cancelled = false;
-    setLoading(true);
+    if (selectionChanged) setLoading(true);
     setError(null);
-    fetchHeatmap(selected)
+    fetchRef
+      .current(selected)
       .then((rows) => {
         if (!cancelled) setBins(rows);
       })
@@ -57,7 +79,7 @@ export function MeshUvHeatmapView({
     return () => {
       cancelled = true;
     };
-  }, [selected, fetchHeatmap]);
+  }, [selected, meshes]);
 
   if (options.length === 0) {
     return <p className="text-sm text-muted">No mesh interactions in this range yet.</p>;

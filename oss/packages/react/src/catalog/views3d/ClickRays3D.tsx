@@ -61,6 +61,18 @@ export function ClickRays3DView({
   const [meshFocus, setMeshFocus] = useState<string>(ALL);
   const [tip, setTip] = useState<HoverTip | null>(null);
 
+  const raysRef = useRef(rays);
+  const proxyMeshesRef = useRef(proxyMeshes);
+  const focusKeyRef = useRef(focusKey);
+  const meshFocusRef = useRef(meshFocus);
+  raysRef.current = rays;
+  proxyMeshesRef.current = proxyMeshes;
+  focusKeyRef.current = focusKey;
+  meshFocusRef.current = meshFocus;
+
+  const syncRef = useRef<(() => void) | null>(null);
+  const hasContent = rays.length > 0;
+
   // Distinct camera-origin voxels (view-gate buckets), busiest first.
   const viewpoints = useMemo<Viewpoint[]>(() => {
     const byKey = new Map<string, Viewpoint>();
@@ -103,7 +115,7 @@ export function ClickRays3DView({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (rays.length === 0) {
+    if (!hasContent) {
       setPhase("empty");
       return;
     }
@@ -139,16 +151,9 @@ export function ClickRays3DView({
         ]);
         if (disposed) return;
 
-        // Apply the view-gate: keep only rays from the focused camera voxel.
-        const visibleRays =
-          focusKey === ALL ? rays : rays.filter((r) => voxelKey(r.camVoxel) === focusKey);
-        if (visibleRays.length === 0) {
-          setPhase("empty");
-          return;
-        }
-        const maxCount = visibleRays.reduce((m, r) => Math.max(m, r.count), 1);
-
-        // Frame the camera around every visible endpoint.
+        // Frame the camera once from all rays present at build time. Focus changes
+        // only repaint the content below and never reset the user's orbit camera.
+        const rays0 = raysRef.current;
         let cx = 0;
         let cy = 0;
         let cz = 0;
@@ -159,14 +164,14 @@ export function ClickRays3DView({
           cz += z;
           samples++;
         };
-        for (const r of visibleRays) {
+        for (const r of rays0) {
           accumulate(r.origin[0], r.origin[1], r.origin[2]);
           accumulate(r.hit[0], r.hit[1], r.hit[2]);
         }
         const center =
           samples > 0 ? new Vector3(cx / samples, cy / samples, cz / samples) : Vector3.Zero();
         let radius = cellSize * 4;
-        for (const r of visibleRays) {
+        for (const r of rays0) {
           for (const p of [r.origin, r.hit]) {
             const dx = p[0] - center.x;
             const dy = p[1] - center.y;
@@ -199,8 +204,21 @@ export function ClickRays3DView({
         new HemisphericLight("rays-light", new Vector3(0.4, 1, 0.3), scene);
 
         // Faint wireframe backdrop: one thin-instanced unit box per proxy AABB.
-        if (proxyMeshes.length > 0) {
-          const proxyBox = MeshBuilder.CreateBox("scene-proxy", { size: 1 }, scene);
+        // Rebuilt only when the scene geometry itself changes (tracked by a cheap
+        // signature) so a live data refresh doesn't churn it.
+        let proxyBox: ReturnType<typeof MeshBuilder.CreateBox> | null = null;
+        let proxySig = "\u0000";
+        const syncProxy = () => {
+          const proxyNow = proxyMeshesRef.current;
+          const sig = proxyNow.map((m) => `${m.name}:${m.aabb.join(",")}`).join("|");
+          if (sig === proxySig) return;
+          proxySig = sig;
+          if (proxyBox) {
+            proxyBox.dispose(false, true);
+            proxyBox = null;
+          }
+          if (proxyNow.length === 0) return;
+          proxyBox = MeshBuilder.CreateBox("scene-proxy", { size: 1 }, scene);
           const proxyMat = new StandardMaterial("scene-proxy-mat", scene);
           proxyMat.wireframe = true;
           proxyMat.disableLighting = true;
@@ -211,12 +229,12 @@ export function ClickRays3DView({
           proxyBox.thinInstanceEnablePicking = true;
           // Per-instance hover labels so a viewer can name the proxy mesh a ray
           // landed near (#123). Indexed by `pickInfo.thinInstanceIndex`.
-          proxyBox.metadata = { hoverLabels: proxyMeshes.map((m) => m.name) };
+          proxyBox.metadata = { hoverLabels: proxyNow.map((m) => m.name) };
 
-          const pn = proxyMeshes.length;
+          const pn = proxyNow.length;
           const proxyMatrices = new Float32Array(pn * 16);
           for (let i = 0; i < pn; i++) {
-            const a = proxyMeshes[i]!.aabb;
+            const a = proxyNow[i]!.aabb;
             const sx = Math.max(a[3] - a[0], 1e-3);
             const sy = Math.max(a[4] - a[1], 1e-3);
             const sz = Math.max(a[5] - a[2], 1e-3);
@@ -226,127 +244,159 @@ export function ClickRays3DView({
             m.copyToArray(proxyMatrices, i * 16);
           }
           proxyBox.thinInstanceSetBuffer("matrix", proxyMatrices, 16, true);
-        }
+        };
 
-        // Click rays: one colored line origin → hit, shaded by click volume.
-        const lines: InstanceType<typeof Vector3>[][] = [];
-        const lineColors: InstanceType<typeof Color4>[][] = [];
-        for (const r of visibleRays) {
-          const t = r.count / maxCount;
-          const [cr, cg, cb] = heatRgb(t);
-          const color = new Color4(cr, cg, cb, 0.35 + 0.65 * t);
-          lines.push([
-            new Vector3(r.origin[0], r.origin[1], r.origin[2]),
-            new Vector3(r.hit[0], r.hit[1], r.hit[2]),
-          ]);
-          lineColors.push([color, color]);
-        }
-        // Skip the line system entirely when there are no rays in range —
-        // CreateLineSystem with an empty `lines` array builds a mesh with empty
-        // position data, which Babylon warns about ("empty array").
-        if (lines.length > 0) {
-          const rayLines = MeshBuilder.CreateLineSystem(
-            "click-rays",
-            { lines, colors: lineColors, useVertexAlpha: true },
-            scene,
-          );
-          rayLines.isPickable = false;
-        }
+        let contentMeshes: Array<{
+          dispose: (doNotRecurse?: boolean, disposeMaterialAndTextures?: boolean) => void;
+        }> = [];
+        const disposeContent = () => {
+          for (const mesh of contentMeshes) mesh.dispose(false, true);
+          contentMeshes = [];
+        };
+        const roseRadius = Math.max(cellSize * 3, radius * 0.18);
 
-        // Viewpoint markers: a small "eye" sphere at each visible camera voxel.
-        const seenVoxels = new Map<string, [number, number, number]>();
-        for (const r of visibleRays) seenVoxels.set(voxelKey(r.camVoxel), r.camVoxel);
-        if (seenVoxels.size > 0) {
-          const eye = MeshBuilder.CreateSphere(
-            "rays-eye",
-            { diameter: cellSize * 0.6, segments: 6 },
-            scene,
-          );
-          const eyeMat = new StandardMaterial("rays-eye-mat", scene);
-          eyeMat.disableLighting = true;
-          eyeMat.emissiveColor = new Color3(0.9, 0.95, 1);
-          eye.material = eyeMat;
-          const voxelList = [...seenVoxels.values()];
-          const eyeMatrices = new Float32Array(voxelList.length * 16);
-          for (let i = 0; i < voxelList.length; i++) {
-            const v = voxelList[i]!;
-            Matrix.Translation(
-              (v[0] + 0.5) * cellSize,
-              (v[1] + 0.5) * cellSize,
-              (v[2] + 0.5) * cellSize,
-            ).copyToArray(eyeMatrices, i * 16);
+        const sync = () => {
+          syncProxy();
+          disposeContent();
+
+          const raysNow = raysRef.current;
+          const proxyNow = proxyMeshesRef.current;
+          const currentFocusKey = focusKeyRef.current;
+          const currentMeshFocus = meshFocusRef.current;
+          // Apply the view-gate: keep only rays from the focused camera voxel.
+          const visibleRays =
+            currentFocusKey === ALL
+              ? raysNow
+              : raysNow.filter((r) => voxelKey(r.camVoxel) === currentFocusKey);
+          const maxCount = visibleRays.reduce((m, r) => Math.max(m, r.count), 1);
+
+          // Click rays: one colored line origin → hit, shaded by click volume.
+          const lines: InstanceType<typeof Vector3>[][] = [];
+          const lineColors: InstanceType<typeof Color4>[][] = [];
+          for (const r of visibleRays) {
+            const t = r.count / maxCount;
+            const [cr, cg, cb] = heatRgb(t);
+            const color = new Color4(cr, cg, cb, 0.35 + 0.65 * t);
+            lines.push([
+              new Vector3(r.origin[0], r.origin[1], r.origin[2]),
+              new Vector3(r.hit[0], r.hit[1], r.hit[2]),
+            ]);
+            lineColors.push([color, color]);
           }
-          eye.thinInstanceSetBuffer("matrix", eyeMatrices, 16, true);
-        }
+          // Skip the line system entirely when there are no rays in range —
+          // CreateLineSystem with an empty `lines` array builds a mesh with empty
+          // position data, which Babylon warns about ("empty array").
+          if (lines.length > 0) {
+            const rayLines = MeshBuilder.CreateLineSystem(
+              "click-rays",
+              { lines, colors: lineColors, useVertexAlpha: true },
+              scene,
+            );
+            rayLines.isPickable = false;
+            contentMeshes.push(rayLines);
+          }
 
-        // Per-mesh incoming-direction rose (§7.3): spokes from the mesh centroid
-        // pointing back toward the viewpoints its clicks came from.
-        if (meshFocus !== ALL) {
-          const meshRays = rays.filter((r) => r.mesh === meshFocus);
-          if (meshRays.length > 0) {
-            const proxy = proxyMeshes.find((m) => m.name === meshFocus);
-            let centroid: InstanceType<typeof Vector3>;
-            if (proxy) {
-              const a = proxy.aabb;
-              centroid = new Vector3((a[0] + a[3]) / 2, (a[1] + a[4]) / 2, (a[2] + a[5]) / 2);
-            } else {
-              let hx = 0;
-              let hy = 0;
-              let hz = 0;
-              for (const r of meshRays) {
-                hx += r.hit[0];
-                hy += r.hit[1];
-                hz += r.hit[2];
+          // Viewpoint markers: a small "eye" sphere at each visible camera voxel.
+          const seenVoxels = new Map<string, [number, number, number]>();
+          for (const r of visibleRays) seenVoxels.set(voxelKey(r.camVoxel), r.camVoxel);
+          if (seenVoxels.size > 0) {
+            const eye = MeshBuilder.CreateSphere(
+              "rays-eye",
+              { diameter: cellSize * 0.6, segments: 6 },
+              scene,
+            );
+            const eyeMat = new StandardMaterial("rays-eye-mat", scene);
+            eyeMat.disableLighting = true;
+            eyeMat.emissiveColor = new Color3(0.9, 0.95, 1);
+            eye.material = eyeMat;
+            const voxelList = [...seenVoxels.values()];
+            const eyeMatrices = new Float32Array(voxelList.length * 16);
+            for (let i = 0; i < voxelList.length; i++) {
+              const v = voxelList[i]!;
+              Matrix.Translation(
+                (v[0] + 0.5) * cellSize,
+                (v[1] + 0.5) * cellSize,
+                (v[2] + 0.5) * cellSize,
+              ).copyToArray(eyeMatrices, i * 16);
+            }
+            eye.thinInstanceSetBuffer("matrix", eyeMatrices, 16, true);
+            contentMeshes.push(eye);
+          }
+
+          // Per-mesh incoming-direction rose (§7.3): spokes from the mesh centroid
+          // pointing back toward the viewpoints its clicks came from.
+          if (currentMeshFocus !== ALL) {
+            const meshRays = raysNow.filter((r) => r.mesh === currentMeshFocus);
+            if (meshRays.length > 0) {
+              const proxy = proxyNow.find((m) => m.name === currentMeshFocus);
+              let centroid: InstanceType<typeof Vector3>;
+              if (proxy) {
+                const a = proxy.aabb;
+                centroid = new Vector3((a[0] + a[3]) / 2, (a[1] + a[4]) / 2, (a[2] + a[5]) / 2);
+              } else {
+                let hx = 0;
+                let hy = 0;
+                let hz = 0;
+                for (const r of meshRays) {
+                  hx += r.hit[0];
+                  hy += r.hit[1];
+                  hz += r.hit[2];
+                }
+                centroid = new Vector3(
+                  hx / meshRays.length,
+                  hy / meshRays.length,
+                  hz / meshRays.length,
+                );
               }
-              centroid = new Vector3(
-                hx / meshRays.length,
-                hy / meshRays.length,
-                hz / meshRays.length,
-              );
-            }
-            const roseRadius = Math.max(cellSize * 3, radius * 0.18);
-            const roseMax = meshRays.reduce((m, r) => Math.max(m, r.count), 1);
-            const roseLines: InstanceType<typeof Vector3>[][] = [];
-            const roseColors: InstanceType<typeof Color4>[][] = [];
-            for (const r of meshRays) {
-              // Incoming direction: from the hit point back toward the viewer.
-              const dx = r.origin[0] - r.hit[0];
-              const dy = r.origin[1] - r.hit[1];
-              const dz = r.origin[2] - r.hit[2];
-              const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
-              const t = r.count / roseMax;
-              const reach = roseRadius * (0.4 + 0.6 * t);
-              const tip = new Vector3(
-                centroid.x + (dx / len) * reach,
-                centroid.y + (dy / len) * reach,
-                centroid.z + (dz / len) * reach,
-              );
-              const [cr, cg, cb] = heatRgb(t);
-              const color = new Color4(cr, cg, cb, 1);
-              roseLines.push([centroid.clone(), tip]);
-              roseColors.push([new Color4(cr, cg, cb, 0.25), color]);
-            }
-            const rose = MeshBuilder.CreateLineSystem(
-              "mesh-rose",
-              { lines: roseLines, colors: roseColors, useVertexAlpha: true },
-              scene,
-            );
-            rose.isPickable = false;
+              const roseMax = meshRays.reduce((m, r) => Math.max(m, r.count), 1);
+              const roseLines: InstanceType<typeof Vector3>[][] = [];
+              const roseColors: InstanceType<typeof Color4>[][] = [];
+              for (const r of meshRays) {
+                // Incoming direction: from the hit point back toward the viewer.
+                const dx = r.origin[0] - r.hit[0];
+                const dy = r.origin[1] - r.hit[1];
+                const dz = r.origin[2] - r.hit[2];
+                const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+                const t = r.count / roseMax;
+                const reach = roseRadius * (0.4 + 0.6 * t);
+                const tip = new Vector3(
+                  centroid.x + (dx / len) * reach,
+                  centroid.y + (dy / len) * reach,
+                  centroid.z + (dz / len) * reach,
+                );
+                const [cr, cg, cb] = heatRgb(t);
+                const color = new Color4(cr, cg, cb, 1);
+                roseLines.push([centroid.clone(), tip]);
+                roseColors.push([new Color4(cr, cg, cb, 0.25), color]);
+              }
+              if (roseLines.length > 0) {
+                const rose = MeshBuilder.CreateLineSystem(
+                  "mesh-rose",
+                  { lines: roseLines, colors: roseColors, useVertexAlpha: true },
+                  scene,
+                );
+                rose.isPickable = false;
+                contentMeshes.push(rose);
+              }
 
-            const hub = MeshBuilder.CreateSphere(
-              "mesh-rose-hub",
-              { diameter: cellSize * 0.8, segments: 8 },
-              scene,
-            );
-            const hubMat = new StandardMaterial("mesh-rose-hub-mat", scene);
-            hubMat.disableLighting = true;
-            hubMat.emissiveColor = new Color3(1, 0.85, 0.4);
-            hub.material = hubMat;
-            hub.position = centroid;
-            hub.isPickable = true;
-            hub.metadata = { hoverLabel: meshFocus };
+              const hub = MeshBuilder.CreateSphere(
+                "mesh-rose-hub",
+                { diameter: cellSize * 0.8, segments: 8 },
+                scene,
+              );
+              const hubMat = new StandardMaterial("mesh-rose-hub-mat", scene);
+              hubMat.disableLighting = true;
+              hubMat.emissiveColor = new Color3(1, 0.85, 0.4);
+              hub.material = hubMat;
+              hub.position = centroid;
+              hub.isPickable = true;
+              hub.metadata = { hoverLabel: currentMeshFocus };
+              contentMeshes.push(hub);
+            }
           }
-        }
+        };
+        syncRef.current = sync;
+        sync();
 
         engine.runRenderLoop(() => scene.render());
         const onResize = () => engine.resize();
@@ -360,6 +410,7 @@ export function ClickRays3DView({
           detachHover();
           detachFocus();
           setTip(null);
+          syncRef.current = null;
           cameraRef.current = null;
           homeRef.current = null;
           scene.dispose();
@@ -376,7 +427,11 @@ export function ClickRays3DView({
       disposed = true;
       cleanup?.();
     };
-  }, [rays, cellSize, proxyMeshes, focusKey, meshFocus]);
+  }, [hasContent, cellSize]);
+
+  useEffect(() => {
+    syncRef.current?.();
+  }, [rays, proxyMeshes, cellSize, focusKey, meshFocus]);
 
   return (
     <div className="relative">

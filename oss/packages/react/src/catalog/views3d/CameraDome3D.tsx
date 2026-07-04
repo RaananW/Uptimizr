@@ -37,10 +37,20 @@ export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gri
   const [mode, setMode] = useState<DomeMode>("markers");
   const [tip, setTip] = useState<HoverTip | null>(null);
 
+  const binsRef = useRef(bins);
+  const gridSizeRef = useRef(gridSize);
+  const modeRef = useRef(mode);
+  binsRef.current = bins;
+  gridSizeRef.current = gridSize;
+  modeRef.current = mode;
+
+  const syncRef = useRef<(() => void) | null>(null);
+  const hasContent = bins.length > 0;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (bins.length === 0) {
+    if (!hasContent) {
       setPhase("empty");
       return;
     }
@@ -135,96 +145,114 @@ export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gri
         forward.color = new Color3(0.4, 0.7, 0.95);
         forward.isPickable = false;
 
-        // Direction markers: one thin-instanced unit box per populated bin, sat
-        // on the sphere surface at its reconstructed look-direction.
-        const max = bins.reduce((m, b) => Math.max(m, b.count), 1);
-        const safeGridSize = gridSize > 0 ? gridSize : 1;
+        let contentMeshes: Array<{
+          dispose: (doNotRecurse?: boolean, disposeMaterialAndTextures?: boolean) => void;
+        }> = [];
+        const disposeContent = () => {
+          for (const mesh of contentMeshes) mesh.dispose(false, true);
+          contentMeshes = [];
+        };
 
-        if (mode === "markers") {
-          const box = MeshBuilder.CreateBox("dome-marker", { size: 1 }, scene);
-          const markerMat = new StandardMaterial("dome-marker-mat", scene);
-          markerMat.disableLighting = true;
-          markerMat.emissiveColor = Color3.White();
-          markerMat.specularColor = new Color3(0, 0, 0);
-          box.material = markerMat;
-          box.isPickable = true;
-          box.thinInstanceEnablePicking = true;
+        const sync = () => {
+          disposeContent();
+          const binsNow = binsRef.current;
+          if (binsNow.length === 0) return;
 
-          const n = bins.length;
-          const matrices = new Float32Array(n * 16);
-          const colors = new Float32Array(n * 4);
-          // Dome bins are look-directions, not meshes; the hover affordance names
-          // the direction bin + its view count so it stays consistent (#123).
-          const labels: string[] = new Array(n);
-          for (let i = 0; i < n; i++) {
-            const b = bins[i]!;
-            // Invert the binning the camera query applied (see clickhouse/queries).
-            const az = ((b.azimuth_bin + 0.5) / safeGridSize) * Math.PI * 2 - Math.PI;
-            const el = ((b.elevation_bin + 0.5) / safeGridSize) * Math.PI - Math.PI / 2;
-            const ce = Math.cos(el);
-            const dx = ce * Math.cos(az);
-            const dy = Math.sin(el);
-            const dz = ce * Math.sin(az);
-            const t = b.count / max;
-            const s = 0.03 + 0.12 * t;
-            const m = Matrix.Scaling(s, s, s).multiply(Matrix.Translation(dx, dy, dz));
-            m.copyToArray(matrices, i * 16);
-            const [r, g, bl] = heatRgb(t);
-            colors[i * 4] = r;
-            colors[i * 4 + 1] = g;
-            colors[i * 4 + 2] = bl;
-            colors[i * 4 + 3] = 1;
-            labels[i] = `dir (${b.azimuth_bin}, ${b.elevation_bin}) · ${b.count}`;
+          // Direction markers: one thin-instanced unit box per populated bin, sat
+          // on the sphere surface at its reconstructed look-direction.
+          const max = binsNow.reduce((m, b) => Math.max(m, b.count), 1);
+          const safeGridSize = gridSizeRef.current > 0 ? gridSizeRef.current : 1;
+
+          if (modeRef.current === "markers") {
+            const box = MeshBuilder.CreateBox("dome-marker", { size: 1 }, scene);
+            const markerMat = new StandardMaterial("dome-marker-mat", scene);
+            markerMat.disableLighting = true;
+            markerMat.emissiveColor = Color3.White();
+            markerMat.specularColor = new Color3(0, 0, 0);
+            box.material = markerMat;
+            box.isPickable = true;
+            box.thinInstanceEnablePicking = true;
+
+            const n = binsNow.length;
+            const matrices = new Float32Array(n * 16);
+            const colors = new Float32Array(n * 4);
+            // Dome bins are look-directions, not meshes; the hover affordance names
+            // the direction bin + its view count so it stays consistent (#123).
+            const labels: string[] = new Array(n);
+            for (let i = 0; i < n; i++) {
+              const b = binsNow[i]!;
+              // Invert the binning the camera query applied (see clickhouse/queries).
+              const az = ((b.azimuth_bin + 0.5) / safeGridSize) * Math.PI * 2 - Math.PI;
+              const el = ((b.elevation_bin + 0.5) / safeGridSize) * Math.PI - Math.PI / 2;
+              const ce = Math.cos(el);
+              const dx = ce * Math.cos(az);
+              const dy = Math.sin(el);
+              const dz = ce * Math.sin(az);
+              const t = b.count / max;
+              const s = 0.03 + 0.12 * t;
+              const m = Matrix.Scaling(s, s, s).multiply(Matrix.Translation(dx, dy, dz));
+              m.copyToArray(matrices, i * 16);
+              const [r, g, bl] = heatRgb(t);
+              colors[i * 4] = r;
+              colors[i * 4 + 1] = g;
+              colors[i * 4 + 2] = bl;
+              colors[i * 4 + 3] = 1;
+              labels[i] = `dir (${b.azimuth_bin}, ${b.elevation_bin}) · ${b.count}`;
+            }
+            box.thinInstanceSetBuffer("matrix", matrices, 16, true);
+            box.thinInstanceSetBuffer("color", colors, 4, true);
+            box.metadata = { hoverLabels: labels };
+            contentMeshes.push(box);
+          } else {
+            // Skydome: splat the same bins into a continuous equirectangular heat
+            // texture (shared engine-free core from @uptimizr/heatmap) and wrap it
+            // on a globe so the distribution reads as a smooth field rather than
+            // discrete markers. Orbit from outside; the §7.6 dev overlay
+            // (`showGazeSkydome`) is the inward, stand-inside form for WebXR.
+            const equirect = buildGazeEquirect(
+              {
+                bins: binsNow.map((b) => ({
+                  azimuthBin: b.azimuth_bin,
+                  elevationBin: b.elevation_bin,
+                  count: b.count,
+                })),
+                gridSize: safeGridSize,
+              },
+              { width: 256, blurBins: 1.5, opacity: 0.95 },
+            );
+            const tex = new DynamicTexture(
+              "dome-skytex",
+              { width: equirect.width, height: equirect.height },
+              scene,
+              false,
+            );
+            tex.hasAlpha = true;
+            const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+            const image = ctx.createImageData(equirect.width, equirect.height);
+            image.data.set(equirect.rgba);
+            ctx.putImageData(image, 0, 0);
+            tex.update();
+
+            const globe = MeshBuilder.CreateSphere(
+              "dome-sky",
+              { diameter: 2, segments: 48, sideOrientation: Mesh.DOUBLESIDE },
+              scene,
+            );
+            const skyMat = new StandardMaterial("dome-sky-mat", scene);
+            skyMat.disableLighting = true;
+            skyMat.emissiveColor = Color3.White();
+            skyMat.diffuseColor = new Color3(0, 0, 0);
+            skyMat.specularColor = new Color3(0, 0, 0);
+            skyMat.emissiveTexture = tex;
+            skyMat.opacityTexture = tex;
+            skyMat.backFaceCulling = false;
+            globe.material = skyMat;
+            globe.isPickable = false;
+            contentMeshes.push(globe);
           }
-          box.thinInstanceSetBuffer("matrix", matrices, 16, true);
-          box.thinInstanceSetBuffer("color", colors, 4, true);
-          box.metadata = { hoverLabels: labels };
-        } else {
-          // Skydome: splat the same bins into a continuous equirectangular heat
-          // texture (shared engine-free core from @uptimizr/heatmap) and wrap it
-          // on a globe so the distribution reads as a smooth field rather than
-          // discrete markers. Orbit from outside; the §7.6 dev overlay
-          // (`showGazeSkydome`) is the inward, stand-inside form for WebXR.
-          const equirect = buildGazeEquirect(
-            {
-              bins: bins.map((b) => ({
-                azimuthBin: b.azimuth_bin,
-                elevationBin: b.elevation_bin,
-                count: b.count,
-              })),
-              gridSize: safeGridSize,
-            },
-            { width: 256, blurBins: 1.5, opacity: 0.95 },
-          );
-          const tex = new DynamicTexture(
-            "dome-skytex",
-            { width: equirect.width, height: equirect.height },
-            scene,
-            false,
-          );
-          tex.hasAlpha = true;
-          const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
-          const image = ctx.createImageData(equirect.width, equirect.height);
-          image.data.set(equirect.rgba);
-          ctx.putImageData(image, 0, 0);
-          tex.update();
-
-          const globe = MeshBuilder.CreateSphere(
-            "dome-sky",
-            { diameter: 2, segments: 48, sideOrientation: Mesh.DOUBLESIDE },
-            scene,
-          );
-          const skyMat = new StandardMaterial("dome-sky-mat", scene);
-          skyMat.disableLighting = true;
-          skyMat.emissiveColor = Color3.White();
-          skyMat.diffuseColor = new Color3(0, 0, 0);
-          skyMat.specularColor = new Color3(0, 0, 0);
-          skyMat.emissiveTexture = tex;
-          skyMat.opacityTexture = tex;
-          skyMat.backFaceCulling = false;
-          globe.material = skyMat;
-          globe.isPickable = false;
-        }
+        };
+        syncRef.current = sync;
+        sync();
 
         engine.runRenderLoop(() => scene.render());
         const onResize = () => engine.resize();
@@ -238,6 +266,7 @@ export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gri
           detachHover();
           detachFocus();
           setTip(null);
+          syncRef.current = null;
           cameraRef.current = null;
           homeRef.current = null;
           scene.dispose();
@@ -254,6 +283,10 @@ export function CameraDome3DView({ bins, gridSize }: { bins: DirectionBin[]; gri
       disposed = true;
       cleanup?.();
     };
+  }, [hasContent]);
+
+  useEffect(() => {
+    syncRef.current?.();
   }, [bins, gridSize, mode]);
 
   return (
