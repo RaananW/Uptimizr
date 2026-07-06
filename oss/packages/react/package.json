@@ -64,7 +64,7 @@
     "@uptimizr/heatmap": "workspace:*"
   },
   "devDependencies": {
-    "@babylonjs/core": "^9.14.0",
+    "@babylonjs/core": "^9.15.0",
     "@testing-library/react": "^16.1.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
