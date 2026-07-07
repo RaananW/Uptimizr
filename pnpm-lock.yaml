@@ -417,6 +417,9 @@ importers:
       '@uptimizr/replay':
         specifier: workspace:*
         version: link:../replay
+      '@uptimizr/schema':
+        specifier: workspace:*
+        version: link:../schema
     devDependencies:
       '@babylonjs/core':
         specifier: ^9.14.0
