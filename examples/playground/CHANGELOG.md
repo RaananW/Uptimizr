@@ -1,5 +1,12 @@
 # @uptimizr/example-playground
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [888f9c2]
+  - @uptimizr/playcanvas@0.2.2
+
 ## 0.0.7
 
 ### Patch Changes
