@@ -15,7 +15,7 @@
 import type { ReactNode } from "react";
 import type { CollectorApi, PresenceSnapshot, QueryParams } from "../api";
 import type { FilterState } from "../filters";
-import type { LiveEvent } from "../live";
+import type { LiveEvent, LiveStatus } from "../live";
 
 /**
  * The major version of the panel contract (ADR 0036 / ADR 0041).
@@ -125,6 +125,8 @@ export interface PanelLive {
   readonly presence: PresenceSnapshot | null;
   /** Whether the live layer is currently enabled (key set + opted in). */
   readonly enabled: boolean;
+  /** Connection lifecycle of the live layer (for status badges). */
+  readonly status: LiveStatus;
   /** Subscribe to the live event firehose; returns an unsubscribe fn. */
   subscribe(handler: (event: LiveEvent) => void): () => void;
   /**

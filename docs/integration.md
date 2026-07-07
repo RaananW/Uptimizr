@@ -1405,8 +1405,8 @@ only** — the host wraps it in the card and grid cell.
 The `PanelContext` carries everything a panel needs: `api` (a shared `CollectorApi`),
 `baseUrl` / `apiKey`, the resolved `params`, raw `filters`, `surface` / `sessionId`,
 range-derived `capabilities`, host `actions` (`selectSession`, `setTimeRange`,
-`setFilters`), the realtime `live` layer (`presence`, `enabled`, `subscribe(handler)`),
-and the resolved per-panel `settings` (see below).
+`setFilters`), the realtime `live` layer (`presence`, `enabled`, `status`, `sceneId`,
+`subscribe(handler)`), and the resolved per-panel `settings` (see below).
 
 ### Per-panel settings & visibility (ADR 0039)
 
@@ -1440,6 +1440,14 @@ Panels are registered at **build time** by appending to the `builtinPanels` arra
 the dashboard's `src/panels/registry.tsx`; the `PanelHost` filters by surface and each
 panel's `enabled` gate and renders the bodies into the grid — no manual placement in
 `page.tsx`.
+
+The portable `ossPanelCatalog` includes the two live surfaces (ADR 0049):
+`livePresencePanel` (overview "Live now" roster + event feed) and `sessionReplayPanel`
+(the session-surface birdview replay, Babylon-backed and exported directly as
+`SessionReplayView` from `@uptimizr/react/panels-3d`). A host that renders a catalog
+panel's view itself can pass `PanelHost`'s `exclude` prop to suppress the host-driven
+copy. The per-session live-follow hook `useLiveSession` (with `LiveStatus` /
+`LiveSessionState`) is exported from `@uptimizr/react` for panels that drive their own tail.
 
 ### Loading panels at runtime (ADR 0041)
 

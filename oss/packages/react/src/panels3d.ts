@@ -18,6 +18,7 @@ export { WorldHeatmap3DView } from "./catalog/views3d/WorldHeatmap3D";
 export { FlowSankey3DView } from "./catalog/views3d/FlowSankey3D";
 export { GazeClickDivergence3DView } from "./catalog/views3d/GazeClickDivergence3D";
 export { ClickRays3DView } from "./catalog/views3d/ClickRays3D";
+export { SessionReplayView } from "./catalog/views3d/SessionReplay";
 
 // Babylon-free panel chrome copy (title / subtitle / help) for the 3D panels.
 export {
@@ -34,4 +35,7 @@ export {
   FLOW_SANKEY_TITLE,
   FLOW_SANKEY_SUBTITLE,
   FLOW_SANKEY_HELP,
+  SESSION_REPLAY_TITLE,
+  sessionReplayTitle,
+  sessionReplaySubtitle,
 } from "./catalog/views3d/labels";

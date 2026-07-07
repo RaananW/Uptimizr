@@ -1,6 +1,7 @@
 # ADR 0047: `@uptimizr/react` owns the portable OSS panel catalog
 
-- **Status:** Accepted
+- **Status:** Accepted (partially revised by ADR 0049 — Session Replay and Live
+  Presence moved into the catalog)
 - **Date:** 2025-02-14
 - **Deciders:** Dashboard / SDK maintainers
 

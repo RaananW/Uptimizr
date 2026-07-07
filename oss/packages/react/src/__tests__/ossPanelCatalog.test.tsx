@@ -29,6 +29,8 @@ import {
   flowPanel,
   divergencePanel,
   loadBounceFunnelPanel,
+  livePresencePanel,
+  sessionReplayPanel,
 } from "../index";
 import type { PanelContext, PanelDataContext, PanelDefinition } from "../index";
 
@@ -40,6 +42,7 @@ const PANEL_3D_IDS = new Set([
   "error-heatmap-3d",
   "flow-sankey-3d", // gitleaks:allow — panel id, not a secret
   "gaze-click-divergence-3d",
+  "session-replay",
 ]);
 
 /** React tags a `React.lazy(...)` component with this internal symbol. */
@@ -54,7 +57,15 @@ const ctx = {
   settings: { bins: 36, cellSize: 0.5, maxLinks: 80, limit: 25 },
   baseUrl: "http://localhost:4318",
   apiKey: "k",
+  sessionId: "session-1",
   capabilities: { hasFirstPerson: false },
+  live: {
+    presence: null,
+    enabled: false,
+    status: "idle",
+    subscribe: () => () => {},
+  },
+  actions: { selectSession: () => {}, setTimeRange: () => {}, setFilters: () => {} },
 } as unknown as PanelContext;
 
 const data = {
@@ -82,7 +93,7 @@ function renderPanel(panel: PanelDefinition<unknown>): ReactElement {
 
 describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
   it("exposes the complete OSS panel set", () => {
-    expect(ossPanelCatalog).toHaveLength(27);
+    expect(ossPanelCatalog).toHaveLength(29);
   });
 
   it("every entry is a valid PanelDefinition with a unique id", () => {
@@ -92,7 +103,9 @@ describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
       expect(panel.id.length).toBeGreaterThan(0);
       expect(typeof panel.title).toBe("string");
       expect(panel.title.length).toBeGreaterThan(0);
-      expect(typeof panel.load).toBe("function");
+      // `load` is optional: self-fetching panels (live presence, session replay)
+      // omit it and drive their own data in `render`.
+      if (panel.load !== undefined) expect(typeof panel.load).toBe("function");
       expect(typeof panel.render).toBe("function");
       expect(ids.has(panel.id), `duplicate panel id: ${panel.id}`).toBe(false);
       ids.add(panel.id);
@@ -129,6 +142,8 @@ describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
       flowPanel,
       divergencePanel,
       loadBounceFunnelPanel,
+      livePresencePanel,
+      sessionReplayPanel,
     ];
     for (const panel of individual) {
       expect(ossPanelCatalog).toContain(panel);

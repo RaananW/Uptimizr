@@ -24,12 +24,19 @@ export function PanelHost({
   ctx,
   surface,
   revision = 0,
+  exclude,
 }: {
   panels: PanelDefinition<unknown>[];
   ctx: PanelContext;
   surface: PanelSurface;
   /** Bump to force a refetch (e.g. throttled live updates) without changing filters. */
   revision?: number;
+  /**
+   * Panel ids the host must NOT render. Use this when the page mounts a catalog
+   * panel's view directly at a bespoke position (e.g. Session Replay / Live
+   * Presence) so it isn't rendered twice.
+   */
+  exclude?: readonly string[];
 }) {
   const specFor = useCallback(
     (panelId: string) => panels.find((p) => p.id === panelId)?.settings,
@@ -43,6 +50,7 @@ export function PanelHost({
     () =>
       panels
         .filter((panel) => (panel.surfaces ?? ["overview"]).includes(surface))
+        .filter((panel) => !exclude?.includes(panel.id))
         .map((panel) => {
           const settings = resolvePanelSettings(panel.settings, prefs.overridesFor(panel.id));
           return { panel, panelCtx: { ...ctx, settings } as PanelContext };
@@ -58,7 +66,7 @@ export function PanelHost({
             return false;
           }
         }),
-    [panels, surface, ctx, prefs],
+    [panels, surface, ctx, prefs, exclude],
   );
 
   // Before hydration nothing is hidden (matches SSR); after, apply stored state.

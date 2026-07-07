@@ -37,6 +37,7 @@ import {
 } from "@/lib/filters";
 import { parseTimestamp } from "@/lib/format";
 import { mergeSceneProxies } from "@uptimizr/react";
+import { LivePresenceView, LIVE_PRESENCE_TITLE, LIVE_PRESENCE_SUBTITLE, LIVE_PRESENCE_HELP } from "@uptimizr/react";
 import { useLivePresence, useLiveStream, type LiveEvent } from "@/lib/live";
 import type { PanelContext, PanelDefinition, RemotePanelError } from "@uptimizr/react";
 import { mergePanels } from "@uptimizr/react";
@@ -59,11 +60,10 @@ import { SessionsTable } from "@/components/SessionsTable";
 import { TrajectoryView } from "@/components/TrajectoryView";
 import { VolumeTimeseries } from "@/components/VolumeTimeseries";
 import { SessionInspector } from "@/components/SessionInspector";
-import { LivePresence } from "@/components/LivePresence";
 
 // Babylon-backed panels load only in the browser (no SSR, lazy chunk).
-const SessionReplay = dynamic(
-  () => import("@/components/SessionReplay").then((m) => m.SessionReplay),
+const SessionReplayView = dynamic(
+  () => import("@uptimizr/react/panels-3d").then((m) => m.SessionReplayView),
   { ssr: false },
 );
 const WorldHeatmap3DView = dynamic(
@@ -709,6 +709,7 @@ export default function Page() {
       enabled: liveEnabled,
       subscribe: subscribeLive,
       sceneId: liveEnabled ? liveSceneId : undefined,
+      status: liveStatus,
     },
     // Per-panel settings (ADR 0039) are injected per panel by the PanelHost; the
     // base context carries none. Panels without settings see an empty object.
@@ -919,13 +920,22 @@ export default function Page() {
             </button>
           </div>
           <div className="lg:col-span-2">
-            <SessionReplay
-              baseUrl={baseUrl}
-              apiKey={apiKey}
-              sessionId={detail.id}
-              hiddenTypes={hiddenTypes}
-              isLive={detailIsLive}
-            />
+            <Panel
+              title={detailIsLive ? "Session replay · live" : "Session replay (birdview timeline)"}
+              subtitle={
+                detailIsLive
+                  ? "Following this session live — new camera moves and interactions stream in and the timeline grows. Scrub back to review, then press ● LIVE to return to the edge."
+                  : "Scrub the camera path and interaction rays; every click stays marked and glows as the playhead passes it. The color-coded strip marks when each event fired (click to seek)."
+              }
+            >
+              <SessionReplayView
+                baseUrl={baseUrl}
+                apiKey={apiKey}
+                sessionId={detail.id}
+                hiddenTypes={hiddenTypes}
+                isLive={detailIsLive}
+              />
+            </Panel>
           </div>
           <div className="lg:col-span-2">
             <SessionInspector
@@ -944,6 +954,7 @@ export default function Page() {
               ctx={sessionCtx}
               surface="session"
               revision={liveRevision + sessionRevision}
+              exclude={["session-replay"]}
             />
           ) : null}
           <CameraDirectionHeatmap bins={detail.camera} gridSize={CAMERA_BINS} />
@@ -967,13 +978,19 @@ export default function Page() {
             </div>
           ) : null}
           <div className="lg:col-span-2">
-            <LivePresence
-              snapshot={livePresence}
-              status={liveStatus}
-              feed={liveFeed}
-              now={liveNow}
-              onSelectSession={openSession}
-            />
+            <Panel
+              title={LIVE_PRESENCE_TITLE}
+              subtitle={LIVE_PRESENCE_SUBTITLE}
+              help={LIVE_PRESENCE_HELP}
+            >
+              <LivePresenceView
+                snapshot={livePresence}
+                status={liveStatus}
+                feed={liveFeed}
+                now={liveNow}
+                onSelectSession={openSession}
+              />
+            </Panel>
           </div>
           <div className="lg:col-span-2">
             <VolumeTimeseries
@@ -1008,6 +1025,7 @@ export default function Page() {
             ctx={overviewCtx}
             surface="overview"
             revision={liveRevision}
+            exclude={["live-presence"]}
           />
           <div className="lg:col-span-2">
             <PerformanceSection data={data.performance} />

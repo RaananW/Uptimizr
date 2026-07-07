@@ -35,6 +35,21 @@ export const FLOW_SANKEY_TITLE = "Flow Sankey (3D)";
 export const FLOW_SANKEY_SUBTITLE =
   "Direction-bin → mesh links (aggregate), or standpoint → gaze → mesh (two-stage) — double-click to focus";
 
+/** Session replay panel chrome copy (ADR 0035, ADR 0049). Babylon-free. */
+export const SESSION_REPLAY_TITLE = "Session replay";
+
+/** Title variant that reflects the live-follow state (used by bespoke mounts). */
+export function sessionReplayTitle(isLive: boolean): string {
+  return isLive ? "Session replay · live" : "Session replay (birdview timeline)";
+}
+
+/** Subtitle that reflects the live-follow state. */
+export function sessionReplaySubtitle(isLive: boolean): string {
+  return isLive
+    ? "Following this session live — new camera moves and interactions stream in and the timeline grows. Scrub back to review, then press ● LIVE to return to the edge."
+    : "Scrub the camera path and interaction rays; every click stays marked and glows as the playhead passes it. The color-coded strip marks when each event fired (click to seek).";
+}
+
 /** "?" help content for the flow Sankey panel. */
 export const FLOW_SANKEY_HELP = (
   <>

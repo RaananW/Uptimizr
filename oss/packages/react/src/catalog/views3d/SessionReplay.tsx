@@ -5,17 +5,13 @@ import type { ChangeEvent } from "react";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import type { Scene } from "@babylonjs/core/scene.js";
 import type { SceneBackdrop } from "@uptimizr/replay/babylon";
-import { CollectorApi } from "@/lib/api";
-import type { SceneProxyMesh } from "@/lib/api";
-import { useLiveSession, type LiveEvent } from "@/lib/live";
-import {
-  mergeSceneProxies,
-  disableWheelZoom,
-  stepZoom,
-  ZoomButtons,
-  type OrbitZoomCamera,
-} from "@uptimizr/react";
-import { Panel } from "./Panel";
+import { CollectorApi } from "../../api";
+import type { SceneProxyMesh } from "../../api";
+import type { LiveEvent } from "../../live";
+import { useLiveSession } from "../../live-hooks";
+import { mergeSceneProxies } from "../lib/sceneProxies";
+import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "../lib/orbitZoom";
+import { ZoomButtons } from "../views/ZoomButtons";
 
 type Phase = "idle" | "loading" | "ready" | "empty" | "error";
 
@@ -256,9 +252,11 @@ function EventTimeline({
  * camera origin/forward plus recent origin→hit interaction rays.
  *
  * Babylon is imported dynamically so it never runs during SSR and stays out of
- * the main dashboard chunk.
+ * the main dashboard chunk. Chrome copy (title/subtitle) lives in the
+ * Babylon-free `../views3d/labels` module so the catalog can describe this panel
+ * without importing the view.
  */
-export function SessionReplay({
+export function SessionReplayView({
   baseUrl,
   apiKey,
   sessionId,
@@ -1588,14 +1586,7 @@ export function SessionReplay({
   }, []);
 
   return (
-    <Panel
-      title={isLive ? "Session replay · live" : "Session replay (birdview timeline)"}
-      subtitle={
-        isLive
-          ? "Following this session live — new camera moves and interactions stream in and the timeline grows. Scrub back to review, then press ● LIVE to return to the edge."
-          : "Scrub the camera path and interaction rays; every click stays marked and glows as the playhead passes it. The color-coded strip marks when each event fired (click to seek)."
-      }
-    >
+    <>
       <div className="relative">
         <canvas
           ref={canvasRef}
@@ -1800,6 +1791,6 @@ export function SessionReplay({
           Live follow is unavailable — raw session retention is disabled on the collector.
         </p>
       ) : null}
-    </Panel>
+    </>
   );
 }

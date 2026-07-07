@@ -63,6 +63,8 @@ input `source`, …) forwarded to the query API:
 | `drawPointerHeatmap`, `drawDirectionHeatmap` | The shared canvas painters, for custom renderers.         |
 | `ossPanelCatalog`                            | The complete, portable OSS panel catalog (ADR 0047).      |
 | `topMeshesPanel`, `worldHeatmapPanel`, …     | Each catalog panel, exported individually to cherry-pick. |
+| `livePresencePanel`, `sessionReplayPanel`    | Live-now roster and session replay panels (ADR 0049).     |
+| `LivePresenceView`, `useLiveSession`         | Live presence body + per-session live-follow hook.        |
 | `TopMeshesView`, `FloorPlanHeatmapView`, …   | Panel body components (host supplies the chrome).         |
 | `mergeSceneProxies`, `attachMeshHover`, …    | 3D/canvas helper libs shared by the panels.               |
 | `@uptimizr/react/panels-3d`                  | Babylon-backed 3D view components (opt-in subpath).       |
@@ -100,17 +102,17 @@ helper libs (`mergeSceneProxies`, `disableWheelZoom`, `attachMeshHover`,
 The core entry has **no runtime dependency on Babylon** and stays
 `sideEffects: false` (tree-shakeable). The Babylon-backed 3D panels
 (`camera-dome-3d`, `world-heatmap-3d`, `flow-sankey-3d`,
-`gaze-click-divergence-3d`) keep their view code behind `React.lazy` inside the
-catalog, so importing `ossPanelCatalog` never loads `@babylonjs/*` at
-module-eval time — Babylon's chunk is fetched only when a 3D panel actually
-renders. `@babylonjs/core` is declared as an **optional** peer dependency; add
-it to your app only if you render a 3D panel.
+`gaze-click-divergence-3d`, `session-replay`) keep their view code behind
+`React.lazy` inside the catalog, so importing `ossPanelCatalog` never loads
+`@babylonjs/*` at module-eval time — Babylon's chunk is fetched only when a 3D
+panel actually renders. `@babylonjs/core` is declared as an **optional** peer
+dependency; add it to your app only if you render a 3D panel.
 
 To compose a 3D view **directly** (outside the catalog), import the dedicated
 subpath — this is the only entry that pulls the 3D view modules into your graph:
 
 ```tsx
-import { WorldHeatmap3DView, ClickRays3DView } from "@uptimizr/react/panels-3d";
+import { WorldHeatmap3DView, ClickRays3DView, SessionReplayView } from "@uptimizr/react/panels-3d";
 ```
 
 Pair it with your bundler's lazy loading (`React.lazy` / `next/dynamic`) to keep

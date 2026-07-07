@@ -12,11 +12,12 @@
 // `./views3d/labels` module so the catalog can describe a 3D panel without
 // loading its (heavy) view.
 
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 
 import { definePanel } from "../panels/contract";
 import type { PanelContext, PanelDefinition, PanelSettings } from "../panels/contract";
 import { pickInterval } from "../filters";
+import type { LiveEvent } from "../live";
 import type {
   AggregateTrajectoryPoint,
   BacktrackRatioStat,
@@ -171,6 +172,12 @@ import {
   LOAD_BOUNCE_HELP,
   LOAD_BANDS,
 } from "./views/LoadBounceFunnel";
+import {
+  LivePresenceView,
+  LIVE_PRESENCE_TITLE,
+  LIVE_PRESENCE_SUBTITLE,
+  LIVE_PRESENCE_HELP,
+} from "./views/LivePresence";
 
 // --- 3D (Babylon-backed) view labels (Babylon-free copy) + lazy views. ------
 import {
@@ -187,6 +194,8 @@ import {
   FLOW_SANKEY_TITLE,
   FLOW_SANKEY_SUBTITLE,
   FLOW_SANKEY_HELP,
+  SESSION_REPLAY_TITLE,
+  sessionReplaySubtitle,
 } from "./views3d/labels";
 
 /**
@@ -209,6 +218,9 @@ const GazeClickDivergence3DLazy = lazy(() =>
   import("./views3d/GazeClickDivergence3D").then((m) => ({
     default: m.GazeClickDivergence3DView,
   })),
+);
+const SessionReplayLazy = lazy(() =>
+  import("./views3d/SessionReplay").then((m) => ({ default: m.SessionReplayView })),
 );
 
 /** Suspense wrapper for a lazily loaded 3D panel body. */
@@ -1165,7 +1177,99 @@ export const variantLeaderboardPanel = definePanel<VariantLeaderboardRow[]>({
   ),
 });
 
+/** Max rows kept in the live-presence event feed (mirrors the dashboard shell). */
+const LIVE_FEED_MAX = 40;
+
+/**
+ * Whether the open session is currently live (present in the presence roster).
+ * Mirrors the dashboard's `detailIsLive`: the replay only tails the per-session
+ * SSE channel and follows the growing edge when the session is actually live.
+ */
+function isSessionLive(ctx: PanelContext): boolean {
+  if (!ctx.live.enabled || !ctx.sessionId) return false;
+  return ctx.live.presence?.sessions.some((s) => s.sessionId === ctx.sessionId) ?? false;
+}
+
+/**
+ * Live-presence panel body (ADR 0032 §3, ADR 0049). Self-managed: it accumulates
+ * the firehose into a rolling feed via `ctx.live.subscribe` and keeps a 1s clock
+ * so relative times stay fresh, then renders the presentational `LivePresenceView`.
+ */
+function LivePresencePanelBody({ ctx }: { ctx: PanelContext }) {
+  const { enabled, subscribe } = ctx.live;
+  const [feed, setFeed] = useState<LiveEvent[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!enabled) {
+      setFeed([]);
+      return;
+    }
+    return subscribe((event) => {
+      setFeed((prev) => [event, ...prev].slice(0, LIVE_FEED_MAX));
+    });
+  }, [enabled, subscribe]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [enabled]);
+
+  return (
+    <LivePresenceView
+      snapshot={ctx.live.presence}
+      status={ctx.live.status}
+      feed={feed}
+      now={now}
+      onSelectSession={ctx.actions.selectSession}
+    />
+  );
+}
+
+/**
+ * Live presence (ADR 0032 §3) — overview surface, full width. Self-fetching: it
+ * reads presence + the event firehose from `ctx.live`, so it declares no `load`.
+ */
+export const livePresencePanel = definePanel({
+  id: "live-presence",
+  title: LIVE_PRESENCE_TITLE,
+  subtitle: LIVE_PRESENCE_SUBTITLE,
+  help: LIVE_PRESENCE_HELP,
+  span: 2,
+  surfaces: ["overview"],
+  render: ({ ctx }) => <LivePresencePanelBody ctx={ctx} />,
+});
+
+/**
+ * Session replay (ADR 0035, ADR 0049) — session surface, full width. Babylon-
+ * backed and code-split (lazy), so importing the catalog never loads `@babylonjs/*`.
+ * Self-driving: it fetches the session's event stream and (when the session is
+ * live) tails the per-session SSE channel itself, so it declares no `load`.
+ */
+export const sessionReplayPanel = definePanel({
+  id: "session-replay",
+  title: SESSION_REPLAY_TITLE,
+  subtitle: (ctx) => sessionReplaySubtitle(isSessionLive(ctx)),
+  span: 2,
+  surfaces: ["session"],
+  clientOnly: true,
+  render: ({ ctx }) =>
+    ctx.sessionId ? (
+      <Lazy3D>
+        <SessionReplayLazy
+          baseUrl={ctx.baseUrl}
+          apiKey={ctx.apiKey}
+          sessionId={ctx.sessionId}
+          isLive={isSessionLive(ctx)}
+        />
+      </Lazy3D>
+    ) : null,
+});
+
 export const ossPanelCatalog: PanelDefinition<unknown>[] = [
+  sessionReplayPanel,
+  livePresencePanel,
   topMeshesPanel,
   meshLeaderboardPanel,
   blindSpotsPanel,

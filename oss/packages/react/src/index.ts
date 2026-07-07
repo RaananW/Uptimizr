@@ -23,7 +23,8 @@ export {
   formatSource,
 } from "./filters";
 export type { FilterState, TimeWindow } from "./filters";
-export type { LiveEvent } from "./live";
+export type { LiveEvent, LiveStatus, LiveSessionState } from "./live";
+export { useLiveSession } from "./live-hooks";
 
 // Extensible dashboard panel contract (ADR 0036, extended by ADR 0039).
 export { definePanel, PANEL_CONTRACT_VERSION } from "./panels/contract";
@@ -124,6 +125,8 @@ export {
   flowPanel,
   divergencePanel,
   loadBounceFunnelPanel,
+  livePresencePanel,
+  sessionReplayPanel,
 } from "./catalog/ossPanelCatalog";
 
 // --- Panel view components (2D / HTML / canvas — Babylon-free). --------------
@@ -154,6 +157,12 @@ export { LoadBounceFunnelView, LOAD_BANDS } from "./catalog/views/LoadBounceFunn
 export { PointerHeatmapView } from "./catalog/views/PointerHeatmap";
 export { TopMeshesView } from "./catalog/views/TopMeshes";
 export { BlindSpotReportView } from "./catalog/views/BlindSpotReport";
+export {
+  LivePresenceView,
+  LIVE_PRESENCE_TITLE,
+  LIVE_PRESENCE_SUBTITLE,
+  LIVE_PRESENCE_HELP,
+} from "./catalog/views/LivePresence";
 
 // --- 3D / canvas helper libs (Babylon-free at module-eval; ADR 0014/0037). --
 // The panels' shared 3D helpers. Babylon is only referenced via type-only
