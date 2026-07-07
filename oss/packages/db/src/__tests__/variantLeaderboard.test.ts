@@ -124,6 +124,30 @@ describe("buildVariantLeaderboard", () => {
     expect(v.red.avg_dwell_ms).toBeCloseTo(13_000 / 3, 3);
   });
 
+  it("resolves the next boundary across a long variant-switch sequence", async () => {
+    // sD: red → red (re-view) → blue → red (re-entry) → add_to_cart (converts).
+    // A single session with two same-variant re-view runs and a re-entry to a
+    // prior variant — proves the "nearest later switch-or-conversion" boundary
+    // survives the mixed-column-join rewrite.
+    await insertEvents(db, [
+      ev("sD", "red", T0),
+      ev("sD", "red", T0 + 1_000),
+      ev("sD", "blue", T0 + 3_000),
+      ev("sD", "red", T0 + 5_000),
+      ev("sD", "add_to_cart", T0 + 9_000),
+    ]);
+    const v = byVariant(await run(db, { ...RANGE, conversion: CONVERSION }));
+    // red views: red@0→blue@3000=3000 (the red@1000 re-view is not a boundary);
+    // red@1000→blue@3000=2000; red@5000→add_to_cart@9000=4000. avg = 9000/3.
+    expect(v.red).toMatchObject({ views: 3, sessions: 1, conversions: 1 });
+    expect(v.red.avg_dwell_ms).toBeCloseTo(9_000 / 3, 3);
+    // blue@3000→red@5000=2000 (a re-entry to an earlier variant is a switch).
+    expect(v.blue).toMatchObject({ views: 1, conversions: 1 });
+    expect(v.blue.avg_dwell_ms).toBeCloseTo(2_000, 3);
+    // add_to_cart is the last view → no later boundary → dwell coalesced to 0.
+    expect(v.add_to_cart.avg_dwell_ms).toBe(0);
+  });
+
   it("honors a narrowing variant predicate and the row limit", async () => {
     await seed(db);
     // A specific variant predicate restricts the rows to that one custom name.

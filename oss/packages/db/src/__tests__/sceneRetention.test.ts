@@ -104,6 +104,41 @@ describe("buildSceneRetention (canned scene funnel)", () => {
     ]);
   });
 
+  it("chains nearest-following markers across a deep multi-scene walk", async () => {
+    await insertEvents(db, [
+      // sA takes the full path lobby → gallery → arena → boss → checkout.
+      sceneChange("sA", "lobby", 0),
+      sceneChange("sA", "gallery", 1_000),
+      sceneChange("sA", "arena", 2_000),
+      sceneChange("sA", "boss", 3_000),
+      sceneChange("sA", "checkout", 4_000),
+      // sB drops out at the arena: lobby → gallery → arena.
+      sceneChange("sB", "lobby", 500),
+      sceneChange("sB", "gallery", 1_500),
+      sceneChange("sB", "arena", 2_500),
+      // A pointer_click interleaved between two markers must not become the
+      // "next" node — only the nearest following scene_change counts.
+      {
+        type: "pointer_click",
+        projectId: PID,
+        sessionId: "sA",
+        ts: T0 + 2_500,
+        sdkVersion: "0.1.0",
+        sceneId: "arena",
+        screen: [0.5, 0.5],
+      } as AnyEvent,
+    ]);
+
+    // Each marker links only to the very next marker in its own session; shared
+    // early hops (lobby→gallery, gallery→arena) accrue two distinct sessions.
+    expect(await run(db)).toEqual([
+      { from_scene: "gallery", to_scene: "arena", sessions: 2 },
+      { from_scene: "lobby", to_scene: "gallery", sessions: 2 },
+      { from_scene: "arena", to_scene: "boss", sessions: 1 },
+      { from_scene: "boss", to_scene: "checkout", sessions: 1 },
+    ]);
+  });
+
   it("produces no link for a session with a single scene_change", async () => {
     await insertEvents(db, [sceneChange("solo", "lobby", 0)]);
     expect(await run(db)).toEqual([]);
