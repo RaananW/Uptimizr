@@ -1078,8 +1078,8 @@ interface FlowData {
  * Click → part flow (Flow Sankey, 3D) — Babylon scene, full width. Aggregate
  * gaze-direction → clicked-mesh links (no timeline), with a position-aware
  * standpoint mode (§7.8). The panel owns the camera-mode dimension: it re-issues
- * the flow query scoped to walk/orbit/all from `ctx.baseUrl`/`ctx.apiKey`, so
- * `load` only seeds the initial rows + proxy backdrop. Client-only (Babylon).
+ * the flow query scoped to walk/orbit/all through `ctx.api`, so `load` only seeds
+ * the initial rows + proxy backdrop. Client-only (Babylon).
  */
 export const flowPanel = definePanel<FlowData, typeof FLOW_SANKEY_SETTINGS>({
   id: "flow-sankey-3d",
@@ -1107,8 +1107,7 @@ export const flowPanel = definePanel<FlowData, typeof FLOW_SANKEY_SETTINGS>({
         gridSize={CAMERA_BINS}
         proxyMeshes={data.proxyMeshes}
         maxLinks={ctx.settings.maxLinks}
-        baseUrl={ctx.baseUrl}
-        apiKey={ctx.apiKey}
+        api={ctx.api}
         flowQuery={data.flowQuery}
         hasFirstPerson={ctx.capabilities.hasFirstPerson}
       />
@@ -1244,8 +1243,10 @@ export const livePresencePanel = definePanel({
 /**
  * Session replay (ADR 0035, ADR 0049) — session surface, full width. Babylon-
  * backed and code-split (lazy), so importing the catalog never loads `@babylonjs/*`.
- * Self-driving: it fetches the session's event stream and (when the session is
- * live) tails the per-session SSE channel itself, so it declares no `load`.
+ * Self-driving: it backfills the session's event stream and (when the session is
+ * live) tails the per-session channel through `ctx.api`, so it declares no `load`
+ * and needs no direct collector transport — a host backing `ctx.api` gets replay
+ * for free.
  */
 export const sessionReplayPanel = definePanel({
   id: "session-replay",
@@ -1257,12 +1258,7 @@ export const sessionReplayPanel = definePanel({
   render: ({ ctx }) =>
     ctx.sessionId ? (
       <Lazy3D>
-        <SessionReplayLazy
-          baseUrl={ctx.baseUrl}
-          apiKey={ctx.apiKey}
-          sessionId={ctx.sessionId}
-          isLive={isSessionLive(ctx)}
-        />
+        <SessionReplayLazy api={ctx.api} sessionId={ctx.sessionId} isLive={isSessionLive(ctx)} />
       </Lazy3D>
     ) : null,
 });

@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useEffect } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { CollectorApi, type FlowLink, type QueryParams, type SceneProxyMesh } from "../../api";
+import type { CollectorApi, FlowLink, QueryParams, SceneProxyMesh } from "../../api";
 import {
   buildTwoStageGraph,
   voxelKey,
@@ -65,8 +65,7 @@ export function FlowSankey3DView({
   gridSize,
   proxyMeshes = [],
   maxLinks = 80,
-  baseUrl,
-  apiKey,
+  api,
   flowQuery,
   hasFirstPerson = false,
 }: {
@@ -74,9 +73,8 @@ export function FlowSankey3DView({
   gridSize: number;
   proxyMeshes?: SceneProxyMesh[];
   maxLinks?: number;
-  /** Collector base URL; when set with `flowQuery` the panel refetches by camera mode (§7.8 slice 4). */
-  baseUrl?: string;
-  apiKey?: string;
+  /** Collector client; when set with `flowQuery` the panel refetches by camera mode (§7.8 slice 4). */
+  api?: CollectorApi;
   /** Resolved base query (range/scene/source) the panel re-issues per camera mode. */
   flowQuery?: QueryParams | null;
   /** Whether the active scene(s) report first-person samples — drives walk defaulting + the hint. */
@@ -98,7 +96,7 @@ export function FlowSankey3DView({
   // renders once it can self-fetch; otherwise it falls back to the `links` prop.
   const [cameraMode, setCameraMode] = useState<CameraModeChoice>("all");
   const [rows, setRows] = useState<FlowLink[]>(links);
-  const selfFetch = Boolean(baseUrl && flowQuery);
+  const selfFetch = Boolean(api && flowQuery);
   const flowQueryKey = useMemo(() => (flowQuery ? JSON.stringify(flowQuery) : ""), [flowQuery]);
   const didDefaultMode = useRef(false);
 
@@ -126,9 +124,8 @@ export function FlowSankey3DView({
 
   // Re-issue the flow query per camera mode when self-fetch is available.
   useEffect(() => {
-    if (!baseUrl || !flowQuery) return;
+    if (!api || !flowQuery) return;
     let cancelled = false;
-    const api = new CollectorApi(baseUrl, apiKey ?? "");
     const mode = cameraMode === "all" ? undefined : cameraMode;
     api
       .flowHeatmap({
@@ -149,7 +146,7 @@ export function FlowSankey3DView({
     };
     // flowQueryKey captures flowQuery contents; the listed primitives keep the
     // fetch stable across renders without re-running on every new object identity.
-  }, [baseUrl, apiKey, flowQueryKey, cameraMode, gridSize]);
+  }, [api, flowQueryKey, cameraMode, gridSize]);
 
   // §7.8 slice 2: standpoints are the camera-position voxels the links were made
   // from. Roll the position-aware rows up per origin voxel (count + count-weighted

@@ -934,8 +934,7 @@ export default function Page() {
               }
             >
               <SessionReplayView
-                baseUrl={baseUrl}
-                apiKey={apiKey}
+                api={panelApi}
                 sessionId={detail.id}
                 hiddenTypes={hiddenTypes}
                 isLive={detailIsLive}

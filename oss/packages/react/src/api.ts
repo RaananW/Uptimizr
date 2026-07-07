@@ -9,6 +9,9 @@
 // builders. They are intentionally additive: new fields can appear without
 // breaking existing readers.
 
+import type { AnyEvent } from "@uptimizr/schema";
+import type { LiveEvent, LiveSessionState, LiveStatus } from "./live";
+
 export interface SessionSummary {
   session_id: string;
   visitor_id: string;
@@ -697,6 +700,54 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+const RECONNECT_BASE_MS = 1_000;
+const RECONNECT_MAX_MS = 15_000;
+
+/**
+ * Parse a chunked SSE response body, invoking `onEvent` for each `event: event`
+ * frame's `data` payload. Resolves when the stream ends; rejects on read error.
+ * Reads the stream over `fetch` (not `EventSource`) so the caller can see the
+ * HTTP status — a `403` means raw-session retention is off (ADR 0032 §3).
+ */
+async function pumpSseBody(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  onEvent: (data: string) => void,
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  signal.addEventListener("abort", () => void reader.cancel().catch(() => {}));
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    buffer += decoder.decode(value, { stream: true });
+    let sep = buffer.indexOf("\n\n");
+    while (sep >= 0) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      let event = "message";
+      const dataLines: string[] = [];
+      for (const line of frame.split("\n")) {
+        if (line.startsWith(":")) continue; // comment / heartbeat
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataLines.push(line.slice(5).replace(/^ /, ""));
+      }
+      if (event === "event" && dataLines.length > 0) onEvent(dataLines.join("\n"));
+      sep = buffer.indexOf("\n\n");
+    }
+  }
+}
+
+/** Optional lifecycle hooks for {@link CollectorApi.liveSession}. */
+export interface LiveSessionOptions {
+  /** Fired before each (re)connection so the consumer can clear connect-time backfill state. */
+  onReset?: () => void;
+  /** Fired whenever the connection lifecycle changes (status / gated / applied count). */
+  onState?: (state: LiveSessionState) => void;
 }
 
 /**
@@ -1466,6 +1517,125 @@ export class CollectorApi {
     );
     url.searchParams.set("token", token);
     return url.toString();
+  }
+
+  /**
+   * The session's ordered raw event stream (ADR 0015) — the replay backfill.
+   * Fetches the collector's replay endpoint (`GET api/v1/sessions/:id/events`)
+   * with the project key, validates the payload, and returns events sorted by
+   * `ts`, ready for a `ReplayPlayer`.
+   *
+   * This is the data seam the Session Replay panel backfills through, so the
+   * panel never touches the transport itself: an OSS client fetches with the
+   * key (below); a host client can implement it however its own auth works
+   * (e.g. cookie-authed reads with `baseUrl`/`apiKey` left empty).
+   *
+   * The replay client is imported lazily so the core entry stays free of the
+   * schema/zod validation graph until a consumer actually replays a session.
+   */
+  async sessionEvents(sessionId: string): Promise<AnyEvent[]> {
+    const { fetchSessionEvents } = await import("@uptimizr/replay");
+    return fetchSessionEvents({ endpoint: this.baseUrl, apiKey: this.apiKey, sessionId });
+  }
+
+  /**
+   * Follow a single session's live event tail (ADR 0032 §3, §4) as a
+   * subscription, mirroring `PanelLive.subscribe`: each event is delivered to
+   * `handler` and the returned function tears the connection down.
+   *
+   * This is the transport seam the Session Replay panel tails through, so the
+   * panel never constructs an `EventSource`/URL+token itself — each CollectorApi
+   * implementation owns its own connection details (a host can add cookies /
+   * `withCredentials`, which a bare URL can't express). `options.onReset` fires
+   * before each (re)connection so the consumer can clear connect-time backfill;
+   * `options.onState` surfaces the lifecycle, including the retention `gated`
+   * 403 that stops the reconnect loop.
+   */
+  liveSession(
+    sessionId: string,
+    handler: (event: LiveEvent) => void,
+    options?: LiveSessionOptions,
+  ): () => void {
+    if (!this.apiKey || !this.baseUrl || !sessionId) {
+      options?.onState?.({ status: "idle", gated: false, count: 0 });
+      return () => {};
+    }
+
+    let cancelled = false;
+    let attempt = 0;
+    let abort: AbortController | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let count = 0;
+    let status: LiveStatus = "idle";
+    let gated = false;
+    const emit = (): void => options?.onState?.({ status, gated, count });
+    const setStatus = (next: LiveStatus): void => {
+      status = next;
+      emit();
+    };
+
+    const scheduleReconnect = (): void => {
+      if (cancelled) return;
+      setStatus("reconnecting");
+      const delay = Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS);
+      attempt += 1;
+      timer = setTimeout(() => void connect(), delay);
+    };
+
+    const connect = async (): Promise<void> => {
+      if (cancelled) return;
+      setStatus(attempt === 0 ? "connecting" : "reconnecting");
+      options?.onReset?.();
+      count = 0;
+      emit();
+      let token: string;
+      try {
+        ({ token } = await this.liveToken());
+      } catch {
+        scheduleReconnect();
+        return;
+      }
+      if (cancelled) return;
+      abort = new AbortController();
+      try {
+        const res = await fetch(this.liveSessionUrl(token, sessionId), {
+          headers: { accept: "text/event-stream" },
+          cache: "no-store",
+          signal: abort.signal,
+        });
+        if (res.status === 403) {
+          gated = true;
+          setStatus("idle");
+          return; // Retention disabled — do not retry.
+        }
+        if (!res.ok || !res.body) {
+          scheduleReconnect();
+          return;
+        }
+        attempt = 0;
+        setStatus("open");
+        await pumpSseBody(res.body, abort.signal, (data) => {
+          try {
+            handler(JSON.parse(data) as LiveEvent);
+            count += 1;
+            emit();
+          } catch {
+            /* ignore malformed frame */
+          }
+        });
+        if (!cancelled) scheduleReconnect(); // Stream ended; reopen.
+      } catch {
+        if (!cancelled) scheduleReconnect();
+      }
+    };
+
+    void connect();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      abort?.abort();
+    };
   }
 }
 

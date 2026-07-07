@@ -1408,6 +1408,20 @@ range-derived `capabilities`, host `actions` (`selectSession`, `setTimeRange`,
 `setFilters`), the realtime `live` layer (`presence`, `enabled`, `status`, `sceneId`,
 `subscribe(handler)`), and the resolved per-panel `settings` (see below).
 
+**Portable panels consume the data seam, not the transport.** All data must flow through
+`ctx.api` / `ctx.live` so a host that backs `ctx.api` (e.g. a hosted product that reads
+through its own cookie-authed API and leaves `baseUrl` / `apiKey` empty) can reuse every
+built-in panel unchanged. `baseUrl` / `apiKey` are a raw escape hatch for bespoke embeds
+only — the OSS catalog never reads them (a static test enforces this). Beyond the query
+methods, `CollectorApi` exposes two seams for session replay:
+
+- `sessionEvents(sessionId)` → the session's ordered raw events (the replay backfill; hits
+  `GET /api/v1/sessions/:id/events`).
+- `liveSession(sessionId, handler, options?)` → a subscription-style per-session live tail
+  mirroring `ctx.live.subscribe`; returns an unsubscribe function. Each `CollectorApi`
+  implementation owns its own connection details (auth, `withCredentials`), so a host tails
+  however its transport works.
+
 ### Per-panel settings & visibility (ADR 0039)
 
 A panel can declare typed `settings` that a viewer tunes at runtime from the panel's

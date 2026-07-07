@@ -24,7 +24,7 @@ export {
 } from "./filters";
 export type { FilterState, TimeWindow } from "./filters";
 export type { LiveEvent, LiveStatus, LiveSessionState } from "./live";
-export { useLiveSession } from "./live-hooks";
+export { useLiveSession, useSessionTail } from "./live-hooks";
 
 // Extensible dashboard panel contract (ADR 0036, extended by ADR 0039).
 export { definePanel, PANEL_CONTRACT_VERSION } from "./panels/contract";

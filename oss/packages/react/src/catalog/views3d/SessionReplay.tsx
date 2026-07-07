@@ -5,10 +5,9 @@ import type { ChangeEvent } from "react";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import type { Scene } from "@babylonjs/core/scene.js";
 import type { SceneBackdrop } from "@uptimizr/replay/babylon";
-import { CollectorApi } from "../../api";
-import type { SceneProxyMesh } from "../../api";
+import type { CollectorApi, SceneProxyMesh } from "../../api";
 import type { LiveEvent } from "../../live";
-import { useLiveSession } from "../../live-hooks";
+import { useSessionTail } from "../../live-hooks";
 import { mergeSceneProxies } from "../lib/sceneProxies";
 import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "../lib/orbitZoom";
 import { ZoomButtons } from "../views/ZoomButtons";
@@ -257,14 +256,12 @@ function EventTimeline({
  * without importing the view.
  */
 export function SessionReplayView({
-  baseUrl,
-  apiKey,
+  api,
   sessionId,
   hiddenTypes,
   isLive = false,
 }: {
-  baseUrl: string;
-  apiKey: string;
+  api: CollectorApi;
   sessionId: string;
   /** Event types to hide from the 3D overlay + timeline (driven by the inspector). */
   hiddenTypes?: ReadonlySet<string>;
@@ -406,7 +403,7 @@ export function SessionReplayView({
           { Vector3, Color3, Color4, Matrix },
           { MeshBuilder },
           { StandardMaterial },
-          { fetchSessionEvents, ReplayPlayer },
+          { ReplayPlayer },
         ] = await Promise.all([
           import("@babylonjs/core/Engines/engine.js"),
           import("@babylonjs/core/scene.js"),
@@ -423,7 +420,7 @@ export function SessionReplayView({
           import("@babylonjs/core/Culling/ray.js"),
         ]);
 
-        const events = await fetchSessionEvents({ endpoint: baseUrl, apiKey, sessionId });
+        const events = await api.sessionEvents(sessionId);
         if (disposed) return;
         if (events.length === 0) {
           setPhase("empty");
@@ -442,8 +439,7 @@ export function SessionReplayView({
           if (e.ts < sinceTs) sinceTs = e.ts;
           if (e.ts > untilTs) untilTs = e.ts;
         }
-        const proxyApi = new CollectorApi(baseUrl, apiKey);
-        const proxyMeshes = await mergeSceneProxies(proxyApi, {
+        const proxyMeshes = await mergeSceneProxies(api, {
           since: sinceTs - 1,
           until: untilTs + 1,
         });
@@ -641,9 +637,7 @@ export function SessionReplayView({
         // Only new boxes are added (the camera keeps following the avatar; we don't
         // re-frame), so the backdrop fills in deterministically as the walk unfolds.
         const refreshLiveBackdrop = async (): Promise<void> => {
-          const merged = await mergeSceneProxies(proxyApi, { since: sinceTs - 1 }).catch(
-            () => null,
-          );
+          const merged = await mergeSceneProxies(api, { since: sinceTs - 1 }).catch(() => null);
           if (disposed || !merged) return;
           let added = false;
           for (const m of merged) if (addProxyMesh(m)) added = true;
@@ -1447,7 +1441,7 @@ export function SessionReplayView({
       disposed = true;
       cleanup?.();
     };
-  }, [baseUrl, apiKey, sessionId, isLive]);
+  }, [api, sessionId, isLive]);
 
   const togglePlay = useCallback(() => {
     if (isLive) {
@@ -1505,9 +1499,8 @@ export function SessionReplayView({
 
   // Tail the per-session live stream once the scene is built, feeding each event
   // into the visualization sink. `gated` surfaces the retention 403 (ADR 0032).
-  const { gated: liveGated } = useLiveSession(
-    baseUrl,
-    apiKey,
+  const { gated: liveGated } = useSessionTail(
+    api,
     sessionId,
     isLive && phase === "ready",
     (event) => liveIngestRef.current?.(event),
