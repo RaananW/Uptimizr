@@ -1,5 +1,18 @@
 # @uptimizr/react
 
+## 0.9.0
+
+### Minor Changes
+
+- 02e5ac8: Session Replay and Live Presence are now portable panels in `ossPanelCatalog`
+  (ADR 0049). Adds `sessionReplayPanel` (session surface, Babylon-backed and
+  code-split; view also exported as `SessionReplayView` from
+  `@uptimizr/react/panels-3d`) and `livePresencePanel` (overview surface,
+  Babylon-free) with the `LivePresenceView` body. The per-session live-follow hook
+  `useLiveSession` and the `LiveStatus` / `LiveSessionState` types move into the
+  package, and `PanelLive` gains a `status` field so panels can render connection
+  badges from context.
+
 ## 0.8.1
 
 ### Patch Changes
