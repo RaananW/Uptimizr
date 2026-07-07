@@ -37,7 +37,12 @@ import {
 } from "@/lib/filters";
 import { parseTimestamp } from "@/lib/format";
 import { mergeSceneProxies } from "@uptimizr/react";
-import { LivePresenceView, LIVE_PRESENCE_TITLE, LIVE_PRESENCE_SUBTITLE, LIVE_PRESENCE_HELP } from "@uptimizr/react";
+import {
+  LivePresenceView,
+  LIVE_PRESENCE_TITLE,
+  LIVE_PRESENCE_SUBTITLE,
+  LIVE_PRESENCE_HELP,
+} from "@uptimizr/react";
 import { useLivePresence, useLiveStream, type LiveEvent } from "@/lib/live";
 import type { PanelContext, PanelDefinition, RemotePanelError } from "@uptimizr/react";
 import { mergePanels } from "@uptimizr/react";
