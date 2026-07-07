@@ -51,6 +51,7 @@ than editing history.
 | [0046](./0046-rendering-technology-breakdown.md)                   | Rendering-technology breakdown from session_start.graphics                     | Accepted   |
 | [0047](./0047-react-owns-oss-panel-catalog.md)                     | `@uptimizr/react` owns the portable OSS panel catalog                          | Accepted   |
 | [0048](./0048-ar-vr-spatial-analytics.md)                          | AR/VR spatial analytics — placement, boundary proximity, tracking quality      | Accepted   |
+| [0049](./0049-session-replay-live-presence-portable-panels.md)     | Session Replay and Live Presence are portable catalog panels                   | Accepted   |
 
 ## Template
 

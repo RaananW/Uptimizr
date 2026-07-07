@@ -10,3 +10,18 @@ export interface LiveEvent {
   sceneId?: string;
   [key: string]: unknown;
 }
+
+/** Connection lifecycle state surfaced to the UI by the live SSE hooks. */
+export type LiveStatus = "idle" | "connecting" | "open" | "reconnecting";
+
+/**
+ * Status of a per-session live-follow connection (ADR 0032 §3, ADR 0035).
+ * `gated` means raw-session retention is off, so the collector refuses the tail.
+ */
+export interface LiveSessionState {
+  status: LiveStatus;
+  /** True when the collector rejected the tail because raw-session retention is off. */
+  gated: boolean;
+  /** Total events applied since the connection (or last reset) opened. */
+  count: number;
+}

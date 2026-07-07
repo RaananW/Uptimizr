@@ -44,18 +44,18 @@ surface, or the inspected session change, cancels superseded requests via an `Ab
 
 Everything you need arrives through the `PanelContext`:
 
-| Field                | What it gives you                                                                     |
-| -------------------- | ------------------------------------------------------------------------------------- |
-| `api`                | A shared `CollectorApi` bound to the active collector.                                |
-| `baseUrl` / `apiKey` | Raw connection details for self-fetch or SSE URLs.                                    |
-| `params`             | Query params resolved from the global filter bar (since/until/scene/source…).         |
-| `filters`            | Raw filter state, for panels that need `cameraMode` etc. directly.                    |
-| `surface`            | `"overview"` or `"session"`.                                                          |
-| `sessionId`          | The inspected session id on the session surface.                                      |
-| `capabilities`       | Range-derived flags such as `hasFirstPerson`.                                         |
-| `actions`            | Host actions: `selectSession`, `setTimeRange`, `setFilters`.                          |
-| `live`               | Live layer: `presence`, `enabled`, and `subscribe(handler)` for the SSE firehose.     |
-| `settings`           | Resolved values of the panel's declared [`settings`](#per-panel-settings) (ADR 0039). |
+| Field                | What it gives you                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------ |
+| `api`                | A shared `CollectorApi` bound to the active collector.                                                 |
+| `baseUrl` / `apiKey` | Raw connection details for self-fetch or SSE URLs.                                                     |
+| `params`             | Query params resolved from the global filter bar (since/until/scene/source…).                          |
+| `filters`            | Raw filter state, for panels that need `cameraMode` etc. directly.                                     |
+| `surface`            | `"overview"` or `"session"`.                                                                           |
+| `sessionId`          | The inspected session id on the session surface.                                                       |
+| `capabilities`       | Range-derived flags such as `hasFirstPerson`.                                                          |
+| `actions`            | Host actions: `selectSession`, `setTimeRange`, `setFilters`.                                           |
+| `live`               | Live layer: `presence`, `enabled`, `status`, `sceneId`, and `subscribe(handler)` for the SSE firehose. |
+| `settings`           | Resolved values of the panel's declared [`settings`](#per-panel-settings) (ADR 0039).                  |
 
 ### Driving the host from a panel
 
@@ -202,6 +202,14 @@ alone — each panel is additionally exported individually (`topMeshesPanel`, `w
 the catalog, so importing it never loads Babylon until a 3D panel renders; `@babylonjs/core` is an
 optional peer. See the [`@uptimizr/react` README](https://www.npmjs.com/package/@uptimizr/react)
 for the catalog, the panel view components, and the `@uptimizr/react/panels-3d` subpath.
+
+The catalog also includes the two live surfaces (ADR 0049): **`livePresencePanel`** (the
+overview "Live now" roster + event feed, Babylon-free) and **`sessionReplayPanel`** (the
+session-surface birdview replay, Babylon-backed and code-split like the other 3D panels — its
+`SessionReplayView` is also exported from `@uptimizr/react/panels-3d`, and it follows a session in
+real time when `ctx.live` shows it as live). The per-session live-follow hook `useLiveSession`
+(and the `LiveStatus` / `LiveSessionState` types) are exported from the package root for panels
+that drive their own tail.
 
 The host (`PanelHost`) filters the array by the active surface and each panel's `enabled` gate,
 then renders the bodies into the grid. There is nothing else to wire up — no manual placement in

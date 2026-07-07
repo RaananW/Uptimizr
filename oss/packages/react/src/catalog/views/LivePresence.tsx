@@ -1,9 +1,24 @@
-"use client";
+// Live presence panel view (ADR 0032 §3, ADR 0049) — Babylon-free, imported
+// eagerly by the catalog. Renders the panel BODY only (the "N live now" badge,
+// the non-identifying active-session roster, and a rolling event feed); the host
+// supplies the surrounding chrome. Purely presentational: the caller owns the
+// SSE connections and feeds `snapshot` / `status` / `feed` / `now` in.
 
-import { Panel } from "@/components/Panel";
-import { formatNumber } from "@/lib/format";
-import type { PresenceSnapshot, PresenceRosterItem } from "@/lib/api";
-import type { LiveEvent, LiveStatus } from "@/lib/live";
+import type { ReactNode } from "react";
+import { formatNumber } from "../../format";
+import type { PresenceRosterItem, PresenceSnapshot } from "../../api";
+import type { LiveEvent, LiveStatus } from "../../live";
+
+export const LIVE_PRESENCE_TITLE = "Live now";
+export const LIVE_PRESENCE_SUBTITLE =
+  "Active sessions and a real-time event feed, updating in place.";
+export const LIVE_PRESENCE_HELP: ReactNode = (
+  <>
+    Sessions seen within the liveness window, streamed over SSE from the collector. The roster is
+    intentionally non-identifying — no geo, user-agent, or visitor id. Click a session to follow it
+    live.
+  </>
+);
 
 /** A short, human-scannable id (first 8 chars) for a session/event row. */
 function shortId(id: string): string {
@@ -55,11 +70,11 @@ function LiveBadge({ status, sessions }: { status: LiveStatus; sessions: number 
 }
 
 /**
- * Real-time presence panel (ADR 0032 §3): the "N live now" badge, the
+ * Real-time presence panel body (ADR 0032 §3): the "N live now" badge, the
  * non-identifying active-session roster, and a rolling feed of arriving events.
- * Purely presentational — the page owns the SSE connections and feeds props in.
+ * Purely presentational — the caller owns the SSE connections and feeds props in.
  */
-export function LivePresence({
+export function LivePresenceView({
   snapshot,
   status,
   feed,
@@ -79,17 +94,7 @@ export function LivePresence({
   const activeVisitors = snapshot?.activeVisitors ?? 0;
 
   return (
-    <Panel
-      title="Live now"
-      subtitle="Active sessions and a real-time event feed, updating in place."
-      help={
-        <>
-          Sessions seen within the liveness window, streamed over SSE from the collector. The roster
-          is intentionally non-identifying — no geo, user-agent, or visitor id. Click a session to
-          follow it live.
-        </>
-      }
-    >
+    <>
       <div className="mb-3 flex flex-wrap items-center gap-4">
         <LiveBadge status={status} sessions={activeSessions} />
         <span className="text-xs text-fg-muted">
@@ -172,6 +177,6 @@ export function LivePresence({
           )}
         </div>
       </div>
-    </Panel>
+    </>
   );
 }
