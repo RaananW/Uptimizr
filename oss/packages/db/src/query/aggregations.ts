@@ -2861,14 +2861,17 @@ export function buildFunnel(projectId: string, opts: FunnelOptions, d: Dialect):
  * consecutive transition, so it reads as level-to-level retention. Sessions with
  * a single `scene_change` contribute no link (there is no "from").
  *
- * Implementation — `sc` is the per-session ordered `scene_change` stream; `nxt`
- * finds, for each marker, the timestamp of the very next marker in the same
- * session via a self-join + `MIN` (no window/ASOF functions, so it renders
- * identically on DuckDB and ClickHouse — the same parity discipline as
- * {@link buildFunnel}); joining that back to `sc` resolves the `to_scene`. The
- * final `GROUP BY` counts distinct sessions per `(from_scene, to_scene)` pair.
- * A same-timestamp tie between two markers can fan out to multiple `to` rows;
- * this is a benign edge case for a preset over human-paced scene switches.
+ * Implementation — `sc` is the per-session ordered `scene_change` stream, and an
+ * `ASOF INNER JOIN` matches each marker `a` to the single nearest later marker
+ * `b` in the same session (`a.ts < b.ts`): exactly the "next event" shape, so the
+ * link is `(a.scene_id → b.scene_id)`. ASOF renders through the {@link Dialect}
+ * contract and needs only equality plus one inequality, so it runs on stock
+ * ClickHouse with **no** `allow_experimental_join_condition` flag (the plain
+ * self-join it replaces mixed left/right columns in an inequality `ON`, which
+ * ClickHouse rejects without that experimental setting). Both engines resolve the
+ * same nearest match, so the golden holds by transitivity. The final `GROUP BY`
+ * counts distinct sessions per `(from_scene, to_scene)` pair; the last marker of
+ * each session has no later match and is dropped by the inner join (no "to").
  */
 export function buildSceneRetention(
   projectId: string,
@@ -2886,20 +2889,12 @@ export function buildSceneRetention(
         SELECT session_id, ts, scene_id
         FROM events
         WHERE project_id = ${pid} AND event_type = 'scene_change'${range}
-      ),
-      nxt AS (
-        SELECT a.session_id AS session_id, a.ts AS from_ts, a.scene_id AS from_scene,
-               min(b.ts) AS to_ts
-        FROM sc a JOIN sc b ON b.session_id = a.session_id AND b.ts > a.ts
-        GROUP BY a.session_id, a.ts, a.scene_id
-      ),
-      links AS (
-        SELECT nxt.session_id AS session_id, nxt.from_scene AS from_scene,
-               sc.scene_id AS to_scene
-        FROM nxt JOIN sc ON sc.session_id = nxt.session_id AND sc.ts = nxt.to_ts
       )
-      SELECT from_scene, to_scene, count(DISTINCT session_id) AS sessions
-      FROM links
+      SELECT a.scene_id AS from_scene, b.scene_id AS to_scene,
+             count(DISTINCT a.session_id) AS sessions
+      FROM sc AS a
+      ${d.asofInnerJoin} sc AS b
+        ON a.session_id = b.session_id AND a.ts < b.ts
       GROUP BY from_scene, to_scene
       ORDER BY sessions DESC, from_scene ASC, to_scene ASC
       LIMIT ${limit}
@@ -3027,10 +3022,14 @@ function leaderboardPredicate(bag: ParamBag, step: FunnelStepInput, prefix: stri
  *   with no later boundary are excluded from the average.
  *
  * Implementation — a CTE chain using only `JOIN` / `min` / `avg` / `count` /
- * `UNION ALL` (no window or ASOF functions), so it renders identically on DuckDB
- * (OSS) and ClickHouse (scale tier) (ADR 0020) and is injection-safe. Session
- * scope (range / scene / camera-mode) applies to both the variant and conversion
- * event sets. Ranked by views, capped to `limit`.
+ * `UNION ALL` (no window or ASOF functions). Every join keys on `session_id`
+ * alone and keeps its ordered / relative guards (`c.ts >= fv.t0`, the boundary
+ * rule) in `WHERE`, so no `ON` mixes left/right columns in an inequality — it
+ * renders identically on DuckDB (OSS) and ClickHouse (scale tier) and runs on
+ * stock ClickHouse without the `allow_experimental_join_condition` flag
+ * (ADR 0020). Injection-safe. Session scope (range / scene / camera-mode) applies
+ * to both the variant and conversion event sets. Ranked by views, capped to
+ * `limit`.
  *
  * The predicates come from the caller (request input / CLI / hosted) — OSS has no
  * authoring surface (ADR 0038).
@@ -3086,11 +3085,15 @@ export function buildVariantLeaderboard(
       )`);
 
   // Distinct sessions that converted at/after first seeing the variant (ordered).
+  // The join keys on `session_id` only and moves the ordered `c.ts >= fv.t0`
+  // guard to WHERE, so the emitted `ON` carries no mixed left/right inequality —
+  // it runs on stock ClickHouse without `allow_experimental_join_condition`.
   if (hasConversion) {
     ctes.push(`converted AS (
         SELECT fv.variant AS variant, count(DISTINCT fv.session_id) AS conversions
         FROM first_view fv
-        JOIN conversions c ON c.session_id = fv.session_id AND c.ts >= fv.t0
+        JOIN conversions c ON c.session_id = fv.session_id
+        WHERE c.ts >= fv.t0
         GROUP BY fv.variant
       )`);
   }
@@ -3108,7 +3111,12 @@ export function buildVariantLeaderboard(
         ${boundaryParts.join("\n        UNION ALL ")}
       )`);
 
-  // Per view: gap to its next boundary. The JOIN drops views with no boundary,
+  // Per view: gap to its next boundary. The boundary rule mixes the view's own
+  // `variant` with the candidate row, so it stays a plain equi-join on
+  // `session_id` with the ordered / relative predicates in WHERE (an ASOF join
+  // takes only one inequality and can't express the "different variant" guard).
+  // Keeping the inequality out of `ON` lets stock ClickHouse plan it with no
+  // `allow_experimental_join_condition`. The WHERE drops views with no boundary,
   // so they are excluded from the average (as specified).
   ctes.push(`view_dwell AS (
         SELECT v.variant AS variant,
@@ -3116,8 +3124,8 @@ export function buildVariantLeaderboard(
         FROM variant_views v
         JOIN boundaries b
           ON b.session_id = v.session_id
-         AND b.ts > v.ts
-         AND NOT (b.is_conv = 0 AND b.b_variant = v.variant)
+        WHERE b.ts > v.ts
+          AND NOT (b.is_conv = 0 AND b.b_variant = v.variant)
         GROUP BY v.session_id, v.variant, v.ts
       )`);
 
