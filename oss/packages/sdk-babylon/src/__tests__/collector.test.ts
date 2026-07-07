@@ -1932,8 +1932,7 @@ describe("babylonCollector — resource samples (#44)", () => {
 
     vi.advanceTimersByTime(1000);
     const sample = events.find((e) => e.type === "resource_sample") as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     expect(sample).toBeDefined();
     // performance.memory is Chromium-only and absent under the test runtime.
     expect(sample).not.toHaveProperty("jsHeapBytes");

@@ -40,8 +40,10 @@ overrides:
   # GHSA: dev-server arbitrary file read on Windows (esbuild < 0.28.1), via astro.
   esbuild: ">=0.28.1"
   # GHSA-h67p-54hq-rp68: quadratic-complexity DoS via merge keys (js-yaml <= 4.1.1),
-  # via @changesets/cli (release tooling, dev-only).
-  js-yaml: ">=4.2.0"
+  # via @changesets/cli (release tooling, dev-only). Constrained to the 4.x line:
+  # js-yaml 5.x is ESM-only and drops the CJS default export, which breaks Astro's
+  # loader (@uptimizr/docs, @uptimizr/web) and read-yaml-file's `yaml.load` require.
+  js-yaml: ">=4.2.0 <5"
   # @changesets/cli pulls read-yaml-file@1.1.0, which calls the `yaml.safeLoad` API
   # that js-yaml 4 removed — so the js-yaml override above breaks `changeset version`.
   # read-yaml-file@2.1.0 is the fix: still CJS (changesets `require()`s it) but built

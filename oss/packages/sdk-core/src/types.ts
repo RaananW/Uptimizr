@@ -22,14 +22,7 @@ import type { Snapshot } from "./aggregation/snapshot.js";
  * provide the event `type` and its payload — never these.
  */
 export type EnvelopeKey =
-  | "projectId"
-  | "visitorId"
-  | "sessionId"
-  | "ts"
-  | "sdkVersion"
-  | "url"
-  | "sceneId"
-  | "pageMeta";
+  "projectId" | "visitorId" | "sessionId" | "ts" | "sdkVersion" | "url" | "sceneId" | "pageMeta";
 
 /**
  * The shape a caller passes to `emit`: any event minus the auto-filled envelope.

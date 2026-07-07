@@ -157,7 +157,7 @@ interface WorldTransformEntity {
   camera?: unknown;
   name?: string;
   /** `GraphNode.children` — direct descendants, walked for Tier-1 subtree capture (ADR 0033). */
-  children?: WorldTransformEntity[];
+  readonly children?: readonly WorldTransformEntity[];
 }
 
 /** Resolved Tier-1 subtree-capture configuration for one actor (ADR 0033). */
@@ -699,9 +699,7 @@ export type PlayCanvasActorNode = Entity;
  * each sample (robust to load order and disposal).
  */
 export type PlayCanvasActor =
-  | (() => PlayCanvasActorNode | null | undefined)
-  | string
-  | PlayCanvasActorNode;
+  (() => PlayCanvasActorNode | null | undefined) | string | PlayCanvasActorNode;
 
 /**
  * Create the PlayCanvas connector as an sdk-core {@link Collector}. Register it
