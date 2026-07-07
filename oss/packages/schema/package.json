@@ -60,6 +60,6 @@
     "zod": "^4.1.5"
   },
   "devDependencies": {
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   }
 }
