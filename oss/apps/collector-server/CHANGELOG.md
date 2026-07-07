@@ -1,5 +1,13 @@
 # @uptimizr/collector-server
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [a7aad24]
+  - @uptimizr/db@0.7.1
+  - @uptimizr/db-clickhouse@0.3.3
+
 ## 0.6.0
 
 ### Minor Changes
