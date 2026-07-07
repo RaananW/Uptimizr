@@ -157,7 +157,7 @@ interface WorldTransformEntity {
   camera?: unknown;
   name?: string;
   /** `GraphNode.children` — direct descendants, walked for Tier-1 subtree capture (ADR 0033). */
-  children?: WorldTransformEntity[];
+  readonly children?: readonly WorldTransformEntity[];
 }
 
 /** Resolved Tier-1 subtree-capture configuration for one actor (ADR 0033). */
