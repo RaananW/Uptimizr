@@ -232,9 +232,7 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
     // Works for both `StandardMaterial` (demo boxes) and `PBRMaterial` (glTF models).
     function flashMesh(name: string): void {
       const mat = scene.getMeshByName(name)?.material as
-        | { emissiveColor?: Color3 }
-        | null
-        | undefined;
+        { emissiveColor?: Color3 } | null | undefined;
       if (!mat || !(mat.emissiveColor instanceof Color3)) return;
       const previous = mat.emissiveColor.clone();
       mat.emissiveColor = new Color3(0.5, 0.5, 0.55);

@@ -435,15 +435,7 @@ export interface XrLocomotionStat {
 
 /** Input-source vocabulary for the pointer/world heatmap filter (ADR 0011). */
 export type InputSource =
-  | "mouse"
-  | "touch"
-  | "stylus"
-  | "pen"
-  | "xr-controller"
-  | "hand"
-  | "gaze"
-  | "transient"
-  | "other";
+  "mouse" | "touch" | "stylus" | "pen" | "xr-controller" | "hand" | "gaze" | "transient" | "other";
 
 export interface PerfSummary {
   samples: number;
@@ -1153,16 +1145,14 @@ export class CollectorApi {
   /** View-gated click rays: camera-origin → hit, per voxel and clicked mesh. */
   clickRays(params?: QueryParams): Promise<ClickRay[]> {
     return this.get<Record<string, unknown>[]>("api/v1/heatmaps/click-rays", params).then((rows) =>
-      rows.map(
-        (r): ClickRay => ({
-          camVoxel: [Number(r.cam_vx), Number(r.cam_vy), Number(r.cam_vz)],
-          origin: [Number(r.origin_x), Number(r.origin_y), Number(r.origin_z)],
-          hitVoxel: [Number(r.hit_vx), Number(r.hit_vy), Number(r.hit_vz)],
-          hit: [Number(r.hit_x), Number(r.hit_y), Number(r.hit_z)],
-          mesh: String(r.mesh ?? ""),
-          count: Number(r.count),
-        }),
-      ),
+      rows.map((r): ClickRay => ({
+        camVoxel: [Number(r.cam_vx), Number(r.cam_vy), Number(r.cam_vz)],
+        origin: [Number(r.origin_x), Number(r.origin_y), Number(r.origin_z)],
+        hitVoxel: [Number(r.hit_vx), Number(r.hit_vy), Number(r.hit_vz)],
+        hit: [Number(r.hit_x), Number(r.hit_y), Number(r.hit_z)],
+        mesh: String(r.mesh ?? ""),
+        count: Number(r.count),
+      })),
     );
   }
 

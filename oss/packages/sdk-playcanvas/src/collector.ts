@@ -699,9 +699,7 @@ export type PlayCanvasActorNode = Entity;
  * each sample (robust to load order and disposal).
  */
 export type PlayCanvasActor =
-  | (() => PlayCanvasActorNode | null | undefined)
-  | string
-  | PlayCanvasActorNode;
+  (() => PlayCanvasActorNode | null | undefined) | string | PlayCanvasActorNode;
 
 /**
  * Create the PlayCanvas connector as an sdk-core {@link Collector}. Register it

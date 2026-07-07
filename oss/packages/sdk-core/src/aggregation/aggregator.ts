@@ -99,8 +99,7 @@ export function createAggregator(options: AggregatorOptions): Aggregator {
   function handlePerf(s: PerfSnapshot): void {
     const window = s.frameTimes;
     let percentiles:
-      | { frameTimeP95Ms: number; frameTimeP99Ms: number; longFrames: number }
-      | undefined;
+      { frameTimeP95Ms: number; frameTimeP99Ms: number; longFrames: number } | undefined;
     if (window.length > 0) {
       let longFrames = 0;
       for (let i = 0; i < window.length; i++) {
