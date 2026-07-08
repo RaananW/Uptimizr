@@ -48,6 +48,14 @@ NEXT_PUBLIC_COLLECTOR_URL=http://localhost:4318
 NEXT_PUBLIC_API_KEY=utk_...        # optional convenience for local dev
 ```
 
+Other optional knobs:
+
+- Standalone static server: `DASHBOARD_PORT` / `PORT` and `DASHBOARD_HOST`.
+- Static export sub-path: `NEXT_BASE_PATH` (for embedded builds such as `/dashboard`).
+- Playground links: `NEXT_PUBLIC_PLAYGROUND_URL` (defaults to `http://localhost:5173` locally).
+- Runtime panels: `NEXT_PUBLIC_PANELS_MANIFEST_URL` and
+  `NEXT_PUBLIC_PANELS_ALLOWED_ORIGINS`.
+
 ## Develop
 
 ```bash
@@ -65,12 +73,12 @@ pnpm --filter @uptimizr/dashboard build:static   # static export (out/)
 > exported `NODE_ENV=development` in your shell no longer crashes the prerender step. You don't
 > need to `unset NODE_ENV` manually.
 
-## v1 scope
+## Current OSS surface
 
-- Sessions list and rendering-performance summary.
-- 2D **pointer heatmap** (normalized screen positions) on a canvas.
-- **View-direction heatmap** on an abstract sphere (polar projection).
-- Top interacted meshes.
-
-A textured 3D sphere / project `.glb` overlay and an in-dashboard replay viewer
-are deferred.
+- Project/session selection, live presence, and live event feed.
+- Registry-driven panels from `@uptimizr/react`: sessions, pointer/world/view-direction heatmaps,
+  mesh and interaction leaderboards, funnels, paths, performance, diagnostics, XR summaries, and
+  more.
+- Session detail with metadata/raw-event inspector, replay view, live-follow replay when the
+  session is active, and first-person trajectory view.
+- Optional runtime/remote panels via `NEXT_PUBLIC_PANELS_MANIFEST_URL`.

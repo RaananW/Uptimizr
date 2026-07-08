@@ -81,6 +81,31 @@ Like the world heatmap, the core is engine-free: `buildGazeInstances(data, style
 turns `{ azimuthBin, elevationBin, count }` bins into dome `HeatmapInstance`s, so a
 non-Babylon host can render gaze with any `HeatmapDriver`.
 
+## Gaze skydome
+
+For a continuous view-direction field instead of discrete markers, the Babylon
+adapter can draw the same camera heatmap as an inward-facing equirectangular
+skydome:
+
+```ts
+import { showGazeSkydome } from "@uptimizr/heatmap/babylon";
+
+const sky = await showGazeSkydome({
+  scene,
+  endpoint: "https://collect.example.com",
+  apiKey: "utk_…",
+  sceneId: "lobby",
+  followCamera: scene.activeCamera ?? undefined,
+  texture: { width: 512, blurBins: 1.5, opacity: 0.9 },
+});
+
+sky.setVisible(false);
+sky.dispose();
+```
+
+The engine-free `buildGazeEquirect(data, options?)` helper returns raw RGBA
+pixels for hosts that want to upload the texture themselves.
+
 ## Design
 
 - **`buildHeatmapInstances(data, style)`** is pure and engine-free: it normalizes
@@ -97,12 +122,8 @@ non-Babylon host can render gaze with any `HeatmapDriver`.
   gaze `radius` have no inherent units, so the host supplies them (or exposes them
   as controls).
 
-> An equirectangular **sky-dome shader** form of the gaze view (painting the
-> distribution onto a textured dome instead of discrete markers) is a planned
-> follow-up; the marker form ships first.
-
-`@babylonjs/core` is an **optional peer dependency** — only needed for the Babylon
-adapter.
+`@babylonjs/core` and `@babylonjs/lite` are **optional peer dependencies** — only
+needed for the Babylon adapter you import.
 
 ## Develop
 

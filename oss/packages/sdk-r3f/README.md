@@ -12,7 +12,8 @@ pulls the live `scene`, `camera`, and `gl` (`WebGLRenderer`) out of the R3F stor
 - **pointer move / click** (normalized screen + optional raycast hit) → screen heatmaps
 - **mesh picks** → object-engagement analytics
 - **FPS** → performance
-- **mesh visibility / hover dwell / resource sample** (opt-in) → attention & footprint
+- **mesh visibility / hover dwell / gaze / resource sample** (opt-in) → attention & footprint
+- **WebXR controller/gaze input** (via the three connector, enabled by default)
 
 `react`, `@react-three/fiber`, and `three` are **peer dependencies**: the connector
 reads the host application's instances and never bundles its own. Capture starts when
@@ -74,10 +75,10 @@ function Telemetry() {
 
 The option surface is the three connector's
 [`TrackSceneOptions`](../sdk-three/src/trackScene.ts) verbatim — project id, collector
-`endpoint`, sampling/fidelity dials (`sampling`), the opt-in `capture` channels
-(`meshVisibility`, `hoverDwell`, `resourceSample`), a custom `transport`, `disabled`,
-and so on — re-exported as `UptimizrOptions`. The R3F layer only adds sourcing the
-`scene` / `camera` / `gl` from `useThree()`, so those are never passed.
+`endpoint`, sampling/fidelity dials (`sampling`), opt-in `capture` flags (`gaze`,
+`meshVisibility`, `hoverDwell`, `resourceSample`), `actors`, `keyBindings`, WebXR (`xr`), a
+custom `transport`, `disabled`, and so on — re-exported as `UptimizrOptions`. The R3F layer only
+adds sourcing the `scene` / `camera` / `gl` from `useThree()`, so those are never passed.
 
 The `connector` provenance defaults to `{ name: "r3f" }`; pass `connector` to override
 the reported `version` or `name`.

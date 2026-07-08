@@ -42,16 +42,21 @@ wipes everything. From source, run it with `pnpm dev:web` (demo on `http://local
   external database service ([ADR 0020](./docs/adr/0020-open-core-storage-boundary.md))
 - **Event store (optional scale tier):** ClickHouse (events) + Postgres (metadata)
   ([ADR 0002](./docs/adr/0002-database.md))
-- **First 3D connector:** Babylon.js (three.js connector also available)
+- **3D connectors:** Babylon.js, Babylon Lite, three.js, react-three-fiber, PlayCanvas, and
+  A-Frame (WebXR)
 - **Privacy:** cookieless / GDPR-first by default ([ADR 0003](./docs/adr/0003-privacy-model.md))
 
 ## Repository layout
 
 ```
 oss/        Open-source product (Apache-2.0)
-  apps/       collector-server (Fastify), dashboard (Next.js), demo (in-browser test drive)
-  packages/   schema, sdk-core, sdk-babylon, sdk-three, replay, db (DuckDB store + contracts)
-examples/   babylon-playground, three-playground — demo scenes for end-to-end testing
+  apps/       collector-server (Fastify), dashboard (Next.js), demo (in-browser test drive),
+              docs (documentation site), web (landing site)
+  packages/   schema, sdk-core, replay, react (embeddable panels), heatmap, mcp (query server),
+              create-uptimizr (scaffolder), db (DuckDB store + contracts), db-clickhouse
+              (optional scale store), and the connectors: sdk-babylon, sdk-babylon-lite,
+              sdk-three, sdk-r3f, sdk-playcanvas, sdk-aframe
+examples/   playground — multi-engine demo scene for end-to-end testing
 infra/      docker-compose for the optional ClickHouse + Postgres scale engines
 docs/       architecture, phase plans, and ADRs
 ```
@@ -67,7 +72,7 @@ the project** itself.
 straight from npm:
 
 ```bash
-npm i @uptimizr/babylon                              # or @uptimizr/three, @uptimizr/r3f, …
+npm i @uptimizr/babylon                              # or @uptimizr/three, @uptimizr/r3f, @uptimizr/playcanvas, @uptimizr/aframe, …
 npm create uptimizr@latest                           # scaffold a self-host (prompts to add the dashboard + a demo)
 # …or run the collector CLI directly:
 npx -p @uptimizr/collector-server uptimizr init      # create the DuckDB store + a project + API key

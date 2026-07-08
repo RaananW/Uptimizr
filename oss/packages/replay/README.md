@@ -33,7 +33,7 @@ const events = await fetchSessionEvents({
 
 const driver = createBabylonReplayDriver({
   scene,
-  onPointer: (screen, hitPoint, hitMesh) => {
+  onPointer: (screen, hitPoint, hitMesh, type) => {
     /* render a pointer marker */
   },
 });
@@ -67,16 +67,18 @@ backdrop.dispose();
 (`{ rootNodes, meshes, container, dispose() }`). Its `dispose()` removes
 everything it added and releases the GPU resources, so the hosted slice can
 replace one dropped model with the next. The default loader lazily imports
-Babylon's glTF `SceneLoader`, so the lean replay path never pulls it in unless a
-backdrop is actually requested; pass `options.load` to supply your own loader, or
-`options.pluginExtension` to force a parser. Loaded actor/subtree nodes re-drive
-exactly like any other scene node (`node_transform`, ADR 0033).
+Babylon's `LoadAssetContainerAsync`, so the lean replay path never pulls it in
+unless a backdrop is actually requested; pass `options.load` to supply your own
+loader, or `options.pluginExtension` to force a parser. For glTF/GLB assets,
+register the loader in the host app (for example `import "@babylonjs/loaders/glTF";`).
+Loaded actor/subtree nodes re-drive exactly like any other scene node
+(`node_transform`, ADR 0033).
 
 With the **global** one-call entry point, pass `backdropUrl` (it reuses the host
 page's Babylon loader so the IIFE never bundles a second `SceneLoader`):
 
-```ts
-await replayInScene({
+```js
+await window.UptimizrReplay.replayInScene({
   scene,
   endpoint: "https://collect.example.com",
   apiKey: "utk_…",
@@ -120,11 +122,13 @@ The replay endpoint requires `ENABLE_RAW_SESSION_RETENTION` on the collector.
   from an animation loop. Seeking backward resets the driver and replays from the
   start, so playback is deterministic.
 - `ReplayDriver` is the engine extension point: implement `{ reset, apply }` for
-  another engine and pass it to `ReplayPlayer`. Babylon (`@uptimizr/replay/babylon`)
-  and three.js (`@uptimizr/replay/three`) drivers ship in the box.
+  another engine and pass it to `ReplayPlayer`. Babylon
+  (`@uptimizr/replay/babylon`), Babylon Lite (`@uptimizr/replay/babylon-lite`),
+  three.js (`@uptimizr/replay/three`), and PlayCanvas
+  (`@uptimizr/replay/playcanvas`) drivers ship in the box.
 
-`@babylonjs/core` and `three` are both **optional peer dependencies** — you only
-need the one whose driver you import.
+`@babylonjs/core`, `@babylonjs/lite`, `three`, and `playcanvas` are **optional
+peer dependencies** — you only need the one whose driver you import.
 
 ## Develop
 

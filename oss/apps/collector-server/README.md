@@ -79,9 +79,10 @@ file; back up by copying the file).
 
 ### Ingestion
 
-- `POST /api/v1/collect` — accepts a batched `collectRequest`. Validates → enriches
-  (server-set cookieless `visitorId = hash(ip + ua + dailySalt)`, raw IP never stored)
-  → inserts into the configured `CollectorStore` (DuckDB by default).
+- `POST /api/v1/collect` — accepts a batched `collectRequest`. Validates → rejects
+  mixed-project or unknown-project batches → enriches (server-set cookieless
+  `visitorId = hash(ip + ua + dailySalt)`, raw IP never stored) → inserts into the
+  configured `CollectorStore` (DuckDB by default) and publishes the live feed.
 
 ### Query (require `x-api-key`)
 
@@ -89,15 +90,41 @@ Aggregations are computed **at query time** (v1) — including the heatmap/perf
 aggregates, which run directly in the OSS DuckDB store. Every route is scoped to
 the project the API key resolves to.
 
-- `GET /api/v1/sessions`
-- `GET /api/v1/heatmaps/pointer`
-- `GET /api/v1/heatmaps/camera`
-- `GET /api/v1/meshes/top`
-- `GET /api/v1/perf`
+- Sessions: `GET /api/v1/sessions`, `GET /api/v1/sessions/:id/meta`,
+  `GET /api/v1/sessions/:id/trajectory`.
+- Heatmaps: `GET /api/v1/heatmaps/pointer`, `/camera`, `/position`, `/world`
+  (+ `/world/stats`), `/gaze` (+ `/gaze/stats`), `/mesh-uv`, `/click-rays`,
+  `/flow`, `/perf`, `/errors`.
+- Mesh / interaction insights: `GET /api/v1/meshes/top`, `/sources`, `/trend`,
+  `/dwell`, `/blind-spots`, `/kinds`, `/reachability`, plus `/clicks/dead`,
+  `/clicks/rage`, `/hover/dwell`, `/camera-gestures`, `/interactions/sources`,
+  `/input-actions/top`.
+- Performance / diagnostics: `GET /api/v1/perf`, `/perf/compile-stalls`,
+  `/perf/render-scale`, `/perf/resources`, `/perf/distribution`,
+  `/perf/fps-histogram`, `/perf/frame-time`, `/perf/jank`, `/perf/churn`,
+  `/perf/by-device`, `/perf/by-scene`, `/perf/resource-percentiles`,
+  `/perf/stability`, `/graphics-diagnostics`, `/rendering-technology`,
+  `/capabilities`.
+- Scene / path / funnel analytics: `GET /api/v1/scenes`, `/scene-representations`,
+  `/timeseries`, `/event-counts`, `/coverage`, `/coverage/view-histogram`,
+  `/paths`, `/camera/distance`, `/navigation`, `/backtrack`, `/funnel`,
+  `/scene-retention`, `/load-bounce`, `/variant-leaderboard`, `/xr/rotation`,
+  `/xr/sources`, `/xr/abandonment`, `/xr/locomotion`.
+- Scene representations: `PUT /api/v1/scenes/:sceneId/representation`,
+  `GET /api/v1/scenes/:sceneId/representation`.
 - `GET /api/v1/sessions/:id/events` — ordered replay timeline, **gated by**
-  `ENABLE_RAW_SESSION_RETENTION` (returns `403` when disabled).
+  `ENABLE_RAW_SESSION_RETENTION` (returns `403` when disabled); supports buffered
+  JSON or NDJSON streaming (`Accept: application/x-ndjson` / `?format=ndjson`).
 
-Shared query params: `since`, `until` (epoch ms), `bins`, `limit`.
+Live endpoints:
+
+- `POST /api/v1/live/token` — exchange a query API key for a short-lived live token.
+- `GET /api/v1/live/presence`, `/live/stream`, `/live/sessions/:id` — SSE streams
+  authenticated with `?token=...`; per-session live follow is also gated by raw
+  retention.
+
+Common query params include `since`, `until` (epoch ms), `bins`, `limit`, `scene`,
+`session`, `cameraMode`, `source`, and spatial `cellSize` / `region` where supported.
 
 - `GET /health` — liveness probe.
 
@@ -109,11 +136,13 @@ if `VISITOR_HASH_SECRET` is missing.
 
 ### Authentication: which endpoints need a key
 
-| Endpoint group                 | Auth               | Why                                                                                                                                                     |
-| ------------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/v1/collect`         | **None (keyless)** | Runs in untrusted browsers; a key shipped to the client is not a secret. Ingestion is open by design and protected by validation + rate limits instead. |
-| All query routes (`/api/v1/*`) | `x-api-key`        | Read access is scoped to the project the key resolves to.                                                                                               |
-| `GET /health`                  | None               | Liveness probe.                                                                                                                                         |
+| Endpoint group                            | Auth               | Why                                                                                                                                                     |
+| ----------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/collect`                    | **None (keyless)** | Runs in untrusted browsers; a key shipped to the client is not a secret. Ingestion is open by design and protected by validation + rate limits instead. |
+| Query/read routes                         | `x-api-key`        | Read access is scoped to the project the key resolves to.                                                                                               |
+| `POST /api/v1/live/token`                 | `x-api-key`        | Exchanges a project query key for a short-lived SSE token.                                                                                              |
+| Live SSE routes (`/api/v1/live/*` `GET`s) | `?token=...`       | Browser `EventSource` cannot attach custom headers, so live streams use short-lived bearer tokens.                                                      |
+| `GET /health`                             | None               | Liveness probe.                                                                                                                                         |
 
 ### Threat model for keyless ingestion
 
@@ -135,10 +164,18 @@ Because `POST /api/v1/collect` accepts unauthenticated input, every request is t
 
 ## Configuration
 
-Environment-driven (see [`.env.example`](../../../.env.example)): `COLLECTOR_HOST`,
-`COLLECTOR_PORT`, `COLLECTOR_CORS_ORIGINS`, `VISITOR_HASH_SECRET`,
-`ENABLE_RAW_SESSION_RETENTION`, `COLLECTOR_DASHBOARD_DIR` (optional; serve a
-static dashboard all-in-one — see [above](#all-in-one-serve-the-dashboard-too)).
+Environment-driven (see [`.env.example`](../../../.env.example)):
+
+- Server / browser access: `COLLECTOR_HOST` (default `0.0.0.0`), `COLLECTOR_PORT`
+  (default `4318`), `COLLECTOR_CORS_ORIGINS`, `COLLECTOR_TRUST_PROXY`,
+  `COLLECTOR_BODY_LIMIT`.
+- Privacy / replay / live: `VISITOR_HASH_SECRET` (required),
+  `ENABLE_RAW_SESSION_RETENTION`, `LIVE_TOKEN_SECRET`, `LIVE_TOKEN_TTL_MS`,
+  `LIVE_WINDOW_MS`, `LIVE_MAX_CONNECTIONS`, `LIVE_PRESENCE_INTERVAL_MS`.
+- Rate limits: `COLLECTOR_RATE_LIMIT_MAX`, `COLLECTOR_RATE_LIMIT_WINDOW_MS`,
+  `COLLECTOR_INGEST_RATE_LIMIT_MAX`, `COLLECTOR_INGEST_RATE_LIMIT_WINDOW_MS`.
+- All-in-one dashboard: `COLLECTOR_DASHBOARD_DIR` (optional; see
+  [above](#all-in-one-serve-the-dashboard-too)), `COLLECTOR_CSP` (`strict` or `off`).
 
 The storage backend is chosen with `COLLECTOR_STORE`:
 

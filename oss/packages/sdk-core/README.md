@@ -49,19 +49,25 @@ events. See the `add-connector` skill.
 
 ## Configuration
 
-| Option            | Default         | Notes                                                     |
-| ----------------- | --------------- | --------------------------------------------------------- |
-| `projectId`       | —               | Required. Public project identifier.                      |
-| `endpoint`        | —               | Required. Collector base URL.                             |
-| `sdkVersion`      | package version | Stamped on every event.                                   |
-| `batchSize`       | 20              | Flush when this many events are queued.                   |
-| `flushIntervalMs` | 5000            | Periodic flush; `0` disables the timer.                   |
-| `maxQueueSize`    | 1000            | Cap on retained events when offline.                      |
-| `transport`       | beacon/fetch    | Swap in a custom `Transport`.                             |
-| `offload`         | `"main"`        | `"worker"` runs serialization + dispatch in a Web Worker. |
-| `beforeSend`      | —               | Inspect / modify / drop each event (filtering, privacy).  |
-| `disabled`        | false           | Collect nothing (e.g. honor Do-Not-Track).                |
-| `debug`           | false           | Console debug logs.                                       |
+| Option                       | Default       | Notes                                                     |
+| ---------------------------- | ------------- | --------------------------------------------------------- |
+| `projectId`                  | —             | Required. Public project identifier.                      |
+| `endpoint`                   | —             | Required. Collector base URL.                             |
+| `sdkVersion`                 | `SDK_VERSION` | Stamped on every event.                                   |
+| `batchSize`                  | 20            | Flush when this many events are queued.                   |
+| `flushIntervalMs`            | 5000          | Periodic flush; `0` disables the timer.                   |
+| `maxQueueSize`               | 1000          | Cap on retained events when offline.                      |
+| `transport`                  | beacon/fetch  | Swap in a custom `Transport`.                             |
+| `offload`                    | `"main"`      | `"worker"` runs serialization + dispatch in a Web Worker. |
+| `createWorker`               | —             | Custom worker factory for `offload: "worker"`.            |
+| `beforeSend`                 | —             | Inspect / modify / drop each event (filtering, privacy).  |
+| `disabled`                   | false         | Collect nothing (e.g. honor Do-Not-Track).                |
+| `captureLifecycle`           | true          | Capture resize, focus, and visibility timeline markers.   |
+| `resizeDebounceMs`           | 250           | Debounce window for `viewport_resize` events.             |
+| `captureErrors`              | false         | Opt-in JS error / unhandled rejection capture.            |
+| `captureGraphicsDiagnostics` | false         | Opt-in GPU / engine diagnostic capture.                   |
+| `captureShaderSource`        | false         | Include raw shader source in diagnostics when opted in.   |
+| `debug`                      | false         | Console debug logs.                                       |
 
 ## Transport
 
