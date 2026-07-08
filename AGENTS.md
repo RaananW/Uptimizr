@@ -6,7 +6,7 @@ changes. For decision rationale, see [`docs/adr`](./docs/adr); for the build pla
 
 ## What this project is
 
-Uptimizr is a **3D-scene analytics platform** — like Google Analytics, but for 3D apps. It
+Uptimizr is a **3D-scene analytics platform** — like web analytics, but for 3D apps. It
 captures view-direction heatmaps, pointer/click heatmaps, mesh interactions, session/perf, and
 custom events from a 3D scene, and can **replay** a session in the developer's own scene.
 

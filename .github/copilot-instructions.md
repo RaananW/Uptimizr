@@ -5,7 +5,7 @@
 
 ## Project in one paragraph
 
-Uptimizr is a 3D-scene analytics platform (Google-Analytics-for-3D). It captures view-direction
+Uptimizr is a 3D-scene analytics platform (web analytics for 3D). It captures view-direction
 and pointer/click heatmaps, mesh interactions, session/perf, and custom events from 3D scenes,
 and can replay a session in the developer's own scene. This repository is the open-source
 data-collector (`oss/`, Apache-2.0): SDKs, the ingestion/query collector, the dashboard, and an

@@ -1,9 +1,10 @@
 # Uptimizr
 
-> 3D scene analytics — like Google Analytics, but for 3D applications.
+> 3D scene analytics — like web analytics, but for 3D applications.
 
+[![npm @uptimizr/collector-server](https://img.shields.io/npm/v/@uptimizr/collector-server?label=%40uptimizr%2Fcollector-server&logo=npm&color=cb3837)](https://www.npmjs.com/package/@uptimizr/collector-server)
+[![npm @uptimizr/dashboard](https://img.shields.io/npm/v/@uptimizr/dashboard?label=%40uptimizr%2Fdashboard&logo=npm&color=cb3837)](https://www.npmjs.com/package/@uptimizr/dashboard)
 [![npm @uptimizr/babylon](https://img.shields.io/npm/v/@uptimizr/babylon?label=%40uptimizr%2Fbabylon&logo=npm&color=cb3837)](https://www.npmjs.com/package/@uptimizr/babylon)
-[![npm @uptimizr/sdk-core](https://img.shields.io/npm/v/@uptimizr/sdk-core?label=%40uptimizr%2Fsdk-core&logo=npm&color=cb3837)](https://www.npmjs.com/package/@uptimizr/sdk-core)
 [![CI](https://github.com/RaananW/Uptimizr/actions/workflows/main.yml/badge.svg)](https://github.com/RaananW/Uptimizr/actions/workflows/main.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-uptimizr.com-2563eb)](https://uptimizr.com/docs/)
@@ -16,7 +17,7 @@ heatmaps), which **meshes** they interact with, how the scene **performs** (FPS,
 asset load times), and any **custom events** a developer wants to track. It can also
 **replay** an individual session inside the developer's own scene.
 
-Google Analytics is built for 2D HTML pages and custom events; it has no concept of a
+Web analytics is built for 2D HTML pages and custom events; it has no concept of a
 camera, a view vector, or a mesh. Uptimizr fills that gap.
 
 ## Self-hostable, open source

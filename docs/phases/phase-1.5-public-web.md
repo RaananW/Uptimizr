@@ -14,7 +14,7 @@ content-heavy rather than a new architectural surface.
 **In scope**
 
 - **`oss/apps/web`** — Astro marketing site served at the `uptimizr.com` apex. Explains what
-  Uptimizr is (Google-Analytics-for-3D), the OSS value proposition, the core capabilities
+  Uptimizr is (web analytics for 3D), the OSS value proposition, the core capabilities
   (view-direction + pointer/click heatmaps, mesh interactions, session/perf, session replay,
   multi-engine connectors), and drives developers to GitHub and the docs. Self-host is the only
   call to action.
