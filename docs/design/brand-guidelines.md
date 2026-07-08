@@ -1,7 +1,7 @@
 # Uptimizr — Brand & Design Guidelines
 
 The visual identity for **Uptimizr**, the analytics platform for 3D scenes
-("Google Analytics for 3D"). The system is warm, technical, and thermal — a heat
+("web analytics for 3D"). The system is warm, technical, and thermal — a heat
 map rendered as a brand.
 
 > Spelling: the **product** is always **Uptimizr** (no second "e").

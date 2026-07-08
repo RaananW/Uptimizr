@@ -5,16 +5,16 @@ The OSS storage contracts plus the single-file **DuckDB** store:
 - **DuckDB (OSS default)** — one persisted `.duckdb` file holds **both events and metadata**, so
   the collector self-hosts in a single process with no external database service. A wide `events`
   table (hot fields like camera `position`/`direction`, pointer `screen`, `mesh`, `fps` promoted to
-  columns; the full event preserved as JSON in `payload` so reads stay replay-complete) plus
-  `projects` / `api_keys` (stored only as SHA-256 hashes).
+  columns; the full event preserved as JSON in `payload` so reads stay replay-complete) plus a
+  dedicated `node_samples` table for high-cardinality `node_transform` rows, and `projects` /
+  `api_keys` (stored only as SHA-256 hashes, with `query` / `ingest` capability).
 - **Engine-neutral contracts** — the dialect-agnostic query layer (`buildX` + `Dialect`), the
-  neutral event-row mapper (`toEventRow`, `formatUtcTimestamp`), and the metadata types
-  (`Project`, `ApiKeyRecord`, `SceneRepresentation*`).
+  neutral event-row mappers (`toEventRow`, `toNodeSampleRow`, `formatUtcTimestamp`), and the
+  metadata types (`Project`, `ApiKeyRecord`, `ResolvedApiKey`, `SceneRepresentation*`).
 
-This package carries **no ClickHouse/Postgres dependency**. An optional, separately-licensed
-scale store (single-tenant ClickHouse + Postgres + rollups) composes these contracts
-behind the same interface. Server/Node only — no DOM imports. Aggregations are
-**query-time** in v1; no materialized views.
+This package carries **no ClickHouse/Postgres dependency**. Optional scale adapters such as
+`@uptimizr/db-clickhouse` compose these contracts behind the same interface. Server/Node only — no
+DOM imports. Aggregations are **query-time** in v1; no materialized views.
 
 > **Single-writer constraint.** DuckDB is an embedded, single-writer store: only one process may
 > open the file read-write at a time. Run a single collector per file; for multi-writer /
@@ -55,10 +55,13 @@ const projectId = await duckdbResolveApiKey(db, "utk_…");
 ```
 
 Connection settings come from the environment (see [`.env.example`](../../../.env.example));
-`readDbSettings()` exposes them. When `DUCKDB_PATH` is unset the store defaults to
+`readDbSettings()` exposes `DUCKDB_PATH`, the `CLICKHOUSE_*` settings used by adapters, and raw
+session retention. When `DUCKDB_PATH` is unset the store defaults to
 `<repo-root>/data/uptimizr.duckdb` — resolved against the monorepo root (the directory with
 `pnpm-workspace.yaml`), not the process cwd, so the collector and the migrate/seed/new-project
-CLIs all share one canonical file regardless of which package they run from.
+CLIs all share one canonical file regardless of which package they run from. The collector selects
+its backend with `COLLECTOR_STORE` (`duckdb` by default; `clickhouse` and `memory` are also wired in
+`@uptimizr/collector-server`).
 
 ## Extending
 

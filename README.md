@@ -1,9 +1,10 @@
 # Uptimizr
 
-> 3D scene analytics — like Google Analytics, but for 3D applications.
+> 3D scene analytics — like web analytics, but for 3D applications.
 
+[![npm @uptimizr/collector-server](https://img.shields.io/npm/v/@uptimizr/collector-server?label=%40uptimizr%2Fcollector-server&logo=npm&color=cb3837)](https://www.npmjs.com/package/@uptimizr/collector-server)
+[![npm @uptimizr/dashboard](https://img.shields.io/npm/v/@uptimizr/dashboard?label=%40uptimizr%2Fdashboard&logo=npm&color=cb3837)](https://www.npmjs.com/package/@uptimizr/dashboard)
 [![npm @uptimizr/babylon](https://img.shields.io/npm/v/@uptimizr/babylon?label=%40uptimizr%2Fbabylon&logo=npm&color=cb3837)](https://www.npmjs.com/package/@uptimizr/babylon)
-[![npm @uptimizr/sdk-core](https://img.shields.io/npm/v/@uptimizr/sdk-core?label=%40uptimizr%2Fsdk-core&logo=npm&color=cb3837)](https://www.npmjs.com/package/@uptimizr/sdk-core)
 [![CI](https://github.com/RaananW/Uptimizr/actions/workflows/main.yml/badge.svg)](https://github.com/RaananW/Uptimizr/actions/workflows/main.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-uptimizr.com-2563eb)](https://uptimizr.com/docs/)
@@ -16,7 +17,7 @@ heatmaps), which **meshes** they interact with, how the scene **performs** (FPS,
 asset load times), and any **custom events** a developer wants to track. It can also
 **replay** an individual session inside the developer's own scene.
 
-Google Analytics is built for 2D HTML pages and custom events; it has no concept of a
+Web analytics is built for 2D HTML pages and custom events; it has no concept of a
 camera, a view vector, or a mesh. Uptimizr fills that gap.
 
 ## Self-hostable, open source
@@ -42,16 +43,21 @@ wipes everything. From source, run it with `pnpm dev:web` (demo on `http://local
   external database service ([ADR 0020](./docs/adr/0020-open-core-storage-boundary.md))
 - **Event store (optional scale tier):** ClickHouse (events) + Postgres (metadata)
   ([ADR 0002](./docs/adr/0002-database.md))
-- **First 3D connector:** Babylon.js (three.js connector also available)
+- **3D connectors:** Babylon.js, Babylon Lite, three.js, react-three-fiber, PlayCanvas, and
+  A-Frame (WebXR)
 - **Privacy:** cookieless / GDPR-first by default ([ADR 0003](./docs/adr/0003-privacy-model.md))
 
 ## Repository layout
 
 ```
 oss/        Open-source product (Apache-2.0)
-  apps/       collector-server (Fastify), dashboard (Next.js), demo (in-browser test drive)
-  packages/   schema, sdk-core, sdk-babylon, sdk-three, replay, db (DuckDB store + contracts)
-examples/   babylon-playground, three-playground — demo scenes for end-to-end testing
+  apps/       collector-server (Fastify), dashboard (Next.js), demo (in-browser test drive),
+              docs (documentation site), web (landing site)
+  packages/   schema, sdk-core, replay, react (embeddable panels), heatmap, mcp (query server),
+              create-uptimizr (scaffolder), db (DuckDB store + contracts), db-clickhouse
+              (optional scale store), and the connectors: sdk-babylon, sdk-babylon-lite,
+              sdk-three, sdk-r3f, sdk-playcanvas, sdk-aframe
+examples/   playground — multi-engine demo scene for end-to-end testing
 infra/      docker-compose for the optional ClickHouse + Postgres scale engines
 docs/       architecture, phase plans, and ADRs
 ```
@@ -67,7 +73,7 @@ the project** itself.
 straight from npm:
 
 ```bash
-npm i @uptimizr/babylon                              # or @uptimizr/three, @uptimizr/r3f, …
+npm i @uptimizr/babylon                              # or @uptimizr/three, @uptimizr/r3f, @uptimizr/playcanvas, @uptimizr/aframe, …
 npm create uptimizr@latest                           # scaffold a self-host (prompts to add the dashboard + a demo)
 # …or run the collector CLI directly:
 npx -p @uptimizr/collector-server uptimizr init      # create the DuckDB store + a project + API key

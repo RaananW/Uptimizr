@@ -58,16 +58,18 @@ into the dashboard.
 
 ## Options
 
-| Flag            | Default              | Description                                                        |
-| --------------- | -------------------- | ------------------------------------------------------------------ |
-| `[dir]`         | `uptimizr-analytics` | Folder to create (prompted when interactive).                      |
-| `--engine <e>`  | `babylon`            | `babylon`, `babylon-lite`, `three`, `r3f`, `playcanvas`, `aframe`. |
-| `--name <name>` | folder name          | Human-readable project name.                                       |
-| `--port <n>`    | `4318`               | Collector port baked into config + snippet.                        |
-| `--dashboard`   | off                  | Include the analytics dashboard (`@uptimizr/dashboard`).           |
-| `--demo`        | off                  | Include a runnable Babylon demo scene.                             |
-| `--full`        | off                  | Full suite: collector + dashboard + demo.                          |
-| `--minimal`     | —                    | Collector only; skip the interactive prompts.                      |
+| Flag             | Default              | Description                                                        |
+| ---------------- | -------------------- | ------------------------------------------------------------------ |
+| `[dir]`          | `uptimizr-analytics` | Folder to create (prompted when interactive).                      |
+| `--engine <e>`   | `babylon`            | `babylon`, `babylon-lite`, `three`, `r3f`, `playcanvas`, `aframe`. |
+| `--name <name>`  | folder name          | Human-readable project name.                                       |
+| `--port <n>`     | `4318`               | Collector port baked into config + snippet.                        |
+| `--dashboard`    | off                  | Include the analytics dashboard (`@uptimizr/dashboard`).           |
+| `--no-dashboard` | —                    | Set dashboard inclusion off.                                       |
+| `--demo`         | off                  | Include a runnable Babylon demo scene.                             |
+| `--no-demo`      | —                    | Set demo inclusion off.                                            |
+| `--full`         | off                  | Full suite: collector + dashboard + demo.                          |
+| `--minimal`      | —                    | Collector only; skip the interactive prompts.                      |
 
 The scaffolder only writes files — the generated folder is operated entirely via
 the [`uptimizr` CLI](../../apps/collector-server#readme) (`init` / `serve` /

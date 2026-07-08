@@ -45,8 +45,9 @@ config:
 
 ## Tools
 
-All tools accept an optional time range (`since` / `until`, epoch ms) and the filters the
-underlying endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, …).
+Most aggregate tools accept an optional time range (`since` / `until`, epoch ms) and the filters
+the underlying endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `interval`,
+`type`, `limit`, …). `session_meta` and `scene_representation` take their required IDs only.
 
 | Tool                   | Endpoint                            | Returns                                          |
 | ---------------------- | ----------------------------------- | ------------------------------------------------ |
@@ -74,6 +75,8 @@ const client = createCollectorClient(readMcpConfig());
 const server = createMcpServer(client);
 await server.connect(new StdioServerTransport());
 ```
+
+The package also exports `readTools`, `CollectorError`, `version`, and the related public types.
 
 ## Develop
 

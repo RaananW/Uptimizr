@@ -1,6 +1,6 @@
 # Uptimizr Playground
 
-One playground app that serves **all five engine connectors** from a single Vite
+One playground app that serves **all six engine connectors** from a single Vite
 build. Pick a **scene** and an **engine** from the selectors in the top-left panel;
 the app reloads with `?scene=<id>&engine=<id>` and **dynamic-imports only that
 engine's chunk** (so switching to three never downloads Babylon, and vice-versa).
@@ -76,13 +76,14 @@ playground), and scaffolds a per-engine builder stub under
 `src/scenes/<id>/<engine>.{ts,tsx}`. The stubs initially re-export the built-in
 engine demo so analytics flow immediately — edit them to build your own geometry.
 
-| Engine            | id           | Capture | Scene switch | Replay | Heatmap | Scene proxy | Walkable |
-| ----------------- | ------------ | :-----: | :----------: | :----: | :-----: | :---------: | :------: |
-| Babylon.js        | `babylon`    |   ✅    |      ✅      |   ✅   |   ✅    |     ✅      |    ✅    |
-| three.js          | `three`      |   ✅    |      ✅      |   ✅   |    —    |     ✅      |    ✅    |
-| PlayCanvas        | `playcanvas` |   ✅    |      ✅      |   ✅   |    —    |     ✅      |    ✅    |
-| react-three-fiber | `r3f`        |   ✅    |      —       |   —    |    —    |      —      |    —     |
-| A-Frame (WebXR)   | `aframe`     |  (own)  |      —       |   —    |    —    |      —      |    —     |
+| Engine            | id             | Capture | Scene switch | Replay | Heatmap | Scene proxy | Walkable |
+| ----------------- | -------------- | :-----: | :----------: | :----: | :-----: | :---------: | :------: |
+| Babylon.js        | `babylon`      |   ✅    |      ✅      |   ✅   |   ✅    |     ✅      |    ✅    |
+| Babylon Lite      | `babylon-lite` |   ✅    |      ✅      |   ✅   |   ✅    |     ✅      |    —     |
+| three.js          | `three`        |   ✅    |      ✅      |   ✅   |    —    |     ✅      |    ✅    |
+| PlayCanvas        | `playcanvas`   |   ✅    |      ✅      |   ✅   |    —    |     ✅      |    ✅    |
+| react-three-fiber | `r3f`          |   ✅    |      —       |   —    |    —    |      —      |    —     |
+| A-Frame (WebXR)   | `aframe`       |  (own)  |      —       |   —    |    —    |      —      |    —     |
 
 The **top bar** holds the primary navigation — the Scene and Engine selectors —
 always visible, plus a **Controls** button that toggles the side panel. The panel
@@ -183,7 +184,7 @@ single-writer, so the seed runs-and-closes before the server opens the file
 (chained with `&&` in the webServer command). Playwright launches three servers:
 the collector, the Vite playground, and the Next.js dashboard.
 
-Three specs cover the stack:
+The suite covers the stack, including:
 
 - **`engines.capture.spec.ts`** — the exhaustive capture matrix. For each WebGL
   connector (`babylon`, `three`, `playcanvas`) it synthesizes the full non-WebXR
@@ -212,5 +213,11 @@ Three specs cover the stack:
   registering scopes **one proxy per section** (each stored with its own tower/overlook-
   tight bounds, not the whole world), and that the registered large bounds drive a
   **coarse** bounds-driven cell size when `cellSize` is omitted.
+- Additional specs cover live presence/follow, panel configuration, rendering
+  technology, performance/resource panels, error and perf heatmaps, scene
+  retention, load-bounce, variant leaderboards, replay backdrops, and seeded XR
+  locomotion analytics.
 
-WebXR / immersive events are intentionally out of scope.
+Real immersive-browser automation is intentionally out of scope; XR analytics are
+covered with seeded XR-input events, and A-Frame is excluded from the E2E matrix
+because it loads from a CDN.

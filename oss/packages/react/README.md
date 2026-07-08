@@ -101,12 +101,13 @@ helper libs (`mergeSceneProxies`, `disableWheelZoom`, `attachMeshHover`,
 
 The core entry has **no runtime dependency on Babylon** and stays
 `sideEffects: false` (tree-shakeable). The Babylon-backed 3D panels
-(`camera-dome-3d`, `world-heatmap-3d`, `flow-sankey-3d`,
-`gaze-click-divergence-3d`, `session-replay`) keep their view code behind
-`React.lazy` inside the catalog, so importing `ossPanelCatalog` never loads
-`@babylonjs/*` at module-eval time — Babylon's chunk is fetched only when a 3D
-panel actually renders. `@babylonjs/core` is declared as an **optional** peer
-dependency; add it to your app only if you render a 3D panel.
+(`camera-dome-3d`, `world-heatmap-3d`, `perf-heatmap-3d`,
+`error-heatmap-3d`, `flow-sankey-3d`, `gaze-click-divergence-3d`,
+`session-replay`) keep their view code behind `React.lazy` inside the catalog,
+so importing `ossPanelCatalog` never loads `@babylonjs/*` at module-eval time —
+Babylon chunks are fetched only when a 3D panel actually renders.
+`@babylonjs/core` and `@babylonjs/loaders` are declared as **optional** peers;
+add them to your app only if you render a 3D panel that needs them.
 
 To compose a 3D view **directly** (outside the catalog), import the dedicated
 subpath — this is the only entry that pulls the 3D view modules into your graph:

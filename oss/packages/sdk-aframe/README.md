@@ -13,7 +13,8 @@ captures:
 - **pointer move / click** (normalized screen + optional raycast hit) → screen heatmaps
 - **mesh picks** → object-engagement analytics
 - **FPS** → performance
-- **mesh visibility / hover dwell / resource sample** (opt-in) → attention & footprint
+- **mesh visibility / hover dwell / gaze / resource sample** (opt-in) → attention & footprint
+- **camera gestures** → navigation-intent analytics
 
 `three` is a **peer dependency**; **A-Frame itself is supplied by the host page** (the
 connector never imports `aframe` — it registers against the global `AFRAME` and reads
@@ -97,6 +98,8 @@ The component schema maps onto the three connector's
 | `pointerMoveThrottleMs`                            | Pointer-move throttle (`0` ⇒ default)          |
 | `sceneDescription`                                 | Free-text scene label                          |
 | `meshVisibility` / `hoverDwell` / `resourceSample` | Opt-in capture channels (off by default)       |
+| `gaze`                                             | Opt-in world-space gaze hits (off by default)  |
+| `cameraGesture`                                    | Navigation gesture capture (default `true`)    |
 | `xr`                                               | WebXR controller/gaze capture (default `true`) |
 | `xrSampleMs`                                       | XR pose sampling interval (`0` ⇒ 250 ms)       |
 | `disabled`                                         | Collect nothing                                |

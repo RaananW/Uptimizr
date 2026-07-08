@@ -4,9 +4,11 @@ The Babylon.js connector for Uptimizr. It registers as an
 [`@uptimizr/sdk-core`](../sdk-core) **collector** and captures:
 
 - **camera pose** (position + forward direction) → view-direction heatmap
-- **pointer move / click** (normalized screen + optional raycast hit) → screen heatmaps
+- **pointer move / click / button transitions** (normalized screen + optional raycast hit) → screen heatmaps
+- **camera gestures** → navigation-intent analytics
 - **mesh picks** → object-engagement analytics
-- **FPS** → performance
+- **FPS** and compile stalls → performance
+- **mesh visibility / hover dwell / gaze / resource samples / node transforms** (opt-in) → attention, footprint, and replay fidelity
 
 `@babylonjs/core` is a **peer dependency**: the connector reads from the host
 application's Babylon instance and never bundles or mutates the scene. It tears down
@@ -66,7 +68,7 @@ client.stop("manual");
 
 ### Options
 
-Both `trackScene` and `babylonCollector` accept the same sampling/capture knobs:
+`trackScene` exposes the one-call project/endpoint, sampling, capture, `meshVisibility`, `gaze`, `keyBindings`, and `actors` options. Use `babylonCollector` directly for collector-only tuning such as `hoverDwell`, `resourceSample`, or `cameraGestureSensitivity`:
 
 ```ts
 babylonCollector({
@@ -74,7 +76,15 @@ babylonCollector({
   sampleCameraMs: 1000, // camera-pose sampling interval
   samplePerfMs: 2000, // FPS sampling interval
   pointerMoveThrottleMs: 250, // min gap between pointer_move samples
-  capture: { camera: true, pointerMove: true, clicks: true, meshPicks: true, perf: true },
+  capture: {
+    camera: true,
+    pointerMove: true,
+    clicks: true,
+    buttons: true,
+    cameraGesture: true,
+    meshPicks: true,
+    perf: true,
+  },
 });
 ```
 
@@ -152,8 +162,6 @@ opt-in and engine-parity with the three connector.
 const client = new UptimizrClient({ projectId, endpoint, captureGraphicsDiagnostics: true });
 // To include raw shader source (IP-sensitive), also set captureShaderSource: true.
 ```
-
-length-capped and runs through `beforeSend`. **WebGL is a no-op.**
 
 ### Engine diagnostics: context-creation failure (`graphics_diagnostic`, #18)
 

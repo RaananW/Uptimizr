@@ -3,7 +3,7 @@ title: Introduction
 description: What Uptimizr captures, how the pieces fit together, and the principles behind the project.
 ---
 
-Uptimizr is a **3D-scene analytics platform** — like Google Analytics, but for 3D apps. It captures
+Uptimizr is a **3D-scene analytics platform** — like web analytics, but for 3D apps. It captures
 view-direction heatmaps, pointer/click heatmaps, mesh interactions, session and performance metrics,
 and custom events from a 3D scene, and can **replay** a recorded session inside your own scene.
 

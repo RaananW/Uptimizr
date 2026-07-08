@@ -4,11 +4,11 @@ The PlayCanvas connector for Uptimizr. It registers as an
 [`@uptimizr/sdk-core`](../sdk-core) **collector** and captures:
 
 - **camera pose** (position + forward direction) → view-direction heatmap
-- **pointer move / click** (normalized screen + optional raycast hit) → screen heatmaps
+- **pointer move / click / button transitions** (normalized screen + optional raycast hit) → screen heatmaps
+- **camera gestures** → navigation-intent analytics
 - **mesh picks** → object-engagement analytics
-- **FPS** → performance
-- **mesh visibility** (opt-in) → per-object dwell / attention, with an optional world AABB
-- **hover dwell** (opt-in) → hover hesitation (lingering without acting)
+- **FPS**, context loss, and asset-load timing → performance / reliability
+- **mesh visibility / hover dwell / gaze / resource samples / node transforms** (opt-in) → attention, footprint, and replay fidelity
 
 `playcanvas` is a **peer dependency**: the connector reads from the host
 application's PlayCanvas instance and never bundles or mutates the scene. It tears
@@ -72,8 +72,10 @@ client.stop("manual");
 
 ### Options
 
-Both `trackScene` and `playcanvasCollector` accept the same sampling/capture knobs
-as the Babylon and three connectors:
+`trackScene` accepts the one-call project/endpoint, sampling, capture, `gaze`, `actors`,
+`keyBindings`, and `cameraType` options. Use `playcanvasCollector` directly for collector-only
+tuning such as `meshVisibility`, `hoverDwell`, `resourceSample`, `raycast`, or
+`cameraGestureSensitivity`:
 
 ```ts
 playcanvasCollector({
@@ -82,7 +84,16 @@ playcanvasCollector({
   sampleCameraMs: 1000, // camera-pose sampling interval
   samplePerfMs: 2000, // FPS sampling interval (read from app.stats.frame.fps)
   pointerMoveThrottleMs: 250, // min gap between pointer_move samples
-  capture: { camera: true, pointerMove: true, clicks: true, meshPicks: true, perf: true },
+  capture: {
+    camera: true,
+    pointerMove: true,
+    clicks: true,
+    buttons: true,
+    cameraGesture: true,
+    meshPicks: true,
+    perf: true,
+    assetLoad: true,
+  },
 });
 ```
 
@@ -166,9 +177,10 @@ connector boundary so the emitted events are identical:
   frustum path.
 - **Coordinate frame:** fixed right-handed, y-up (PlayCanvas has no per-scene
   handedness flag like Babylon's `useRightHandedSystem`).
-- **`asset_load`:** **not captured.** Mirrors the three connector — the connector
-  does not hook PlayCanvas' asset registry; report load timing from your app via
-  `client.track(...)` if needed. (Follow-up: a first-class asset-load hook.)
+- **`asset_load`:** captured by default from the PlayCanvas `app.assets` registry
+  (`load:start` → `load` / `error`). The connector records the app-defined asset
+  `name`, duration, status, and byte size when the engine knows it — never the file
+  URL (privacy, ADR 0003). Disable with `capture.assetLoad: false`.
 - **Compile stalls (`compile_stall`, #42):** **not captured.** Babylon exposes
   engine-level shader-compilation observables the connector can time; PlayCanvas has
   no equivalent public compile hook, so compile-stall capture is Babylon-only for now.

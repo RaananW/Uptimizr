@@ -3,8 +3,9 @@
 Local and deployment infrastructure for Uptimizr.
 
 - `docker/` — `docker compose` bringing up ClickHouse + Postgres (+ Adminer) for the
-  optional **scale** tier. These engines back a ClickHouse-backed store behind the
-  `@uptimizr/db` contracts (ADR 0020); the default OSS collector does **not** need them.
+  optional **scale** tier. The current ClickHouse store keeps events and metadata in
+  ClickHouse behind the `@uptimizr/db` contracts (ADR 0020); the default OSS collector
+  does **not** need these services.
 
 Cloud-agnostic and Docker-first by design.
 
@@ -24,7 +25,7 @@ Back up = copy the `.duckdb` file. DuckDB is single-writer: run one collector pe
 
 ## Scale stack (Docker)
 
-ClickHouse + Postgres are only needed for the optional scale tier:
+ClickHouse + Postgres are only needed when exercising the optional scale-tier services:
 
 ```bash
 cd infra/docker

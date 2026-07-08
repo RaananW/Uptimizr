@@ -4,11 +4,12 @@ The three.js connector for Uptimizr. It registers as an
 [`@uptimizr/sdk-core`](../sdk-core) **collector** and captures:
 
 - **camera pose** (position + forward direction) → view-direction heatmap
-- **pointer move / click** (normalized screen + optional raycast hit) → screen heatmaps
+- **pointer move / click / button transitions** (normalized screen + optional raycast hit) → screen heatmaps
+- **camera gestures** → navigation-intent analytics
 - **mesh picks** → object-engagement analytics
-- **FPS** → performance
-- **mesh visibility** (opt-in) → per-object dwell / attention, with an optional world AABB
-- **hover dwell** (opt-in) → hover hesitation (lingering without acting)
+- **FPS** and context loss → performance / reliability
+- **mesh visibility / hover dwell / gaze / resource samples / node transforms** (opt-in) → attention, footprint, and replay fidelity
+- **WebXR controller/gaze input** (via `trackScene`, enabled by default) → XR interaction analytics
 
 `three` is a **peer dependency**: the connector reads from the host application's
 three.js instance and never bundles or mutates the scene. It tears down all DOM
@@ -72,8 +73,10 @@ client.stop("manual");
 
 ### Options
 
-Both `trackScene` and `threeCollector` accept the same sampling/capture knobs as
-the Babylon connector:
+`trackScene` accepts the one-call project/endpoint, sampling, capture, `gaze`, `actors`,
+`keyBindings`, `cameraType`, `connector`, and `xr` options. Use `threeCollector` directly for
+collector-only tuning such as `meshVisibility`, `hoverDwell`, `resourceSample`, `raycast`, or
+`cameraGestureSensitivity`:
 
 ```ts
 threeCollector({
@@ -83,7 +86,15 @@ threeCollector({
   sampleCameraMs: 1000, // camera-pose sampling interval
   samplePerfMs: 2000, // FPS sampling interval (derived from renderer.info)
   pointerMoveThrottleMs: 250, // min gap between pointer_move samples
-  capture: { camera: true, pointerMove: true, clicks: true, meshPicks: true, perf: true },
+  capture: {
+    camera: true,
+    pointerMove: true,
+    clicks: true,
+    buttons: true,
+    cameraGesture: true,
+    meshPicks: true,
+    perf: true,
+  },
 });
 ```
 
@@ -98,6 +109,13 @@ captured. `"frame"`-cadence channels are driven by `requestAnimationFrame`
 ```ts
 threeCollector({ scene, camera, renderer, sampling: { camera: 10, pointerMove: 60, perf: 0.5 } });
 ```
+
+### WebXR
+
+`trackScene` registers `xrCollector` by default. It stays idle until `renderer.xr` enters an
+immersive session, then maps controller/gaze rays plus `select`/`squeeze` actions onto the shared
+pointer and `mesh_interaction` events. Pass `xr: false` to disable it, or `xr: { sampleMs,
+capture, raycast }` to tune XR pose sampling and hit resolution.
 
 ### Opt-in dwell capture (mesh_visibility #37, hover_dwell #48)
 
