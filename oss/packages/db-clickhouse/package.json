@@ -46,12 +46,12 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@clickhouse/client": "^1.23.0",
+    "@clickhouse/client": "^1.23.1",
     "@uptimizr/db": "workspace:*",
     "@uptimizr/schema": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.1.0",
+    "@types/node": "^26.1.1",
     "tsx": "^4.23.0",
     "vitest": "^4.1.10"
   }
