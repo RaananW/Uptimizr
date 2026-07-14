@@ -10,6 +10,16 @@ The server is a thin wrapper: each tool maps one-to-one to a documented collecto
 performs `GET` requests only — there are **no ingestion, mutation, or raw per-session event
 tools**.
 
+## How it connects
+
+The server talks **only to your collector's HTTP query API** — it never opens the database
+(DuckDB/ClickHouse/Postgres) directly. The collector stays the single gateway to your data, so an
+agent gets exactly the auth, project-scoping, and privacy guarantees a dashboard user does:
+
+```text
+AI agent ──stdio──▶ @uptimizr/mcp ──HTTPS GET + x-api-key──▶ collector ──▶ store
+```
+
 ## Run
 
 ```bash
@@ -38,6 +48,26 @@ config:
         "UPTIMIZR_COLLECTOR_URL": "https://collect.example.com",
         "UPTIMIZR_API_KEY": "utk_…"
       }
+    }
+  }
+}
+```
+
+For **GitHub Copilot CLI**, put the same entry in `~/.copilot/mcp-config.json` with
+`"type": "local"` and `"tools": ["*"]`, then restart the CLI so it loads the tools:
+
+```json
+{
+  "mcpServers": {
+    "uptimizr": {
+      "type": "local",
+      "command": "npx",
+      "args": ["-y", "@uptimizr/mcp"],
+      "env": {
+        "UPTIMIZR_COLLECTOR_URL": "http://localhost:4318",
+        "UPTIMIZR_API_KEY": "utk_…"
+      },
+      "tools": ["*"]
     }
   }
 }
