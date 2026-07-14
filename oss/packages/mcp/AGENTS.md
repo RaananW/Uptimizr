@@ -10,6 +10,9 @@ lets an agent query a consumer's **own** 3D analytics in natural language. Each 
 documented collector read endpoint; the server is a thin wrapper that holds no business logic and
 performs `GET` requests only (ADR 0005, ADR 0017).
 
+It connects **only to the collector's HTTP query API** (never to the database directly), so the
+collector remains the single gateway that enforces auth, per-project scoping, and privacy.
+
 ## Run
 
 ```bash
