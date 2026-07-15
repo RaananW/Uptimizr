@@ -1,5 +1,64 @@
 # @uptimizr/react
 
+## 0.11.0
+
+### Minor Changes
+
+- 90e1bea: feat(react): explicit first-run LLM backend chooser for the assistant (ADR 0050 §4, amended).
+
+  `useAssistant` and `<AssistantPanel>` no longer auto-select a backend on first open. Previously a
+  WebGPU machine was pre-selected into the local (WebLLM) backend, dropping a first-time user straight
+  onto the ~4 GB model-download gate without seeing the hosted alternative.
+
+  - `useAssistant`: when no explicit `backend` is passed and none is persisted, the selection now
+    starts **unselected** (`null`) — nothing loads until the user chooses. The explicit-`backend` and
+    persisted-choice fast paths are unchanged, so returning users are never re-prompted.
+  - `<AssistantPanel>`: on first run it renders a **chooser** presenting both backends side by side
+    with honest tradeoffs (including the hosted data-egress caveat), local shown disabled with a
+    "requires a WebGPU browser" note when WebGPU is unavailable and highlighted as _Recommended_ when
+    it is. Picking an option routes into the existing per-backend config (local model dropdown +
+    download consent, or the hosted endpoint/key/model form). The choice persists; subsequent opens go
+    straight to the chat, and the backend can still be changed later under **Backend**.
+
+- 306f5ab: feat(react): ship the in-browser analytics assistant as a portable, code-split export — a drop-in
+  `<AssistantPanel>` and a headless `useAssistant()` hook from the new `@uptimizr/react/assistant`
+  subpath (ADR 0050 §2, ADR 0047).
+
+  - `useAssistant()` wraps `@uptimizr/agent-core`'s `runAgent` tool-calling loop: it manages the
+    conversation history and per-turn state, the user-selected LLM backend (persisted via agent-core's
+    config helpers), live tool-call progress, and WebLLM download/init progress. The loop runs
+    entirely client-side against the **same** read-only `CollectorApi` client the panels use (no new
+    transport, no Uptimizr server component).
+  - `<AssistantPanel>` is a drop-in chat UI on the hook: message list, input, a local-WebLLM vs
+    bring-your-own-hosted backend/model picker, the WebLLM download-consent prompt + progress bar, and
+    clear privacy messaging.
+  - LLM deps stay **optional and code-split**: importing the core `@uptimizr/react` barrel pulls zero
+    assistant/LLM code, the provider factories are `import()`-ed on first use, and `@mlc-ai/web-llm`
+    remains an optional peer loaded lazily by agent-core — exactly like `@uptimizr/react/panels-3d`
+    code-splits Babylon.
+  - Adds a read-only `CollectorApi.read()` passthrough and a non-throwing `useOptionalUptimizr()` so
+    the assistant reuses an ambient `<UptimizrProvider>` connection or explicit `collectorUrl`/`apiKey`
+    props.
+
+### Patch Changes
+
+- 59fd29b: docs: refresh package and app READMEs to match current source
+
+  Reconcile every package/app README with the actual code — corrected package/connector
+  lists, public APIs and options, CLI flags, env vars, ports, the event catalog, and
+  cross-links. Also drop "Google Analytics" references in favor of neutral "web analytics"
+  wording. Documentation-only; no runtime behavior changes.
+
+- Updated dependencies [dd6e3f8]
+- Updated dependencies [36f78e8]
+- Updated dependencies [f3ca500]
+- Updated dependencies [aaf0ea7]
+- Updated dependencies [59fd29b]
+  - @uptimizr/agent-core@0.2.0
+  - @uptimizr/heatmap@0.1.3
+  - @uptimizr/replay@0.2.4
+  - @uptimizr/schema@0.5.1
+
 ## 0.10.0
 
 ### Minor Changes

@@ -1,5 +1,17 @@
 # @uptimizr/db-clickhouse
 
+## 0.3.4
+
+### Patch Changes
+
+- e31ff64: chore(deps): bump @clickhouse/client to ^1.23.1
+
+  Pick up the latest patch of the ClickHouse client (bug fixes only, no API changes).
+
+- Updated dependencies [59fd29b]
+  - @uptimizr/db@0.7.2
+  - @uptimizr/schema@0.5.1
+
 ## 0.3.3
 
 ### Patch Changes
