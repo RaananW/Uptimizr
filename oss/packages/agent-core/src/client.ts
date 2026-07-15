@@ -1,5 +1,3 @@
-import type { McpConfig } from "./config.js";
-
 /** A query-string parameter map. `undefined` values are omitted from the request. */
 export type QueryParams = Record<string, string | number | undefined>;
 
@@ -11,6 +9,18 @@ export type QueryParams = Record<string, string | number | undefined>;
  */
 export interface CollectorClient {
   get(path: string, params?: QueryParams): Promise<unknown>;
+}
+
+/**
+ * The `(collectorUrl, apiKey)` pair a collector client binds to. Every consumer
+ * (MCP, dashboard, demo) talks only to its **own** collector, authenticated with
+ * its own project API key — nothing is sent to any third party (ADR 0003 / 0017).
+ */
+export interface CollectorClientConfig {
+  /** Base URL of the consumer's Uptimizr collector (e.g. https://collect.example.com). */
+  collectorUrl: string;
+  /** Project API key (`x-api-key`) used for read requests. */
+  apiKey: string;
 }
 
 /** Thrown when the collector responds with a non-2xx status. */
@@ -33,7 +43,7 @@ function ensureTrailingSlash(url: string): string {
  * `fetchImpl` is injectable for testing; it defaults to the global `fetch`.
  */
 export function createCollectorClient(
-  config: McpConfig,
+  config: CollectorClientConfig,
   fetchImpl: typeof fetch = fetch,
 ): CollectorClient {
   const base = ensureTrailingSlash(config.collectorUrl);

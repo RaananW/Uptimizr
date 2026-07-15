@@ -1,21 +1,22 @@
 {
-  "name": "@uptimizr/mcp",
-  "version": "0.1.1",
-  "description": "Read-only Model Context Protocol (MCP) server over an Uptimizr collector's query API — let an agent ask questions of your own 3D analytics, on your own infrastructure.",
+  "name": "@uptimizr/agent-core",
+  "version": "0.1.0",
+  "description": "Framework-agnostic, browser-safe core for Uptimizr analytics agents — the single read-only tool catalog over the collector query API, a headless LLM provider-adapter interface, and the tool-calling loop.",
   "keywords": [
     "uptimizr",
     "analytics",
-    "mcp",
-    "model-context-protocol",
-    "ai",
+    "3d",
     "agent",
-    "3d"
+    "ai",
+    "llm",
+    "tool-calling",
+    "mcp"
   ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RaananW/Uptimizr.git",
-    "directory": "oss/packages/mcp"
+    "directory": "oss/packages/agent-core"
   },
   "bugs": {
     "url": "https://github.com/RaananW/Uptimizr/issues"
@@ -25,6 +26,7 @@
   "publishConfig": {
     "access": "public"
   },
+  "private": false,
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -34,9 +36,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
-  },
-  "bin": {
-    "uptimizr-mcp": "./dist/bin.js"
   },
   "files": [
     "dist",
@@ -49,21 +48,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
-    "serve": "tsx src/bin.ts",
-    "start": "node dist/bin.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint .",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@uptimizr/agent-core": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^26.1.0",
-    "tsx": "^4.23.0",
     "vitest": "^4.1.10"
   },
   "engines": {

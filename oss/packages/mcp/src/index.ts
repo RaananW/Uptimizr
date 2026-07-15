@@ -2,9 +2,12 @@ export { readMcpConfig, type McpConfig } from "./config.js";
 export {
   createCollectorClient,
   CollectorError,
+  readTools,
   type CollectorClient,
+  type CollectorClientConfig,
   type QueryParams,
-} from "./client.js";
-export { readTools, type ReadTool, type ReadToolRequest } from "./tools.js";
+  type ReadTool,
+  type ReadToolRequest,
+} from "@uptimizr/agent-core";
 export { createMcpServer } from "./server.js";
 export { version } from "./version.js";

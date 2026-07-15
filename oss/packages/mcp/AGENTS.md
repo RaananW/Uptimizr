@@ -32,13 +32,16 @@ UPTIMIZR_COLLECTOR_URL="https://collect.example.com" UPTIMIZR_API_KEY="utk_…" 
   tools here. No data leaves the consumer's infrastructure (ADR 0003).
 - The server talks only to the configured collector with the consumer's `x-api-key`; never hardcode
   or log credentials.
-- Keep it a thin wrapper: a new tool = a new entry in the `readTools` registry mapping to a
-  documented query endpoint. Do not add aggregation/business logic — that lives in the collector.
+- Keep it a thin wrapper: a new tool = a new entry in the `readTools` catalog (defined in
+  `@uptimizr/agent-core`) mapping to a documented query endpoint. Do not add aggregation/business
+  logic — that lives in the collector.
 - Tool definitions are pure (`buildRequest`) and must stay unit-testable without a live collector.
 
 ## Programmatic API
 
-`readMcpConfig()`, `createCollectorClient(config)`, `createMcpServer(client)`, `readTools`.
+`readMcpConfig()`, `createMcpServer(client)`, and the shared building blocks re-exported from
+[`@uptimizr/agent-core`](https://www.npmjs.com/package/@uptimizr/agent-core):
+`createCollectorClient(config)` and `readTools`.
 
 ## More
 
