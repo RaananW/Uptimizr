@@ -10,7 +10,7 @@
  * Storage — never part of any precache.
  */
 
-import type { LlmProvider, ProviderRequest, ProviderResponse } from "../provider.js";
+import type { AgentMessage, LlmProvider, ProviderRequest, ProviderResponse } from "../provider.js";
 import { isWebGpuAvailable } from "./config.js";
 import {
   parseOpenAiCompletion,
@@ -177,6 +177,62 @@ export class UnsupportedToolCallingModelError extends Error {
   }
 }
 
+/** A separator between the folded system instructions and the user's question. */
+const SYSTEM_FOLD_SEPARATOR = "\n\n";
+
+/**
+ * Fold any `system` message into the first `user` turn for WebLLM's Hermes
+ * function-calling path.
+ *
+ * WebLLM injects its OWN tool-calling system prompt for the Hermes-2-Pro /
+ * Hermes-3 family and **forbids** a caller-supplied `system` message whenever
+ * `tools` are present — it throws `CustomSystemPromptError`
+ * ("…cannot specify customized system prompt.") at runtime (verified against
+ * `@mlc-ai/web-llm` v0.2.79: the check is gated on both `request.tools` being
+ * present and the model id starting with `Hermes-2-Pro-`/`Hermes-3-`). Our
+ * assistant always sends `[{ role: "system", … }, userMessage]` plus tools, so
+ * the local backend hit that error.
+ *
+ * This pure helper removes every `system` message and prepends their content —
+ * in order, joined by a blank line — to the first `user` message, so the model
+ * still receives our analytics instructions, just not as a `system` role. If
+ * there is no `user` message yet, the folded system text becomes a `user`
+ * message. All other turns (assistant / tool) keep their relative order.
+ *
+ * Plain string/array operations only (no regex — avoids CodeQL ReDoS), and the
+ * input array is never mutated. It is idempotent per call because it always
+ * derives from the messages passed in, so re-folding the full transcript on
+ * every loop step never reintroduces a `system` role.
+ */
+export function foldSystemPromptForHermes(messages: readonly AgentMessage[]): AgentMessage[] {
+  const systemContents: string[] = [];
+  const rest: AgentMessage[] = [];
+  for (const message of messages) {
+    if (message.role === "system") {
+      systemContents.push(message.content);
+    } else {
+      rest.push(message);
+    }
+  }
+  if (systemContents.length === 0) return [...messages];
+
+  const systemText = systemContents.join(SYSTEM_FOLD_SEPARATOR);
+  const firstUserIndex = rest.findIndex((message) => message.role === "user");
+  if (firstUserIndex === -1) {
+    // No user turn yet: carry the instructions in as a user message so the
+    // model still receives them without a forbidden `system` role.
+    return [{ role: "user", content: systemText }, ...rest];
+  }
+
+  return rest.map((message, index) => {
+    if (index !== firstUserIndex) return message;
+    return {
+      role: "user",
+      content: systemText + SYSTEM_FOLD_SEPARATOR + message.content,
+    };
+  });
+}
+
 function resolveModel(id: string | undefined): CuratedModel {
   const model = id ? CURATED_MODELS.find((m) => m.id === id) : CURATED_MODELS[0];
   return model ?? { id: id ?? "", label: id ?? "", downloadSize: "?", vram: "?", description: "" };
@@ -230,8 +286,14 @@ export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLl
   return {
     async complete(request: ProviderRequest): Promise<ProviderResponse> {
       const engine = await ensureEngine();
+      // WebLLM's Hermes tool-calling path injects its own system prompt and
+      // rejects a caller-supplied `system` message when `tools` are present, so
+      // fold our system instructions into the first user turn for that case.
+      const messages = request.tools?.length
+        ? foldSystemPromptForHermes(request.messages)
+        : request.messages;
       const completion = await engine.chat.completions.create({
-        messages: toOpenAiMessages(request.messages),
+        messages: toOpenAiMessages(messages),
         tools: toOpenAiTools(request.tools),
         tool_choice: "auto",
         stream: false,

@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ProviderRequest } from "../provider.js";
+import type { AgentMessage, ProviderRequest } from "../provider.js";
 import {
   CURATED_MODELS,
   createWebLlmProvider,
+  foldSystemPromptForHermes,
   SUPPORTED_TOOL_CALLING_MODELS,
   UnsupportedToolCallingModelError,
   WebGpuUnavailableError,
@@ -11,8 +12,13 @@ import {
   type WebLlmRuntime,
 } from "../webllm.js";
 
+const SYSTEM_PROMPT = "You are the Uptimizr analytics assistant.";
+
 const request: ProviderRequest = {
-  messages: [{ role: "user", content: "top meshes?" }],
+  messages: [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: "top meshes?" },
+  ],
   tools: [{ name: "top_meshes", description: "ranked meshes", parameters: { type: "object" } }],
 };
 
@@ -94,9 +100,17 @@ describe("WebLLM provider", () => {
 
     expect(res).toEqual({ kind: "final", content: "The hero mesh." });
     expect(load).toHaveBeenCalledTimes(1);
-    // The prompt/tools are shaped and passed to the local engine only.
-    const createArg = create.mock.calls[0]![0] as { messages: unknown[]; tools: unknown[] };
-    expect(createArg.messages).toEqual([{ role: "user", content: "top meshes?" }]);
+    // The prompt/tools are shaped and passed to the local engine only. WebLLM's
+    // Hermes tool-calling path forbids a `system` role alongside `tools`, so our
+    // system instructions are folded into the first user turn.
+    const createArg = create.mock.calls[0]![0] as {
+      messages: { role: string; content: string }[];
+      tools: unknown[];
+    };
+    expect(createArg.messages.some((m) => m.role === "system")).toBe(false);
+    expect(createArg.messages).toEqual([
+      { role: "user", content: `${SYSTEM_PROMPT}\n\ntop meshes?` },
+    ]);
     expect(createArg.tools).toHaveLength(1);
     // Zero data egress: no fetch to any server.
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -200,6 +214,40 @@ describe("WebLLM provider", () => {
     expect(onInitProgress).toHaveBeenCalledWith({ progress: 0.5, text: "loading" });
   });
 
+  it("never sends a system-role message to the engine across a multi-turn tool exchange", async () => {
+    const { load, create } = fakeRuntime({ choices: [{ message: { content: "done" } }] });
+    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
+
+    // The loop resends the full transcript (incl. the original system message)
+    // on every step; folding per-call must keep later tool-result turns free of
+    // a `system` role too, while preserving the assistant/tool turns and order.
+    const multiTurn: ProviderRequest = {
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: "top meshes?" },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [{ id: "c1", name: "top_meshes", arguments: {} }],
+        },
+        { role: "tool", toolCallId: "c1", name: "top_meshes", content: '[{"mesh":"hero"}]' },
+      ],
+      tools: request.tools,
+    };
+
+    await provider.complete(multiTurn);
+
+    const sent = create.mock.calls[0]![0] as {
+      messages: { role: string; content: string; tool_call_id?: string }[];
+    };
+    expect(sent.messages.some((m) => m.role === "system")).toBe(false);
+    // Order preserved: folded user turn, then the assistant + tool turns intact.
+    expect(sent.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
+    expect(sent.messages[0]).toEqual({ role: "user", content: `${SYSTEM_PROMPT}\n\ntop meshes?` });
+    expect(sent.messages[1]!.tool_call_id).toBeUndefined();
+    expect(sent.messages[2]).toMatchObject({ role: "tool", tool_call_id: "c1" });
+  });
+
   it("unloads the engine to release GPU memory", async () => {
     const { load, unload } = fakeRuntime({ choices: [{ message: { content: "ok" } }] });
     const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
@@ -213,5 +261,61 @@ describe("WebLLM provider", () => {
     const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
     await expect(provider.unload()).resolves.toBeUndefined();
     expect(load).not.toHaveBeenCalled();
+  });
+});
+
+describe("foldSystemPromptForHermes", () => {
+  it("folds a leading system message into the first user turn", () => {
+    const messages: AgentMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "hi" },
+    ];
+    expect(foldSystemPromptForHermes(messages)).toEqual([{ role: "user", content: "sys\n\nhi" }]);
+  });
+
+  it("converts a system-only conversation into a user message", () => {
+    const messages: AgentMessage[] = [{ role: "system", content: "sys" }];
+    expect(foldSystemPromptForHermes(messages)).toEqual([{ role: "user", content: "sys" }]);
+  });
+
+  it("leaves a conversation without a system message unchanged", () => {
+    const messages: AgentMessage[] = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello" },
+    ];
+    expect(foldSystemPromptForHermes(messages)).toEqual(messages);
+  });
+
+  it("preserves assistant/tool turns and their order while folding", () => {
+    const messages: AgentMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "t", arguments: {} }] },
+      { role: "tool", toolCallId: "c1", name: "t", content: "res" },
+    ];
+    expect(foldSystemPromptForHermes(messages)).toEqual([
+      { role: "user", content: "sys\n\nhi" },
+      { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "t", arguments: {} }] },
+      { role: "tool", toolCallId: "c1", name: "t", content: "res" },
+    ]);
+  });
+
+  it("does not mutate the input array", () => {
+    const messages: AgentMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "hi" },
+    ];
+    const snapshot = JSON.parse(JSON.stringify(messages));
+    foldSystemPromptForHermes(messages);
+    expect(messages).toEqual(snapshot);
+  });
+
+  it("is idempotent — a folded transcript folds to itself", () => {
+    const messages: AgentMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "hi" },
+    ];
+    const once = foldSystemPromptForHermes(messages);
+    expect(foldSystemPromptForHermes(once)).toEqual(once);
   });
 });
