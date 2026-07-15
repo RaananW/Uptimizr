@@ -51,6 +51,7 @@ import { Panel } from "@/components/Panel";
 import { builtinPanels } from "@/panels/registry";
 import { useRemotePanels } from "@/panels/useRemotePanels";
 import { RemotePanelErrors } from "@/panels/RemotePanelErrors";
+import { AssistantDrawer } from "@/components/AssistantDrawer";
 import { CameraDirectionHeatmap } from "@/components/CameraDirectionHeatmap";
 import { GlobalFilters } from "@/components/GlobalFilters";
 import { InputSourceBreakdown } from "@/components/InputSourceBreakdown";
@@ -981,6 +982,9 @@ export default function Page() {
               <RemotePanelErrors errors={panelLoadErrors} />
             </div>
           ) : null}
+          <div className="lg:col-span-2">
+            <AssistantDrawer collectorUrl={baseUrl} apiKey={apiKey} />
+          </div>
           <div className="lg:col-span-2">
             <Panel
               title={LIVE_PRESENCE_TITLE}

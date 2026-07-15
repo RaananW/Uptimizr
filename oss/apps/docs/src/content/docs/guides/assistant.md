@@ -189,6 +189,29 @@ above. The loop runs client-side, so it works against both a real collector and 
 DuckDB-Wasm query layer with no server. Point Tailwind at the package source (as the panels require)
 so the component's utility classes aren't tree-shaken out.
 
+## In the OSS dashboard
+
+The self-hostable [dashboard](/docs/deploy/dashboard/) has the assistant built in — no wiring
+required. Once you're connected to a project, open the **Analytics assistant** card at the top of the
+overview and click **Ask the assistant**. The panel mounts against that project's existing collector
+connection (the same read-only query API and key the panels use) and answers are grounded in real
+tool calls against your data.
+
+The assistant is loaded exactly like the portable component above: a lazy `import()` pulls
+`@uptimizr/react/assistant` (and, only when a local model runs, `@mlc-ai/web-llm`) on first open, so
+the dashboard's main bundle is unchanged for anyone who never opens it. Pick a backend under
+**Backend** — local WebLLM (zero egress) or your own hosted key.
+
+### In the backend-less demo
+
+The [live demo](https://demo.uptimizr.com) embeds this same dashboard build, and its `/api/v1/*`
+reads are served entirely in the browser by a service worker backed by DuckDB-Wasm (no server, no
+account). So the assistant works there too: choose the **Local (WebLLM)** backend and ask away — the
+tool calls read from the in-browser store and the model runs on your GPU, with **no server and no API
+key**. The model weights download on demand behind the consent prompt the first time you open it, and
+are **never** part of the demo's one-time "Prepare demo" precache (ADR 0050 §6) — a visitor who never
+opens the assistant downloads nothing extra.
+
 ## See also
 
 - [MCP server (AI agents)](/docs/guides/mcp/) — the same read-only tool catalog for external/local agents.

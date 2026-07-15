@@ -50,6 +50,7 @@
   "dependencies": {
     "@babylonjs/core": "^9.15.0",
     "@babylonjs/loaders": "^9.15.0",
+    "@mlc-ai/web-llm": "^0.2.79",
     "@uptimizr/heatmap": "workspace:*",
     "@uptimizr/react": "workspace:*",
     "@uptimizr/replay": "workspace:*",
