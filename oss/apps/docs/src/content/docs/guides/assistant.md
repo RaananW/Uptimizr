@@ -28,17 +28,24 @@ import { createHostedProvider } from "@uptimizr/agent-core/providers/hosted";
 | **Local (WebLLM / WebGPU)** | Your GPU, in the browser | **Nothing** — zero egress            | A WebGPU-capable browser |
 | **Bring-your-own hosted**   | Your chosen LLM provider | Prompt + **aggregated** results only | Provider key + CORS      |
 
-Local is the **privacy-preserving default** when WebGPU is available. When it isn't (older Safari,
-Firefox-on-Android, low-RAM devices), the local option is hidden and the hosted backend provides
-broader reach at the cost of sending aggregated analytics to your own provider.
+There is **no default backend** — the first time you open the `<AssistantPanel>` it presents an
+explicit **first-run chooser** with both options side by side and their honest tradeoffs, and
+**nothing is loaded or downloaded until you pick** (ADR 0050 §4, amended). This avoids surprising a
+first-time user with a multi-GB local model download. When WebGPU is present the local option is
+highlighted as _Recommended_ (it is the zero-egress choice); when it isn't (older Safari,
+Firefox-on-Android, low-RAM devices) the local option is shown **disabled** with a "requires a
+WebGPU browser" note, and the hosted backend provides broader reach at the cost of sending
+aggregated analytics to your own provider. Your choice persists, so returning users go straight to
+the chat and can change it later under **Backend**.
 
 ```ts
 import { defaultBackendKind, isWebGpuAvailable } from "@uptimizr/agent-core/providers";
 
 if (isWebGpuAvailable()) {
-  // Offer the local, zero-egress backend.
+  // Offer (and, if you like, highlight) the local, zero-egress backend — but let
+  // the user choose; don't auto-select it.
 }
-const backend = defaultBackendKind(); // "local" when WebGPU is present, else "hosted"
+const suggested = defaultBackendKind(); // "local" when WebGPU is present, else "hosted"
 ```
 
 ## Local backend (WebLLM / WebGPU)
@@ -169,10 +176,11 @@ export function Analytics() {
 }
 ```
 
-`<AssistantPanel>` renders the whole surface — message list, input, the local-vs-hosted backend and
-model picker, the WebLLM download-consent prompt and progress bar, and the privacy note. It reuses
-the same read-only [`CollectorApi`](/docs/deploy/dashboard/) client the panels use, so there is no
-second transport.
+`<AssistantPanel>` renders the whole surface — on first open, the **backend chooser** (both options
+with their tradeoffs); once a backend is picked, the message list, input, the local-vs-hosted backend
+and model picker, the WebLLM download-consent prompt and progress bar, and the privacy note. It
+reuses the same read-only [`CollectorApi`](/docs/deploy/dashboard/) client the panels use, so there
+is no second transport.
 
 For a custom UI, drive the headless hook instead and render your own chat:
 
@@ -183,8 +191,9 @@ function MyAssistant() {
   const { messages, send, status, toolActivity, backend, setBackend, isReady } = useAssistant({
     collectorUrl: "http://localhost:4318",
     apiKey: "proj_…",
-    // Optional: pass an explicit backend, or omit to load the persisted choice
-    // (falling back to a zero-config local backend when WebGPU is available).
+    // Optional: pass an explicit backend, or omit to load the persisted choice.
+    // With neither, `backend` stays `null` on first run (no auto-select) so you
+    // can render your own chooser before anything loads.
   });
   // messages: the transcript · send(text): run a turn · status: "idle" | "initializing" |
   // "thinking" | "error" · toolActivity: live tool-call progress · setBackend(cfg): switch + persist.
@@ -207,8 +216,9 @@ tool calls against your data.
 
 The assistant is loaded exactly like the portable component above: a lazy `import()` pulls
 `@uptimizr/react/assistant` (and, only when a local model runs, `@mlc-ai/web-llm`) on first open, so
-the dashboard's main bundle is unchanged for anyone who never opens it. Pick a backend under
-**Backend** — local WebLLM (zero egress) or your own hosted key.
+the dashboard's main bundle is unchanged for anyone who never opens it. The first time you open it,
+the panel asks you to **choose a backend** — local WebLLM (zero egress) or your own hosted key —
+before anything loads; the choice is remembered, and you can change it later under **Backend**.
 
 ### In the backend-less demo
 

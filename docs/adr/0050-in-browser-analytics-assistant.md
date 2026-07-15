@@ -1,6 +1,6 @@
 # ADR 0050: In-browser, user-controlled analytics assistant (client-side agent)
 
-- **Status:** Proposed
+- **Status:** Proposed (amended 2026-07-15 — see [Amendment](#amendment-2026-07-15-explicit-first-run-backend-chooser))
 - **Date:** 2026-07-14
 - **Deciders:** RaananW
 - **Extends:** [ADR 0017](./0017-consumer-facing-agents.md) (consumer-facing agent strategy)
@@ -211,3 +211,30 @@ resources/prompts and any new read tools. Every shipped feature updates the publ
   Rejected: it would trap the feature in the app (the exact problem ADR 0047 fixed for panels),
   denying downstream framework users the ability to embed it. The component must live in the
   published `@uptimizr/react` catalog with the engine in `@uptimizr/agent-core`.
+
+## Amendment (2026-07-15): explicit first-run backend chooser
+
+This amendment **refines the default-selection behaviour** recorded in §4/§5 (which described a
+"privacy-preserving default: local when WebGPU is present"). It does **not** change the trust model,
+the storage seam, or the read-only/no-egress guarantees — those stand as decided above.
+
+**What changed.** The assistant no longer **auto-selects** a backend on first open. Previously
+`useAssistant` pre-selected the local (WebLLM) backend whenever WebGPU was detected, so a first-time
+user on a capable machine landed directly on the local-model download gate (a ~4 GB Hermes model)
+and never saw the hosted alternative side by side. Instead:
+
+- On first run (no explicit backend passed and no persisted choice), the selection starts
+  **unselected** (`null`) and `<AssistantPanel>` presents an **explicit chooser** showing **both**
+  backends side by side with their honest tradeoffs — including the hosted data-egress caveat (§5)
+  stated on the chooser itself. **Nothing is loaded or downloaded until the user picks.**
+- WebGPU detection now **highlights** a suggested option (local is marked _Recommended_ when
+  available; shown disabled with a "requires a WebGPU browser" note when not) rather than
+  auto-selecting it. `defaultBackendKind()` / `isWebGpuAvailable()` remain available for that hint.
+- The two fast paths are unchanged: an explicit `options.backend` still wins, and a previously
+  persisted choice is still restored — **returning users are never re-prompted**.
+
+**Why.** Auto-preselecting local turned "open the assistant" into "start a multi-GB download" on the
+first click, which surprised users of the demo and dashboard. Presenting both options and letting the
+user decide preserves user agency and is **still privacy-preserving** — because nothing loads until a
+choice is made, the zero-egress local path is a deliberate, informed choice rather than a silent
+default. This keeps the ADR's trust boundary intact while removing the download-friction footgun.

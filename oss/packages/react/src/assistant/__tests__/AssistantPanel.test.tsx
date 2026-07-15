@@ -35,6 +35,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("<AssistantPanel>", () => {
@@ -77,9 +78,48 @@ describe("<AssistantPanel>", () => {
     expect(local.disabled).toBe(true);
   });
 
-  it("shows a prompt to pick a backend when none is configured", () => {
-    // No persisted config + no WebGPU ⇒ no default backend ⇒ not ready.
+  it("first run presents BOTH backends, local disabled without WebGPU", () => {
+    // No persisted config + no WebGPU ⇒ first-run chooser with local disabled.
     render(<AssistantPanel api={fakeApi()} />);
-    expect(screen.getByText(/Choose an LLM backend/i)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Local (in-browser)" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Bring your own hosted key" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Use local" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (screen.getByRole("button", { name: "Use hosted key" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    // The chat input is NOT shown until a backend is chosen.
+    expect(screen.queryByLabelText("Message")).toBeNull();
+  });
+
+  it("picking hosted shows the key/endpoint form without starting a download", () => {
+    render(<AssistantPanel api={fakeApi()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Use hosted key" }));
+    expect(screen.getByLabelText("Endpoint")).toBeTruthy();
+    expect(screen.getByLabelText("API key")).toBeTruthy();
+    expect(screen.getByLabelText("Hosted model")).toBeTruthy();
+    // No download consent dialog is triggered by choosing hosted.
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("picking local routes to the model dropdown / download gate", () => {
+    // Present WebGPU so the local option is selectable.
+    vi.stubGlobal("navigator", { gpu: {} });
+    render(<AssistantPanel api={fakeApi()} />);
+    const useLocal = screen.getByRole("button", { name: "Use local" }) as HTMLButtonElement;
+    expect(useLocal.disabled).toBe(false);
+    fireEvent.click(useLocal);
+    // The per-backend local config (model dropdown + explicit commit) is shown;
+    // nothing downloads until the user commits and sends.
+    expect(screen.getByLabelText("Local model")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use this model locally" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("skips the chooser when a backend is already selected", () => {
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
+    expect(screen.getByLabelText("Message")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Use hosted key" })).toBeNull();
   });
 });

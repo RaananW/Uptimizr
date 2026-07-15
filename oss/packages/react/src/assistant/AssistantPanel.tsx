@@ -13,6 +13,7 @@ import { useCallback, useState, type FormEvent } from "react";
 import type { AgentMessage } from "@uptimizr/agent-core";
 import type {
   AssistantBackendConfig,
+  BackendKind,
   CuratedModel,
   HostedApi,
 } from "@uptimizr/agent-core/providers";
@@ -79,10 +80,14 @@ export function AssistantPanel({
     isReady,
     send,
     cancel,
+    setBackend,
+    models,
   } = assistant;
 
   const [draft, setDraft] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  // First-run: which backend the user picked in the chooser (null = not yet).
+  const [chooserKind, setChooserKind] = useState<BackendKind | null>(null);
 
   const onSubmit = useCallback(
     (e: FormEvent) => {
@@ -96,111 +101,137 @@ export function AssistantPanel({
   );
 
   const display = toDisplayMessages(messages);
+  const firstRun = backend === null;
 
   return (
     <div className={`flex flex-col gap-3 text-sm text-fg ${className ?? ""}`}>
       <header className="flex items-center justify-between gap-2">
         <h2 className="text-base font-medium text-fg-hi">{title}</h2>
-        <button
-          type="button"
-          className="rounded-md border border-edge px-2 py-1 text-xs text-fg-muted hover:text-fg"
-          onClick={() => setShowSettings((s) => !s)}
-        >
-          {showSettings ? "Hide settings" : "Backend"}
-        </button>
-      </header>
-
-      {showSettings && (
-        <BackendPicker
-          backend={backend}
-          webGpuAvailable={webGpuAvailable}
-          models={assistant.models}
-          onChange={assistant.setBackend}
-        />
-      )}
-
-      <PrivacyNote backend={backend} />
-
-      <ol className="flex min-h-[8rem] flex-col gap-2" aria-label="Conversation">
-        {display.length === 0 && (
-          <li className="text-xs text-fg-muted">
-            Ask a question to get started — e.g. “What were the most-clicked meshes this week?”
-          </li>
-        )}
-        {display.map((m, i) => (
-          <li key={i} className={m.role === "user" ? "text-fg-hi" : "text-fg"} data-role={m.role}>
-            <span className="mr-1 text-xs uppercase text-fg-muted">
-              {m.role === "user" ? "You" : "Assistant"}
-            </span>
-            <div className="whitespace-pre-wrap">{m.content}</div>
-          </li>
-        ))}
-      </ol>
-
-      {toolActivity.length > 0 && (
-        <ul className="flex flex-col gap-1 text-xs text-fg-muted" aria-label="Tool activity">
-          {toolActivity.map((t, i) => (
-            <li key={`${t.name}-${i}`} data-status={t.status}>
-              {t.status === "running" ? "⏳" : t.status === "error" ? "⚠️" : "✓"} {t.name}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {initProgress && (
-        <div
-          className="flex flex-col gap-1 text-xs text-fg-muted"
-          aria-label="Model download progress"
-        >
-          <span>{initProgress.text}</span>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink/60">
-            <div
-              className="h-full bg-emerald-400"
-              style={{ width: `${Math.round(initProgress.progress * 100)}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {status === "error" && error && (
-        <p className="rounded-md bg-rose-500/20 px-2 py-1 text-xs text-rose-300" role="alert">
-          {error.message}
-        </p>
-      )}
-
-      <form onSubmit={onSubmit} className="flex items-center gap-2">
-        <input
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={placeholder}
-          disabled={isBusy}
-          aria-label="Message"
-          className="flex-1 rounded-md border border-edge bg-ink/40 px-2 py-1 text-fg placeholder:text-fg-muted"
-        />
-        {isBusy ? (
+        {!firstRun && (
           <button
             type="button"
-            onClick={cancel}
-            className="rounded-md border border-edge px-3 py-1 text-xs text-fg-muted hover:text-fg"
+            className="rounded-md border border-edge px-2 py-1 text-xs text-fg-muted hover:text-fg"
+            onClick={() => setShowSettings((s) => !s)}
           >
-            Stop
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!draft.trim() || !isReady}
-            className="rounded-md bg-emerald-500/70 px-3 py-1 text-xs text-fg-hi disabled:opacity-50"
-          >
-            Send
+            {showSettings ? "Hide settings" : "Backend"}
           </button>
         )}
-      </form>
+      </header>
 
-      {!isReady && !backend && (
-        <p className="text-xs text-fg-muted">
-          Choose an LLM backend under <strong>Backend</strong> to begin.
-        </p>
+      {firstRun ? (
+        chooserKind === null ? (
+          <BackendChooser webGpuAvailable={webGpuAvailable} onPick={setChooserKind} />
+        ) : (
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setChooserKind(null)}
+              className="self-start text-xs text-fg-muted hover:text-fg"
+            >
+              ← Choose a different backend
+            </button>
+            <BackendPicker
+              backend={backend}
+              initialKind={chooserKind}
+              webGpuAvailable={webGpuAvailable}
+              models={models}
+              onChange={setBackend}
+            />
+          </div>
+        )
+      ) : (
+        <>
+          {showSettings && (
+            <BackendPicker
+              backend={backend}
+              webGpuAvailable={webGpuAvailable}
+              models={models}
+              onChange={setBackend}
+            />
+          )}
+
+          <PrivacyNote backend={backend} />
+
+          <ol className="flex min-h-[8rem] flex-col gap-2" aria-label="Conversation">
+            {display.length === 0 && (
+              <li className="text-xs text-fg-muted">
+                Ask a question to get started — e.g. “What were the most-clicked meshes this week?”
+              </li>
+            )}
+            {display.map((m, i) => (
+              <li
+                key={i}
+                className={m.role === "user" ? "text-fg-hi" : "text-fg"}
+                data-role={m.role}
+              >
+                <span className="mr-1 text-xs uppercase text-fg-muted">
+                  {m.role === "user" ? "You" : "Assistant"}
+                </span>
+                <div className="whitespace-pre-wrap">{m.content}</div>
+              </li>
+            ))}
+          </ol>
+
+          {toolActivity.length > 0 && (
+            <ul className="flex flex-col gap-1 text-xs text-fg-muted" aria-label="Tool activity">
+              {toolActivity.map((t, i) => (
+                <li key={`${t.name}-${i}`} data-status={t.status}>
+                  {t.status === "running" ? "⏳" : t.status === "error" ? "⚠️" : "✓"} {t.name}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {initProgress && (
+            <div
+              className="flex flex-col gap-1 text-xs text-fg-muted"
+              aria-label="Model download progress"
+            >
+              <span>{initProgress.text}</span>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink/60">
+                <div
+                  className="h-full bg-emerald-400"
+                  style={{ width: `${Math.round(initProgress.progress * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {status === "error" && error && (
+            <p className="rounded-md bg-rose-500/20 px-2 py-1 text-xs text-rose-300" role="alert">
+              {error.message}
+            </p>
+          )}
+
+          <form onSubmit={onSubmit} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder={placeholder}
+              disabled={isBusy}
+              aria-label="Message"
+              className="flex-1 rounded-md border border-edge bg-ink/40 px-2 py-1 text-fg placeholder:text-fg-muted"
+            />
+            {isBusy ? (
+              <button
+                type="button"
+                onClick={cancel}
+                className="rounded-md border border-edge px-3 py-1 text-xs text-fg-muted hover:text-fg"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!draft.trim() || !isReady}
+                className="rounded-md bg-emerald-500/70 px-3 py-1 text-xs text-fg-hi disabled:opacity-50"
+              >
+                Send
+              </button>
+            )}
+          </form>
+        </>
       )}
 
       {consent && (
@@ -216,26 +247,101 @@ export function AssistantPanel({
   );
 }
 
+/**
+ * First-run backend chooser (ADR 0050 §4, amended). Presents BOTH backends side
+ * by side with honest tradeoffs — including the hosted data-egress caveat (§5) —
+ * so a first-time user explicitly picks instead of being defaulted into a
+ * multi-GB local download. Nothing loads until a choice is made.
+ */
+function BackendChooser({
+  webGpuAvailable,
+  onPick,
+}: {
+  webGpuAvailable: boolean;
+  onPick: (kind: BackendKind) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs text-fg-muted">
+        Choose how the assistant runs. Nothing is loaded or downloaded until you pick — your choice
+        is remembered next time.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div
+          className={`flex flex-col gap-2 rounded-md border border-edge p-3 ${
+            webGpuAvailable ? "" : "opacity-60"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-medium text-fg-hi">Local (in-browser)</h3>
+            {webGpuAvailable && (
+              <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">
+                Recommended
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-fg-muted">
+            Private — <strong>nothing leaves your device</strong>. Runs on your GPU. Requires a
+            WebGPU browser with ~5&nbsp;GB free VRAM and a one-time ~4&nbsp;GB model download.
+          </p>
+          <button
+            type="button"
+            disabled={!webGpuAvailable}
+            onClick={() => onPick("local")}
+            className="mt-auto self-start rounded-md bg-emerald-500/70 px-3 py-1 text-xs text-fg-hi disabled:opacity-50"
+          >
+            Use local
+          </button>
+          {!webGpuAvailable && (
+            <p className="text-[11px] text-fg-muted">Requires a WebGPU browser.</p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2 rounded-md border border-edge p-3">
+          <h3 className="text-sm font-medium text-fg-hi">Bring your own hosted key</h3>
+          <p className="text-xs text-fg-muted">
+            Lightweight — no download. You supply an OpenAI-compatible or Anthropic endpoint + key.
+            Your questions and aggregated analytics context are{" "}
+            <strong>sent to that provider</strong> (never raw events or PII).
+          </p>
+          <button
+            type="button"
+            onClick={() => onPick("hosted")}
+            className="mt-auto self-start rounded-md bg-emerald-500/70 px-3 py-1 text-xs text-fg-hi"
+          >
+            Use hosted key
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Local vs bring-your-own hosted backend selector with a model/key form. */
 function BackendPicker({
   backend,
   webGpuAvailable,
   models,
   onChange,
+  initialKind,
 }: {
   backend: AssistantBackendConfig | null;
   webGpuAvailable: boolean;
   models: readonly CuratedModel[];
   onChange: (config: AssistantBackendConfig) => void;
+  /** First-run seed for which backend to configure (when `backend` is null). */
+  initialKind?: BackendKind;
 }) {
-  const kind = backend?.backend ?? (webGpuAvailable ? "local" : "hosted");
+  const [kind, setKind] = useState<BackendKind>(
+    backend?.backend ?? initialKind ?? (webGpuAvailable ? "local" : "hosted"),
+  );
   const [localModel, setLocalModel] = useState(backend?.webllm?.model ?? models[0]?.id ?? "");
   const [api, setApi] = useState<HostedApi>(backend?.hosted?.api ?? "openai");
   const [endpoint, setEndpoint] = useState(backend?.hosted?.endpoint ?? "");
   const [apiKey, setApiKey] = useState(backend?.hosted?.apiKey ?? "");
   const [hostedModel, setHostedModel] = useState(backend?.hosted?.model ?? "");
 
-  const selectLocal = () => onChange({ backend: "local", webllm: { model: localModel } });
+  const applyLocal = () => onChange({ backend: "local", webllm: { model: localModel } });
   const applyHosted = () =>
     onChange({ backend: "hosted", hosted: { api, endpoint, apiKey, model: hostedModel } });
 
@@ -249,7 +355,7 @@ function BackendPicker({
           name="assistant-backend"
           checked={kind === "local"}
           disabled={!webGpuAvailable}
-          onChange={selectLocal}
+          onChange={() => setKind("local")}
         />
         <span className={webGpuAvailable ? "text-fg" : "text-fg-muted"}>
           Local (WebLLM / WebGPU) — runs in your browser, zero egress
@@ -258,24 +364,31 @@ function BackendPicker({
       </label>
 
       {kind === "local" && webGpuAvailable && (
-        <label className="ml-6 flex items-center gap-2">
-          <span className="text-fg-muted">Model</span>
-          <select
-            aria-label="Local model"
-            value={localModel}
-            className="rounded-sm border border-edge bg-ink/40 px-1 py-0.5 text-fg"
-            onChange={(e) => {
-              setLocalModel(e.target.value);
-              onChange({ backend: "local", webllm: { model: e.target.value } });
-            }}
+        <div className="ml-6 flex flex-col gap-1">
+          <label className="flex items-center gap-2">
+            <span className="text-fg-muted">Model</span>
+            <select
+              aria-label="Local model"
+              value={localModel}
+              className="rounded-sm border border-edge bg-ink/40 px-1 py-0.5 text-fg"
+              onChange={(e) => setLocalModel(e.target.value)}
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label} ({m.downloadSize})
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={applyLocal}
+            disabled={!localModel}
+            className="self-start rounded-md bg-emerald-500/70 px-2 py-0.5 text-fg-hi disabled:opacity-50"
           >
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label} ({m.downloadSize})
-              </option>
-            ))}
-          </select>
-        </label>
+            Use this model locally
+          </button>
+        </div>
       )}
 
       <label className="flex items-center gap-2">
@@ -283,7 +396,7 @@ function BackendPicker({
           type="radio"
           name="assistant-backend"
           checked={kind === "hosted"}
-          onChange={applyHosted}
+          onChange={() => setKind("hosted")}
         />
         <span className="text-fg">
           Bring your own hosted provider (OpenAI-compatible or Anthropic)

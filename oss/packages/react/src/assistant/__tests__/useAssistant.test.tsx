@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
-import { BACKEND_CONFIG_STORAGE_KEY } from "@uptimizr/agent-core/providers";
+import { BACKEND_CONFIG_STORAGE_KEY, saveBackendConfig } from "@uptimizr/agent-core/providers";
 import type { LlmProvider, ProviderResponse } from "@uptimizr/agent-core";
 import type { CollectorApi } from "../../api";
 import { useAssistant } from "../useAssistant";
@@ -51,6 +51,27 @@ afterEach(() => {
 });
 
 describe("useAssistant", () => {
+  it("stays unselected (null) with no explicit and no persisted backend", () => {
+    // First run: no auto-preselect, so the UI can present an explicit chooser and
+    // NOTHING loads (no provider factory is invoked just by mounting).
+    const { result } = renderHook(() => useAssistant({ api: fakeApi() }));
+    expect(result.current.backend).toBeNull();
+    expect(result.current.isReady).toBe(false);
+    expect(lastWebllmOptions).toBeUndefined();
+  });
+
+  it("restores a previously persisted backend choice (no re-prompt)", () => {
+    saveBackendConfig(HOSTED);
+    const { result } = renderHook(() => useAssistant({ api: fakeApi() }));
+    expect(result.current.backend).toEqual(HOSTED);
+  });
+
+  it("honors an explicit options.backend over any persisted choice", () => {
+    saveBackendConfig({ backend: "local", webllm: { model: "persisted" } });
+    const { result } = renderHook(() => useAssistant({ api: fakeApi(), backend: HOSTED }));
+    expect(result.current.backend).toEqual(HOSTED);
+  });
+
   it("runs a tool-call round-trip through the injected collector client", async () => {
     nextProvider = scriptedProvider([
       { kind: "tool_calls", toolCalls: [{ id: "t1", name: "list_sessions", arguments: {} }] },
