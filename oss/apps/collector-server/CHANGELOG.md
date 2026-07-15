@@ -1,5 +1,22 @@
 # @uptimizr/collector-server
 
+## 0.6.2
+
+### Patch Changes
+
+- 59fd29b: docs: refresh package and app READMEs to match current source
+
+  Reconcile every package/app README with the actual code — corrected package/connector
+  lists, public APIs and options, CLI flags, env vars, ports, the event catalog, and
+  cross-links. Also drop "Google Analytics" references in favor of neutral "web analytics"
+  wording. Documentation-only; no runtime behavior changes.
+
+- Updated dependencies [e31ff64]
+- Updated dependencies [59fd29b]
+  - @uptimizr/db-clickhouse@0.3.4
+  - @uptimizr/db@0.7.2
+  - @uptimizr/schema@0.5.1
+
 ## 0.6.1
 
 ### Patch Changes

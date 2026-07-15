@@ -1,5 +1,42 @@
 # @uptimizr/dashboard
 
+## 0.4.0
+
+### Minor Changes
+
+- 14c9bcf: feat(dashboard): embed the in-browser analytics assistant (ADR 0050, closes #193)
+
+  The dashboard now ships an "Analytics assistant" drawer that mounts the portable
+  `<AssistantPanel>` from `@uptimizr/react/assistant`, wired to the active project's
+  real collector connection (same read-only query API + key the panels use). Ask
+  natural-language questions of your analytics and get grounded, tool-backed
+  answers.
+
+  The panel and the WebLLM runtime (`@mlc-ai/web-llm`) are **fully code-split**:
+  they load on demand only when a visitor opens the assistant, so the main bundle
+  is unchanged for everyone else (guarded by an entry-purity test). Model weights
+  download on first use behind a consent gate — never eagerly, never precached.
+
+  Because the backend-less demo embeds this dashboard build, the same assistant
+  now works there against the in-browser service-worker / DuckDB-Wasm query layer —
+  no server and no API key, with a local WebLLM model.
+
+### Patch Changes
+
+- 59fd29b: docs: refresh package and app READMEs to match current source
+
+  Reconcile every package/app README with the actual code — corrected package/connector
+  lists, public APIs and options, CLI flags, env vars, ports, the event catalog, and
+  cross-links. Also drop "Google Analytics" references in favor of neutral "web analytics"
+  wording. Documentation-only; no runtime behavior changes.
+
+- Updated dependencies [90e1bea]
+- Updated dependencies [306f5ab]
+- Updated dependencies [59fd29b]
+  - @uptimizr/react@0.11.0
+  - @uptimizr/heatmap@0.1.3
+  - @uptimizr/replay@0.2.4
+
 ## 0.3.6
 
 ### Patch Changes
