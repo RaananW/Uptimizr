@@ -43,6 +43,16 @@ export function useUptimizr(): UptimizrContextValue {
   return ctx;
 }
 
+/**
+ * Non-throwing variant of {@link useUptimizr}: returns the ambient collector
+ * connection when an `<UptimizrProvider>` is present, or `null` otherwise. Lets
+ * a component reuse an ambient connection when available while still accepting
+ * an explicit one via props (used by `useAssistant`).
+ */
+export function useOptionalUptimizr(): UptimizrContextValue | null {
+  return useContext(UptimizrContext);
+}
+
 /** Shortcut for the shared {@link CollectorApi} client from the provider. */
 export function useCollectorApi(): CollectorApi {
   return useUptimizr().api;

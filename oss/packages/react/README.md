@@ -68,6 +68,7 @@ input `source`, …) forwarded to the query API:
 | `TopMeshesView`, `FloorPlanHeatmapView`, …   | Panel body components (host supplies the chrome).         |
 | `mergeSceneProxies`, `attachMeshHover`, …    | 3D/canvas helper libs shared by the panels.               |
 | `@uptimizr/react/panels-3d`                  | Babylon-backed 3D view components (opt-in subpath).       |
+| `@uptimizr/react/assistant`                  | In-browser analytics assistant (opt-in, code-split).      |
 
 Panels are styled with self-contained inline styles (dark theme) so they render
 consistently in any host app. For full custom styling, use `useCollectorApi()`
@@ -132,6 +133,37 @@ out of the generated stylesheet and the panels render unstyled:
 @import "tailwindcss";
 @source "../node_modules/@uptimizr/react/dist/**/*.js";
 ```
+
+## In-browser analytics assistant (opt-in)
+
+The `@uptimizr/react/assistant` subpath ships a drop-in `<AssistantPanel>` and a
+headless `useAssistant()` hook that let anyone ask natural-language questions of
+their 3D analytics — the agent loop runs **entirely in the browser** against the
+same read-only query API the panels use (ADR 0050). It ships **no model and no
+key**: the user picks a local WebGPU model or a bring-your-own hosted provider.
+
+```tsx
+import { AssistantPanel } from "@uptimizr/react/assistant";
+
+// Reuses an ambient <UptimizrProvider> connection, or take explicit props:
+<AssistantPanel collectorUrl="http://localhost:4318" apiKey="proj_…" />;
+```
+
+Or drive it yourself with the hook:
+
+```tsx
+import { useAssistant } from "@uptimizr/react/assistant";
+
+const { messages, send, status, setBackend, backend } = useAssistant({
+  collectorUrl: "http://localhost:4318",
+  apiKey: "proj_…",
+});
+```
+
+Like `panels-3d`, the LLM runtime is **optional and code-split**: importing the
+core `@uptimizr/react` barrel pulls **no** assistant or LLM code, and even the
+assistant loads `@mlc-ai/web-llm` (an optional peer) lazily, only when a local
+model actually runs. See the [assistant guide](https://uptimizr.com/docs/guides/assistant/).
 
 ## License
 

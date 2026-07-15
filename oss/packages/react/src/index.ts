@@ -8,7 +8,7 @@ export * from "./api";
 export { heatRgb, HEAT_GRADIENT, percentileMax } from "./heat";
 export { heatColor, formatNumber, formatTime, parseTimestamp } from "./format";
 export { drawPointerHeatmap, drawDirectionHeatmap, HEATMAP_BACKGROUND } from "./draw";
-export { UptimizrProvider, useUptimizr, useCollectorApi } from "./provider";
+export { UptimizrProvider, useUptimizr, useOptionalUptimizr, useCollectorApi } from "./provider";
 export { useAsync } from "./useAsync";
 export type { AsyncState } from "./useAsync";
 

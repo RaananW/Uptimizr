@@ -776,6 +776,18 @@ export class CollectorApi {
     return (await res.json()) as T;
   }
 
+  /**
+   * Read-only passthrough for the in-browser analytics assistant (ADR 0050):
+   * issue a raw `GET` against any documented query endpoint and return the
+   * parsed JSON. It mirrors `@uptimizr/agent-core`'s `CollectorClient` contract
+   * so the assistant reads through the **same** authenticated client the panels
+   * use — one transport for the whole package, never a second one. The surface
+   * stays read-only, aggregate, and project-scoped (ADR 0003 / ADR 0017).
+   */
+  read(path: string, params?: QueryParams): Promise<unknown> {
+    return this.get<unknown>(path, params);
+  }
+
   sessions(params?: QueryParams): Promise<SessionSummary[]> {
     return this.get<SessionSummary[]>("api/v1/sessions", params).then((rows) =>
       rows.map((r) => ({ ...r, events: Number(r.events) })),

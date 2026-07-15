@@ -430,6 +430,12 @@ importers:
 
   oss/packages/react:
     dependencies:
+      '@mlc-ai/web-llm':
+        specifier: ^0.2.0
+        version: 0.2.84
+      '@uptimizr/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
       '@uptimizr/heatmap':
         specifier: workspace:*
         version: link:../heatmap
