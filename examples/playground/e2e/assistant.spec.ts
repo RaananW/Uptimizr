@@ -141,14 +141,18 @@ test("assistant answers a grounded question end to end", async ({ page, request 
   // The connected dashboard renders — the assistant drawer is available.
   await expect(page.getByText("Top meshes")).toBeVisible({ timeout: 20_000 });
 
-  // 4) Open the assistant and configure the (mocked) hosted backend.
+  // 4) Open the assistant and configure the (mocked) hosted backend. On first
+  //    open the panel presents an explicit backend chooser (no auto-preselect),
+  //    so we assert BOTH options are offered, then pick bring-your-own hosted.
   await page.getByRole("button", { name: "Ask the assistant" }).click();
   const assistant = page.getByRole("region", { name: "Analytics assistant" });
-  await assistant.getByRole("button", { name: "Backend" }).click();
 
-  // Force the bring-your-own hosted path (WebGPU may be unavailable in CI, in
-  // which case hosted is already selected; clicking is harmless either way).
-  await assistant.getByRole("radio", { name: /bring your own hosted provider/i }).check();
+  await expect(assistant.getByRole("heading", { name: "Local (in-browser)" })).toBeVisible();
+  await expect(assistant.getByRole("heading", { name: "Bring your own hosted key" })).toBeVisible();
+
+  // Choose the bring-your-own hosted path (WebGPU is typically unavailable in CI,
+  // so the local option is disabled; hosted is the reliable, weight-free route).
+  await assistant.getByRole("button", { name: "Use hosted key" }).click();
   await assistant.getByLabel("Endpoint").fill(MOCK_LLM_ENDPOINT);
   await assistant.getByLabel("API key").fill("mock-key");
   await assistant.getByLabel("Hosted model").fill("mock-model");

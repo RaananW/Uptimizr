@@ -22,7 +22,6 @@ import {
 } from "@uptimizr/agent-core";
 import {
   CURATED_MODELS,
-  defaultBackendKind,
   isWebGpuAvailable,
   loadBackendConfig,
   saveBackendConfig,
@@ -60,8 +59,9 @@ export interface UseAssistantOptions {
   api?: CollectorApi;
   /**
    * Explicit backend selection. When omitted, the hook loads the persisted
-   * choice, then falls back to a zero-config local backend when WebGPU is
-   * available (hosted needs a user-supplied key, so it starts unconfigured).
+   * choice; if there is none it stays `null` (unselected) so the UI can present
+   * an explicit first-run chooser instead of auto-picking a backend. Nothing is
+   * loaded or downloaded until the user chooses (ADR 0050 §4, amended).
    */
   backend?: AssistantBackendConfig;
   /** System prompt priming the assistant. Defaults to {@link DEFAULT_SYSTEM_PROMPT}. */
@@ -141,13 +141,11 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
 
   const [webGpuAvailable] = useState<boolean>(() => isWebGpuAvailable());
   const [backend, setBackendState] = useState<AssistantBackendConfig | null>(() => {
+    // Explicit selection wins; otherwise restore a previously persisted choice.
+    // With neither, stay unselected (`null`) so the UI presents a first-run
+    // chooser and NOTHING loads until the user picks (ADR 0050 §4, amended).
     if (options.backend) return options.backend;
-    const persisted = loadBackendConfig();
-    if (persisted) return persisted;
-    // Local is zero-config; hosted needs a user-supplied key/endpoint.
-    return defaultBackendKind() === "local"
-      ? { backend: "local", webllm: { model: CURATED_MODELS[0]?.id ?? "" } }
-      : null;
+    return loadBackendConfig();
   });
 
   const [messages, setMessages] = useState<AgentMessage[]>([]);
