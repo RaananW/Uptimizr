@@ -1,0 +1,364 @@
+"use client";
+
+// useAssistant — headless React hook wrapping @uptimizr/agent-core's runAgent
+// tool-calling loop (ADR 0050 §2/§3, ADR 0047).
+//
+// It owns the conversation history, per-turn state, the user-selected LLM
+// backend (persisted via agent-core's config helpers), live tool-call progress,
+// and WebLLM download/init progress. The loop runs entirely client-side against
+// the SAME read-only collector client the panels use (react's `CollectorApi`) —
+// no new Uptimizr server component.
+//
+// The provider FACTORIES are `import()`-ed from agent-core's code-split subpaths
+// on first send, and `@mlc-ai/web-llm` stays lazy inside agent-core, so a
+// consumer who never opens the assistant pays nothing for the LLM runtime.
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  runAgent,
+  type AgentMessage,
+  type CollectorClient,
+  type LlmProvider,
+} from "@uptimizr/agent-core";
+import {
+  CURATED_MODELS,
+  defaultBackendKind,
+  isWebGpuAvailable,
+  loadBackendConfig,
+  saveBackendConfig,
+  type AssistantBackendConfig,
+  type CuratedModel,
+  type InitProgress,
+} from "@uptimizr/agent-core/providers";
+import { CollectorApi } from "../api";
+import { useOptionalUptimizr } from "../provider";
+import { DEFAULT_SYSTEM_PROMPT } from "./prompt";
+
+/** Coarse per-turn state for the assistant. */
+export type AssistantStatus = "idle" | "initializing" | "thinking" | "error";
+
+/** Live status of a single tool call the model made during the current turn. */
+export type ToolCallStatus = "running" | "done" | "error";
+
+/** One tool invocation surfaced for progress display. */
+export interface AssistantToolActivity {
+  /** Provider-assigned call id (when known). */
+  id?: string;
+  /** Catalog tool name (e.g. `top_meshes`). */
+  name: string;
+  /** Whether the call is in-flight, finished, or errored. */
+  status: ToolCallStatus;
+}
+
+/** Options for {@link useAssistant}. */
+export interface UseAssistantOptions {
+  /** Collector base URL. Falls back to an ambient `<UptimizrProvider>`. */
+  collectorUrl?: string;
+  /** Project API key. Falls back to an ambient `<UptimizrProvider>`. */
+  apiKey?: string;
+  /** An already-constructed collector client to reuse instead of URL + key. */
+  api?: CollectorApi;
+  /**
+   * Explicit backend selection. When omitted, the hook loads the persisted
+   * choice, then falls back to a zero-config local backend when WebGPU is
+   * available (hosted needs a user-supplied key, so it starts unconfigured).
+   */
+  backend?: AssistantBackendConfig;
+  /** System prompt priming the assistant. Defaults to {@link DEFAULT_SYSTEM_PROMPT}. */
+  systemPrompt?: string;
+  /** Max provider turns per send (forwarded to `runAgent`). */
+  maxSteps?: number;
+  /**
+   * Consent gate for the local (WebLLM) backend, invoked once before weights
+   * download. Return `false` to abort — nothing is downloaded.
+   */
+  confirmDownload?: (model: CuratedModel) => boolean | Promise<boolean>;
+  /** Persist backend changes to `localStorage`. Defaults to `true`. */
+  persistBackend?: boolean;
+}
+
+/** The value returned by {@link useAssistant}. */
+export interface UseAssistantResult {
+  /** Full transcript (system + user + assistant/tool turns) kept for context. */
+  messages: AgentMessage[];
+  /** Current per-turn state. */
+  status: AssistantStatus;
+  /** The last error, if the previous turn failed. */
+  error: Error | null;
+  /** Tool calls made during the current/last turn, with live status. */
+  toolActivity: AssistantToolActivity[];
+  /** WebLLM download/init progress while a local model loads, else `null`. */
+  initProgress: InitProgress | null;
+  /** The active backend selection, or `null` until one is configured. */
+  backend: AssistantBackendConfig | null;
+  /** Whether this browser can run the local (WebGPU) backend. */
+  webGpuAvailable: boolean;
+  /** The curated local models available for selection. */
+  models: readonly CuratedModel[];
+  /** True when a backend and a collector client are both available. */
+  isReady: boolean;
+  /** True while a turn is in flight. */
+  isBusy: boolean;
+  /** Send a user message and run the tool-calling loop. */
+  send: (text: string) => Promise<void>;
+  /** Switch (and optionally persist) the backend; releases the previous model. */
+  setBackend: (config: AssistantBackendConfig) => void;
+  /** Cancel the in-flight turn, if any. */
+  cancel: () => void;
+  /** Clear the conversation (keeps the loaded model). */
+  reset: () => void;
+}
+
+/** True when a provider exposes a GPU-releasing `unload()` (WebLLM does). */
+interface Unloadable {
+  unload: () => Promise<void>;
+}
+function isUnloadable(p: LlmProvider): p is LlmProvider & Unloadable {
+  return typeof (p as Partial<Unloadable>).unload === "function";
+}
+
+/**
+ * Build a headless assistant bound to a collector connection and a user-selected
+ * LLM backend. See {@link UseAssistantOptions} / {@link UseAssistantResult}.
+ */
+export function useAssistant(options: UseAssistantOptions = {}): UseAssistantResult {
+  const {
+    collectorUrl,
+    apiKey,
+    api: apiOption,
+    systemPrompt = DEFAULT_SYSTEM_PROMPT,
+    maxSteps,
+    confirmDownload,
+    persistBackend = true,
+  } = options;
+
+  const ctx = useOptionalUptimizr();
+  const api = useMemo<CollectorApi | null>(() => {
+    if (apiOption) return apiOption;
+    if (collectorUrl && apiKey) return new CollectorApi(collectorUrl, apiKey);
+    return ctx?.api ?? null;
+  }, [apiOption, collectorUrl, apiKey, ctx?.api]);
+
+  const [webGpuAvailable] = useState<boolean>(() => isWebGpuAvailable());
+  const [backend, setBackendState] = useState<AssistantBackendConfig | null>(() => {
+    if (options.backend) return options.backend;
+    const persisted = loadBackendConfig();
+    if (persisted) return persisted;
+    // Local is zero-config; hosted needs a user-supplied key/endpoint.
+    return defaultBackendKind() === "local"
+      ? { backend: "local", webllm: { model: CURATED_MODELS[0]?.id ?? "" } }
+      : null;
+  });
+
+  const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [status, setStatus] = useState<AssistantStatus>("idle");
+  const [error, setError] = useState<Error | null>(null);
+  const [toolActivity, setToolActivity] = useState<AssistantToolActivity[]>([]);
+  const [initProgress, setInitProgress] = useState<InitProgress | null>(null);
+
+  // Refs so `send` reads fresh values without being re-created every render.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const backendRef = useRef(backend);
+  backendRef.current = backend;
+  const providerRef = useRef<{ key: string; provider: LlmProvider } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Release any loaded GPU model when the hook unmounts.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      const cached = providerRef.current;
+      providerRef.current = null;
+      if (cached && isUnloadable(cached.provider)) void cached.provider.unload().catch(() => {});
+    };
+  }, []);
+
+  const setBackend = useCallback(
+    (config: AssistantBackendConfig) => {
+      setBackendState(config);
+      if (persistBackend) saveBackendConfig(config);
+    },
+    [persistBackend],
+  );
+
+  const buildProvider = useCallback(
+    async (cfg: AssistantBackendConfig): Promise<LlmProvider> => {
+      if (cfg.backend === "local") {
+        const { createWebLlmProvider } = await import("@uptimizr/agent-core/providers/webllm");
+        return createWebLlmProvider({
+          model: cfg.webllm?.model,
+          confirmDownload,
+          onInitProgress: (p) => {
+            setInitProgress(p);
+            setStatus(p.progress >= 1 ? "thinking" : "initializing");
+          },
+        });
+      }
+      if (!cfg.hosted) {
+        throw new Error("Hosted backend selected but not configured (endpoint, key, and model).");
+      }
+      const { createHostedProvider } = await import("@uptimizr/agent-core/providers/hosted");
+      const { api: hostedApi, endpoint, apiKey: key, model } = cfg.hosted;
+      return createHostedProvider({ api: hostedApi, endpoint, apiKey: key, model });
+    },
+    [confirmDownload],
+  );
+
+  const ensureProvider = useCallback(
+    async (cfg: AssistantBackendConfig): Promise<LlmProvider> => {
+      const key = JSON.stringify(cfg);
+      const cached = providerRef.current;
+      if (cached && cached.key === key) return cached.provider;
+      if (cached && isUnloadable(cached.provider)) void cached.provider.unload().catch(() => {});
+      const provider = await buildProvider(cfg);
+      providerRef.current = { key, provider };
+      return provider;
+    },
+    [buildProvider],
+  );
+
+  const send = useCallback(
+    async (text: string): Promise<void> => {
+      const content = text.trim();
+      if (!content) return;
+      const collector = api;
+      const cfg = backendRef.current;
+      if (!collector) {
+        setError(
+          new Error(
+            "No collector connection. Pass collectorUrl + apiKey or wrap in <UptimizrProvider>.",
+          ),
+        );
+        setStatus("error");
+        return;
+      }
+      if (!cfg) {
+        setError(
+          new Error("No assistant backend selected. Choose a local or hosted backend first."),
+        );
+        setStatus("error");
+        return;
+      }
+
+      const userMessage: AgentMessage = { role: "user", content };
+      const history = messagesRef.current;
+      const outgoing: AgentMessage[] =
+        history.length === 0
+          ? [{ role: "system", content: systemPrompt }, userMessage]
+          : [...history, userMessage];
+      setMessages(outgoing);
+      setToolActivity([]);
+      setError(null);
+      setInitProgress(null);
+      setStatus("initializing");
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      // Mark the earliest still-running tool with a terminal status. runAgent
+      // executes tool calls sequentially, so order is preserved.
+      const settleNextTool = (final: ToolCallStatus) =>
+        setToolActivity((prev) => {
+          const idx = prev.findIndex((t) => t.status === "running");
+          const current = idx === -1 ? undefined : prev[idx];
+          if (!current) return prev;
+          const next = prev.slice();
+          next[idx] = { ...current, status: final };
+          return next;
+        });
+
+      try {
+        const provider = await ensureProvider(cfg);
+        setStatus("thinking");
+
+        const trackingProvider: LlmProvider = {
+          async complete(request) {
+            const response = await provider.complete(request);
+            if (response.kind === "tool_calls") {
+              setToolActivity((prev) => [
+                ...prev,
+                ...response.toolCalls.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  status: "running" as ToolCallStatus,
+                })),
+              ]);
+            }
+            return response;
+          },
+        };
+
+        const trackingClient: CollectorClient = {
+          async get(path, params) {
+            try {
+              const data = await collector.read(path, params);
+              settleNextTool("done");
+              return data;
+            } catch (err) {
+              settleNextTool("error");
+              throw err;
+            }
+          },
+        };
+
+        const result = await runAgent({
+          provider: trackingProvider,
+          client: trackingClient,
+          messages: outgoing,
+          maxSteps,
+          signal: controller.signal,
+        });
+        setMessages(result.messages);
+        // Any tool that never reached client.get (unknown tool / bad args) is settled.
+        setToolActivity((prev) =>
+          prev.map((t) => (t.status === "running" ? { ...t, status: "done" } : t)),
+        );
+        setStatus("idle");
+      } catch (err) {
+        if (controller.signal.aborted) {
+          setStatus("idle");
+          return;
+        }
+        setError(err instanceof Error ? err : new Error(String(err)));
+        setStatus("error");
+      } finally {
+        setInitProgress(null);
+        if (abortRef.current === controller) abortRef.current = null;
+      }
+    },
+    [api, systemPrompt, maxSteps, ensureProvider],
+  );
+
+  const cancel = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  const reset = useCallback(() => {
+    abortRef.current?.abort();
+    setMessages([]);
+    setToolActivity([]);
+    setError(null);
+    setInitProgress(null);
+    setStatus("idle");
+  }, []);
+
+  const isBusy = status === "initializing" || status === "thinking";
+
+  return {
+    messages,
+    status,
+    error,
+    toolActivity,
+    initProgress,
+    backend,
+    webGpuAvailable,
+    models: CURATED_MODELS,
+    isReady: Boolean(api) && Boolean(backend),
+    isBusy,
+    send,
+    setBackend,
+    cancel,
+    reset,
+  };
+}

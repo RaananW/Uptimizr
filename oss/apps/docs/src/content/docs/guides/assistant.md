@@ -143,6 +143,52 @@ const config = loadBackendConfig(); // null until the user picks a backend
 The selection is read back on the next visit so users don't re-choose each time. Clearing it
 (`clearBackendConfig()`) forgets the backend and any stored key.
 
+## Embed in a React app
+
+Prefer not to wire the provider adapters and the tool-calling loop by hand? The
+[`@uptimizr/react`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/react/README.md)
+component catalog ships a drop-in **`<AssistantPanel>`** and a headless **`useAssistant()`** hook
+from a dedicated, code-split subpath (ADR 0047). Importing the core `@uptimizr/react` barrel pulls
+**no** assistant or LLM code; only `@uptimizr/react/assistant` does, and even then `@mlc-ai/web-llm`
+stays lazy until a local model runs — so consumers who never open the assistant pay nothing.
+
+```tsx
+import { AssistantPanel } from "@uptimizr/react/assistant";
+
+// Reuses an ambient <UptimizrProvider>, or pass the collector connection directly.
+export function Analytics() {
+  return <AssistantPanel collectorUrl="http://localhost:4318" apiKey="proj_…" />;
+}
+```
+
+`<AssistantPanel>` renders the whole surface — message list, input, the local-vs-hosted backend and
+model picker, the WebLLM download-consent prompt and progress bar, and the privacy note. It reuses
+the same read-only [`CollectorApi`](/docs/deploy/dashboard/) client the panels use, so there is no
+second transport.
+
+For a custom UI, drive the headless hook instead and render your own chat:
+
+```tsx
+import { useAssistant } from "@uptimizr/react/assistant";
+
+function MyAssistant() {
+  const { messages, send, status, toolActivity, backend, setBackend, isReady } = useAssistant({
+    collectorUrl: "http://localhost:4318",
+    apiKey: "proj_…",
+    // Optional: pass an explicit backend, or omit to load the persisted choice
+    // (falling back to a zero-config local backend when WebGPU is available).
+  });
+  // messages: the transcript · send(text): run a turn · status: "idle" | "initializing" |
+  // "thinking" | "error" · toolActivity: live tool-call progress · setBackend(cfg): switch + persist.
+}
+```
+
+The hook wraps `@uptimizr/agent-core`'s `runAgent` loop, manages message history and per-turn state,
+tracks tool-call and WebLLM download progress, and persists the backend choice via the config helpers
+above. The loop runs client-side, so it works against both a real collector and the demo's in-browser
+DuckDB-Wasm query layer with no server. Point Tailwind at the package source (as the panels require)
+so the component's utility classes aren't tree-shaken out.
+
 ## See also
 
 - [MCP server (AI agents)](/docs/guides/mcp/) — the same read-only tool catalog for external/local agents.

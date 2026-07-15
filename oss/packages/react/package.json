@@ -35,6 +35,10 @@
     "./panels-3d": {
       "types": "./dist/panels3d.d.ts",
       "import": "./dist/panels3d.js"
+    },
+    "./assistant": {
+      "types": "./dist/assistant/index.d.ts",
+      "import": "./dist/assistant/index.js"
     }
   },
   "files": [
@@ -53,6 +57,7 @@
   "peerDependencies": {
     "@babylonjs/core": "^7.0.0 || ^8.0.0 || ^9.0.0",
     "@babylonjs/loaders": "^7.0.0 || ^8.0.0 || ^9.0.0",
+    "@mlc-ai/web-llm": "^0.2.0",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0"
   },
@@ -62,9 +67,13 @@
     },
     "@babylonjs/loaders": {
       "optional": true
+    },
+    "@mlc-ai/web-llm": {
+      "optional": true
     }
   },
   "dependencies": {
+    "@uptimizr/agent-core": "workspace:*",
     "@uptimizr/heatmap": "workspace:*",
     "@uptimizr/replay": "workspace:*",
     "@uptimizr/schema": "workspace:*"
