@@ -6,8 +6,15 @@ import { ensureDb, startHost } from "./store/host.js";
  * The DuckDB-Wasm engine assets are the heavy ones (multi-MB wasm + workers); the
  * embeds and app shell are runtime-cached on first paint by the SW's
  * stale-while-revalidate handler, but we prime their entry points here too.
+ *
+ * Deliberately **excludes** the in-browser assistant (ADR 0050 §6): the embedded
+ * dashboard ships `<AssistantPanel>`, but its code chunk and the `@mlc-ai/web-llm`
+ * runtime load on demand only when a visitor opens the assistant, and model
+ * weights download (behind consent) straight into the runtime's Cache Storage —
+ * never through this precache. A visitor who never opens the assistant downloads
+ * nothing extra.
  */
-function precacheUrls(): string[] {
+export function precacheUrls(): string[] {
   return [
     "/",
     "/index.html",

@@ -24,6 +24,12 @@ export function DemoLimitations() {
           <strong>Bounded.</strong> Only the most recent events are kept so the demo stays light on
           your device.
         </li>
+        <li>
+          <strong>Assistant runs 100% locally.</strong> Open <em>Ask the assistant</em> in the
+          dashboard pane to explore this data in natural language. The model runs in your browser
+          via WebLLM — its weights download on demand the first time you consent, so nothing extra
+          is fetched unless you open it, and no API key or server is involved.
+        </li>
       </ul>
       <p className="limitations__cta">
         Ready for the real thing?{" "}

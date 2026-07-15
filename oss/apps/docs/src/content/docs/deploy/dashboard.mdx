@@ -46,6 +46,11 @@ with `x-api-key`. The key only ever reads its own project's data.
   things break. Empty is the healthy case; only errors carrying a best-effort camera position appear.
 - **Session replay** — re-drive a recorded session inside a scene (requires raw retention; see
   below).
+- **Analytics assistant** — an in-browser LLM assistant (an **Ask the assistant** card on the
+  overview) that answers natural-language questions of the connected project, grounded in read-only
+  tool calls against the same query API. It runs locally on your GPU (WebLLM) or via your own hosted
+  key, and is fully code-split — the panel and model runtime load only when you open it, so the main
+  bundle is unchanged otherwise. See the [assistant guide](/docs/guides/assistant/).
 
 :::tip[Hover to identify]
 Every 3D panel (Flow Sankey, Click rays, World/Gaze heatmap, View-direction dome) shows a **name
