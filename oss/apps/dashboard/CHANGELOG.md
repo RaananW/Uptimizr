@@ -1,5 +1,11 @@
 # @uptimizr/dashboard
 
+## 0.4.1
+
+### Patch Changes
+
+- @uptimizr/react@0.11.1
+
 ## 0.4.0
 
 ### Minor Changes
