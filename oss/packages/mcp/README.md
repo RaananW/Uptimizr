@@ -94,6 +94,22 @@ the underlying endpoint supports (`scene`, `session`, `source`, `bins`, `cellSiz
 | `event_counts`         | `/api/v1/event-counts`              | Per-event-type counts.                           |
 | `session_meta`         | `/api/v1/sessions/:id/meta`         | Coarse session descriptor (no raw event stream). |
 | `scene_representation` | `/api/v1/scenes/:id/representation` | Registered proxy geometry, if any.               |
+| `funnel`               | `/api/v1/funnel`                    | Ordered conversion funnel (`steps` JSON, ADR 0038). |
+| `aggregate_paths`      | `/api/v1/paths`                     | Crowd-level desire-line routes (ADR 0037).       |
+| `rendering_technology` | `/api/v1/rendering-technology`      | WebGPU/WebGL2 + shading-language mix (ADR 0046).  |
+| `xr_rotation`          | `/api/v1/xr/rotation`               | XR head-rotation rate (ADR 0048).                |
+| `xr_sources`           | `/api/v1/xr/sources`                | XR input-source usage (ADR 0048).                |
+| `xr_abandonment`       | `/api/v1/xr/abandonment`            | XR session abandonment (ADR 0048).               |
+| `xr_locomotion`        | `/api/v1/xr/locomotion`             | XR locomotion & comfort (ADR 0048).              |
+
+## Resources & prompts
+
+The server also exposes read-only **resources** for self-discovery — `uptimizr://capabilities`
+(a machine-readable descriptor of event types, the tool catalog, and parameter semantics) and
+`uptimizr://scenes` (live scene ids) — and curated **prompts** (`weekly_scene_health`,
+`attention_hotspots`, `xr_comfort_review`) that drive the tools above. A remote Streamable HTTP
+transport is a deferred, auth-gated follow-up (ADR 0050 §7). See the
+[MCP guide](https://uptimizr.com/docs/guides/mcp/) for details.
 
 ## Programmatic use
 

@@ -119,6 +119,45 @@ endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, �
 | `event_counts`         | `/api/v1/event-counts`              | Per-event-type counts.             |
 | `session_meta`         | `/api/v1/sessions/:id/meta`         | Coarse session descriptor.         |
 | `scene_representation` | `/api/v1/scenes/:id/representation` | Registered proxy geometry, if any. |
+| `funnel`               | `/api/v1/funnel`                    | Ordered conversion funnel (ADR 0038); `steps` is a JSON array. |
+| `aggregate_paths`      | `/api/v1/paths`                     | Crowd-level desire-line movement routes (ADR 0037). |
+| `rendering_technology` | `/api/v1/rendering-technology`      | Rendering-tech mix — WebGPU/WebGL2, shading language (ADR 0046). |
+| `xr_rotation`          | `/api/v1/xr/rotation`               | XR head-rotation rate (motion-sickness proxy, ADR 0048). |
+| `xr_sources`           | `/api/v1/xr/sources`                | XR input-source usage — hand / controller / gaze (ADR 0048). |
+| `xr_abandonment`       | `/api/v1/xr/abandonment`            | XR session abandonment / drop-off (ADR 0048). |
+| `xr_locomotion`        | `/api/v1/xr/locomotion`             | XR locomotion & comfort mix (ADR 0048). |
+
+## Resources
+
+The server also exposes read-only [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources)
+so an agent can **self-discover** what it can ask instead of guessing:
+
+| Resource URI              | Type               | Contents                                                                                                                                    |
+| ------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uptimizr://capabilities` | `application/json` | A machine-readable descriptor: schema version, the canonical **event types**, the full **tool catalog**, and the **parameter semantics** glossary. Built from the shared catalog + `@uptimizr/schema`, so it never drifts from the tools actually registered. No collector call. |
+| `uptimizr://scenes`       | `application/json` | The **live** list of scene ids with recent activity — the valid values for the `scene` parameter. Fetched via the read-only query API.       |
+
+Point an agent at `uptimizr://capabilities` first: it enumerates every tool, its parameters, and
+what each parameter means, so the agent can plan a query without trial and error.
+
+## Prompts
+
+Curated [MCP prompts](https://modelcontextprotocol.io/docs/concepts/prompts) package common analyses
+as one-click templates. Each renders a message that steers the agent to call the right read-only
+tools in a sensible order — the agent runs the tools; the prompt just frames the task.
+
+| Prompt                | Argument   | What it does                                                                                             |
+| --------------------- | ---------- | ------------------------------------------------------------------------------------------------------- |
+| `weekly_scene_health` | `scene?`   | A 7-day health report: traffic, event mix, FPS, and top meshes (`event_counts`, `timeseries`, `perf_summary`, `top_meshes`, `list_sessions`). |
+| `attention_hotspots`  | `scene`    | Where visitors look and click: `camera_heatmap`, `flow_links`, `click_rays`, `top_meshes`.              |
+| `xr_comfort_review`   | `scene?`   | VR/AR comfort & drop-off: `xr_rotation`, `xr_locomotion`, `xr_abandonment`, `xr_sources`.               |
+
+## Transport & roadmap
+
+The server speaks **stdio** — the transport MCP clients (Claude Desktop, VS Code, Cursor, Copilot
+CLI) launch. A remote **Streamable HTTP** transport (so browser/remote MCP clients could reach a
+self-hosted collector) is a tracked follow-up and is only worth adding behind proper auth
+([ADR 0050](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0050-in-browser-analytics-assistant.md) §7).
 
 ## Programmatic use
 
