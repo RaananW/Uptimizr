@@ -65,7 +65,9 @@ const DEFAULT_MAX_TOKENS = 1024;
 const DEFAULT_ANTHROPIC_VERSION = "2023-06-01";
 
 function joinUrl(base: string, suffix: string): string {
-  const trimmed = base.replace(/\/+$/, "");
+  let end = base.length;
+  while (end > 0 && base[end - 1] === "/") end--;
+  const trimmed = base.slice(0, end);
   return trimmed.endsWith(suffix) ? trimmed : `${trimmed}${suffix}`;
 }
 

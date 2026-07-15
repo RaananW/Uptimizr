@@ -129,9 +129,7 @@ export function saveBackendConfig(
 }
 
 /** Clear any persisted backend selection. */
-export function clearBackendConfig(
-  storage: KeyValueStorage | undefined = defaultStorage(),
-): void {
+export function clearBackendConfig(storage: KeyValueStorage | undefined = defaultStorage()): void {
   if (!storage) return;
   try {
     storage.removeItem(BACKEND_CONFIG_STORAGE_KEY);

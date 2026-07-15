@@ -40,7 +40,9 @@ describe("backend config persistence", () => {
   });
 
   it("treats corrupt or malformed entries as absent", () => {
-    expect(loadBackendConfig(memoryStorage({ [BACKEND_CONFIG_STORAGE_KEY]: "{not json" }))).toBeNull();
+    expect(
+      loadBackendConfig(memoryStorage({ [BACKEND_CONFIG_STORAGE_KEY]: "{not json" })),
+    ).toBeNull();
     expect(
       loadBackendConfig(memoryStorage({ [BACKEND_CONFIG_STORAGE_KEY]: '{"backend":"bogus"}' })),
     ).toBeNull();

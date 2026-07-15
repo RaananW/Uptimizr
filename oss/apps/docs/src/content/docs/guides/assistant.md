@@ -23,10 +23,10 @@ import { createHostedProvider } from "@uptimizr/agent-core/providers/hosted";
 
 ## Choosing a backend
 
-| Backend                       | Where inference runs        | What leaves the browser                     | Requirements              |
-| ----------------------------- | --------------------------- | ------------------------------------------- | ------------------------- |
-| **Local (WebLLM / WebGPU)**   | Your GPU, in the browser    | **Nothing** — zero egress                   | A WebGPU-capable browser  |
-| **Bring-your-own hosted**     | Your chosen LLM provider    | Prompt + **aggregated** results only        | Provider key + CORS       |
+| Backend                     | Where inference runs     | What leaves the browser              | Requirements             |
+| --------------------------- | ------------------------ | ------------------------------------ | ------------------------ |
+| **Local (WebLLM / WebGPU)** | Your GPU, in the browser | **Nothing** — zero egress            | A WebGPU-capable browser |
+| **Bring-your-own hosted**   | Your chosen LLM provider | Prompt + **aggregated** results only | Provider key + CORS      |
 
 Local is the **privacy-preserving default** when WebGPU is available. When it isn't (older Safari,
 Firefox-on-Android, low-RAM devices), the local option is hidden and the hosted backend provides
@@ -73,13 +73,13 @@ npm install @mlc-ai/web-llm
 A small, tool-calling-capable set spanning the device-coverage range. Sizes are approximate and
 shown to the user before any download:
 
-| Model                       | Download | VRAM     | Notes                                        |
-| --------------------------- | -------- | -------- | -------------------------------------------- |
-| Llama 3.2 1B                | ~0.9 GB  | ~1.1 GB  | Smallest/fastest; best for low-RAM devices.  |
-| Llama 3.2 3B                | ~2.3 GB  | ~2.9 GB  | Balanced default when VRAM allows.           |
-| Phi 3.5 mini                | ~2.4 GB  | ~3.0 GB  | Strong reasoning for its size.               |
-| Qwen 2.5 3B                 | ~2.0 GB  | ~2.6 GB  | Reliable structured tool-call output.        |
-| Hermes 3 (Llama 3.1 8B)     | ~4.8 GB  | ~5.8 GB  | Highest quality; needs a capable GPU.        |
+| Model                   | Download | VRAM    | Notes                                       |
+| ----------------------- | -------- | ------- | ------------------------------------------- |
+| Llama 3.2 1B            | ~0.9 GB  | ~1.1 GB | Smallest/fastest; best for low-RAM devices. |
+| Llama 3.2 3B            | ~2.3 GB  | ~2.9 GB | Balanced default when VRAM allows.          |
+| Phi 3.5 mini            | ~2.4 GB  | ~3.0 GB | Strong reasoning for its size.              |
+| Qwen 2.5 3B             | ~2.0 GB  | ~2.6 GB | Reliable structured tool-call output.       |
+| Hermes 3 (Llama 3.1 8B) | ~4.8 GB  | ~5.8 GB | Highest quality; needs a capable GPU.       |
 
 Small in-browser models do tool-calling adequately but not perfectly — expect good summaries, not
 deep analytics (ADR 0050 trade-offs). Call `provider.unload()` to release GPU memory when done.
@@ -129,7 +129,12 @@ import { loadBackendConfig, saveBackendConfig } from "@uptimizr/agent-core/provi
 
 saveBackendConfig({
   backend: "hosted",
-  hosted: { api: "anthropic", endpoint: "https://api.anthropic.com/v1", apiKey: "sk-ant-…", model: "claude-3-5-haiku-latest" },
+  hosted: {
+    api: "anthropic",
+    endpoint: "https://api.anthropic.com/v1",
+    apiKey: "sk-ant-…",
+    model: "claude-3-5-haiku-latest",
+  },
 });
 
 const config = loadBackendConfig(); // null until the user picks a backend

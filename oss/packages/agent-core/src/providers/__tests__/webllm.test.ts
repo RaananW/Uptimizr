@@ -147,14 +147,23 @@ describe("WebLLM provider", () => {
   it("forwards init progress to the callback", async () => {
     const create = vi.fn(async () => ({ choices: [{ message: { content: "ok" } }] }) as never);
     const engine: WebLlmEngine = { chat: { completions: { create } } };
-    const createEngine = vi.fn(async (_model: string, cfg?: { initProgressCallback?: (r: { progress: number; text: string }) => void }) => {
-      cfg?.initProgressCallback?.({ progress: 0.5, text: "loading" });
-      return engine;
-    });
+    const createEngine = vi.fn(
+      async (
+        _model: string,
+        cfg?: { initProgressCallback?: (r: { progress: number; text: string }) => void },
+      ) => {
+        cfg?.initProgressCallback?.({ progress: 0.5, text: "loading" });
+        return engine;
+      },
+    );
     const load = vi.fn(async () => ({ CreateMLCEngine: createEngine }) as WebLlmRuntime);
     const onInitProgress = vi.fn();
 
-    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true, onInitProgress });
+    const provider = createWebLlmProvider({
+      loadRuntime: load,
+      hasWebGpu: () => true,
+      onInitProgress,
+    });
     await provider.complete(request);
 
     expect(onInitProgress).toHaveBeenCalledWith({ progress: 0.5, text: "loading" });

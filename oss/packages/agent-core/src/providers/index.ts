@@ -26,11 +26,7 @@ export {
   saveBackendConfig,
 } from "./config.js";
 
-export {
-  type HostedProviderConfig,
-  HostedProviderError,
-  createHostedProvider,
-} from "./hosted.js";
+export { type HostedProviderConfig, HostedProviderError, createHostedProvider } from "./hosted.js";
 
 export {
   type CuratedModel,

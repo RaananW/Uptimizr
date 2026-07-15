@@ -11,8 +11,8 @@ code-split subpaths so the core stays lightweight and browser-safe.
   feature detection; weights cached by the runtime in Cache Storage (never precached). Zero data
   egress.
 - `@uptimizr/agent-core/providers/hosted` — bring-your-own OpenAI-compatible or Anthropic endpoint
-  + key, stored in the browser only; the browser calls the provider directly (only the prompt and
-  aggregated results leave, to the user's own provider). Documents the required provider CORS.
+  - key, stored in the browser only; the browser calls the provider directly (only the prompt and
+    aggregated results leave, to the user's own provider). Documents the required provider CORS.
 - `@uptimizr/agent-core/providers` — barrel that also exports backend-selection persistence
   (`localStorage`), WebGPU detection, and the privacy-preserving default (local when WebGPU is
   present).

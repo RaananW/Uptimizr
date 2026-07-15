@@ -14,7 +14,9 @@ const request: ProviderRequest = {
     { role: "system", content: "be brief" },
     { role: "user", content: "how many sessions?" },
   ],
-  tools: [{ name: "list_sessions", description: "recent sessions", parameters: { type: "object" } }],
+  tools: [
+    { name: "list_sessions", description: "recent sessions", parameters: { type: "object" } },
+  ],
 };
 
 describe("hosted provider — OpenAI-compatible", () => {
@@ -93,6 +95,28 @@ describe("hosted provider — OpenAI-compatible", () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     await expect(provider.complete(request)).rejects.toBeInstanceOf(HostedProviderError);
+  });
+
+  it("trims trailing slashes in linear time (no ReDoS on pathological endpoints)", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ choices: [{ message: { content: "ok" } }] }),
+    );
+    // A user-supplied endpoint with a huge run of trailing slashes must not
+    // trigger polynomial backtracking (js/polynomial-redos).
+    const endpoint = `https://api.example.com/v1${"/".repeat(100_000)}`;
+    const provider = createHostedProvider({
+      api: "openai",
+      endpoint,
+      apiKey: "k",
+      model: "m",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const start = Date.now();
+    await provider.complete(request);
+    expect(Date.now() - start).toBeLessThan(1000);
+    // All trailing slashes collapsed, single well-known suffix appended.
+    expect(fetchImpl.mock.calls[0]![0]).toBe("https://api.example.com/v1/chat/completions");
   });
 });
 
