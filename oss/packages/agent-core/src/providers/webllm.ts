@@ -36,45 +36,53 @@ export interface CuratedModel {
 }
 
 /**
- * A small, curated set of tool-calling-capable models spanning the
- * device-coverage range (ADR 0050 §4). Sizes are approximate and shown to the
- * user before any download.
+ * The complete set of model ids WebLLM supports for `ChatCompletionRequest.tools`
+ * (function calling). WebLLM hard-codes tool-calling to the Hermes-2-Pro /
+ * Hermes-3 family — its tool-call system prompt and output parser are
+ * Hermes-specific — so passing any other model with `tools` throws at runtime.
+ * The assistant relies on tool-calling, so every {@link CuratedModel} MUST be in
+ * this allowlist. Keep this list in sync with WebLLM's own supported set (these
+ * are the exact ids WebLLM names in its runtime error). Plain string membership
+ * only — never build a regex from a model id.
+ */
+export const SUPPORTED_TOOL_CALLING_MODELS: readonly string[] = [
+  "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC",
+  "Hermes-2-Pro-Llama-3-8B-q4f32_1-MLC",
+  "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC",
+  "Hermes-3-Llama-3.1-8B-q4f32_1-MLC",
+  "Hermes-3-Llama-3.1-8B-q4f16_1-MLC",
+];
+
+/**
+ * A small, curated set of **tool-calling-capable** models (ADR 0050 §4). WebLLM
+ * only supports function calling on the 7–8B Hermes family (see
+ * {@link SUPPORTED_TOOL_CALLING_MODELS}), so there is no small (<3 GB) option —
+ * local mode has an inherent ~4 GB download / ~5 GB-VRAM floor. Ordered
+ * smallest-first so the default is the least-friction working model. Sizes are
+ * approximate (sourced from WebLLM's `prebuiltAppConfig`) and shown to the user
+ * before any download.
  */
 export const CURATED_MODELS: readonly CuratedModel[] = [
   {
-    id: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
-    label: "Llama 3.2 1B",
-    downloadSize: "~0.9 GB",
-    vram: "~1.1 GB",
-    description: "Smallest and fastest; best for low-RAM devices. Good summaries.",
+    id: "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC",
+    label: "Hermes 2 Pro (Mistral 7B)",
+    downloadSize: "~3.9 GB",
+    vram: "~4.0 GB",
+    description: "Smallest tool-calling model; the least-friction default.",
   },
   {
-    id: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
-    label: "Llama 3.2 3B",
-    downloadSize: "~2.3 GB",
-    vram: "~2.9 GB",
-    description: "Balanced quality and size; a good default when VRAM allows.",
-  },
-  {
-    id: "Phi-3.5-mini-instruct-q4f16_1-MLC",
-    label: "Phi 3.5 mini",
-    downloadSize: "~2.4 GB",
-    vram: "~3.0 GB",
-    description: "Strong reasoning for its size; solid tool-calling.",
-  },
-  {
-    id: "Qwen2.5-3B-Instruct-q4f16_1-MLC",
-    label: "Qwen 2.5 3B",
-    downloadSize: "~2.0 GB",
-    vram: "~2.6 GB",
-    description: "Reliable structured output for tool calls.",
+    id: "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC",
+    label: "Hermes 2 Pro (Llama 3 8B)",
+    downloadSize: "~4.6 GB",
+    vram: "~5.0 GB",
+    description: "Stronger Llama-3 base; needs a capable GPU.",
   },
   {
     id: "Hermes-3-Llama-3.1-8B-q4f16_1-MLC",
     label: "Hermes 3 (Llama 3.1 8B)",
-    downloadSize: "~4.8 GB",
-    vram: "~5.8 GB",
-    description: "Highest quality; needs a capable GPU (5–6 GB VRAM).",
+    downloadSize: "~4.5 GB",
+    vram: "~4.9 GB",
+    description: "Highest quality; needs a capable GPU (~5 GB VRAM).",
   },
 ];
 
@@ -152,6 +160,23 @@ export class WebLlmConsentError extends Error {
   }
 }
 
+/**
+ * Thrown when the requested model is not one WebLLM supports for tool-calling
+ * (see {@link SUPPORTED_TOOL_CALLING_MODELS}). Raised as a preflight check —
+ * *before* any weights download or engine init — so the user never downloads
+ * gigabytes only to hit WebLLM's runtime `tools` error. The message mirrors
+ * WebLLM's own so consumers can surface a consistent explanation.
+ */
+export class UnsupportedToolCallingModelError extends Error {
+  constructor(modelId: string) {
+    super(
+      `${modelId} is not supported for tool-calling. The assistant requires function calling; ` +
+        `WebLLM supports it only on these models: ${SUPPORTED_TOOL_CALLING_MODELS.join(", ")}.`,
+    );
+    this.name = "UnsupportedToolCallingModelError";
+  }
+}
+
 function resolveModel(id: string | undefined): CuratedModel {
   const model = id ? CURATED_MODELS.find((m) => m.id === id) : CURATED_MODELS[0];
   return model ?? { id: id ?? "", label: id ?? "", downloadSize: "?", vram: "?", description: "" };
@@ -168,6 +193,11 @@ const defaultLoadRuntime = (): Promise<WebLlmRuntime> =>
  */
 export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLlmProvider {
   const model = resolveModel(options.model);
+  // Preflight (defense-in-depth): fail fast if the model can't do tool-calling,
+  // so we never download weights only to hit WebLLM's runtime `tools` error.
+  if (!SUPPORTED_TOOL_CALLING_MODELS.includes(model.id)) {
+    throw new UnsupportedToolCallingModelError(model.id);
+  }
   const loadRuntime = options.loadRuntime ?? defaultLoadRuntime;
   const hasWebGpu = options.hasWebGpu ?? (() => isWebGpuAvailable());
   let enginePromise: Promise<WebLlmEngine> | undefined;
