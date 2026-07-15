@@ -371,6 +371,27 @@ describe("CollectorApi", () => {
       { api: "", backend: "", apiVersion: "", shadingLanguage: "", sessions: 3 },
     ]);
   });
+
+  it("read() issues a plain GET passthrough — never a mutation (#192)", async () => {
+    const fetchMock = mockFetch([{ ok: true }]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const api = new CollectorApi("http://localhost:4318", "secret-key");
+    await api.read("api/v1/top-meshes", { scene: "lobby", limit: 5 });
+
+    const [url, init] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/top-meshes");
+    expect(parsed.searchParams.get("scene")).toBe("lobby");
+    expect(parsed.searchParams.get("limit")).toBe("5");
+    // The assistant transport must be read-only: the underlying fetch carries no
+    // HTTP method override (defaults to GET) and no request body — it cannot POST,
+    // PUT, PATCH, or DELETE, so it can never mutate collector state (ADR 0050).
+    const requestInit = (init ?? {}) as RequestInit;
+    expect(requestInit.method ?? "GET").toBe("GET");
+    expect(requestInit.body).toBeUndefined();
+    expect(requestInit.headers).toMatchObject({ "x-api-key": "secret-key" });
+  });
 });
 
 describe("CollectorApi live (ADR 0032)", () => {

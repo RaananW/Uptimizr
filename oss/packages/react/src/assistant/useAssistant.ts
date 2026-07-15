@@ -302,6 +302,14 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
           },
         };
 
+        // DELIBERATE DEVIATION from the issue's "Web Worker where practical"
+        // wording (documented in the PR body): the tool-calling loop runs on the
+        // main thread, not in a Web Worker. It is non-blocking async I/O — WebLLM
+        // already offloads token generation to the GPU, and collector reads are
+        // network-bound — so a Worker buys no responsiveness here, while the
+        // provider/collector closures we hand `runAgent` are non-cloneable and
+        // could not cross the Worker `postMessage` boundary without a larger
+        // redesign. Revisit if a future provider does heavy CPU work on-thread.
         const result = await runAgent({
           provider: trackingProvider,
           client: trackingClient,
