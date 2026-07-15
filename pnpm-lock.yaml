@@ -408,6 +408,9 @@ importers:
       '@uptimizr/agent-core':
         specifier: workspace:*
         version: link:../agent-core
+      '@uptimizr/schema':
+        specifier: workspace:*
+        version: link:../schema
       zod:
         specifier: ^4.4.3
         version: 4.4.3

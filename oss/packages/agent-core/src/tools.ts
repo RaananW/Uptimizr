@@ -46,6 +46,26 @@ const source = z
   .enum(["mouse", "touch", "stylus", "pen", "xr-controller", "hand", "gaze", "transient", "other"])
   .optional()
   .describe("Restrict a pointer/world heatmap to one input source.");
+const cameraMode = z
+  .enum(["viewer", "first-person"])
+  .optional()
+  .describe("Camera navigation mode to scope to: 'viewer' (orbit) or 'first-person' (walkable).");
+const rapidTurn = z
+  .number()
+  .nonnegative()
+  .max(Math.PI)
+  .optional()
+  .describe(
+    "Rapid-turn threshold in radians (0..π); view turns above this flag motion-sickness risk.",
+  );
+const steps = z
+  .string()
+  .min(1)
+  .describe(
+    "Funnel steps as a JSON-encoded array of ordered step predicates (ADR 0038). Required. " +
+      'Each step is `{ "type": <event_type>, ... }`; e.g. ' +
+      '`[{"type":"scene_change","to":"lobby"},{"type":"mesh_interaction","mesh":"buy"}]`.',
+  );
 
 /** Build the common `{ since, until }` range params from validated args. */
 function range(args: Record<string, unknown>): QueryParams {
@@ -222,6 +242,120 @@ export const readTools: readonly ReadTool[] = [
     buildRequest: (args) => ({
       path: `api/v1/scenes/${encodeURIComponent(str(args.sceneId) ?? "")}/representation`,
       params: {},
+    }),
+  },
+  {
+    name: "funnel",
+    title: "Conversion funnel",
+    description:
+      "Ordered, per-session conversion funnel (ADR 0038): how many sessions reach each " +
+      "caller-supplied step. Steps are a JSON array (see the `steps` argument).",
+    inputSchema: { since, until, scene, cameraMode, steps },
+    buildRequest: (args) => ({
+      path: "api/v1/funnel",
+      params: {
+        ...range(args),
+        scene: str(args.scene),
+        cameraMode: str(args.cameraMode),
+        steps: str(args.steps),
+      },
+    }),
+  },
+  {
+    name: "aggregate_paths",
+    title: "Aggregate desire-line paths",
+    description:
+      "Crowd-level movement routes (ADR 0037): every session's camera path binned onto the " +
+      "ground grid and returned as ordered, session-keyed points for an overlaid route map.",
+    inputSchema: { since, until, cellSize, limit, scene, cameraMode },
+    buildRequest: (args) => ({
+      path: "api/v1/paths",
+      params: {
+        ...range(args),
+        cellSize: num(args.cellSize),
+        limit: num(args.limit),
+        scene: str(args.scene),
+        cameraMode: str(args.cameraMode),
+      },
+    }),
+  },
+  {
+    name: "rendering_technology",
+    title: "Rendering-technology breakdown",
+    description:
+      "Rendering-technology mix from session_start.graphics (ADR 0046): session count per " +
+      "(api, backend, api_version, shading_language) — WebGPU vs WebGL2 and shading language.",
+    inputSchema: { since, until, scene, session },
+    buildRequest: (args) => ({
+      path: "api/v1/rendering-technology",
+      params: { ...range(args), scene: str(args.scene), session: str(args.session) },
+    }),
+  },
+  {
+    name: "xr_rotation",
+    title: "XR head-rotation rate",
+    description:
+      "XR head/view rotation rate (ADR 0048), a motion-sickness proxy: per-session rapid-turn " +
+      "counts over the camera pose stream.",
+    inputSchema: { since, until, rapidTurn, limit, scene, session },
+    buildRequest: (args) => ({
+      path: "api/v1/xr/rotation",
+      params: {
+        ...range(args),
+        rapidTurn: num(args.rapidTurn),
+        limit: num(args.limit),
+        scene: str(args.scene),
+        session: str(args.session),
+      },
+    }),
+  },
+  {
+    name: "xr_sources",
+    title: "XR input-source usage",
+    description: "XR input-source split (ADR 0048): hand vs. controller vs. gaze usage.",
+    inputSchema: { since, until, limit, scene, session },
+    buildRequest: (args) => ({
+      path: "api/v1/xr/sources",
+      params: {
+        ...range(args),
+        limit: num(args.limit),
+        scene: str(args.scene),
+        session: str(args.session),
+      },
+    }),
+  },
+  {
+    name: "xr_abandonment",
+    title: "XR session abandonment",
+    description:
+      "XR session abandonment (ADR 0048): per XR session, its time bounds and event/interaction " +
+      "counts; a short span signals headset drop-off.",
+    inputSchema: { since, until, limit, scene, session },
+    buildRequest: (args) => ({
+      path: "api/v1/xr/abandonment",
+      params: {
+        ...range(args),
+        limit: num(args.limit),
+        scene: str(args.scene),
+        session: str(args.session),
+      },
+    }),
+  },
+  {
+    name: "xr_locomotion",
+    title: "XR locomotion & comfort",
+    description:
+      "XR locomotion & comfort (ADR 0048): per XR session, its locomotion-style mix " +
+      "(fly / navigate / teleport + duration) and wall-clock span — a discomfort proxy.",
+    inputSchema: { since, until, limit, scene, session },
+    buildRequest: (args) => ({
+      path: "api/v1/xr/locomotion",
+      params: {
+        ...range(args),
+        limit: num(args.limit),
+        scene: str(args.scene),
+        session: str(args.session),
+      },
     }),
   },
 ];

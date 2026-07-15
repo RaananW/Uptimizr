@@ -63,8 +63,10 @@ console.log(result.content); // the model's final answer
 
 `list_sessions`, `pointer_heatmap`, `world_heatmap`, `camera_heatmap`, `click_rays`, `flow_links`,
 `top_meshes`, `perf_summary`, `list_scenes`, `timeseries`, `event_counts`, `session_meta`,
-`scene_representation`. Most accept `since`/`until` (epoch ms) plus endpoint-specific filters
-(`scene`, `session`, `source`, `bins`, `cellSize`, `limit`). Each maps one-to-one to a documented
+`scene_representation`, `funnel`, `aggregate_paths`, `rendering_technology`, `xr_rotation`,
+`xr_sources`, `xr_abandonment`, `xr_locomotion`. Most accept `since`/`until` (epoch ms) plus
+endpoint-specific filters (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, `cameraMode`,
+`rapidTurn`, `steps`). Each maps one-to-one to a documented
 collector query endpoint (see the [integration guide](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md)).
 
 ## API

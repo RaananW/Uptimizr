@@ -1082,6 +1082,15 @@ from the key, so a client can only ever read its own data.
 > [`@uptimizr/agent-core`](../oss/packages/agent-core/README.md) package (one read-only entry per
 > endpoint below, plus a headless provider-adapter interface and tool-calling loop), so the same
 > contract drives MCP and any in-browser or headless agent without duplication (ADR 0050).
+>
+> Beyond tools, the MCP server exposes capability-discovery **resources** —
+> `uptimizr://capabilities` (a machine-readable descriptor of event types, the tool catalog, and
+> parameter semantics) and `uptimizr://scenes` (the live scene ids) — plus curated **prompts**
+> (`weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`) that drive the existing tools.
+> Recent tools map the funnel (ADR 0038), aggregate desire-line path (ADR 0037),
+> rendering-technology (ADR 0046), and XR spatial-analytics (ADR 0048) endpoints. A Streamable HTTP
+> transport is a deferred, auth-gated follow-up (ADR 0050 §7). See the
+> [MCP guide](https://uptimizr.com/docs/guides/mcp/) for the full resource/prompt/tool reference.
 
 All query endpoints take `x-api-key` and the shared params `since`, `until`
 (epoch ms), and (where binned) `bins`. The aggregate endpoints also accept an
