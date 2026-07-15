@@ -1,6 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CollectorClient } from "./client.js";
-import { readTools } from "./tools.js";
+import { readTools, type CollectorClient } from "@uptimizr/agent-core";
 import { version } from "./version.js";
 
 /**

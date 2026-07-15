@@ -11,6 +11,11 @@ third party.
 It's a thin wrapper: each tool maps one-to-one to a documented [query endpoint](/docs/api/query/) and
 performs `GET` requests only. There are **no ingestion, mutation, or raw per-session event tools**.
 
+The tool catalog itself lives in the framework-agnostic, browser-safe **`@uptimizr/agent-core`**
+package, which `@uptimizr/mcp` imports. That means the agent tool surface is defined **once** and
+shared by every consumer (the MCP server, the dashboard assistant, and the demo assistant), so they
+can never drift apart on capabilities. See [ADR 0050](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0050-in-browser-analytics-assistant.md).
+
 ## How it connects
 
 The MCP server talks **only to your collector's HTTP query API** — it never opens the database
@@ -122,3 +127,9 @@ The package also exports its building blocks for embedding in your own server:
 ```ts
 import { createCollectorClient, createMcpServer, readMcpConfig } from "@uptimizr/mcp";
 ```
+
+The read-only tool catalog and the `GET`-only collector client come from the framework-agnostic
+[`@uptimizr/agent-core`](https://www.npmjs.com/package/@uptimizr/agent-core) package (re-exported
+here for convenience). If you're building a non-MCP agent — a browser assistant, a Node service, a
+CLI, a bot — depend on `@uptimizr/agent-core` directly: it also ships a headless LLM
+provider-adapter interface and tool-calling loop over the same catalog.

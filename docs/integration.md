@@ -1077,7 +1077,11 @@ from the key, so a client can only ever read its own data.
 
 > Querying this API as a contributor or agent? See the
 > [`query-analytics`](../.github/skills/query-analytics/SKILL.md) skill for the workflow, unit
-> pitfalls, and the read-only [`@uptimizr/mcp`](../oss/packages/mcp/README.md) server.
+> pitfalls, and the read-only [`@uptimizr/mcp`](../oss/packages/mcp/README.md) server. The tool
+> catalog behind MCP lives in the framework-agnostic
+> [`@uptimizr/agent-core`](../oss/packages/agent-core/README.md) package (one read-only entry per
+> endpoint below, plus a headless provider-adapter interface and tool-calling loop), so the same
+> contract drives MCP and any in-browser or headless agent without duplication (ADR 0050).
 
 All query endpoints take `x-api-key` and the shared params `since`, `until`
 (epoch ms), and (where binned) `bins`. The aggregate endpoints also accept an

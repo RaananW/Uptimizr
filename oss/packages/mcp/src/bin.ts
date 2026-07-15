@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createCollectorClient } from "./client.js";
+import { createCollectorClient } from "@uptimizr/agent-core";
 import { readMcpConfig } from "./config.js";
 import { createMcpServer } from "./server.js";
 

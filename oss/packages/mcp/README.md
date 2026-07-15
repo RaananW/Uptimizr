@@ -107,6 +107,11 @@ await server.connect(new StdioServerTransport());
 ```
 
 The package also exports `readTools`, `CollectorError`, `version`, and the related public types.
+The read-only tool catalog (`readTools`) and the `GET`-only collector client are defined in the
+framework-agnostic [`@uptimizr/agent-core`](../agent-core/README.md) package and re-exported here,
+so the agent tool surface is defined once and shared across the MCP server, the dashboard assistant,
+and the demo assistant (ADR 0050). Building a non-MCP agent? Depend on `@uptimizr/agent-core`
+directly — it also ships a headless provider-adapter interface and tool-calling loop.
 
 ## Develop
 

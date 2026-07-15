@@ -1,0 +1,20 @@
+# @uptimizr/agent-core
+
+> The framework-agnostic, browser-safe core for Uptimizr analytics agents: the single read-only
+> tool catalog over the collector query API, a headless LLM provider-adapter interface, and the
+> tool-calling loop. Defined once, consumed by MCP, the dashboard, and the demo (ADR 0050).
+
+## Docs
+
+- [Package reference](./README.md): install, usage, the full tool table, and the programmatic API.
+- [Agent guide](./AGENTS.md): rules and tool catalog for AI agents.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): the underlying query endpoints.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): in-browser assistant (0050), privacy model (0003), thin backends (0005), consumer-facing agents (0017).
+
+## Key exports
+
+- `readTools` — the read-only tool catalog (one entry per query endpoint).
+- `createCollectorClient(config)` — the thin GET-only collector client.
+- `runAgent(options)` — the headless tool-calling loop (LLM ↔ tools ↔ collector).
+- `toToolSchemas(tools?)` — convert catalog tools to JSON-Schema tool descriptors for an LLM.
+- `LlmProvider` — the pluggable, user-controlled LLM backend interface (no bundled model or key).
