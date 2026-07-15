@@ -35,6 +35,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./providers": {
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js"
+    },
+    "./providers/webllm": {
+      "types": "./dist/providers/webllm.d.ts",
+      "import": "./dist/providers/webllm.js"
+    },
+    "./providers/hosted": {
+      "types": "./dist/providers/hosted.d.ts",
+      "import": "./dist/providers/hosted.js"
     }
   },
   "files": [
@@ -56,7 +68,16 @@
   "dependencies": {
     "zod": "^4.4.3"
   },
+  "peerDependencies": {
+    "@mlc-ai/web-llm": "^0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@mlc-ai/web-llm": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@mlc-ai/web-llm": "^0.2.79",
     "vitest": "^4.1.10"
   },
   "engines": {
