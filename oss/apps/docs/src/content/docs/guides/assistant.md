@@ -36,7 +36,9 @@ highlighted as _Recommended_ (it is the zero-egress choice); when it isn't (olde
 Firefox-on-Android, low-RAM devices) the local option is shown **disabled** with a "requires a
 WebGPU browser" note, and the hosted backend provides broader reach at the cost of sending
 aggregated analytics to your own provider. Your choice persists, so returning users go straight to
-the chat and can change it later under **Backend**.
+the chat. You can change it — including switching between local and hosted — at **any time** via
+**Change backend**, which returns you to the same side-by-side selection cards; picking the other
+backend releases the previous model (freeing GPU memory) and activates the new one.
 
 ```ts
 import { defaultBackendKind, isWebGpuAvailable } from "@uptimizr/agent-core/providers";
@@ -225,7 +227,8 @@ The assistant is loaded exactly like the portable component above: a lazy `impor
 `@uptimizr/react/assistant` (and, only when a local model runs, `@mlc-ai/web-llm`) on first open, so
 the dashboard's main bundle is unchanged for anyone who never opens it. The first time you open it,
 the panel asks you to **choose a backend** — local WebLLM (zero egress) or your own hosted key —
-before anything loads; the choice is remembered, and you can change it later under **Backend**.
+before anything loads; the choice is remembered, and you can change it — or switch between local and
+hosted — at any time via **Change backend**.
 
 ### In the backend-less demo
 

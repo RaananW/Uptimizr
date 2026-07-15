@@ -85,8 +85,10 @@ export function AssistantPanel({
   } = assistant;
 
   const [draft, setDraft] = useState("");
-  const [showSettings, setShowSettings] = useState(false);
-  // First-run: which backend the user picked in the chooser (null = not yet).
+  // The selection stage (chooser cards → per-backend picker) is shown on first
+  // run and whenever the user explicitly re-opens it via "Change backend".
+  const [reconfiguring, setReconfiguring] = useState(false);
+  // Which backend the user picked in the chooser cards (null = show the cards).
   const [chooserKind, setChooserKind] = useState<BackendKind | null>(null);
 
   const onSubmit = useCallback(
@@ -102,25 +104,59 @@ export function AssistantPanel({
 
   const display = toDisplayMessages(messages);
   const firstRun = backend === null;
+  // The full selection stage is reachable at any time: on first run, or when the
+  // user clicks "Change backend" (ADR 0050). Committing returns them to chat.
+  const showSelection = firstRun || reconfiguring;
+
+  const openSelection = useCallback(() => {
+    setChooserKind(null);
+    setReconfiguring(true);
+  }, []);
+
+  const cancelSelection = useCallback(() => {
+    setChooserKind(null);
+    setReconfiguring(false);
+  }, []);
+
+  // Commit a backend choice, then leave the selection stage and return to chat.
+  const commitBackend = useCallback(
+    (config: AssistantBackendConfig) => {
+      setBackend(config);
+      setChooserKind(null);
+      setReconfiguring(false);
+    },
+    [setBackend],
+  );
 
   return (
     <div className={`flex flex-col gap-3 text-sm text-fg ${className ?? ""}`}>
       <header className="flex items-center justify-between gap-2">
         <h2 className="text-base font-medium text-fg-hi">{title}</h2>
-        {!firstRun && (
+        {!showSelection && (
           <button
             type="button"
             className="rounded-md border border-edge px-2 py-1 text-xs text-fg-muted hover:text-fg"
-            onClick={() => setShowSettings((s) => !s)}
+            onClick={openSelection}
           >
-            {showSettings ? "Hide settings" : "Backend"}
+            Change backend
           </button>
         )}
       </header>
 
-      {firstRun ? (
+      {showSelection ? (
         chooserKind === null ? (
-          <BackendChooser webGpuAvailable={webGpuAvailable} onPick={setChooserKind} />
+          <div className="flex flex-col gap-2">
+            <BackendChooser webGpuAvailable={webGpuAvailable} onPick={setChooserKind} />
+            {!firstRun && (
+              <button
+                type="button"
+                onClick={cancelSelection}
+                className="self-start text-xs text-fg-muted hover:text-fg"
+              >
+                ← Back to chat
+              </button>
+            )}
+          </div>
         ) : (
           <div className="flex flex-col gap-2">
             <button
@@ -135,21 +171,12 @@ export function AssistantPanel({
               initialKind={chooserKind}
               webGpuAvailable={webGpuAvailable}
               models={models}
-              onChange={setBackend}
+              onChange={commitBackend}
             />
           </div>
         )
       ) : (
         <>
-          {showSettings && (
-            <BackendPicker
-              backend={backend}
-              webGpuAvailable={webGpuAvailable}
-              models={models}
-              onChange={setBackend}
-            />
-          )}
-
           <PrivacyNote backend={backend} />
 
           <ol className="flex min-h-[8rem] flex-col gap-2" aria-label="Conversation">
@@ -332,8 +359,11 @@ function BackendPicker({
   /** First-run seed for which backend to configure (when `backend` is null). */
   initialKind?: BackendKind;
 }) {
+  // A card the user just picked (`initialKind`) wins over the persisted backend's
+  // kind, so switching local↔hosted from the chooser lands on the chosen kind.
+  // When re-picking the SAME kind, the field seeds below prefill from `backend`.
   const [kind, setKind] = useState<BackendKind>(
-    backend?.backend ?? initialKind ?? (webGpuAvailable ? "local" : "hosted"),
+    initialKind ?? backend?.backend ?? (webGpuAvailable ? "local" : "hosted"),
   );
   const [localModel, setLocalModel] = useState(backend?.webllm?.model ?? models[0]?.id ?? "");
   const [api, setApi] = useState<HostedApi>(backend?.hosted?.api ?? "openai");
