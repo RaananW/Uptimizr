@@ -73,6 +73,7 @@ export default defineConfig({
             { label: "Session replay", slug: "guides/replay" },
             { label: "In-scene heatmap overlays", slug: "guides/overlays" },
             { label: "Custom dashboard panels", slug: "guides/custom-panels" },
+            { label: "In-browser assistant (LLM)", slug: "guides/assistant" },
             { label: "MCP server (AI agents)", slug: "guides/mcp" },
           ],
         },

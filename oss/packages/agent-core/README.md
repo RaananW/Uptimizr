@@ -83,6 +83,41 @@ The loop stops when the provider returns a final answer or after `maxSteps` turn
 (`DEFAULT_MAX_STEPS`, default 8). Unknown tools and invalid arguments are surfaced back to the model
 as tool-error messages so it can recover, never thrown.
 
+## Provider adapters (user-controlled backends)
+
+The core ships **no model and no key**. Two ready-made adapters implement `LlmProvider` and are
+exported from **code-split subpaths**, so consumers who never use the assistant pay nothing for
+them:
+
+```ts
+import { createWebLlmProvider } from "@uptimizr/agent-core/providers/webllm";
+import { createHostedProvider } from "@uptimizr/agent-core/providers/hosted";
+// or the barrel (adds backend-selection + localStorage helpers):
+import {
+  defaultBackendKind,
+  isWebGpuAvailable,
+  loadBackendConfig,
+  saveBackendConfig,
+} from "@uptimizr/agent-core/providers";
+```
+
+- **`createWebLlmProvider`** — local, in-browser inference on WebGPU via
+  [`@mlc-ai/web-llm`](https://github.com/mlc-ai/web-llm). The runtime is an **optional** dependency
+  loaded with a lazy `import()` only on first use; model weights download behind an explicit consent
+  gate and are cached in the browser's Cache Storage (never precached). **Zero data egress.**
+- **`createHostedProvider`** — bring-your-own **OpenAI-compatible** or **Anthropic** endpoint + key,
+  stored only in the browser; the browser calls your provider directly. Only the prompt and
+  aggregated results leave, to **your own** provider (ADR 0050 §4/§5).
+
+Install the WebLLM runtime alongside the assistant if you use the local backend:
+
+```bash
+npm install @mlc-ai/web-llm
+```
+
+See the [assistant guide](https://uptimizr.com/docs/guides/assistant/) for the curated model list,
+privacy trade-offs, and the provider CORS requirements.
+
 ## More
 
 - Design rationale: [ADR 0050](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0050-in-browser-analytics-assistant.md)

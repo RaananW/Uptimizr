@@ -1,0 +1,149 @@
+---
+title: In-browser assistant (LLM)
+description: Ask natural-language questions of your 3D analytics with a client-side agent, powered by a local WebGPU model or your own hosted LLM key. No Uptimizr backend, no default data egress.
+---
+
+The in-browser assistant lets anyone ask natural-language questions of their 3D analytics
+("what were the most-clicked meshes this week, and how's the average FPS?") **without** installing an
+MCP client. The agent loop runs entirely in the browser against the same read-only
+[query API](/docs/api/query/) a human dashboard user sees — one project, aggregate-only, no raw
+events, no PII.
+
+It ships **no model and no key**. You pick a backend, and the choice persists per-user in
+`localStorage`. Everything is user-controlled, so there is no Uptimizr-operated backend and no
+default egress (ADR 0050 §4/§5).
+
+The two backends are provider adapters for [`@uptimizr/agent-core`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/agent-core/README.md),
+imported from code-split subpaths so consumers who never use the assistant pay nothing for it:
+
+```ts
+import { createWebLlmProvider } from "@uptimizr/agent-core/providers/webllm";
+import { createHostedProvider } from "@uptimizr/agent-core/providers/hosted";
+```
+
+## Choosing a backend
+
+| Backend                     | Where inference runs     | What leaves the browser              | Requirements             |
+| --------------------------- | ------------------------ | ------------------------------------ | ------------------------ |
+| **Local (WebLLM / WebGPU)** | Your GPU, in the browser | **Nothing** — zero egress            | A WebGPU-capable browser |
+| **Bring-your-own hosted**   | Your chosen LLM provider | Prompt + **aggregated** results only | Provider key + CORS      |
+
+Local is the **privacy-preserving default** when WebGPU is available. When it isn't (older Safari,
+Firefox-on-Android, low-RAM devices), the local option is hidden and the hosted backend provides
+broader reach at the cost of sending aggregated analytics to your own provider.
+
+```ts
+import { defaultBackendKind, isWebGpuAvailable } from "@uptimizr/agent-core/providers";
+
+if (isWebGpuAvailable()) {
+  // Offer the local, zero-egress backend.
+}
+const backend = defaultBackendKind(); // "local" when WebGPU is present, else "hosted"
+```
+
+## Local backend (WebLLM / WebGPU)
+
+The heavy [`@mlc-ai/web-llm`](https://github.com/mlc-ai/web-llm) runtime is an **optional** dependency
+loaded via a lazy `import()` only when you actually run the assistant. Model weights download **on
+first use**, behind an explicit consent prompt, and are cached by the runtime in the browser's
+**Cache Storage** — they are **never** part of any precache (including the demo's "Prepare demo"
+step, ADR 0050 §6). Inference runs on your GPU; **nothing leaves the browser**.
+
+```ts
+import { CURATED_MODELS, createWebLlmProvider } from "@uptimizr/agent-core/providers/webllm";
+
+const provider = createWebLlmProvider({
+  model: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+  // Called once, before any weights download. Show the size disclosure and
+  // return false to abort — no data is downloaded if the user declines.
+  confirmDownload: (model) =>
+    confirm(`Download ${model.label} (${model.downloadSize})? It runs 100% locally.`),
+  onInitProgress: ({ progress, text }) => updateProgressBar(progress, text),
+});
+```
+
+Install the runtime alongside the assistant (it is an optional peer dependency):
+
+```bash
+npm install @mlc-ai/web-llm
+```
+
+### Curated models
+
+A small, tool-calling-capable set spanning the device-coverage range. Sizes are approximate and
+shown to the user before any download:
+
+| Model                   | Download | VRAM    | Notes                                       |
+| ----------------------- | -------- | ------- | ------------------------------------------- |
+| Llama 3.2 1B            | ~0.9 GB  | ~1.1 GB | Smallest/fastest; best for low-RAM devices. |
+| Llama 3.2 3B            | ~2.3 GB  | ~2.9 GB | Balanced default when VRAM allows.          |
+| Phi 3.5 mini            | ~2.4 GB  | ~3.0 GB | Strong reasoning for its size.              |
+| Qwen 2.5 3B             | ~2.0 GB  | ~2.6 GB | Reliable structured tool-call output.       |
+| Hermes 3 (Llama 3.1 8B) | ~4.8 GB  | ~5.8 GB | Highest quality; needs a capable GPU.       |
+
+Small in-browser models do tool-calling adequately but not perfectly — expect good summaries, not
+deep analytics (ADR 0050 trade-offs). Call `provider.unload()` to release GPU memory when done.
+
+## Bring-your-own hosted backend
+
+You supply an **OpenAI-compatible** or **Anthropic** endpoint + key. The key and endpoint are stored
+**only in your browser** (`localStorage`) and the browser calls **your own** provider directly —
+Uptimizr operates no proxy. Only the prompt and the **aggregated** tool results the loop produces
+leave, and only to the provider you chose (never raw events or PII, ADR 0050 §5).
+
+```ts
+import { createHostedProvider } from "@uptimizr/agent-core/providers/hosted";
+
+// OpenAI-compatible
+const openai = createHostedProvider({
+  api: "openai",
+  endpoint: "https://api.openai.com/v1", // or a self-hosted / gateway URL
+  apiKey: "sk-…",
+  model: "gpt-4o-mini",
+});
+
+// Anthropic
+const anthropic = createHostedProvider({
+  api: "anthropic",
+  endpoint: "https://api.anthropic.com/v1",
+  apiKey: "sk-ant-…",
+  model: "claude-3-5-haiku-latest",
+});
+```
+
+### Required provider CORS
+
+Because the request originates in the browser, the provider must allow cross-origin calls:
+
+- **Anthropic** — the adapter sends the `anthropic-dangerous-direct-browser-access: true` header,
+  which enables Anthropic's browser CORS path. No proxy needed.
+- **OpenAI-compatible** — `api.openai.com` does **not** send permissive CORS headers, so calling it
+  directly from a browser is blocked. Use a provider/gateway that returns
+  `Access-Control-Allow-Origin` for your dashboard's origin (many self-hosted servers and LLM
+  gateways do), or run the assistant against such an endpoint.
+
+## Persisting the choice
+
+```ts
+import { loadBackendConfig, saveBackendConfig } from "@uptimizr/agent-core/providers";
+
+saveBackendConfig({
+  backend: "hosted",
+  hosted: {
+    api: "anthropic",
+    endpoint: "https://api.anthropic.com/v1",
+    apiKey: "sk-ant-…",
+    model: "claude-3-5-haiku-latest",
+  },
+});
+
+const config = loadBackendConfig(); // null until the user picks a backend
+```
+
+The selection is read back on the next visit so users don't re-choose each time. Clearing it
+(`clearBackendConfig()`) forgets the backend and any stored key.
+
+## See also
+
+- [MCP server (AI agents)](/docs/guides/mcp/) — the same read-only tool catalog for external/local agents.
+- [ADR 0050](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0050-in-browser-analytics-assistant.md) — design rationale and trust boundary.
