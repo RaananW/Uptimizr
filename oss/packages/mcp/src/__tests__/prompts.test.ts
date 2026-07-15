@@ -9,9 +9,16 @@ type PromptCb = (args: Record<string, string | undefined>) => { messages: Render
 
 /** Capture the prompts a `registerPrompts` call registers. */
 function collect() {
-  const prompts = new Map<string, { config: { argsSchema?: Record<string, unknown> }; cb: PromptCb }>();
+  const prompts = new Map<
+    string,
+    { config: { argsSchema?: Record<string, unknown> }; cb: PromptCb }
+  >();
   const server = {
-    registerPrompt: (name: string, config: { argsSchema?: Record<string, unknown> }, cb: PromptCb) => {
+    registerPrompt: (
+      name: string,
+      config: { argsSchema?: Record<string, unknown> },
+      cb: PromptCb,
+    ) => {
       prompts.set(name, { config, cb });
     },
   };

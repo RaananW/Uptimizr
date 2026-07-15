@@ -56,7 +56,8 @@ const PARAM_SEMANTICS: Readonly<Record<string, string>> = {
   cellSize: "Voxel edge length in world units for a spatial (world-space) aggregate.",
   interval: "Time-series bucket width in seconds.",
   type: "Restrict a time series to one event type (e.g. pointer_click).",
-  source: "Input source filter: mouse, touch, stylus, pen, xr-controller, hand, gaze, transient, other.",
+  source:
+    "Input source filter: mouse, touch, stylus, pen, xr-controller, hand, gaze, transient, other.",
   cameraMode: "Camera navigation mode: 'viewer' (orbit) or 'first-person' (walkable).",
   rapidTurn: "Rapid-turn threshold in radians (0..π); XR view turns above this flag discomfort.",
   steps: "Funnel steps as a JSON-encoded array of ordered step predicates (ADR 0038).",

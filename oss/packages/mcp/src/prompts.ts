@@ -73,9 +73,9 @@ export function registerPrompts(server: McpServer): void {
             type: "text",
             text:
               `Where does attention concentrate in scene "${scene}"?\n\n` +
-              "Use these read-only tools (all scoped with scene=\"" +
+              'Use these read-only tools (all scoped with scene="' +
               scene +
-              "\") and synthesise the result:\n" +
+              '") and synthesise the result:\n' +
               "- `camera_heatmap` for the view-direction distribution (what people look at).\n" +
               "- `flow_links` for how gaze flows into clicked meshes.\n" +
               "- `click_rays` for view-gated clicks per voxel/mesh.\n" +

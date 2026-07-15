@@ -104,38 +104,38 @@ week and how's the average FPS?"_ — the agent picks the right tools and answer
 All tools accept an optional time range (`since` / `until`, epoch ms) and the filters the underlying
 endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, …).
 
-| Tool                   | Endpoint                            | Returns                            |
-| ---------------------- | ----------------------------------- | ---------------------------------- |
-| `list_sessions`        | `/api/v1/sessions`                  | Recent sessions.                   |
-| `pointer_heatmap`      | `/api/v1/heatmaps/pointer`          | 2D pointer heatmap bins.           |
-| `world_heatmap`        | `/api/v1/heatmaps/world`            | 3D world-space pointer voxels.     |
-| `camera_heatmap`       | `/api/v1/heatmaps/camera`           | View-direction (spherical) bins.   |
-| `click_rays`           | `/api/v1/heatmaps/click-rays`       | View-gated click rays.             |
-| `flow_links`           | `/api/v1/heatmaps/flow`             | Gaze→mesh flow links.              |
-| `top_meshes`           | `/api/v1/meshes/top`                | Most-interacted meshes.            |
-| `perf_summary`         | `/api/v1/perf`                      | FPS summary (avg/min/p50).         |
-| `list_scenes`          | `/api/v1/scenes`                    | Active scenes.                     |
-| `timeseries`           | `/api/v1/timeseries`                | Event-volume buckets over time.    |
-| `event_counts`         | `/api/v1/event-counts`              | Per-event-type counts.             |
-| `session_meta`         | `/api/v1/sessions/:id/meta`         | Coarse session descriptor.         |
-| `scene_representation` | `/api/v1/scenes/:id/representation` | Registered proxy geometry, if any. |
-| `funnel`               | `/api/v1/funnel`                    | Ordered conversion funnel (ADR 0038); `steps` is a JSON array. |
-| `aggregate_paths`      | `/api/v1/paths`                     | Crowd-level desire-line movement routes (ADR 0037). |
+| Tool                   | Endpoint                            | Returns                                                          |
+| ---------------------- | ----------------------------------- | ---------------------------------------------------------------- |
+| `list_sessions`        | `/api/v1/sessions`                  | Recent sessions.                                                 |
+| `pointer_heatmap`      | `/api/v1/heatmaps/pointer`          | 2D pointer heatmap bins.                                         |
+| `world_heatmap`        | `/api/v1/heatmaps/world`            | 3D world-space pointer voxels.                                   |
+| `camera_heatmap`       | `/api/v1/heatmaps/camera`           | View-direction (spherical) bins.                                 |
+| `click_rays`           | `/api/v1/heatmaps/click-rays`       | View-gated click rays.                                           |
+| `flow_links`           | `/api/v1/heatmaps/flow`             | Gaze→mesh flow links.                                            |
+| `top_meshes`           | `/api/v1/meshes/top`                | Most-interacted meshes.                                          |
+| `perf_summary`         | `/api/v1/perf`                      | FPS summary (avg/min/p50).                                       |
+| `list_scenes`          | `/api/v1/scenes`                    | Active scenes.                                                   |
+| `timeseries`           | `/api/v1/timeseries`                | Event-volume buckets over time.                                  |
+| `event_counts`         | `/api/v1/event-counts`              | Per-event-type counts.                                           |
+| `session_meta`         | `/api/v1/sessions/:id/meta`         | Coarse session descriptor.                                       |
+| `scene_representation` | `/api/v1/scenes/:id/representation` | Registered proxy geometry, if any.                               |
+| `funnel`               | `/api/v1/funnel`                    | Ordered conversion funnel (ADR 0038); `steps` is a JSON array.   |
+| `aggregate_paths`      | `/api/v1/paths`                     | Crowd-level desire-line movement routes (ADR 0037).              |
 | `rendering_technology` | `/api/v1/rendering-technology`      | Rendering-tech mix — WebGPU/WebGL2, shading language (ADR 0046). |
-| `xr_rotation`          | `/api/v1/xr/rotation`               | XR head-rotation rate (motion-sickness proxy, ADR 0048). |
-| `xr_sources`           | `/api/v1/xr/sources`                | XR input-source usage — hand / controller / gaze (ADR 0048). |
-| `xr_abandonment`       | `/api/v1/xr/abandonment`            | XR session abandonment / drop-off (ADR 0048). |
-| `xr_locomotion`        | `/api/v1/xr/locomotion`             | XR locomotion & comfort mix (ADR 0048). |
+| `xr_rotation`          | `/api/v1/xr/rotation`               | XR head-rotation rate (motion-sickness proxy, ADR 0048).         |
+| `xr_sources`           | `/api/v1/xr/sources`                | XR input-source usage — hand / controller / gaze (ADR 0048).     |
+| `xr_abandonment`       | `/api/v1/xr/abandonment`            | XR session abandonment / drop-off (ADR 0048).                    |
+| `xr_locomotion`        | `/api/v1/xr/locomotion`             | XR locomotion & comfort mix (ADR 0048).                          |
 
 ## Resources
 
 The server also exposes read-only [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources)
 so an agent can **self-discover** what it can ask instead of guessing:
 
-| Resource URI              | Type               | Contents                                                                                                                                    |
-| ------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Resource URI              | Type               | Contents                                                                                                                                                                                                                                                                         |
+| ------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `uptimizr://capabilities` | `application/json` | A machine-readable descriptor: schema version, the canonical **event types**, the full **tool catalog**, and the **parameter semantics** glossary. Built from the shared catalog + `@uptimizr/schema`, so it never drifts from the tools actually registered. No collector call. |
-| `uptimizr://scenes`       | `application/json` | The **live** list of scene ids with recent activity — the valid values for the `scene` parameter. Fetched via the read-only query API.       |
+| `uptimizr://scenes`       | `application/json` | The **live** list of scene ids with recent activity — the valid values for the `scene` parameter. Fetched via the read-only query API.                                                                                                                                           |
 
 Point an agent at `uptimizr://capabilities` first: it enumerates every tool, its parameters, and
 what each parameter means, so the agent can plan a query without trial and error.
@@ -146,11 +146,11 @@ Curated [MCP prompts](https://modelcontextprotocol.io/docs/concepts/prompts) pac
 as one-click templates. Each renders a message that steers the agent to call the right read-only
 tools in a sensible order — the agent runs the tools; the prompt just frames the task.
 
-| Prompt                | Argument   | What it does                                                                                             |
-| --------------------- | ---------- | ------------------------------------------------------------------------------------------------------- |
-| `weekly_scene_health` | `scene?`   | A 7-day health report: traffic, event mix, FPS, and top meshes (`event_counts`, `timeseries`, `perf_summary`, `top_meshes`, `list_sessions`). |
-| `attention_hotspots`  | `scene`    | Where visitors look and click: `camera_heatmap`, `flow_links`, `click_rays`, `top_meshes`.              |
-| `xr_comfort_review`   | `scene?`   | VR/AR comfort & drop-off: `xr_rotation`, `xr_locomotion`, `xr_abandonment`, `xr_sources`.               |
+| Prompt                | Argument | What it does                                                                                                                                  |
+| --------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `weekly_scene_health` | `scene?` | A 7-day health report: traffic, event mix, FPS, and top meshes (`event_counts`, `timeseries`, `perf_summary`, `top_meshes`, `list_sessions`). |
+| `attention_hotspots`  | `scene`  | Where visitors look and click: `camera_heatmap`, `flow_links`, `click_rays`, `top_meshes`.                                                    |
+| `xr_comfort_review`   | `scene?` | VR/AR comfort & drop-off: `xr_rotation`, `xr_locomotion`, `xr_abandonment`, `xr_sources`.                                                     |
 
 ## Transport & roadmap
 

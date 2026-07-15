@@ -55,7 +55,9 @@ const rapidTurn = z
   .nonnegative()
   .max(Math.PI)
   .optional()
-  .describe("Rapid-turn threshold in radians (0..π); view turns above this flag motion-sickness risk.");
+  .describe(
+    "Rapid-turn threshold in radians (0..π); view turns above this flag motion-sickness risk.",
+  );
 const steps = z
   .string()
   .min(1)

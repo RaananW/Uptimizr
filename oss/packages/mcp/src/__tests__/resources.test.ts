@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { CollectorClient } from "@uptimizr/agent-core";
 import { registerResources, CAPABILITIES_URI, SCENES_URI } from "../resources.js";
 
-type ReadCb = (uri: URL) => Promise<{ contents: { uri: string; mimeType?: string; text: string }[] }>;
+type ReadCb = (
+  uri: URL,
+) => Promise<{ contents: { uri: string; mimeType?: string; text: string }[] }>;
 
 /** Capture the resources a `registerResources` call registers. */
 function collect(client: CollectorClient) {
