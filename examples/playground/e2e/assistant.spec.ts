@@ -169,4 +169,16 @@ test("assistant answers a grounded question end to end", async ({ page, request 
   // 7) The rendered answer is grounded: it names the real top mesh.
   const answer = assistant.locator('[data-role="assistant"]');
   await expect(answer).toContainText(expectedTopMesh!, { timeout: 20_000 });
+
+  // 8) The backend selection stage is reachable at any time: "Change backend"
+  //    reopens the side-by-side chooser cards (both options), and the escape
+  //    hatch returns to chat with the backend unchanged (ADR 0050). WebGPU is
+  //    typically unavailable in CI, so the local↔hosted *switch* itself is
+  //    covered by the AssistantPanel component tests; here we assert the
+  //    discoverable affordance + escape round-trip.
+  await assistant.getByRole("button", { name: "Change backend" }).click();
+  await expect(assistant.getByRole("heading", { name: "Local (in-browser)" })).toBeVisible();
+  await expect(assistant.getByRole("heading", { name: "Bring your own hosted key" })).toBeVisible();
+  await assistant.getByRole("button", { name: /Back to chat/i }).click();
+  await expect(assistant.getByLabel("Message")).toBeVisible();
 });
