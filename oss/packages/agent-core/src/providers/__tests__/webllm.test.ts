@@ -3,6 +3,7 @@ import type { AgentMessage, ProviderRequest } from "../provider.js";
 import {
   CURATED_MODELS,
   createWebLlmProvider,
+  DEFAULT_LOCAL_CONTEXT_WINDOW,
   foldSystemPromptForHermes,
   SUPPORTED_TOOL_CALLING_MODELS,
   UnsupportedToolCallingModelError,
@@ -26,6 +27,7 @@ const request: ProviderRequest = {
 function fakeRuntime(completion: unknown): {
   runtime: WebLlmRuntime;
   load: ReturnType<typeof vi.fn>;
+  createEngine: ReturnType<typeof vi.fn>;
   create: ReturnType<typeof vi.fn>;
   unload: ReturnType<typeof vi.fn>;
 } {
@@ -34,7 +36,7 @@ function fakeRuntime(completion: unknown): {
   const engine: WebLlmEngine = { chat: { completions: { create } }, unload };
   const createEngine = vi.fn(async () => engine);
   const load = vi.fn(async () => ({ CreateMLCEngine: createEngine }) as WebLlmRuntime);
-  return { runtime: { CreateMLCEngine: createEngine }, load, create, unload };
+  return { runtime: { CreateMLCEngine: createEngine }, load, createEngine, create, unload };
 }
 
 afterEach(() => {
@@ -148,6 +150,33 @@ describe("WebLLM provider", () => {
     await provider.complete(request);
     await provider.complete(request);
     expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("raises the local context window so the assistant prompt fits (regression guard for the 4096 overflow)", async () => {
+    // The demo bug: the model record's default 4096-token window rejected the
+    // ~5.9k-token analytics prompt. The adapter must load the engine with a
+    // wider window via chatOpts.context_window_size.
+    const { load, createEngine } = fakeRuntime({ choices: [{ message: { content: "ok" } }] });
+    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
+    await provider.complete(request);
+
+    expect(createEngine).toHaveBeenCalledTimes(1);
+    const chatOpts = createEngine.mock.calls[0]![2] as { context_window_size?: number };
+    expect(chatOpts).toEqual({ context_window_size: DEFAULT_LOCAL_CONTEXT_WINDOW });
+    expect(DEFAULT_LOCAL_CONTEXT_WINDOW).toBeGreaterThanOrEqual(8192);
+  });
+
+  it("forwards a custom contextWindowSize override to the engine", async () => {
+    const { load, createEngine } = fakeRuntime({ choices: [{ message: { content: "ok" } }] });
+    const provider = createWebLlmProvider({
+      loadRuntime: load,
+      hasWebGpu: () => true,
+      contextWindowSize: 16384,
+    });
+    await provider.complete(request);
+
+    const chatOpts = createEngine.mock.calls[0]![2] as { context_window_size?: number };
+    expect(chatOpts).toEqual({ context_window_size: 16384 });
   });
 
   it("throws WebGpuUnavailableError and never loads the runtime without WebGPU", async () => {

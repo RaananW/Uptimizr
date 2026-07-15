@@ -86,6 +86,35 @@ export const CURATED_MODELS: readonly CuratedModel[] = [
   },
 ];
 
+/**
+ * Context window (in tokens) the adapter requests when initialising a local
+ * model, overriding WebLLM's model-record default (which is 4096 for the curated
+ * Hermes records). The analytics assistant's prompt — its system instructions
+ * plus the tool JSON schemas and any tool results — runs well past 4096 tokens
+ * (~5.9k observed on the demo), so the model errored with
+ * "Prompt tokens exceed context window size". Every curated Hermes 7–8B model
+ * natively supports 8k+ context, so 8192 comfortably fits the prompt with
+ * headroom while staying within the models' real limits. Passed through as
+ * `chatOpts.context_window_size` (see {@link WebLlmChatOptions}); the
+ * mutually-exclusive `sliding_window_size` keeps its model-record default (-1).
+ */
+export const DEFAULT_LOCAL_CONTEXT_WINDOW = 8192;
+
+/**
+ * The subset of `@mlc-ai/web-llm`'s `ChatOptions` (`Partial<ChatConfig>`) this
+ * adapter sets to override a model record's defaults. Verified against
+ * `@mlc-ai/web-llm` v0.2.84: `CreateMLCEngine(modelId, engineConfig?, chatOpts?)`
+ * and `ChatConfig` exposes `context_window_size` / `sliding_window_size`. We only
+ * ever set `context_window_size`; the field is declared optional so the object is
+ * a valid partial override.
+ */
+export interface WebLlmChatOptions {
+  /** Token context window to load the model with. */
+  context_window_size?: number;
+  /** Sliding-window size; mutually exclusive with `context_window_size` in mlc. */
+  sliding_window_size?: number;
+}
+
 /** Progress report emitted while weights download / the engine initialises. */
 export interface InitProgress {
   /** Fraction complete in [0, 1]. */
@@ -114,6 +143,7 @@ export interface WebLlmRuntime {
   CreateMLCEngine(
     model: string,
     engineConfig?: { initProgressCallback?: (report: { progress: number; text: string }) => void },
+    chatOpts?: WebLlmChatOptions,
   ): Promise<WebLlmEngine>;
 }
 
@@ -129,6 +159,13 @@ export interface WebLlmProviderOptions {
   confirmDownload?: (model: CuratedModel) => boolean | Promise<boolean>;
   /** Called with download/initialise progress. */
   onInitProgress?: (progress: InitProgress) => void;
+  /**
+   * Token context window to load the local model with, overriding the model
+   * record's default. Defaults to {@link DEFAULT_LOCAL_CONTEXT_WINDOW} (8192),
+   * which fits the assistant's prompt on every curated Hermes model. Raise it
+   * only up to a value the selected model actually supports.
+   */
+  contextWindowSize?: number;
   /**
    * Injectable runtime loader (for tests / custom hosting). Defaults to a lazy
    * `import("@mlc-ai/web-llm")`.
@@ -256,6 +293,7 @@ export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLl
   }
   const loadRuntime = options.loadRuntime ?? defaultLoadRuntime;
   const hasWebGpu = options.hasWebGpu ?? (() => isWebGpuAvailable());
+  const contextWindowSize = options.contextWindowSize ?? DEFAULT_LOCAL_CONTEXT_WINDOW;
   let enginePromise: Promise<WebLlmEngine> | undefined;
 
   function ensureEngine(): Promise<WebLlmEngine> {
@@ -276,11 +314,19 @@ export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLl
       if (!ok) throw new WebLlmConsentError();
     }
     const runtime = await loadRuntime();
-    return runtime.CreateMLCEngine(model.id, {
-      initProgressCallback: options.onInitProgress
-        ? (report) => options.onInitProgress?.({ progress: report.progress, text: report.text })
-        : undefined,
-    });
+    // Override the model record's default context window (4096 for the curated
+    // Hermes records) so the assistant's system prompt + tool schemas + results
+    // fit. `sliding_window_size` is left at its model-record default (-1); the
+    // two are mutually exclusive in mlc.
+    return runtime.CreateMLCEngine(
+      model.id,
+      {
+        initProgressCallback: options.onInitProgress
+          ? (report) => options.onInitProgress?.({ progress: report.progress, text: report.text })
+          : undefined,
+      },
+      { context_window_size: contextWindowSize },
+    );
   }
 
   return {

@@ -101,6 +101,15 @@ default is the least-friction working model. Sizes are approximate (sourced from
 Small in-browser models do tool-calling adequately but not perfectly — expect good summaries, not
 deep analytics (ADR 0050 trade-offs). Call `provider.unload()` to release GPU memory when done.
 
+> **The local context window is raised to fit the assistant's prompt.** WebLLM loads the curated
+> Hermes model records with a default `context_window_size` of 4096 tokens, but the assistant's
+> prompt — its system instructions plus the tool JSON schemas and any tool results — runs past
+> that (a "Prompt tokens exceed context window size" error). The Hermes 7–8B models natively
+> support 8k+ context, so the adapter loads the engine with an **8192-token** window
+> (`DEFAULT_LOCAL_CONTEXT_WINDOW`), overriding the model-record default. Hosts can tune it via
+> `createWebLlmProvider({ contextWindowSize })` — raise it only up to what the selected model
+> actually supports.
+
 > **Local models manage their own function-calling system prompt.** WebLLM injects its own
 > tool-calling system prompt for the Hermes family and rejects a caller-supplied `system` message
 > whenever tools are present. So for the local backend the assistant's system instructions are
