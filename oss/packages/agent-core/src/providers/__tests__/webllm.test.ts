@@ -3,6 +3,8 @@ import type { ProviderRequest } from "../provider.js";
 import {
   CURATED_MODELS,
   createWebLlmProvider,
+  SUPPORTED_TOOL_CALLING_MODELS,
+  UnsupportedToolCallingModelError,
   WebGpuUnavailableError,
   WebLlmConsentError,
   type WebLlmEngine,
@@ -41,6 +43,35 @@ describe("WebLLM provider", () => {
       expect(model.downloadSize).toMatch(/GB/);
       expect(model.vram).toMatch(/GB/);
     }
+  });
+
+  it("only curates models WebLLM supports for tool-calling (regression guard for the demo bug)", () => {
+    // Every curated model MUST be tool-calling-capable — the assistant relies on
+    // function calling, and WebLLM throws at runtime for any other model. This is
+    // the guard that would have caught Llama-3.2-1B slipping in as the default.
+    for (const model of CURATED_MODELS) {
+      expect(SUPPORTED_TOOL_CALLING_MODELS).toContain(model.id);
+    }
+  });
+
+  it("defaults to a tool-calling-capable model", () => {
+    // resolveModel(undefined) picks CURATED_MODELS[0]; it must be supported.
+    expect(SUPPORTED_TOOL_CALLING_MODELS).toContain(CURATED_MODELS[0]!.id);
+    const provider = createWebLlmProvider({ hasWebGpu: () => true });
+    expect(provider).toBeDefined();
+  });
+
+  it("throws UnsupportedToolCallingModelError before any download for an unsupported model", () => {
+    const { load } = fakeRuntime({ choices: [{ message: { content: "x" } }] });
+    expect(() =>
+      createWebLlmProvider({
+        model: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
+        loadRuntime: load,
+        hasWebGpu: () => true,
+      }),
+    ).toThrow(UnsupportedToolCallingModelError);
+    // The guard fires before weights ever download — the runtime is never loaded.
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("loads the runtime lazily — not until the first complete()", async () => {

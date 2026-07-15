@@ -53,7 +53,7 @@ step, ADR 0050 §6). Inference runs on your GPU; **nothing leaves the browser**.
 import { CURATED_MODELS, createWebLlmProvider } from "@uptimizr/agent-core/providers/webllm";
 
 const provider = createWebLlmProvider({
-  model: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+  model: "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC",
   // Called once, before any weights download. Show the size disclosure and
   // return false to abort — no data is downloaded if the user declines.
   confirmDownload: (model) =>
@@ -70,16 +70,24 @@ npm install @mlc-ai/web-llm
 
 ### Curated models
 
-A small, tool-calling-capable set spanning the device-coverage range. Sizes are approximate and
-shown to the user before any download:
+WebLLM only supports the tool-calling (function calling) the assistant relies on for the 7–8B
+**Hermes** family, so the curated set is limited to those variants — ordered smallest-first, so the
+default is the least-friction working model. Sizes are approximate (sourced from WebLLM's
+`prebuiltAppConfig`) and shown to the user before any download:
 
-| Model                   | Download | VRAM    | Notes                                       |
-| ----------------------- | -------- | ------- | ------------------------------------------- |
-| Llama 3.2 1B            | ~0.9 GB  | ~1.1 GB | Smallest/fastest; best for low-RAM devices. |
-| Llama 3.2 3B            | ~2.3 GB  | ~2.9 GB | Balanced default when VRAM allows.          |
-| Phi 3.5 mini            | ~2.4 GB  | ~3.0 GB | Strong reasoning for its size.              |
-| Qwen 2.5 3B             | ~2.0 GB  | ~2.6 GB | Reliable structured tool-call output.       |
-| Hermes 3 (Llama 3.1 8B) | ~4.8 GB  | ~5.8 GB | Highest quality; needs a capable GPU.       |
+| Model                     | Download | VRAM    | Notes                                       |
+| ------------------------- | -------- | ------- | ------------------------------------------- |
+| Hermes 2 Pro (Mistral 7B) | ~3.9 GB  | ~4.0 GB | Smallest tool-calling model; the default.   |
+| Hermes 2 Pro (Llama 3 8B) | ~4.6 GB  | ~5.0 GB | Stronger Llama-3 base; needs a capable GPU. |
+| Hermes 3 (Llama 3.1 8B)   | ~4.5 GB  | ~4.9 GB | Highest quality; needs a capable GPU.       |
+
+> **Local mode needs a capable GPU.** WebLLM hard-codes function calling to the Hermes-2-Pro /
+> Hermes-3 family (its tool-call prompt and output parser are Hermes-specific), and the smallest of
+> those is a 7B model. There is **no small (<3 GB) tool-calling model** in WebLLM, so local mode has
+> an inherent floor: a WebGPU device with roughly **5 GB of free VRAM**. On devices that can't meet
+> it, use the [hosted backend](#bring-your-own-hosted-backend) instead. The provider validates the
+> selected model up front and throws `UnsupportedToolCallingModelError` **before** any weights
+> download if it isn't tool-calling-capable.
 
 Small in-browser models do tool-calling adequately but not perfectly — expect good summaries, not
 deep analytics (ADR 0050 trade-offs). Call `provider.unload()` to release GPU memory when done.

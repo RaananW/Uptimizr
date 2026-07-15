@@ -36,6 +36,8 @@ export {
   type WebLlmProviderOptions,
   type WebLlmRuntime,
   CURATED_MODELS,
+  SUPPORTED_TOOL_CALLING_MODELS,
+  UnsupportedToolCallingModelError,
   WebGpuUnavailableError,
   WebLlmConsentError,
   createWebLlmProvider,
