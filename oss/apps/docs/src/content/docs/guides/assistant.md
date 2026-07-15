@@ -99,6 +99,13 @@ default is the least-friction working model. Sizes are approximate (sourced from
 Small in-browser models do tool-calling adequately but not perfectly — expect good summaries, not
 deep analytics (ADR 0050 trade-offs). Call `provider.unload()` to release GPU memory when done.
 
+> **Local models manage their own function-calling system prompt.** WebLLM injects its own
+> tool-calling system prompt for the Hermes family and rejects a caller-supplied `system` message
+> whenever tools are present. So for the local backend the assistant's system instructions are
+> merged into the first user turn instead of sent as a `system` role — a WebLLM constraint that is
+> transparent to you. Hosted backends receive the system prompt as usual, which is why the local
+> vs hosted framing can differ slightly under the hood.
+
 ## Bring-your-own hosted backend
 
 You supply an **OpenAI-compatible** or **Anthropic** endpoint + key. The key and endpoint are stored
