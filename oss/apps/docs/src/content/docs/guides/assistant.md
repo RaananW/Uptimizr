@@ -273,6 +273,11 @@ key**. The model weights download on demand behind the consent prompt the first 
 are **never** part of the demo's one-time "Prepare demo" precache (ADR 0050 §6) — a visitor who never
 opens the assistant downloads nothing extra.
 
+The demo **updates itself automatically**: its service worker serves the app shell network-first, so
+reloading the page always picks up the latest deploy (and its latest assistant build) while staying
+usable offline after "Prepare demo". If you ever seem stuck on an old build, reload once more, or
+force a clean copy via your browser's **Clear site data** / a hard refresh / an incognito window.
+
 ## See also
 
 - [MCP server (AI agents)](/docs/guides/mcp/) — the same read-only tool catalog for external/local agents.
