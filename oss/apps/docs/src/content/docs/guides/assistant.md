@@ -200,6 +200,24 @@ and model picker, the WebLLM download-consent prompt and progress bar, and the p
 reuses the same read-only [`CollectorApi`](/docs/deploy/dashboard/) client the panels use, so there
 is no second transport.
 
+### Knowing when it's working
+
+Local generation is **not** instant. The in-browser model does not stream tokens, so a single
+answer on a 7–8B Hermes model can take anywhere from a few seconds to a couple of minutes on
+modest hardware — with nothing sent to a server in the meantime. To make that obvious rather than
+looking frozen, the panel always shows a small spinner and a status label while a turn is in
+flight (in an `aria-live` region, so it's announced to screen readers):
+
+- **Loading model…** while a local model downloads/initializes (a progress bar replaces it once
+  download progress is available),
+- **Running analytics…** while a read-only tool call is executing (the per-tool list is shown too),
+- **Thinking…** while the model is composing its answer.
+
+If a turn ever finishes without a natural-language answer — for example the model only made tool
+calls, or the loop hit its step cap — the panel says so explicitly instead of rendering nothing, so
+a reply is never silently dropped. The conversation area scrolls and auto-follows the newest
+message, so answers stay in view inside a fixed-height drawer.
+
 For a custom UI, drive the headless hook instead and render your own chat:
 
 ```tsx
@@ -214,7 +232,9 @@ function MyAssistant() {
     // can render your own chooser before anything loads.
   });
   // messages: the transcript · send(text): run a turn · status: "idle" | "initializing" |
-  // "thinking" | "error" · toolActivity: live tool-call progress · setBackend(cfg): switch + persist.
+  // "thinking" | "error" · isBusy: a turn is in flight (show a working indicator) · toolActivity:
+  // live tool-call progress · noTextAnswer: the last turn ended with no text answer · setBackend(cfg):
+  // switch + persist.
 }
 ```
 

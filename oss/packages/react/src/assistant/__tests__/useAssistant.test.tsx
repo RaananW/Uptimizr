@@ -238,4 +238,36 @@ describe("useAssistant", () => {
     expect(result.current.messages).toEqual([]);
     expect(result.current.status).toBe("idle");
   });
+
+  it("flags noTextAnswer when a turn ends with no natural-language answer", async () => {
+    // Empty final content (only tool calls, or maxSteps) ⇒ the UI should be able
+    // to tell the user the turn produced no text.
+    nextProvider = scriptedProvider([{ kind: "final", content: "   " }]);
+    const { result } = renderHook(() => useAssistant({ api: fakeApi(), backend: HOSTED }));
+    await act(async () => {
+      await result.current.send("summarize");
+    });
+    expect(result.current.noTextAnswer).toBe(true);
+    expect(result.current.status).toBe("idle");
+  });
+
+  it("leaves noTextAnswer false when the turn produced text", async () => {
+    nextProvider = scriptedProvider([{ kind: "final", content: "12 sessions." }]);
+    const { result } = renderHook(() => useAssistant({ api: fakeApi(), backend: HOSTED }));
+    await act(async () => {
+      await result.current.send("how many?");
+    });
+    expect(result.current.noTextAnswer).toBe(false);
+  });
+
+  it("clears noTextAnswer on reset", async () => {
+    nextProvider = scriptedProvider([{ kind: "final", content: "" }]);
+    const { result } = renderHook(() => useAssistant({ api: fakeApi(), backend: HOSTED }));
+    await act(async () => {
+      await result.current.send("summarize");
+    });
+    expect(result.current.noTextAnswer).toBe(true);
+    act(() => result.current.reset());
+    expect(result.current.noTextAnswer).toBe(false);
+  });
 });

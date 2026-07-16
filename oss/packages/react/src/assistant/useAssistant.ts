@@ -89,6 +89,13 @@ export interface UseAssistantResult {
   toolActivity: AssistantToolActivity[];
   /** WebLLM download/init progress while a local model loads, else `null`. */
   initProgress: InitProgress | null;
+  /**
+   * True when the last completed turn ended without any natural-language answer
+   * (the model emitted only tool calls, or the loop hit `maxSteps`). Lets the UI
+   * tell the user the turn finished with no text instead of showing nothing.
+   * Reset at the start of every send, and on cancel/reset.
+   */
+  noTextAnswer: boolean;
   /** The active backend selection, or `null` until one is configured. */
   backend: AssistantBackendConfig | null;
   /** Whether this browser can run the local (WebGPU) backend. */
@@ -153,6 +160,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
   const [error, setError] = useState<Error | null>(null);
   const [toolActivity, setToolActivity] = useState<AssistantToolActivity[]>([]);
   const [initProgress, setInitProgress] = useState<InitProgress | null>(null);
+  const [noTextAnswer, setNoTextAnswer] = useState<boolean>(false);
 
   // Refs so `send` reads fresh values without being re-created every render.
   const messagesRef = useRef(messages);
@@ -249,6 +257,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
       setToolActivity([]);
       setError(null);
       setInitProgress(null);
+      setNoTextAnswer(false);
       setStatus("initializing");
 
       const controller = new AbortController();
@@ -320,6 +329,9 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
         setToolActivity((prev) =>
           prev.map((t) => (t.status === "running" ? { ...t, status: "done" } : t)),
         );
+        // Surface a turn that ended with no natural-language answer (only tool
+        // calls, or the loop hit maxSteps) so the UI never renders nothing.
+        setNoTextAnswer(result.content.trim().length === 0);
         setStatus("idle");
       } catch (err) {
         if (controller.signal.aborted) {
@@ -346,6 +358,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     setToolActivity([]);
     setError(null);
     setInitProgress(null);
+    setNoTextAnswer(false);
     setStatus("idle");
   }, []);
 
@@ -357,6 +370,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     error,
     toolActivity,
     initProgress,
+    noTextAnswer,
     backend,
     webGpuAvailable,
     models: CURATED_MODELS,
