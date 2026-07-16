@@ -93,11 +93,15 @@ async function completeOpenAi(
   request: ProviderRequest,
 ): Promise<ProviderResponse> {
   const url = joinUrl(config.endpoint, "/chat/completions");
+  // No tools this turn (e.g. the loop's forced synthesis pass) → omit `tools`
+  // and `tool_choice` entirely so the model answers in plain text rather than
+  // being nudged to keep calling functions.
   const body = {
     model: config.model,
     messages: toOpenAiMessages(request.messages),
-    tools: toOpenAiTools(request.tools),
-    tool_choice: "auto" as const,
+    ...(request.tools.length > 0
+      ? { tools: toOpenAiTools(request.tools), tool_choice: "auto" as const }
+      : {}),
   };
   const res = await fetchImpl(url, {
     method: "POST",

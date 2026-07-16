@@ -17,7 +17,9 @@ export type {
 export {
   runAgent,
   toToolSchemas,
+  truncateToolResult,
   DEFAULT_MAX_STEPS,
+  DEFAULT_MAX_TOOL_RESULT_CHARS,
   type RunAgentOptions,
   type RunAgentResult,
 } from "./loop.js";

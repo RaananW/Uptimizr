@@ -37,7 +37,8 @@ export interface AnthropicTool {
 export interface AnthropicRequestBody {
   system?: string;
   messages: AnthropicMessage[];
-  tools: AnthropicTool[];
+  /** Omitted when no tools are advertised (e.g. a forced plain-text turn). */
+  tools?: AnthropicTool[];
 }
 
 /** The subset of an Anthropic Messages response this module reads. */
@@ -85,11 +86,17 @@ export function toAnthropicRequest(
   return {
     ...(systemParts.length > 0 ? { system: systemParts.join("\n\n") } : {}),
     messages: out,
-    tools: tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      input_schema: tool.parameters,
-    })),
+    // Omit `tools` when there are none (e.g. the loop's forced synthesis pass)
+    // so the model answers in plain text instead of being offered functions.
+    ...(tools.length > 0
+      ? {
+          tools: tools.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            input_schema: tool.parameters,
+          })),
+        }
+      : {}),
   };
 }
 

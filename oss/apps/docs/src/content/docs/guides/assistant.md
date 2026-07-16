@@ -225,6 +225,17 @@ flight (in an `aria-live` region, so it's announced to screen readers):
 - **Running analytics…** while a read-only tool call is executing (the per-tool list is shown too),
 - **Thinking…** while the model is composing its answer.
 
+Small local models sometimes gather the data but then stall — either returning an empty answer or
+tool-calling until the step cap without ever writing a reply. To fix that at the source, when a run
+would otherwise end with no usable answer the loop makes **one final pass with tools disabled**,
+which forces the model to compose a plain-text answer from the tool results it already gathered
+rather than reaching for another tool call. This forced pass is still local for the local backend,
+so there is no new data egress. To protect the local model's context window, very large tool
+results are **truncated** (with a clear marker) before being fed back — full fidelity is kept below
+the cap. Both behaviors are on by default in `@uptimizr/agent-core` (`runAgent({ forceFinalAnswer,
+maxToolResultChars })`). Even so, **hosted backends handle complex, multi-step questions more
+reliably** than the small local models — reach for one when a local model keeps coming up short.
+
 If a turn ever finishes without a natural-language answer, the panel says so explicitly instead
 of rendering nothing, so a reply is never silently dropped. It distinguishes two cases from the
 agent loop's own signals: the model simply stopped with no text, or it **kept calling tools and

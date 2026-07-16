@@ -85,6 +85,31 @@ describe("hosted provider — OpenAI-compatible", () => {
     expect(fetchImpl.mock.calls[0]![0]).toBe("https://api.example.com/v1/chat/completions");
   });
 
+  it("omits tools and tool_choice when no tools are offered (forced final-answer turn)", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ choices: [{ message: { content: "You have 42 sessions." } }] }),
+    );
+    const provider = createHostedProvider({
+      api: "openai",
+      endpoint: "https://api.example.com/v1",
+      apiKey: "k",
+      model: "m",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    // A tools-less request (the loop's forced synthesis pass) must not send any
+    // function-calling — the model should answer in plain text.
+    const res = await provider.complete({
+      messages: [{ role: "user", content: "answer now" }],
+      tools: [],
+    });
+
+    expect(res).toEqual({ kind: "final", content: "You have 42 sessions." });
+    const body = JSON.parse((fetchImpl.mock.calls[0]![1] as RequestInit).body as string);
+    expect("tools" in body).toBe(false);
+    expect("tool_choice" in body).toBe(false);
+  });
+
   it("throws HostedProviderError on a non-2xx response", async () => {
     const fetchImpl = vi.fn(async () => new Response("nope", { status: 401 }));
     const provider = createHostedProvider({
@@ -177,5 +202,27 @@ describe("hosted provider — Anthropic", () => {
       toolCalls: [{ id: "tu_1", name: "list_sessions", arguments: { limit: 3 } }],
       content: "checking",
     });
+  });
+
+  it("omits tools when no tools are offered (forced final-answer turn)", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ content: [{ type: "text", text: "final answer" }] }),
+    );
+    const provider = createHostedProvider({
+      api: "anthropic",
+      endpoint: "https://api.anthropic.com/v1",
+      apiKey: "k",
+      model: "m",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const res = await provider.complete({
+      messages: [{ role: "user", content: "answer now" }],
+      tools: [],
+    });
+
+    expect(res).toEqual({ kind: "final", content: "final answer" });
+    const body = JSON.parse((fetchImpl.mock.calls[0]![1] as RequestInit).body as string);
+    expect("tools" in body).toBe(false);
   });
 });
