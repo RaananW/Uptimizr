@@ -40,5 +40,7 @@ export {
   UnsupportedToolCallingModelError,
   WebGpuUnavailableError,
   WebLlmConsentError,
+  WebLlmStorageError,
   createWebLlmProvider,
+  isQuotaExceededError,
 } from "./webllm.js";

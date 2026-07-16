@@ -5,10 +5,12 @@ import {
   createWebLlmProvider,
   DEFAULT_LOCAL_CONTEXT_WINDOW,
   foldSystemPromptForHermes,
+  isQuotaExceededError,
   SUPPORTED_TOOL_CALLING_MODELS,
   UnsupportedToolCallingModelError,
   WebGpuUnavailableError,
   WebLlmConsentError,
+  WebLlmStorageError,
   type WebLlmEngine,
   type WebLlmRuntime,
 } from "../webllm.js";
@@ -290,6 +292,124 @@ describe("WebLLM provider", () => {
     const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
     await expect(provider.unload()).resolves.toBeUndefined();
     expect(load).not.toHaveBeenCalled();
+  });
+});
+
+/** A browser storage-full failure as WebLLM's Cache API surfaces it. */
+function quotaException(): DOMException {
+  return new DOMException("Quota exceeded.", "QuotaExceededError");
+}
+
+/** Stub `navigator.storage.estimate` with a scripted quota/usage (bytes). */
+function stubStorageEstimate(estimate: { quota?: number; usage?: number }): void {
+  vi.stubGlobal("navigator", {
+    storage: { estimate: vi.fn(async () => estimate) },
+  });
+}
+
+const GIB = 1024 ** 3;
+
+describe("isQuotaExceededError", () => {
+  it("classifies a QuotaExceededError DOMException", () => {
+    expect(isQuotaExceededError(quotaException())).toBe(true);
+  });
+
+  it("classifies a plain object named QuotaExceededError (non-DOM runtimes)", () => {
+    expect(isQuotaExceededError({ name: "QuotaExceededError" })).toBe(true);
+  });
+
+  it("does not classify other errors", () => {
+    expect(isQuotaExceededError(new Error("network down"))).toBe(false);
+    expect(isQuotaExceededError(new DOMException("nope", "AbortError"))).toBe(false);
+    expect(isQuotaExceededError(null)).toBe(false);
+  });
+});
+
+describe("WebLLM provider — browser storage errors", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("maps a quota DOMException from engine init to WebLlmStorageError", async () => {
+    const createEngine = vi.fn(async () => {
+      throw quotaException();
+    });
+    const load = vi.fn(async () => ({ CreateMLCEngine: createEngine }) as WebLlmRuntime);
+    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
+
+    await expect(provider.complete(request)).rejects.toBeInstanceOf(WebLlmStorageError);
+  });
+
+  it("maps a quota DOMException from generation to WebLlmStorageError", async () => {
+    const create = vi.fn(async () => {
+      throw quotaException();
+    });
+    const engine: WebLlmEngine = { chat: { completions: { create } } };
+    const load = vi.fn(async () => ({ CreateMLCEngine: async () => engine }) as WebLlmRuntime);
+    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
+
+    await expect(provider.complete(request)).rejects.toBeInstanceOf(WebLlmStorageError);
+  });
+
+  it("propagates a non-quota init error unchanged (does not swallow it)", async () => {
+    const boom = new Error("WebGPU device lost");
+    const createEngine = vi.fn(async () => {
+      throw boom;
+    });
+    const load = vi.fn(async () => ({ CreateMLCEngine: createEngine }) as WebLlmRuntime);
+    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
+
+    await expect(provider.complete(request)).rejects.toBe(boom);
+  });
+
+  it("preflight throws WebLlmStorageError before download when storage is clearly too small", async () => {
+    // Only ~1 GB free but the default model needs ~3.9 GB — fail fast, no download.
+    stubStorageEstimate({ quota: 5 * GIB, usage: 4 * GIB });
+    const { load } = fakeRuntime({ choices: [{ message: { content: "x" } }] });
+    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
+
+    await expect(provider.complete(request)).rejects.toBeInstanceOf(WebLlmStorageError);
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("preflight is skipped when the estimate shows ample free space", async () => {
+    stubStorageEstimate({ quota: 100 * GIB, usage: 1 * GIB });
+    const { load } = fakeRuntime({ choices: [{ message: { content: "ok" } }] });
+    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
+
+    await expect(provider.complete(request)).resolves.toEqual({ kind: "final", content: "ok" });
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("preflight is skipped when the Storage API is unavailable", async () => {
+    vi.stubGlobal("navigator", {});
+    const { load } = fakeRuntime({ choices: [{ message: { content: "ok" } }] });
+    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
+
+    await expect(provider.complete(request)).resolves.toEqual({ kind: "final", content: "ok" });
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows a retry after storage is freed (engine promise is reset on failure)", async () => {
+    const createEngine = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        throw quotaException();
+      })
+      .mockImplementationOnce(
+        async () =>
+          ({
+            chat: {
+              completions: { create: async () => ({ choices: [{ message: { content: "ok" } }] }) },
+            },
+          }) as WebLlmEngine,
+      );
+    const load = vi.fn(async () => ({ CreateMLCEngine: createEngine }) as WebLlmRuntime);
+    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
+
+    await expect(provider.complete(request)).rejects.toBeInstanceOf(WebLlmStorageError);
+    await expect(provider.complete(request)).resolves.toEqual({ kind: "final", content: "ok" });
+    expect(createEngine).toHaveBeenCalledTimes(2);
   });
 });
 

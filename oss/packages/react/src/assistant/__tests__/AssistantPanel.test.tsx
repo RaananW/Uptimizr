@@ -99,6 +99,47 @@ describe("<AssistantPanel>", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("shows distinct, actionable guidance for a browser-storage-quota error (not the raw message)", async () => {
+    // The local backend throws WebLlmStorageError when the origin's Cache Storage
+    // is full. The panel must explain it's a browser-storage limit with a remedy,
+    // never the bare "Quota exceeded." (which reads like an API quota).
+    const storageError = new Error(
+      "Your browser is out of storage for the local model (each model needs ~4 GB of cache).",
+    );
+    storageError.name = "WebLlmStorageError";
+    nextProvider = {
+      complete: vi.fn(async () => {
+        throw storageError;
+      }),
+    };
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
+
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "top meshes?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/out of storage for the local model/i);
+    expect(alert.textContent).toMatch(/clear this site's cached data/i);
+    // Offers concrete alternatives (smaller model / hosted backend).
+    expect(alert.textContent).toMatch(/hosted backend/i);
+  });
+
+  it("renders a generic error's message for non-storage failures", async () => {
+    nextProvider = {
+      complete: vi.fn(async () => {
+        throw new Error("Provider returned 500");
+      }),
+    };
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
+
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "hi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/Provider returned 500/);
+    expect(alert.textContent).not.toMatch(/out of storage/i);
+  });
+
   it("explains a stopped-on-max-steps give-up with the step count (not an error)", async () => {
     // A provider that only ever tool-calls drives the loop to its cap; the panel
     // must explain that outcome (with N) instead of silence, and offer a next step.

@@ -29,6 +29,12 @@ export interface CuratedModel {
   label: string;
   /** Approximate download size, for the consent disclosure. */
   downloadSize: string;
+  /**
+   * Approximate download size in **bytes** — the numeric counterpart to
+   * {@link downloadSize}. Used by the storage preflight to compare against
+   * `navigator.storage.estimate()` without parsing the human string.
+   */
+  downloadBytes: number;
   /** Approximate GPU memory (VRAM) required. */
   vram: string;
   /** One-line description of the trade-off. */
@@ -53,6 +59,12 @@ export const SUPPORTED_TOOL_CALLING_MODELS: readonly string[] = [
   "Hermes-3-Llama-3.1-8B-q4f16_1-MLC",
 ];
 
+/** Bytes per binary gigabyte (GiB) — the unit browsers report cache usage in. */
+const BYTES_PER_GIB = 1024 ** 3;
+
+/** Extra free space (beyond the raw download) the storage preflight insists on. */
+const STORAGE_HEADROOM_BYTES = Math.round(0.5 * BYTES_PER_GIB);
+
 /**
  * A small, curated set of **tool-calling-capable** models (ADR 0050 §4). WebLLM
  * only supports function calling on the 7–8B Hermes family (see
@@ -67,6 +79,7 @@ export const CURATED_MODELS: readonly CuratedModel[] = [
     id: "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC",
     label: "Hermes 2 Pro (Mistral 7B)",
     downloadSize: "~3.9 GB",
+    downloadBytes: Math.round(3.9 * BYTES_PER_GIB),
     vram: "~4.0 GB",
     description: "Smallest tool-calling model; the least-friction default.",
   },
@@ -74,6 +87,7 @@ export const CURATED_MODELS: readonly CuratedModel[] = [
     id: "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC",
     label: "Hermes 2 Pro (Llama 3 8B)",
     downloadSize: "~4.6 GB",
+    downloadBytes: Math.round(4.6 * BYTES_PER_GIB),
     vram: "~5.0 GB",
     description: "Stronger Llama-3 base; needs a capable GPU.",
   },
@@ -81,6 +95,7 @@ export const CURATED_MODELS: readonly CuratedModel[] = [
     id: "Hermes-3-Llama-3.1-8B-q4f16_1-MLC",
     label: "Hermes 3 (Llama 3.1 8B)",
     downloadSize: "~4.5 GB",
+    downloadBytes: Math.round(4.5 * BYTES_PER_GIB),
     vram: "~4.9 GB",
     description: "Highest quality; needs a capable GPU (~5 GB VRAM).",
   },
@@ -214,6 +229,109 @@ export class UnsupportedToolCallingModelError extends Error {
   }
 }
 
+/**
+ * Thrown when the browser is out of storage for the local model. WebLLM caches
+ * each curated model's ~4 GB of weights in the origin's **Cache Storage**;
+ * loading or switching among several curated models accumulates multiple copies
+ * until the per-origin storage quota is exceeded, at which point the Cache API
+ * `put` throws a `QuotaExceededError` DOMException. That is a **browser storage**
+ * limit — never an LLM API quota (the local backend has zero network egress), so
+ * the raw "Quota exceeded." message is misleading. This typed error carries an
+ * actionable remedy instead. See {@link isQuotaExceededError} for classification
+ * (by `instanceof`/`.name` only — never a regex over the message, per ADR/CodeQL).
+ */
+export class WebLlmStorageError extends Error {
+  constructor(message?: string) {
+    super(
+      message ??
+        "Your browser is out of storage for the local model (each model needs ~4 GB of cache). " +
+          "Free up disk space, clear this site's cached data, or switch to a hosted backend, then retry.",
+    );
+    this.name = "WebLlmStorageError";
+  }
+}
+
+/**
+ * Classify a thrown value as a browser storage-quota error **without** parsing
+ * its message (no regex — avoids CodeQL ReDoS on attacker-influenced text). A
+ * quota failure surfaces as a `DOMException` named `"QuotaExceededError"`; some
+ * non-DOM runtimes throw a plain object with the same `name`, so accept that too.
+ */
+export function isQuotaExceededError(err: unknown): boolean {
+  if (typeof DOMException !== "undefined" && err instanceof DOMException) {
+    return err.name === "QuotaExceededError";
+  }
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "name" in err &&
+    (err as { name?: unknown }).name === "QuotaExceededError"
+  );
+}
+
+/**
+ * Map a caught value to a {@link WebLlmStorageError} when — and only when — it is
+ * a browser storage-quota failure; otherwise return it unchanged so genuine
+ * WebGPU/network/model errors propagate. Never swallows non-quota errors.
+ */
+function mapStorageError(err: unknown): unknown {
+  return isQuotaExceededError(err) ? new WebLlmStorageError() : err;
+}
+
+/** The slice of `navigator.storage` used by the preflight (feature-detected). */
+interface StorageEstimator {
+  estimate(): Promise<{ quota?: number; usage?: number }>;
+}
+
+function getStorageEstimator(): StorageEstimator | undefined {
+  const storage =
+    typeof navigator !== "undefined"
+      ? (navigator as Navigator & { storage?: unknown }).storage
+      : undefined;
+  if (storage && typeof (storage as { estimate?: unknown }).estimate === "function") {
+    return storage as StorageEstimator;
+  }
+  return undefined;
+}
+
+/**
+ * Best-effort, **soft** preflight: fail fast with a {@link WebLlmStorageError}
+ * *before* a multi-GB download when free storage is unambiguously too small,
+ * which otherwise produces a corrupt half-download (silent "no response").
+ *
+ * `navigator.storage.estimate()` is imprecise and often reports a large origin
+ * budget even when the disk is nearly full, so this only throws when the numbers
+ * clearly show insufficient headroom, and is skipped entirely when the API is
+ * unavailable — the real quota error is still caught and classified at write time.
+ */
+async function preflightStorage(model: CuratedModel): Promise<void> {
+  const estimator = getStorageEstimator();
+  if (!estimator) return;
+  let estimate: { quota?: number; usage?: number };
+  try {
+    estimate = await estimator.estimate();
+  } catch {
+    // An estimate failure is non-fatal — proceed and let the write-time
+    // classifier handle a real quota error.
+    return;
+  }
+  const quota = estimate.quota;
+  const usage = estimate.usage ?? 0;
+  if (typeof quota !== "number" || quota <= 0) return;
+  const free = quota - usage;
+  // Require the download plus a small headroom margin; only throw when the
+  // estimate is confident there is not enough room.
+  const needed = model.downloadBytes + STORAGE_HEADROOM_BYTES;
+  if (free < needed) {
+    const neededGib = (model.downloadBytes / BYTES_PER_GIB).toFixed(1);
+    throw new WebLlmStorageError(
+      `Not enough browser storage for ${model.label}: it needs about ${neededGib} GB of free ` +
+        "cache space. Free up disk space or clear this site's cached data, then retry — " +
+        "or switch to a hosted backend.",
+    );
+  }
+}
+
 /** A separator between the folded system instructions and the user's question. */
 const SYSTEM_FOLD_SEPARATOR = "\n\n";
 
@@ -272,7 +390,16 @@ export function foldSystemPromptForHermes(messages: readonly AgentMessage[]): Ag
 
 function resolveModel(id: string | undefined): CuratedModel {
   const model = id ? CURATED_MODELS.find((m) => m.id === id) : CURATED_MODELS[0];
-  return model ?? { id: id ?? "", label: id ?? "", downloadSize: "?", vram: "?", description: "" };
+  return (
+    model ?? {
+      id: id ?? "",
+      label: id ?? "",
+      downloadSize: "?",
+      downloadBytes: 0,
+      vram: "?",
+      description: "",
+    }
+  );
 }
 
 const defaultLoadRuntime = (): Promise<WebLlmRuntime> =>
@@ -313,20 +440,30 @@ export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLl
       const ok = await options.confirmDownload(model);
       if (!ok) throw new WebLlmConsentError();
     }
+    // Fail fast if free browser storage is unambiguously too small for the
+    // multi-GB download, avoiding a corrupt half-download (silent no-response).
+    await preflightStorage(model);
     const runtime = await loadRuntime();
     // Override the model record's default context window (4096 for the curated
     // Hermes records) so the assistant's system prompt + tool schemas + results
     // fit. `sliding_window_size` is left at its model-record default (-1); the
     // two are mutually exclusive in mlc.
-    return runtime.CreateMLCEngine(
-      model.id,
-      {
-        initProgressCallback: options.onInitProgress
-          ? (report) => options.onInitProgress?.({ progress: report.progress, text: report.text })
-          : undefined,
-      },
-      { context_window_size: contextWindowSize },
-    );
+    try {
+      return await runtime.CreateMLCEngine(
+        model.id,
+        {
+          initProgressCallback: options.onInitProgress
+            ? (report) => options.onInitProgress?.({ progress: report.progress, text: report.text })
+            : undefined,
+        },
+        { context_window_size: contextWindowSize },
+      );
+    } catch (err) {
+      // Weights are written to Cache Storage during init; a full origin quota
+      // surfaces as a QuotaExceededError. Reclassify only that — everything else
+      // (WebGPU, network, model errors) propagates unchanged.
+      throw mapStorageError(err);
+    }
   }
 
   return {
@@ -338,13 +475,19 @@ export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLl
       const messages = request.tools?.length
         ? foldSystemPromptForHermes(request.messages)
         : request.messages;
-      const completion = await engine.chat.completions.create({
-        messages: toOpenAiMessages(messages),
-        tools: toOpenAiTools(request.tools),
-        tool_choice: "auto",
-        stream: false,
-      });
-      return parseOpenAiCompletion(completion);
+      try {
+        const completion = await engine.chat.completions.create({
+          messages: toOpenAiMessages(messages),
+          tools: toOpenAiTools(request.tools),
+          tool_choice: "auto",
+          stream: false,
+        });
+        return parseOpenAiCompletion(completion);
+      } catch (err) {
+        // Generation can also write to Cache Storage (e.g. lazily fetched shards),
+        // so a quota failure here maps to the same actionable storage error.
+        throw mapStorageError(err);
+      }
     },
     async unload(): Promise<void> {
       const promise = enginePromise;
