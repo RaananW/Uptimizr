@@ -35,6 +35,19 @@ interface DisplayMessage {
   content: string;
 }
 
+/**
+ * Guided starter questions shown in the empty conversation. Each maps to a
+ * SINGLE core tool, which is where small local models are strongest: clicking one
+ * both boosts first-run success and demonstrates the agent working end to end.
+ */
+const EXAMPLE_PROMPTS: readonly string[] = [
+  "What are my top meshes this week?",
+  "How's my average FPS?",
+  "Which scenes had activity today?",
+  "How many events in the last 24 hours?",
+  "How many sessions this week?",
+];
+
 function toDisplayMessages(messages: AgentMessage[]): DisplayMessage[] {
   const out: DisplayMessage[] = [];
   for (const m of messages) {
@@ -230,9 +243,28 @@ export function AssistantPanel({
           <div className="flex max-h-[24rem] flex-col gap-2 overflow-y-auto">
             <ol className="flex min-h-[8rem] flex-col gap-2" aria-label="Conversation">
               {display.length === 0 && (
-                <li className="text-xs text-fg-muted">
-                  Ask a question to get started — e.g. “What were the most-clicked meshes this
-                  week?”
+                <li className="flex flex-col gap-2 text-xs text-fg-muted">
+                  <span>Ask a question to get started — or try one of these:</span>
+                  <div className="flex flex-wrap gap-1.5" aria-label="Example questions">
+                    {EXAMPLE_PROMPTS.map((q) => (
+                      <button
+                        key={q}
+                        type="button"
+                        disabled={isBusy || !isReady}
+                        onClick={() => void send(q)}
+                        className="rounded-full border border-edge px-2.5 py-1 text-left text-fg hover:bg-ink/40 disabled:opacity-50"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                  {backend?.backend === "local" && (
+                    <p data-role="capability-note">
+                      The local model answers quick, single-metric questions well. For deeper,
+                      multi-step analysis, switch to a hosted backend with your own key via “Change
+                      backend”.
+                    </p>
+                  )}
                 </li>
               )}
               {display.map((m, i) => (

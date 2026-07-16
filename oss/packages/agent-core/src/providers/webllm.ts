@@ -70,18 +70,19 @@ const STORAGE_HEADROOM_BYTES = Math.round(0.5 * BYTES_PER_GIB);
  * only supports function calling on the 7–8B Hermes family (see
  * {@link SUPPORTED_TOOL_CALLING_MODELS}), so there is no small (<3 GB) option —
  * local mode has an inherent ~4 GB download / ~5 GB-VRAM floor. Ordered
- * smallest-first so the default is the least-friction working model. Sizes are
- * approximate (sourced from WebLLM's `prebuiltAppConfig`) and shown to the user
- * before any download.
+ * **strongest-first** so the default ({@link resolveModel} / a UI `models[0]`
+ * pre-select) is the best tool-caller, which most reliably answers even simple
+ * single-step questions on a 4-bit local model. Sizes are approximate (sourced
+ * from WebLLM's `prebuiltAppConfig`) and shown to the user before any download.
  */
 export const CURATED_MODELS: readonly CuratedModel[] = [
   {
-    id: "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC",
-    label: "Hermes 2 Pro (Mistral 7B)",
-    downloadSize: "~3.9 GB",
-    downloadBytes: Math.round(3.9 * BYTES_PER_GIB),
-    vram: "~4.0 GB",
-    description: "Smallest tool-calling model; the least-friction default.",
+    id: "Hermes-3-Llama-3.1-8B-q4f16_1-MLC",
+    label: "Hermes 3 (Llama 3.1 8B)",
+    downloadSize: "~4.5 GB",
+    downloadBytes: Math.round(4.5 * BYTES_PER_GIB),
+    vram: "~4.9 GB",
+    description: "Highest quality; the default. Needs a capable GPU (~5 GB VRAM).",
   },
   {
     id: "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC",
@@ -92,12 +93,12 @@ export const CURATED_MODELS: readonly CuratedModel[] = [
     description: "Stronger Llama-3 base; needs a capable GPU.",
   },
   {
-    id: "Hermes-3-Llama-3.1-8B-q4f16_1-MLC",
-    label: "Hermes 3 (Llama 3.1 8B)",
-    downloadSize: "~4.5 GB",
-    downloadBytes: Math.round(4.5 * BYTES_PER_GIB),
-    vram: "~4.9 GB",
-    description: "Highest quality; needs a capable GPU (~5 GB VRAM).",
+    id: "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC",
+    label: "Hermes 2 Pro (Mistral 7B)",
+    downloadSize: "~3.9 GB",
+    downloadBytes: Math.round(3.9 * BYTES_PER_GIB),
+    vram: "~4.0 GB",
+    description: "Smallest tool-calling model; the least-VRAM fallback.",
   },
 ];
 

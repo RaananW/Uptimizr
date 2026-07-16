@@ -71,6 +71,13 @@ describe("WebLLM provider", () => {
     expect(provider).toBeDefined();
   });
 
+  it("defaults to the strongest curated tool-caller (Hermes 3 Llama 3.1 8B)", () => {
+    // Curated list is ordered strongest-first so the default (CURATED_MODELS[0],
+    // used by resolveModel and any UI models[0] pre-select) is the best answerer
+    // on a small 4-bit local model — the fix for the failed simple-question test.
+    expect(CURATED_MODELS[0]!.id).toBe("Hermes-3-Llama-3.1-8B-q4f16_1-MLC");
+  });
+
   it("throws UnsupportedToolCallingModelError before any download for an unsupported model", () => {
     const { load } = fakeRuntime({ choices: [{ message: { content: "x" } }] });
     expect(() =>

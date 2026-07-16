@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
 import { BACKEND_CONFIG_STORAGE_KEY, saveBackendConfig } from "@uptimizr/agent-core/providers";
 import type { LlmProvider, ProviderResponse } from "@uptimizr/agent-core";
+import { coreReadTools, readTools } from "@uptimizr/agent-core";
 import type { CollectorApi } from "../../api";
 import { useAssistant } from "../useAssistant";
 
@@ -121,6 +122,64 @@ describe("useAssistant", () => {
       "first",
       "second",
     ]);
+  });
+
+  it("stamps the current time into the system prompt at send (pinned clock)", async () => {
+    const requests: Array<{ messages: { role: string; content: string }[] }> = [];
+    nextProvider = {
+      complete: vi.fn(async (req: { messages: { role: string; content: string }[] }) => {
+        requests.push(req);
+        return { kind: "final", content: "ok" } as ProviderResponse;
+      }),
+    };
+    const nowMs = 1700000000000; // 2023-11-14T22:13:20.000Z
+    const { result } = renderHook(() =>
+      useAssistant({ api: fakeApi(), backend: HOSTED, now: () => nowMs }),
+    );
+
+    await act(async () => {
+      await result.current.send("top meshes this week?");
+    });
+
+    const system = requests[0]!.messages.find((m) => m.role === "system");
+    expect(system).toBeTruthy();
+    expect(system!.content).toContain(`epoch milliseconds: ${nowMs}`);
+    expect(system!.content).toContain(new Date(nowMs).toISOString());
+  });
+
+  it("sends the focused core tool set for local and the full catalog for hosted", async () => {
+    const capture = (): { provider: LlmProvider; lastToolCount: () => number } => {
+      let count = -1;
+      return {
+        provider: {
+          complete: vi.fn(async (req: { tools?: unknown[] }) => {
+            count = req.tools?.length ?? -1;
+            return { kind: "final", content: "ok" } as ProviderResponse;
+          }),
+        },
+        lastToolCount: () => count,
+      };
+    };
+
+    const local = capture();
+    nextProvider = local.provider;
+    const localHook = renderHook(() =>
+      useAssistant({ api: fakeApi(), backend: { backend: "local", webllm: { model: "X" } } }),
+    );
+    await act(async () => {
+      await localHook.result.current.send("top meshes?");
+    });
+    expect(local.lastToolCount()).toBe(coreReadTools.length);
+    expect(local.lastToolCount()).toBeLessThan(readTools.length);
+    localHook.unmount();
+
+    const hosted = capture();
+    nextProvider = hosted.provider;
+    const hostedHook = renderHook(() => useAssistant({ api: fakeApi(), backend: HOSTED }));
+    await act(async () => {
+      await hostedHook.result.current.send("top meshes?");
+    });
+    expect(hosted.lastToolCount()).toBe(readTools.length);
   });
 
   it("switches backend and persists the choice", () => {

@@ -301,3 +301,89 @@ test("assistant recovers an empty answer via the forced final pass", async ({ pa
   const answer = assistant.locator('[data-role="assistant"]');
   await expect(answer).toContainText(expectedTopMesh!, { timeout: 20_000 });
 });
+
+/**
+ * Guided-prompt round trip: the empty conversation offers labelled starter
+ * questions, each mapping to a SINGLE core tool — the reliable first-run path for
+ * a small local model. Clicking one must send it and run one grounded turn. We
+ * reuse the same mocked hosted backend (no weights): turn 1 calls `top_meshes`,
+ * turn 2 grounds the answer in the real collector rows. Real WebLLM answer
+ * quality can only be verified in a WebGPU browser (WebLLM can't run in CI/Node),
+ * so — like the other assistant specs — this uses the deterministic mock.
+ */
+test("assistant sends a guided example prompt and answers it end to end", async ({
+  page,
+  request,
+}) => {
+  // 1) Real session so `top_meshes` has data.
+  await enableAllCapture(page, "babylon");
+  const sessionId = await bootEngine(page, "babylon");
+  await driveInteractions(page, { keyboard: true });
+  await waitForEventTypes(request, sessionId, ["mesh_interaction", "pointer_click"]);
+
+  const topRes = await request.get(`${COLLECTOR_URL}/api/v1/meshes/top`, {
+    headers: { "x-api-key": API_KEY },
+  });
+  expect(topRes.ok()).toBeTruthy();
+  const expectedTopMesh = topMeshFromResult(await topRes.json());
+  expect(expectedTopMesh, "seeded session should yield a top mesh").toBeTruthy();
+
+  // 2) Deterministic LLM: call `top_meshes`, then ground the final answer.
+  await page.route("**/mock-llm/**", async (route: Route) => {
+    const body = route.request().postDataJSON() as { messages?: OpenAiRequestMessage[] };
+    const messages = body.messages ?? [];
+    const toolResult = latestToolResult(messages);
+
+    if (toolResult === null) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: completion({
+          content: "",
+          tool_calls: [
+            {
+              id: "call_top_meshes",
+              type: "function",
+              function: { name: "top_meshes", arguments: JSON.stringify({ limit: 5 }) },
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
+    const mesh = topMeshFromResult(toolResult) ?? "unknown";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: completion({ content: `The most-interacted mesh is ${mesh}.` }),
+    });
+  });
+
+  // 3) Connect the dashboard, configure the mocked hosted backend.
+  await page.goto(DASHBOARD_URL);
+  await page.getByPlaceholder("http://localhost:4318").fill(COLLECTOR_URL);
+  await page.getByPlaceholder("utk_…").fill(API_KEY);
+  await page.getByRole("button", { name: /load/i }).click();
+  await expect(page.getByText("Top meshes")).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  const assistant = page.getByRole("region", { name: "Analytics assistant" });
+  await assistant.getByRole("button", { name: "Use hosted key" }).click();
+  await assistant.getByLabel("Endpoint").fill(MOCK_LLM_ENDPOINT);
+  await assistant.getByLabel("API key").fill("mock-key");
+  await assistant.getByLabel("Hosted model").fill("mock-model");
+  await assistant.getByRole("button", { name: "Use this provider" }).click();
+
+  // 4) Click a guided example prompt instead of typing — it must send verbatim.
+  await assistant.getByRole("button", { name: "What are my top meshes this week?" }).click();
+
+  // 5) The clicked question is surfaced as the user turn.
+  await expect(assistant.getByText("What are my top meshes this week?")).toBeVisible();
+
+  // 6) The single core tool ran and the grounded answer names the real top mesh.
+  const toolActivity = assistant.getByRole("list", { name: "Tool activity" });
+  await expect(toolActivity.getByText("top_meshes")).toBeVisible({ timeout: 20_000 });
+  const answer = assistant.locator('[data-role="assistant"]');
+  await expect(answer).toContainText(expectedTopMesh!, { timeout: 20_000 });
+});

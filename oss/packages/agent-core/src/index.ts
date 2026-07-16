@@ -5,7 +5,15 @@ export {
   type CollectorClientConfig,
   type QueryParams,
 } from "./client.js";
-export { readTools, type ReadTool, type ReadToolRequest } from "./tools.js";
+export {
+  readTools,
+  coreReadTools,
+  selectReadTools,
+  CORE_READ_TOOL_NAMES,
+  type ReadTool,
+  type ReadToolRequest,
+  type ReadToolSetKind,
+} from "./tools.js";
 export type {
   AgentMessage,
   AgentToolCall,

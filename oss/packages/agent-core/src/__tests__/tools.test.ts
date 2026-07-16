@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readTools } from "../tools.js";
+import { readTools, coreReadTools, selectReadTools, CORE_READ_TOOL_NAMES } from "../tools.js";
 
 const byName = (name: string) => {
   const tool = readTools.find((t) => t.name === name);
@@ -86,5 +86,42 @@ describe("read tools catalog", () => {
     expect(paths).toContain("api/v1/xr/sources");
     expect(paths).toContain("api/v1/xr/abandonment");
     expect(paths).toContain("api/v1/xr/locomotion");
+  });
+});
+
+describe("core read-tool subset", () => {
+  it("is a filtered view of readTools (same object identity, never redefined)", () => {
+    for (const tool of coreReadTools) {
+      // Each core tool MUST be the very same definition object from readTools —
+      // schema lives once (ADR): the core set filters, it never re-declares.
+      expect(readTools).toContain(tool);
+    }
+  });
+
+  it("covers the common single-step tools and excludes the heavy ones", () => {
+    const names = coreReadTools.map((t) => t.name);
+    // Same membership as the name list (order follows readTools, so compare sets).
+    expect(new Set(names)).toEqual(new Set(CORE_READ_TOOL_NAMES));
+    expect(names.length).toBe(CORE_READ_TOOL_NAMES.length);
+    for (const expected of [
+      "list_sessions",
+      "list_scenes",
+      "top_meshes",
+      "perf_summary",
+      "event_counts",
+      "timeseries",
+      "camera_heatmap",
+    ]) {
+      expect(names).toContain(expected);
+    }
+    // Multi-arg / niche tools stay out of the small-model core surface.
+    expect(names).not.toContain("funnel");
+    expect(names).not.toContain("xr_locomotion");
+    expect(coreReadTools.length).toBeLessThan(readTools.length);
+  });
+
+  it("selectReadTools returns the core subset for 'core' and the full catalog for 'full'", () => {
+    expect(selectReadTools("core")).toBe(coreReadTools);
+    expect(selectReadTools("full")).toBe(readTools);
   });
 });

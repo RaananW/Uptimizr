@@ -359,3 +359,45 @@ export const readTools: readonly ReadTool[] = [
     }),
   },
 ];
+
+/**
+ * Names of the **core** read tools — a small, single-step-friendly subset of
+ * {@link readTools} for small local models (ADR 0050). A 4-bit 7–8B model folds
+ * every tool schema into its function-calling system prompt, so sending all 20
+ * overwhelms it and degrades selection even for simple questions. This subset
+ * covers the most common single-metric questions (recent sessions, active
+ * scenes, top meshes, FPS, event counts, event volume over time, and one
+ * view-direction heatmap).
+ *
+ * Plain string membership only — used to FILTER {@link readTools} below, never to
+ * redefine any tool shape (schema lives once; ADR).
+ */
+export const CORE_READ_TOOL_NAMES: readonly string[] = [
+  "list_sessions",
+  "list_scenes",
+  "top_meshes",
+  "perf_summary",
+  "event_counts",
+  "timeseries",
+  "camera_heatmap",
+];
+
+/**
+ * The core read tools: a FILTERED VIEW of {@link readTools} (never a
+ * re-declaration), preserving each tool's single source-of-truth definition.
+ */
+export const coreReadTools: readonly ReadTool[] = readTools.filter((tool) =>
+  CORE_READ_TOOL_NAMES.includes(tool.name),
+);
+
+/** Which read-tool surface to expose to the model. */
+export type ReadToolSetKind = "core" | "full";
+
+/**
+ * Select the read-tool set to hand a run. Small local models get the focused
+ * {@link coreReadTools}; frontier hosted models get the {@link readTools} full
+ * catalog. Both are views of the same single tool definitions.
+ */
+export function selectReadTools(kind: ReadToolSetKind): readonly ReadTool[] {
+  return kind === "core" ? coreReadTools : readTools;
+}
