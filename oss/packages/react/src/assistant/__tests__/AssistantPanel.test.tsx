@@ -64,6 +64,39 @@ describe("<AssistantPanel>", () => {
     expect(screen.getByText("how many sessions?")).toBeTruthy();
   });
 
+  it("shows a working/thinking indicator while generating with the model loaded", async () => {
+    // Hold the turn open so status stays "thinking" with no running tool: the
+    // panel must show an always-visible busy indicator, not just a disabled input.
+    let resolveTurn!: (r: ProviderResponse) => void;
+    nextProvider = {
+      complete: vi.fn(() => new Promise<ProviderResponse>((resolve) => (resolveTurn = resolve))),
+    };
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
+
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "how's perf?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    // A live status region announces the assistant is working.
+    await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/thinking/i));
+
+    // Once the answer arrives the indicator clears and the reply renders.
+    resolveTurn({ kind: "final", content: "Average 58 fps." });
+    await waitFor(() => expect(screen.getByText("Average 58 fps.")).toBeTruthy());
+    expect(screen.getByRole("status").textContent?.trim()).toBe("");
+  });
+
+  it("surfaces a fallback line when a turn ends without any text answer", async () => {
+    // An empty final answer (e.g. only tool calls, or maxSteps) must not render
+    // nothing — the user is told the turn finished without text.
+    nextProvider = scriptedProvider([{ kind: "final", content: "   " }]);
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
+
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "summarize" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(screen.getByText(/finished without a text answer/i)).toBeTruthy());
+  });
+
   it("Change backend reveals the chooser cards, then the picker with both options", () => {
     render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
     fireEvent.click(screen.getByRole("button", { name: "Change backend" }));

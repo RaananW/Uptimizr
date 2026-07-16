@@ -9,7 +9,7 @@
 // by `useAssistant`, so importing this component pulls no LLM code until a turn
 // actually runs (@mlc-ai/web-llm stays an optional peer).
 
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { AgentMessage } from "@uptimizr/agent-core";
 import type {
   AssistantBackendConfig,
@@ -74,6 +74,7 @@ export function AssistantPanel({
     error,
     toolActivity,
     initProgress,
+    noTextAnswer,
     backend,
     webGpuAvailable,
     isBusy,
@@ -104,6 +105,33 @@ export function AssistantPanel({
 
   const display = toDisplayMessages(messages);
   const firstRun = backend === null;
+
+  // Autoscroll the conversation to the newest message/indicator whenever the
+  // transcript or in-flight status changes, so a freshly appended answer (or the
+  // busy indicator) is never left below the fold in a fixed-height drawer.
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const node = bottomRef.current;
+    // Guarded: happy-dom (component tests) has no scrollIntoView.
+    if (node && typeof node.scrollIntoView === "function") {
+      node.scrollIntoView({ block: "end" });
+    }
+  }, [messages, status, toolActivity, noTextAnswer]);
+
+  // An always-present busy indicator so the user can see the assistant is
+  // working even when it is only generating an answer (no tool calls, model
+  // already loaded) — WebLLM generation is non-streaming and can take a while.
+  // The detailed tool-activity list is kept below; the initProgress bar already
+  // covers the download phase, so the label defers to it when present.
+  const hasRunningTool = toolActivity.some((t) => t.status === "running");
+  const busyLabel =
+    !isBusy || initProgress
+      ? null
+      : hasRunningTool
+        ? "Running analytics…"
+        : status === "initializing"
+          ? "Loading model…"
+          : "Thinking…";
   // The full selection stage is reachable at any time: on first run, or when the
   // user clicks "Change backend" (ADR 0050). Committing returns them to chat.
   const showSelection = firstRun || reconfiguring;
@@ -179,35 +207,61 @@ export function AssistantPanel({
         <>
           <PrivacyNote backend={backend} />
 
-          <ol className="flex min-h-[8rem] flex-col gap-2" aria-label="Conversation">
-            {display.length === 0 && (
-              <li className="text-xs text-fg-muted">
-                Ask a question to get started — e.g. “What were the most-clicked meshes this week?”
-              </li>
-            )}
-            {display.map((m, i) => (
-              <li
-                key={i}
-                className={m.role === "user" ? "text-fg-hi" : "text-fg"}
-                data-role={m.role}
-              >
-                <span className="mr-1 text-xs uppercase text-fg-muted">
-                  {m.role === "user" ? "You" : "Assistant"}
-                </span>
-                <div className="whitespace-pre-wrap">{m.content}</div>
-              </li>
-            ))}
-          </ol>
-
-          {toolActivity.length > 0 && (
-            <ul className="flex flex-col gap-1 text-xs text-fg-muted" aria-label="Tool activity">
-              {toolActivity.map((t, i) => (
-                <li key={`${t.name}-${i}`} data-status={t.status}>
-                  {t.status === "running" ? "⏳" : t.status === "error" ? "⚠️" : "✓"} {t.name}
+          <div className="flex max-h-[24rem] flex-col gap-2 overflow-y-auto">
+            <ol className="flex min-h-[8rem] flex-col gap-2" aria-label="Conversation">
+              {display.length === 0 && (
+                <li className="text-xs text-fg-muted">
+                  Ask a question to get started — e.g. “What were the most-clicked meshes this
+                  week?”
+                </li>
+              )}
+              {display.map((m, i) => (
+                <li
+                  key={i}
+                  className={m.role === "user" ? "text-fg-hi" : "text-fg"}
+                  data-role={m.role}
+                >
+                  <span className="mr-1 text-xs uppercase text-fg-muted">
+                    {m.role === "user" ? "You" : "Assistant"}
+                  </span>
+                  <div className="whitespace-pre-wrap">{m.content}</div>
                 </li>
               ))}
-            </ul>
-          )}
+            </ol>
+
+            {/* Live region: announced by screen readers and always in the DOM so
+                inserted status text is picked up. Populated only while busy. */}
+            <div role="status" aria-live="polite">
+              {busyLabel && (
+                <span className="flex items-center gap-2 text-xs text-fg-muted">
+                  <span
+                    aria-hidden="true"
+                    className="h-3 w-3 animate-spin rounded-full border-2 border-fg-muted border-t-transparent"
+                  />
+                  {busyLabel}
+                </span>
+              )}
+            </div>
+
+            {toolActivity.length > 0 && (
+              <ul className="flex flex-col gap-1 text-xs text-fg-muted" aria-label="Tool activity">
+                {toolActivity.map((t, i) => (
+                  <li key={`${t.name}-${i}`} data-status={t.status}>
+                    {t.status === "running" ? "⏳" : t.status === "error" ? "⚠️" : "✓"} {t.name}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {noTextAnswer && !isBusy && status !== "error" && (
+              <p className="text-xs text-fg-muted" data-role="empty-answer">
+                The assistant finished without a text answer. Try rephrasing, or ask it to summarize
+                the results.
+              </p>
+            )}
+
+            <div ref={bottomRef} aria-hidden="true" />
+          </div>
 
           {initProgress && (
             <div

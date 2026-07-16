@@ -162,6 +162,16 @@ test("assistant answers a grounded question end to end", async ({ page, request 
   await assistant.getByLabel("Message").fill("What was the most-interacted mesh?");
   await assistant.getByRole("button", { name: "Send" }).click();
 
+  // 5a) The panel makes it obvious the assistant is working: a live status region
+  //     shows a spinner + label (Running analytics… / Thinking…) for the whole
+  //     in-flight turn, before any answer arrives. This is the fix for "I can't
+  //     tell it's doing anything" — it must appear even though the LLM does not
+  //     stream. The regex targets our own fixed UI labels only (no ReDoS surface).
+  await expect(assistant.getByRole("status")).toContainText(
+    /Thinking|Running analytics|Loading model/,
+    { timeout: 20_000 },
+  );
+
   // 6) The shared `top_meshes` tool ran (browser → assistant → tools → collector).
   const toolActivity = assistant.getByRole("list", { name: "Tool activity" });
   await expect(toolActivity.getByText("top_meshes")).toBeVisible({ timeout: 20_000 });
@@ -169,6 +179,9 @@ test("assistant answers a grounded question end to end", async ({ page, request 
   // 7) The rendered answer is grounded: it names the real top mesh.
   const answer = assistant.locator('[data-role="assistant"]');
   await expect(answer).toContainText(expectedTopMesh!, { timeout: 20_000 });
+
+  // 7a) Once the turn completes the working indicator clears (idle, no spinner).
+  await expect(assistant.getByRole("status")).toHaveText("");
 
   // 8) The backend selection stage is reachable at any time: "Change backend"
   //    reopens the side-by-side chooser cards (both options), and the escape
