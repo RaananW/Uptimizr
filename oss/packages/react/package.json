@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/react",
-  "version": "0.11.2",
+  "version": "0.11.3",
   "description": "Embeddable React analytics panels for the Uptimizr collector — the complete, portable OSS panel catalog (sessions, pointer/world/view-direction heatmaps, mesh leaderboards, flow, divergence, performance, and more). Reads the collector query API through a shared client; configure once with <UptimizrProvider>. Babylon.js is an optional, code-split peer.",
   "keywords": [
     "uptimizr",

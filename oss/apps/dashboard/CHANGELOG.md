@@ -1,5 +1,13 @@
 # @uptimizr/dashboard
 
+## 0.4.3
+
+### Patch Changes
+
+- Updated dependencies [59b12c5]
+- Updated dependencies [8ec1cdb]
+  - @uptimizr/react@0.11.3
+
 ## 0.4.2
 
 ### Patch Changes
