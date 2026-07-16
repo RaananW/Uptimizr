@@ -239,35 +239,56 @@ describe("useAssistant", () => {
     expect(result.current.status).toBe("idle");
   });
 
-  it("flags noTextAnswer when a turn ends with no natural-language answer", async () => {
-    // Empty final content (only tool calls, or maxSteps) ⇒ the UI should be able
-    // to tell the user the turn produced no text.
+  it("surfaces a no_answer notice when a turn ends with empty final content", async () => {
+    // Empty final content ⇒ the UI should be able to tell the user the turn
+    // produced no text, distinctly from a step-cap give-up.
     nextProvider = scriptedProvider([{ kind: "final", content: "   " }]);
     const { result } = renderHook(() => useAssistant({ api: fakeApi(), backend: HOSTED }));
     await act(async () => {
       await result.current.send("summarize");
     });
-    expect(result.current.noTextAnswer).toBe(true);
+    expect(result.current.notice).toEqual({ kind: "no_answer" });
     expect(result.current.status).toBe("idle");
   });
 
-  it("leaves noTextAnswer false when the turn produced text", async () => {
+  it("surfaces stopped_on_max_steps with the step count when the model never finalises", async () => {
+    // A provider that only ever tool-calls forces the loop to hit its cap; the
+    // hook must report that outcome (with N) from runAgent's own signals.
+    const alwaysToolCalls: LlmProvider = {
+      complete: vi.fn(async () => ({
+        kind: "tool_calls",
+        toolCalls: [{ id: "t", name: "list_sessions", arguments: {} }],
+      })),
+    };
+    nextProvider = alwaysToolCalls;
+    const { result } = renderHook(() =>
+      useAssistant({ api: fakeApi(), backend: HOSTED, maxSteps: 3 }),
+    );
+    await act(async () => {
+      await result.current.send("keep going");
+    });
+    expect(result.current.notice).toEqual({ kind: "stopped_on_max_steps", steps: 3 });
+    expect(result.current.status).toBe("idle");
+    expect(result.current.error).toBeNull();
+  });
+
+  it("leaves notice null when the turn produced text", async () => {
     nextProvider = scriptedProvider([{ kind: "final", content: "12 sessions." }]);
     const { result } = renderHook(() => useAssistant({ api: fakeApi(), backend: HOSTED }));
     await act(async () => {
       await result.current.send("how many?");
     });
-    expect(result.current.noTextAnswer).toBe(false);
+    expect(result.current.notice).toBeNull();
   });
 
-  it("clears noTextAnswer on reset", async () => {
+  it("clears notice on reset", async () => {
     nextProvider = scriptedProvider([{ kind: "final", content: "" }]);
     const { result } = renderHook(() => useAssistant({ api: fakeApi(), backend: HOSTED }));
     await act(async () => {
       await result.current.send("summarize");
     });
-    expect(result.current.noTextAnswer).toBe(true);
+    expect(result.current.notice).toEqual({ kind: "no_answer" });
     act(() => result.current.reset());
-    expect(result.current.noTextAnswer).toBe(false);
+    expect(result.current.notice).toBeNull();
   });
 });

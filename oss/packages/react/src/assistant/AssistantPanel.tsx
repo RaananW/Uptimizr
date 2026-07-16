@@ -17,7 +17,7 @@ import type {
   CuratedModel,
   HostedApi,
 } from "@uptimizr/agent-core/providers";
-import { useAssistant, type UseAssistantOptions } from "./useAssistant";
+import { useAssistant, type AssistantNotice, type UseAssistantOptions } from "./useAssistant";
 
 /** Props for {@link AssistantPanel}. Extends every {@link useAssistant} option. */
 export interface AssistantPanelProps extends UseAssistantOptions {
@@ -44,6 +44,17 @@ function toDisplayMessages(messages: AgentMessage[]): DisplayMessage[] {
     }
   }
   return out;
+}
+
+/**
+ * A factual, non-fabricated explanation for a turn that produced no written
+ * answer, plus a concrete next step. Never synthesizes an answer.
+ */
+function noticeMessage(notice: AssistantNotice): string {
+  if (notice.kind === "stopped_on_max_steps") {
+    return `The model kept using tools and didn't produce a written answer (stopped after ${notice.steps} steps). Try rephrasing, ask it to summarize the results, or switch to a hosted model for tougher questions.`;
+  }
+  return "The assistant finished without a text answer. Try rephrasing, or ask it to summarize the results.";
 }
 
 export function AssistantPanel({
@@ -74,7 +85,7 @@ export function AssistantPanel({
     error,
     toolActivity,
     initProgress,
-    noTextAnswer,
+    notice,
     backend,
     webGpuAvailable,
     isBusy,
@@ -116,7 +127,7 @@ export function AssistantPanel({
     if (node && typeof node.scrollIntoView === "function") {
       node.scrollIntoView({ block: "end" });
     }
-  }, [messages, status, toolActivity, noTextAnswer]);
+  }, [messages, status, toolActivity, notice]);
 
   // An always-present busy indicator so the user can see the assistant is
   // working even when it is only generating an answer (no tool calls, model
@@ -253,10 +264,9 @@ export function AssistantPanel({
               </ul>
             )}
 
-            {noTextAnswer && !isBusy && status !== "error" && (
-              <p className="text-xs text-fg-muted" data-role="empty-answer">
-                The assistant finished without a text answer. Try rephrasing, or ask it to summarize
-                the results.
+            {notice && !isBusy && status !== "error" && (
+              <p className="text-xs text-fg-muted" data-role="notice" data-kind={notice.kind}>
+                {noticeMessage(notice)}
               </p>
             )}
 

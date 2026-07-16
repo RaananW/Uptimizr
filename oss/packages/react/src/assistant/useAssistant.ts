@@ -36,6 +36,22 @@ import { DEFAULT_SYSTEM_PROMPT } from "./prompt";
 /** Coarse per-turn state for the assistant. */
 export type AssistantStatus = "idle" | "initializing" | "thinking" | "error";
 
+/**
+ * A non-error explanation for a turn that completed without a written answer,
+ * derived from `runAgent`'s result (never a heuristic guess):
+ * - `no_answer` — the model stopped with an empty final message.
+ * - `stopped_on_max_steps` — the loop hit its step cap while the model kept
+ *   tool-calling without composing an answer; `steps` is how many it took.
+ */
+export type AssistantNotice =
+  { kind: "no_answer" } | { kind: "stopped_on_max_steps"; steps: number };
+
+/** Default provider-turn cap for the in-browser assistant. Deliberately a touch
+ *  higher than agent-core's shared `DEFAULT_MAX_STEPS` (8): small local models
+ *  sometimes need an extra turn or two to wrap up. Scoped to this hook so the
+ *  shared library default (used by the MCP server and others) is unchanged. */
+export const DEFAULT_ASSISTANT_MAX_STEPS = 12;
+
 /** Live status of a single tool call the model made during the current turn. */
 export type ToolCallStatus = "running" | "done" | "error";
 
@@ -66,7 +82,8 @@ export interface UseAssistantOptions {
   backend?: AssistantBackendConfig;
   /** System prompt priming the assistant. Defaults to {@link DEFAULT_SYSTEM_PROMPT}. */
   systemPrompt?: string;
-  /** Max provider turns per send (forwarded to `runAgent`). */
+  /** Max provider turns per send (forwarded to `runAgent`). Defaults to
+   *  {@link DEFAULT_ASSISTANT_MAX_STEPS}. */
   maxSteps?: number;
   /**
    * Consent gate for the local (WebLLM) backend, invoked once before weights
@@ -90,12 +107,11 @@ export interface UseAssistantResult {
   /** WebLLM download/init progress while a local model loads, else `null`. */
   initProgress: InitProgress | null;
   /**
-   * True when the last completed turn ended without any natural-language answer
-   * (the model emitted only tool calls, or the loop hit `maxSteps`). Lets the UI
-   * tell the user the turn finished with no text instead of showing nothing.
-   * Reset at the start of every send, and on cancel/reset.
+   * Set when the last completed turn produced no written answer, so the UI can
+   * explain the outcome (and suggest a next step) instead of rendering nothing.
+   * `null` otherwise. Reset at the start of every send, and on cancel/reset.
    */
-  noTextAnswer: boolean;
+  notice: AssistantNotice | null;
   /** The active backend selection, or `null` until one is configured. */
   backend: AssistantBackendConfig | null;
   /** Whether this browser can run the local (WebGPU) backend. */
@@ -134,7 +150,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     apiKey,
     api: apiOption,
     systemPrompt = DEFAULT_SYSTEM_PROMPT,
-    maxSteps,
+    maxSteps = DEFAULT_ASSISTANT_MAX_STEPS,
     confirmDownload,
     persistBackend = true,
   } = options;
@@ -160,7 +176,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
   const [error, setError] = useState<Error | null>(null);
   const [toolActivity, setToolActivity] = useState<AssistantToolActivity[]>([]);
   const [initProgress, setInitProgress] = useState<InitProgress | null>(null);
-  const [noTextAnswer, setNoTextAnswer] = useState<boolean>(false);
+  const [notice, setNotice] = useState<AssistantNotice | null>(null);
 
   // Refs so `send` reads fresh values without being re-created every render.
   const messagesRef = useRef(messages);
@@ -257,7 +273,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
       setToolActivity([]);
       setError(null);
       setInitProgress(null);
-      setNoTextAnswer(false);
+      setNotice(null);
       setStatus("initializing");
 
       const controller = new AbortController();
@@ -329,9 +345,14 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
         setToolActivity((prev) =>
           prev.map((t) => (t.status === "running" ? { ...t, status: "done" } : t)),
         );
-        // Surface a turn that ended with no natural-language answer (only tool
-        // calls, or the loop hit maxSteps) so the UI never renders nothing.
-        setNoTextAnswer(result.content.trim().length === 0);
+        // Surface — from runAgent's own signals, not a guess — a turn that ended
+        // with no written answer, so the UI never renders nothing. The step cap
+        // and the empty-final case are distinct outcomes with different advice.
+        if (result.stoppedOnMaxSteps) {
+          setNotice({ kind: "stopped_on_max_steps", steps: result.steps });
+        } else if (result.content.trim().length === 0) {
+          setNotice({ kind: "no_answer" });
+        }
         setStatus("idle");
       } catch (err) {
         if (controller.signal.aborted) {
@@ -358,7 +379,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     setToolActivity([]);
     setError(null);
     setInitProgress(null);
-    setNoTextAnswer(false);
+    setNotice(null);
     setStatus("idle");
   }, []);
 
@@ -370,7 +391,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     error,
     toolActivity,
     initProgress,
-    noTextAnswer,
+    notice,
     backend,
     webGpuAvailable,
     models: CURATED_MODELS,

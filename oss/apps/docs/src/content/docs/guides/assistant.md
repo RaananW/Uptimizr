@@ -213,10 +213,14 @@ flight (in an `aria-live` region, so it's announced to screen readers):
 - **Running analytics…** while a read-only tool call is executing (the per-tool list is shown too),
 - **Thinking…** while the model is composing its answer.
 
-If a turn ever finishes without a natural-language answer — for example the model only made tool
-calls, or the loop hit its step cap — the panel says so explicitly instead of rendering nothing, so
-a reply is never silently dropped. The conversation area scrolls and auto-follows the newest
-message, so answers stay in view inside a fixed-height drawer.
+If a turn ever finishes without a natural-language answer, the panel says so explicitly instead
+of rendering nothing, so a reply is never silently dropped. It distinguishes two cases from the
+agent loop's own signals: the model simply stopped with no text, or it **kept calling tools and
+hit the step cap** (it reports how many steps it took and suggests rephrasing, asking for a
+summary, or switching to a hosted model). The in-browser panel allows a few more tool-calling
+turns than the shared default (12 vs. `@uptimizr/agent-core`'s 8) so a small local model has room
+to wrap up; tune it with `useAssistant({ maxSteps })`. The conversation area scrolls and
+auto-follows the newest message, so answers stay in view inside a fixed-height drawer.
 
 For a custom UI, drive the headless hook instead and render your own chat:
 
@@ -233,8 +237,8 @@ function MyAssistant() {
   });
   // messages: the transcript · send(text): run a turn · status: "idle" | "initializing" |
   // "thinking" | "error" · isBusy: a turn is in flight (show a working indicator) · toolActivity:
-  // live tool-call progress · noTextAnswer: the last turn ended with no text answer · setBackend(cfg):
-  // switch + persist.
+  // live tool-call progress · notice: {kind:"no_answer"|"stopped_on_max_steps",steps?} when a turn
+  // produced no written answer · setBackend(cfg): switch + persist.
 }
 ```
 
