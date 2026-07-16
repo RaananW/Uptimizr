@@ -469,17 +469,19 @@ export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLl
   return {
     async complete(request: ProviderRequest): Promise<ProviderResponse> {
       const engine = await ensureEngine();
+      const hasTools = request.tools.length > 0;
       // WebLLM's Hermes tool-calling path injects its own system prompt and
       // rejects a caller-supplied `system` message when `tools` are present, so
       // fold our system instructions into the first user turn for that case.
-      const messages = request.tools?.length
-        ? foldSystemPromptForHermes(request.messages)
-        : request.messages;
+      // Without tools (e.g. the loop's forced synthesis pass) a custom `system`
+      // message is allowed, so we keep it and send no function-calling at all.
+      const messages = hasTools ? foldSystemPromptForHermes(request.messages) : request.messages;
       try {
         const completion = await engine.chat.completions.create({
           messages: toOpenAiMessages(messages),
-          tools: toOpenAiTools(request.tools),
-          tool_choice: "auto",
+          ...(hasTools
+            ? { tools: toOpenAiTools(request.tools), tool_choice: "auto" as const }
+            : {}),
           stream: false,
         });
         return parseOpenAiCompletion(completion);

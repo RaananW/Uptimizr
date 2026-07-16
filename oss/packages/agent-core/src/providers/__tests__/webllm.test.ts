@@ -279,6 +279,39 @@ describe("WebLLM provider", () => {
     expect(sent.messages[2]).toMatchObject({ role: "tool", tool_call_id: "c1" });
   });
 
+  it("sends no function-calling and keeps the system message when no tools are offered", async () => {
+    // The loop's forced synthesis pass calls complete() with an empty tool list.
+    // WebLLM must then send NO tools/tool_choice (so the model answers in prose)
+    // and, without tools, a custom `system` message is allowed — so it is kept
+    // rather than folded into the user turn.
+    const { load, create } = fakeRuntime({
+      choices: [{ message: { content: "You have 42 sessions." } }],
+    });
+    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
+
+    const res = await provider.complete({
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: "answer now" },
+      ],
+      tools: [],
+    });
+
+    expect(res).toEqual({ kind: "final", content: "You have 42 sessions." });
+    const createArg = create.mock.calls[0]![0] as {
+      messages: { role: string; content: string }[];
+      tools?: unknown;
+      tool_choice?: unknown;
+    };
+    expect("tools" in createArg).toBe(false);
+    expect("tool_choice" in createArg).toBe(false);
+    // The system message survives unfolded (allowed without tools).
+    expect(createArg.messages).toEqual([
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: "answer now" },
+    ]);
+  });
+
   it("unloads the engine to release GPU memory", async () => {
     const { load, unload } = fakeRuntime({ choices: [{ message: { content: "ok" } }] });
     const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
