@@ -1,5 +1,12 @@
 # @uptimizr/mcp
 
+## 0.2.3
+
+### Patch Changes
+
+- Updated dependencies [dd34af8]
+  - @uptimizr/agent-core@0.3.0
+
 ## 0.2.2
 
 ### Patch Changes
