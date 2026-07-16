@@ -85,9 +85,9 @@ describe("<AssistantPanel>", () => {
     expect(screen.getByRole("status").textContent?.trim()).toBe("");
   });
 
-  it("surfaces a fallback line when a turn ends without any text answer", async () => {
-    // An empty final answer (e.g. only tool calls, or maxSteps) must not render
-    // nothing — the user is told the turn finished without text.
+  it("surfaces a no_answer info line when a turn ends without any text answer", async () => {
+    // An empty final answer must not render nothing — the user is told the turn
+    // finished without text (a distinct info line, not an error).
     nextProvider = scriptedProvider([{ kind: "final", content: "   " }]);
     render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
 
@@ -95,6 +95,27 @@ describe("<AssistantPanel>", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(screen.getByText(/finished without a text answer/i)).toBeTruthy());
+    // It is informational, not an error alert.
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("explains a stopped-on-max-steps give-up with the step count (not an error)", async () => {
+    // A provider that only ever tool-calls drives the loop to its cap; the panel
+    // must explain that outcome (with N) instead of silence, and offer a next step.
+    nextProvider = {
+      complete: vi.fn(async () => ({
+        kind: "tool_calls",
+        toolCalls: [{ id: "t", name: "list_sessions", arguments: {} }],
+      })),
+    };
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} maxSteps={3} />);
+
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "keep going" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(screen.getByText(/stopped after 3 steps/i)).toBeTruthy());
+    expect(screen.getByText(/switch to a hosted model/i)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("Change backend reveals the chooser cards, then the picker with both options", () => {
