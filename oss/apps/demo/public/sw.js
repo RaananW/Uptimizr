@@ -12,7 +12,12 @@
  * store (schema, queries, retention) lives in the page (see store/host.ts).
  */
 
-const CACHE = "uptimizr-demo-v3";
+// Bump this constant whenever the caching strategy or app-shell handling
+// changes: `activate` deletes every cache whose key !== CACHE, so bumping it
+// purges a poisoned older cache from returning visitors' browsers. (v3 served the
+// app shell stale-while-revalidate, which masked fresh deploys — see the GET
+// handler below.)
+const CACHE = "uptimizr-demo-v4";
 
 // The single public project the demo exposes. Served to the dashboard's project
 // registry (`/api/projects`) so it preselects the project and its read key with
@@ -403,6 +408,38 @@ function liveRoute(url, method) {
   return null;
 }
 
+/**
+ * Is this GET an HTML *document* (a top-level navigation or an embed's index)?
+ *
+ * These are the requests that must NOT be served stale: HTML is not
+ * content-hashed, so a cached copy pins the browser to an old build (and its old
+ * hashed chunk references) across reloads even after a fresh deploy. We detect a
+ * navigation by request mode / `Accept`, and also by the document-like pathnames
+ * (`/`, a directory, or `*.html`) so a direct hit to `…/index.html` is covered.
+ */
+function isHtmlDocument(request, url) {
+  if (request.mode === "navigate") return true;
+  const accept = request.headers.get("accept") || "";
+  if (accept.includes("text/html")) return true;
+  const p = url.pathname;
+  return p === "/" || p.endsWith("/") || p.endsWith(".html");
+}
+
+/**
+ * Is this GET a content-hashed / immutable asset? Its URL changes when its
+ * content changes, so serving it cache-first is always safe (and fast + offline):
+ *   - Vite hashed output (demo shell + playground): `…/assets/…`
+ *   - Next static export (dashboard): `…/_next/static/…`
+ *   - DuckDB-Wasm engine modules: `*.wasm`
+ * This also covers the on-demand assistant + `@mlc-ai/web-llm` chunks (hashed
+ * under `/dashboard/_next/static/`) — cache-first ONLY after they load on demand;
+ * they are still never precached (ADR 0050 §6).
+ */
+function isImmutableAsset(url) {
+  const p = url.pathname;
+  return p.includes("/assets/") || p.includes("/_next/static/") || p.endsWith(".wasm");
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -458,8 +495,61 @@ self.addEventListener("fetch", (event) => {
 
   if (request.method !== "GET") return;
 
-  // Stale-while-revalidate for the app shell + embeds + wasm assets: serve from
-  // cache instantly (offline-capable) and refresh in the background.
+  // The app shell (HTML documents) must reflect the latest deploy, so serve it
+  // NETWORK-FIRST: a fresh navigation always fetches from the network (picking up
+  // the new build and its new hashed chunk references) and only falls back to the
+  // cache when offline — preserving offline use after "Prepare demo". Anything
+  // else non-hashed keeps stale-while-revalidate below.
+  if (isHtmlDocument(request, url)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(CACHE);
+        try {
+          const response = await fetch(request);
+          if (response && response.ok && response.type === "basic") {
+            cache.put(request, response.clone());
+          }
+          return response;
+        } catch {
+          // Offline (or an aborted navigation): fall back to the primed shell,
+          // and never resolve to a non-Response value (respondWith would throw).
+          const cached = await cache.match(request);
+          return cached ?? Response.error();
+        }
+      })(),
+    );
+    return;
+  }
+
+  // Content-hashed / immutable assets are safe to serve CACHE-FIRST: their URL
+  // changes when their content changes, so a cache hit is never stale. This keeps
+  // the demo instant and fully offline once assets have been fetched (or primed
+  // by "Prepare demo"), including the on-demand assistant/WebLLM chunks.
+  if (isImmutableAsset(url)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(CACHE);
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        try {
+          const response = await fetch(request);
+          if (response && response.ok && response.type === "basic") {
+            cache.put(request, response.clone());
+          }
+          return response;
+        } catch {
+          // A miss with no network (offline) must still yield a Response.
+          return Response.error();
+        }
+      })(),
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for the remaining non-hashed assets (icons, manifest,
+  // robots, …): serve from cache instantly (offline-capable) and refresh in the
+  // background. These are non-critical, so brief staleness is harmless and
+  // self-heals on the next load.
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);
