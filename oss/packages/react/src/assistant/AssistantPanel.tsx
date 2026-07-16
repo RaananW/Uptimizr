@@ -57,6 +57,15 @@ function noticeMessage(notice: AssistantNotice): string {
   return "The assistant finished without a text answer. Try rephrasing, or ask it to summarize the results.";
 }
 
+/**
+ * Whether an error is the local-backend browser-storage-quota error thrown by
+ * the WebLLM adapter ({@link WebLlmStorageError}). Matched by `name` (not the
+ * message, and not a cross-realm `instanceof`) so it stays robust and regex-free.
+ */
+function isStorageError(error: Error): boolean {
+  return error.name === "WebLlmStorageError";
+}
+
 export function AssistantPanel({
   title = "Analytics assistant",
   placeholder = "Ask about your 3D analytics…",
@@ -289,9 +298,23 @@ export function AssistantPanel({
           )}
 
           {status === "error" && error && (
-            <p className="rounded-md bg-rose-500/20 px-2 py-1 text-xs text-rose-300" role="alert">
-              {error.message}
-            </p>
+            <div className="rounded-md bg-rose-500/20 px-2 py-1 text-xs text-rose-300" role="alert">
+              {isStorageError(error) ? (
+                <div className="flex flex-col gap-1" data-kind="storage">
+                  <span className="font-medium">
+                    Your browser is out of storage for the local model.
+                  </span>
+                  <span>
+                    Each local model caches about 4 GB in this site&apos;s browser storage, and
+                    trying several models stacks them up. To fix it: free up disk space, clear this
+                    site&apos;s cached data (browser settings → clear site data / storage), or pick
+                    the smallest model — or switch to a hosted backend. Then retry.
+                  </span>
+                </div>
+              ) : (
+                <span>{error.message}</span>
+              )}
+            </div>
           )}
 
           <form onSubmit={onSubmit} className="flex items-center gap-2">

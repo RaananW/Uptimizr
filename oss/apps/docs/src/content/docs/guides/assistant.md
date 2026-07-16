@@ -110,6 +110,18 @@ deep analytics (ADR 0050 trade-offs). Call `provider.unload()` to release GPU me
 > `createWebLlmProvider({ contextWindowSize })` — raise it only up to what the selected model
 > actually supports.
 
+> **Local models need browser storage — plan for ~4–5 GB per model.** WebLLM caches a model's
+> weights in your browser's **Cache Storage** on first use, and each curated model is roughly
+> **4–5 GB**. Trying several models (or switching between them) **accumulates** their caches rather
+> than replacing them, so the origin's storage quota can fill up. When it does, the browser's Cache
+> API throws a storage-quota error — this is a **browser storage** limit, not an LLM API quota (the
+> local backend has zero network egress), and the assistant surfaces it with a clear remedy. To
+> reclaim space, free up disk space or **clear this site's cached data** (your browser's
+> Settings → Privacy → _Clear site data / storage_), then retry — or pick the smallest model or a
+> hosted backend. Before a large download the adapter also runs a best-effort
+> `navigator.storage.estimate()` preflight and fails fast when free space is clearly insufficient,
+> avoiding a corrupt half-download.
+
 > **Local models manage their own function-calling system prompt.** WebLLM injects its own
 > tool-calling system prompt for the Hermes family and rejects a caller-supplied `system` message
 > whenever tools are present. So for the local backend the assistant's system instructions are
