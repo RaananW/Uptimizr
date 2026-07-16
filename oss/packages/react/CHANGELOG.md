@@ -1,5 +1,51 @@
 # @uptimizr/react
 
+## 0.11.3
+
+### Patch Changes
+
+- 59b12c5: Make the in-browser analytics assistant show that it is working and never hide
+  its reply. `<AssistantPanel>` now renders an always-visible spinner + status
+  label (`Loading model…` / `Running analytics…` / `Thinking…`) in an `aria-live`
+  region while a turn is in flight — so non-streaming local (WebLLM) generation no
+  longer looks frozen. A turn that finishes without a natural-language answer now
+  shows an explicit, non-error info line instead of rendering nothing: derived
+  from the agent loop's own signals, it distinguishes the model stopping with no
+  text from it hitting the step cap while tool-calling (reporting how many steps it
+  took and suggesting a next step). `useAssistant` exposes a typed `notice`
+  (`{ kind: "no_answer" } | { kind: "stopped_on_max_steps"; steps }`) for custom
+  UIs, and its default `maxSteps` is raised to 12 (scoped to the assistant; the
+  shared `@uptimizr/agent-core` default is unchanged) so small local models have
+  room to wrap up. The conversation area also scrolls and auto-follows the newest
+  message.
+- 8ec1cdb: Explain local-model browser-storage limits instead of a raw "quota exceeded".
+
+  The local WebLLM backend caches each curated model's ~4 GB of weights in the
+  browser's Cache Storage; loading or switching among several models accumulates
+  multiple copies until the per-origin quota is exceeded, at which point the Cache
+  API throws a `QuotaExceededError` DOMException. Previously the assistant rendered
+  that bare "Quota exceeded." string, which reads like an LLM API quota even though
+  the local backend has zero network egress.
+
+  `@uptimizr/agent-core` now classifies that DOMException (by `instanceof`/`.name`,
+  never a regex) and rethrows it as a typed `WebLlmStorageError` with an actionable
+  message, from both engine init and generation, while leaving all other errors
+  untouched. A best-effort `navigator.storage.estimate()` preflight fails fast
+  before a multi-GB download when free space is clearly insufficient (guarded and
+  soft — skipped when the API is unavailable or reports ample space). Each
+  `CuratedModel` gains a numeric `downloadBytes` field for that comparison, and
+  `WebLlmStorageError` / `isQuotaExceededError` are exported.
+
+  `@uptimizr/react`'s `<AssistantPanel>` now renders distinct, accessible guidance
+  (free disk space, clear this site's cached data, try the smallest model or a
+  hosted backend) for a `WebLlmStorageError`, keeping the generic rendering for all
+  other errors.
+
+- Updated dependencies [d12c2f4]
+- Updated dependencies [ae5bcd9]
+- Updated dependencies [8ec1cdb]
+  - @uptimizr/agent-core@0.2.2
+
 ## 0.11.2
 
 ### Patch Changes

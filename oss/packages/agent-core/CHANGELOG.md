@@ -1,5 +1,51 @@
 # @uptimizr/agent-core
 
+## 0.2.2
+
+### Patch Changes
+
+- d12c2f4: Force a final, tools-disabled synthesis turn so the assistant always replies.
+  Small local WebLLM (Hermes 7–8B) models often returned an empty `final` answer —
+  or kept tool-calling until the step cap — so the loop ended with no reply. When a
+  run would otherwise end without a usable answer (an empty final, or `maxSteps`
+  reached while still tool-calling), `runAgent` now makes one extra
+  `provider.complete()` with tools disabled, forcing the model to compose a
+  plain-text answer from the tool results it already gathered (at most one such
+  forced turn per run; on/off via `forceFinalAnswer`, default `true`). The hosted
+  (OpenAI/Anthropic) and WebLLM adapters now omit `tools`/`tool_choice` entirely
+  when no tools are offered so the model answers in prose. Oversized tool results
+  are also truncated (plain slice + marker, tunable via `maxToolResultChars`,
+  default 8000) to protect small models' context. Still local-only for the local
+  backend — no new data egress.
+- ae5bcd9: Raise the WebLLM local model's context window to 8192 tokens so the analytics
+  assistant's prompt fits. The curated Hermes model records default to a
+  4096-token window, which rejected the assistant's system prompt + tool schemas +
+  results ("Prompt tokens exceed context window size"). The WebLLM adapter now
+  passes `chatOpts.context_window_size` when creating the engine (tunable via
+  `createWebLlmProvider({ contextWindowSize })`).
+- 8ec1cdb: Explain local-model browser-storage limits instead of a raw "quota exceeded".
+
+  The local WebLLM backend caches each curated model's ~4 GB of weights in the
+  browser's Cache Storage; loading or switching among several models accumulates
+  multiple copies until the per-origin quota is exceeded, at which point the Cache
+  API throws a `QuotaExceededError` DOMException. Previously the assistant rendered
+  that bare "Quota exceeded." string, which reads like an LLM API quota even though
+  the local backend has zero network egress.
+
+  `@uptimizr/agent-core` now classifies that DOMException (by `instanceof`/`.name`,
+  never a regex) and rethrows it as a typed `WebLlmStorageError` with an actionable
+  message, from both engine init and generation, while leaving all other errors
+  untouched. A best-effort `navigator.storage.estimate()` preflight fails fast
+  before a multi-GB download when free space is clearly insufficient (guarded and
+  soft — skipped when the API is unavailable or reports ample space). Each
+  `CuratedModel` gains a numeric `downloadBytes` field for that comparison, and
+  `WebLlmStorageError` / `isQuotaExceededError` are exported.
+
+  `@uptimizr/react`'s `<AssistantPanel>` now renders distinct, accessible guidance
+  (free disk space, clear this site's cached data, try the smallest model or a
+  hosted backend) for a `WebLlmStorageError`, keeping the generic rendering for all
+  other errors.
+
 ## 0.2.1
 
 ### Patch Changes
