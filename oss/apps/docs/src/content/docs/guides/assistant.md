@@ -62,7 +62,7 @@ step, ADR 0050 §6). Inference runs on your GPU; **nothing leaves the browser**.
 import { CURATED_MODELS, createWebLlmProvider } from "@uptimizr/agent-core/providers/webllm";
 
 const provider = createWebLlmProvider({
-  model: "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC",
+  model: "Hermes-3-Llama-3.1-8B-q4f16_1-MLC",
   // Called once, before any weights download. Show the size disclosure and
   // return false to abort — no data is downloaded if the user declines.
   confirmDownload: (model) =>
@@ -80,15 +80,16 @@ npm install @mlc-ai/web-llm
 ### Curated models
 
 WebLLM only supports the tool-calling (function calling) the assistant relies on for the 7–8B
-**Hermes** family, so the curated set is limited to those variants — ordered smallest-first, so the
-default is the least-friction working model. Sizes are approximate (sourced from WebLLM's
-`prebuiltAppConfig`) and shown to the user before any download:
+**Hermes** family, so the curated set is limited to those variants — ordered **strongest-first**, so
+the default is the best tool-caller (which most reliably answers even simple single-step questions on
+a small 4-bit local model). Sizes are approximate (sourced from WebLLM's `prebuiltAppConfig`) and
+shown to the user before any download:
 
 | Model                     | Download | VRAM    | Notes                                       |
 | ------------------------- | -------- | ------- | ------------------------------------------- |
-| Hermes 2 Pro (Mistral 7B) | ~3.9 GB  | ~4.0 GB | Smallest tool-calling model; the default.   |
+| Hermes 3 (Llama 3.1 8B)   | ~4.5 GB  | ~4.9 GB | Highest quality; **the default**.           |
 | Hermes 2 Pro (Llama 3 8B) | ~4.6 GB  | ~5.0 GB | Stronger Llama-3 base; needs a capable GPU. |
-| Hermes 3 (Llama 3.1 8B)   | ~4.5 GB  | ~4.9 GB | Highest quality; needs a capable GPU.       |
+| Hermes 2 Pro (Mistral 7B) | ~3.9 GB  | ~4.0 GB | Smallest tool-calling model; least-VRAM.    |
 
 > **Local mode needs a capable GPU.** WebLLM hard-codes function calling to the Hermes-2-Pro /
 > Hermes-3 family (its tool-call prompt and output parser are Hermes-specific), and the smallest of
@@ -100,6 +101,33 @@ default is the least-friction working model. Sizes are approximate (sourced from
 
 Small in-browser models do tool-calling adequately but not perfectly — expect good summaries, not
 deep analytics (ADR 0050 trade-offs). Call `provider.unload()` to release GPU memory when done.
+
+### Getting good answers from the local model
+
+Small local models shine at **single-step** questions and struggle with long, multi-tool analysis.
+The assistant is tuned for that reality:
+
+- **Current-time grounding.** The system prompt is stamped with the current time (ISO 8601 + epoch
+  ms) at send time, so relative ranges like _"today"_, _"this week"_, or _"the last 24 hours"_
+  resolve to concrete `since`/`until` epoch-millisecond arguments instead of being dropped or
+  guessed. The clock is injectable via `useAssistant({ now })` for deterministic tests.
+- **A focused core tool set.** The full catalog has 20 read tools; sending them all overwhelms a
+  4-bit 7–8B model's function-calling prompt. For the **local** backend the assistant exposes a
+  focused **core subset** of the most common single-step tools — `list_sessions`, `list_scenes`,
+  `top_meshes`, `perf_summary`, `event_counts`, `timeseries`, and `camera_heatmap`. The **hosted**
+  backend keeps the full 20 (frontier models handle them). The core set is a **filtered view** of
+  the same tool definitions — nothing is redefined (`selectReadTools("core")` / `coreReadTools` in
+  `@uptimizr/agent-core`).
+- **Guided example prompts.** `<AssistantPanel>` shows a few starter questions (e.g. _"What are my
+  top meshes this week?"_, _"How's my average FPS?"_) in the empty conversation; each maps to a
+  single core tool. Clicking one sends it — a reliable first-run path that also demonstrates the
+  agent working.
+
+> **Local mode is for quick, single-metric answers.** Use it for _"top meshes this week"_, _"average
+> FPS"_, or _"events in the last 24h"_. For deeper, multi-step analysis, switch to a
+> [hosted backend](#bring-your-own-hosted-backend) with your own key at any time via **Change
+> backend** — the frontier model gets the full tool catalog. This is a capability trade-off, not an
+> error.
 
 > **The local context window is raised to fit the assistant's prompt.** WebLLM loads the curated
 > Hermes model records with a default `context_window_size` of 4096 tokens, but the assistant's

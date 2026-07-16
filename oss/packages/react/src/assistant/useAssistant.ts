@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   runAgent,
+  selectReadTools,
   type AgentMessage,
   type CollectorClient,
   type LlmProvider,
@@ -31,7 +32,7 @@ import {
 } from "@uptimizr/agent-core/providers";
 import { CollectorApi } from "../api";
 import { useOptionalUptimizr } from "../provider";
-import { DEFAULT_SYSTEM_PROMPT } from "./prompt";
+import { composeSystemPrompt, DEFAULT_SYSTEM_PROMPT } from "./prompt";
 
 /** Coarse per-turn state for the assistant. */
 export type AssistantStatus = "idle" | "initializing" | "thinking" | "error";
@@ -92,6 +93,13 @@ export interface UseAssistantOptions {
   confirmDownload?: (model: CuratedModel) => boolean | Promise<boolean>;
   /** Persist backend changes to `localStorage`. Defaults to `true`. */
   persistBackend?: boolean;
+  /**
+   * Clock used to stamp the current time into the system prompt at send time so
+   * the model can resolve relative ranges ("today", "this week") into concrete
+   * `since`/`until` epoch-ms. Defaults to `() => Date.now()`; injectable so tests
+   * can pin it.
+   */
+  now?: () => number;
 }
 
 /** The value returned by {@link useAssistant}. */
@@ -153,6 +161,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     maxSteps = DEFAULT_ASSISTANT_MAX_STEPS,
     confirmDownload,
     persistBackend = true,
+    now = () => Date.now(),
   } = options;
 
   const ctx = useOptionalUptimizr();
@@ -183,6 +192,8 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
   messagesRef.current = messages;
   const backendRef = useRef(backend);
   backendRef.current = backend;
+  const nowRef = useRef(now);
+  nowRef.current = now;
   const providerRef = useRef<{ key: string; provider: LlmProvider } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -265,9 +276,14 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
 
       const userMessage: AgentMessage = { role: "user", content };
       const history = messagesRef.current;
+      // Stamp the current time into the system message so the model can resolve
+      // relative ranges ("today", "this week") into concrete since/until args.
       const outgoing: AgentMessage[] =
         history.length === 0
-          ? [{ role: "system", content: systemPrompt }, userMessage]
+          ? [
+              { role: "system", content: composeSystemPrompt(systemPrompt, nowRef.current()) },
+              userMessage,
+            ]
           : [...history, userMessage];
       setMessages(outgoing);
       setToolActivity([]);
@@ -337,6 +353,9 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
           provider: trackingProvider,
           client: trackingClient,
           messages: outgoing,
+          // Small local models get the focused core tool subset; hosted/frontier
+          // models get the full catalog. Both are views of the same tool defs.
+          tools: selectReadTools(cfg.backend === "local" ? "core" : "full"),
           maxSteps,
           signal: controller.signal,
         });

@@ -64,6 +64,30 @@ describe("<AssistantPanel>", () => {
     expect(screen.getByText("how many sessions?")).toBeTruthy();
   });
 
+  it("sends a guided example prompt when its button is clicked", async () => {
+    nextProvider = scriptedProvider([{ kind: "final", content: "Your top mesh is Box." }]);
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
+
+    // The empty state offers labelled example-question buttons; clicking one
+    // sends it verbatim (single-tool questions where small models are strongest).
+    const example = screen.getByRole("button", { name: "What are my top meshes this week?" });
+    fireEvent.click(example);
+
+    await waitFor(() => expect(screen.getByText("Your top mesh is Box.")).toBeTruthy());
+    // The clicked question is surfaced as the user's turn.
+    expect(screen.getByText("What are my top meshes this week?")).toBeTruthy();
+  });
+
+  it("shows an honest local-only capability note for the local backend", () => {
+    render(<AssistantPanel api={fakeApi()} backend={LOCAL} />);
+    expect(screen.getByText(/quick, single-metric questions/i)).toBeTruthy();
+  });
+
+  it("omits the local capability note for a hosted backend", () => {
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
+    expect(screen.queryByText(/quick, single-metric questions/i)).toBeNull();
+  });
+
   it("shows a working/thinking indicator while generating with the model loaded", async () => {
     // Hold the turn open so status stays "thinking" with no running tool: the
     // panel must show an always-visible busy indicator, not just a disabled input.
