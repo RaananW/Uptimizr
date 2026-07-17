@@ -17,7 +17,13 @@ import type {
   CuratedModel,
   HostedApi,
 } from "@uptimizr/agent-core/providers";
-import { useAssistant, type AssistantNotice, type UseAssistantOptions } from "./useAssistant";
+import {
+  useAssistant,
+  type AssistantNotice,
+  type AssistantToolActivity,
+  type ToolCallStatus,
+  type UseAssistantOptions,
+} from "./useAssistant";
 
 /** Props for {@link AssistantPanel}. Extends every {@link useAssistant} option. */
 export interface AssistantPanelProps extends UseAssistantOptions {
@@ -77,6 +83,38 @@ function noticeMessage(notice: AssistantNotice): string {
  */
 function isStorageError(error: Error): boolean {
   return error.name === "WebLlmStorageError";
+}
+
+/** One compacted run of consecutive same-name, same-status tool calls. */
+export interface CompactToolActivity {
+  /** Catalog tool name (e.g. `top_meshes`). */
+  name: string;
+  /** Shared status of the folded run. */
+  status: ToolCallStatus;
+  /** How many consecutive identical entries this row represents (≥ 1). */
+  count: number;
+}
+
+/**
+ * Fold consecutive tool entries that share the same `name` and `status` into a
+ * single counted row. A small local model often calls the same tool many times
+ * in one turn (e.g. `top_meshes` ×12), so the raw list is long and near-duplicate;
+ * this keeps it readable without changing meaning or reordering. Non-adjacent or
+ * differing entries stay separate. Pure and regex-free (plain scan).
+ */
+export function compactToolActivity(
+  entries: readonly AssistantToolActivity[],
+): CompactToolActivity[] {
+  const out: CompactToolActivity[] = [];
+  for (const entry of entries) {
+    const last = out[out.length - 1];
+    if (last && last.name === entry.name && last.status === entry.status) {
+      last.count += 1;
+    } else {
+      out.push({ name: entry.name, status: entry.status, count: 1 });
+    }
+  }
+  return out;
 }
 
 export function AssistantPanel({
@@ -241,7 +279,7 @@ export function AssistantPanel({
           <PrivacyNote backend={backend} />
 
           <div className="flex max-h-[24rem] flex-col gap-2 overflow-y-auto">
-            <ol className="flex min-h-[8rem] flex-col gap-2" aria-label="Conversation">
+            <ol className="flex min-h-[8rem] shrink-0 flex-col gap-2" aria-label="Conversation">
               {display.length === 0 && (
                 <li className="flex flex-col gap-2 text-xs text-fg-muted">
                   <span>Ask a question to get started — or try one of these:</span>
@@ -283,7 +321,7 @@ export function AssistantPanel({
 
             {/* Live region: announced by screen readers and always in the DOM so
                 inserted status text is picked up. Populated only while busy. */}
-            <div role="status" aria-live="polite">
+            <div role="status" aria-live="polite" className="shrink-0">
               {busyLabel && (
                 <span className="flex items-center gap-2 text-xs text-fg-muted">
                   <span
@@ -296,22 +334,30 @@ export function AssistantPanel({
             </div>
 
             {toolActivity.length > 0 && (
-              <ul className="flex flex-col gap-1 text-xs text-fg-muted" aria-label="Tool activity">
-                {toolActivity.map((t, i) => (
-                  <li key={`${t.name}-${i}`} data-status={t.status}>
+              <ul
+                className="flex shrink-0 flex-col gap-1 text-xs text-fg-muted"
+                aria-label="Tool activity"
+              >
+                {compactToolActivity(toolActivity).map((t, i) => (
+                  <li key={`${t.name}-${i}`} data-status={t.status} data-count={t.count}>
                     {t.status === "running" ? "⏳" : t.status === "error" ? "⚠️" : "✓"} {t.name}
+                    {t.count > 1 ? ` ×${t.count}` : ""}
                   </li>
                 ))}
               </ul>
             )}
 
             {notice && !isBusy && status !== "error" && (
-              <p className="text-xs text-fg-muted" data-role="notice" data-kind={notice.kind}>
+              <p
+                className="shrink-0 text-xs text-fg-muted"
+                data-role="notice"
+                data-kind={notice.kind}
+              >
                 {noticeMessage(notice)}
               </p>
             )}
 
-            <div ref={bottomRef} aria-hidden="true" />
+            <div ref={bottomRef} aria-hidden="true" className="shrink-0" />
           </div>
 
           {initProgress && (
