@@ -86,6 +86,53 @@ function requestHasTools(body: { tools?: unknown }): boolean {
   return Array.isArray(body.tools) && body.tools.length > 0;
 }
 
+/**
+ * Count the tool results already gathered in the CURRENT turn: the number of
+ * `role:"tool"` messages after the last `role:"user"` message. Lets the mock
+ * make a few tool calls per turn and then answer, deterministically. Plain array
+ * scan — no regex over model/tool output (CodeQL ReDoS).
+ */
+function toolCallsSinceLastUser(messages: OpenAiRequestMessage[]): number {
+  let lastUser = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") {
+      lastUser = i;
+      break;
+    }
+  }
+  let count = 0;
+  for (let i = lastUser + 1; i < messages.length; i++) {
+    if (messages[i].role === "tool") count += 1;
+  }
+  return count;
+}
+
+/**
+ * Do two axis-aligned rectangles overlap (share any area)? Used to prove the
+ * message column and the tool-activity list do not visually collide.
+ */
+function rectsOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+/** A long, multi-line answer that makes the conversation column tall (screenshot-like). */
+const LONG_ANSWER = [
+  "Your top meshes used this week are:",
+  "1. box-1 (48 instances)",
+  "2. sphere-2 (41 instances)",
+  "3. plane-3 (37 instances)",
+  "4. cylinder-4 (33 instances)",
+  "5. torus-5 (29 instances)",
+  "6. cone-6 (24 instances)",
+  "7. capsule-7 (21 instances)",
+  "8. disc-8 (18 instances)",
+  "9. ground-9 (15 instances)",
+  "10. ramp-10 (11 instances)",
+].join("\n");
+
 test("assistant answers a grounded question end to end", async ({ page, request }) => {
   // 1) Produce a real session so `top_meshes` has data (a box mesh gets picked).
   await enableAllCapture(page, "babylon");
@@ -386,4 +433,122 @@ test("assistant sends a guided example prompt and answers it end to end", async 
   await expect(toolActivity.getByText("top_meshes")).toBeVisible({ timeout: 20_000 });
   const answer = assistant.locator('[data-role="assistant"]');
   await expect(answer).toContainText(expectedTopMesh!, { timeout: 20_000 });
+});
+
+/**
+ * Layout regression for the demo.uptimizr.com bug (this PR): after turns with
+ * many repeated tool calls and long answers, the faint **Tool activity** list was
+ * painted ON TOP OF the chat message column. Root cause: the scroll container is a
+ * height-capped flex column whose `<ol>` (Conversation) had `min-h` and default
+ * `flex-shrink:1`, so under pressure it shrank BELOW its content and its
+ * `overflow:visible` messages spilled over the following `<ul>`. The fix makes the
+ * scroll children `shrink-0` so the column keeps its natural height and the
+ * container scrolls as one unit.
+ *
+ * We reproduce it deterministically with the mocked hosted backend (no weights):
+ * every tools-enabled request calls `top_meshes` a few times, then a LONG numbered
+ * answer — driven over two turns so the conversation column exceeds the panel's
+ * `max-h-[24rem]`. We then MEASURE box positions and assert the last rendered
+ * message and the tool-activity list do NOT intersect (they did, pre-fix).
+ */
+test("tool-activity list never overlaps the message column (layout regression)", async ({
+  page,
+  request,
+}, testInfo) => {
+  // 1) Real session so the `top_meshes` tool the loop calls returns real rows.
+  await enableAllCapture(page, "babylon");
+  const sessionId = await bootEngine(page, "babylon");
+  await driveInteractions(page, { keyboard: true });
+  await waitForEventTypes(request, sessionId, ["mesh_interaction", "pointer_click"]);
+
+  // 2) Mock: a few `top_meshes` calls per turn, then a long multi-line answer.
+  await page.route("**/mock-llm/**", async (route: Route) => {
+    const body = route.request().postDataJSON() as {
+      messages?: OpenAiRequestMessage[];
+      tools?: unknown;
+    };
+    const messages = body.messages ?? [];
+
+    if (requestHasTools(body) && toolCallsSinceLastUser(messages) < 3) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: completion({
+          content: "",
+          tool_calls: [
+            {
+              id: `call_${messages.length}`,
+              type: "function",
+              function: { name: "top_meshes", arguments: JSON.stringify({ limit: 5 }) },
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: completion({ content: LONG_ANSWER }),
+    });
+  });
+
+  // 3) Connect the dashboard and configure the mocked hosted backend.
+  await page.goto(DASHBOARD_URL);
+  await page.getByPlaceholder("http://localhost:4318").fill(COLLECTOR_URL);
+  await page.getByPlaceholder("utk_…").fill(API_KEY);
+  await page.getByRole("button", { name: /load/i }).click();
+  await expect(page.getByText("Top meshes")).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  const assistant = page.getByRole("region", { name: "Analytics assistant" });
+  await assistant.getByRole("button", { name: "Use hosted key" }).click();
+  await assistant.getByLabel("Endpoint").fill(MOCK_LLM_ENDPOINT);
+  await assistant.getByLabel("API key").fill("mock-key");
+  await assistant.getByLabel("Hosted model").fill("mock-model");
+  await assistant.getByRole("button", { name: "Use this provider" }).click();
+
+  // 4) Two turns so the conversation column grows past the panel's max-height.
+  for (let turn = 0; turn < 2; turn++) {
+    await assistant.getByLabel("Message").fill("What are my top meshes this week?");
+    await assistant.getByRole("button", { name: "Send" }).click();
+    // Wait for this turn's answer before sending the next question.
+    await expect(assistant.locator('[data-role="assistant"]').nth(turn)).toContainText(
+      "box-1 (48 instances)",
+      { timeout: 20_000 },
+    );
+  }
+
+  // 5) The tool activity ran and both regions are present.
+  const toolActivity = assistant.getByRole("list", { name: "Tool activity" });
+  await expect(toolActivity.getByText("top_meshes")).toBeVisible({ timeout: 20_000 });
+  const conversation = assistant.getByRole("list", { name: "Conversation" });
+  await expect(conversation).toBeVisible();
+
+  // Attach a screenshot artifact of the panel for visual inspection.
+  await testInfo.attach("assistant-panel", {
+    body: await assistant.screenshot(),
+    contentType: "image/png",
+  });
+
+  // 6) MEASURE: the last rendered message and the tool-activity list must not
+  //    share any screen area. Pre-fix the shrunk `<ol>`'s content overflowed down
+  //    over the `<ul>`, so the last message's box intersected the tool list.
+  const lastMessage = assistant.locator('[data-role="assistant"]').last();
+  const messageBox = await lastMessage.boundingBox();
+  const toolBox = await toolActivity.boundingBox();
+  expect(messageBox, "last message must have a layout box").not.toBeNull();
+  expect(toolBox, "tool-activity list must have a layout box").not.toBeNull();
+
+  expect(
+    rectsOverlap(messageBox!, toolBox!),
+    `message box ${JSON.stringify(messageBox)} must not overlap tool-activity box ${JSON.stringify(
+      toolBox,
+    )}`,
+  ).toBe(false);
+
+  // And, being vertically ordered, the message must end at or above the tool list
+  // (a 1px tolerance absorbs sub-pixel rounding).
+  expect(messageBox!.y + messageBox!.height).toBeLessThanOrEqual(toolBox!.y + 1);
 });

@@ -183,6 +183,29 @@ describe("<AssistantPanel>", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("compacts a long run of the same tool into one counted row", async () => {
+    // A small model often calls the same tool every step; the panel folds the
+    // near-duplicate lines into a single `✓ top_meshes ×N` row instead of N rows.
+    nextProvider = {
+      complete: vi.fn(async () => ({
+        kind: "tool_calls",
+        toolCalls: [{ id: "t", name: "top_meshes", arguments: {} }],
+      })),
+    };
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} maxSteps={4} />);
+
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "top meshes" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const list = await screen.findByRole("list", { name: "Tool activity" });
+    await waitFor(() => expect(list.querySelectorAll("li")).toHaveLength(1));
+    const [row] = list.querySelectorAll("li");
+    expect(row.textContent).toContain("top_meshes");
+    // Folded into a single counted row (the exact N depends on the loop's forced
+    // final pass; what matters is that N repeats collapse to one `×N` line).
+    expect(row.textContent).toContain("×");
+  });
+
   it("Change backend reveals the chooser cards, then the picker with both options", () => {
     render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
     fireEvent.click(screen.getByRole("button", { name: "Change backend" }));
