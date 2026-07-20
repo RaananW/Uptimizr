@@ -15,11 +15,11 @@
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.3",
-    "@babylonjs/core": "^9.15.0",
-    "@fontsource-variable/space-grotesk": "^5.2.10",
-    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@babylonjs/core": "^9.17.0",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@vercel/analytics": "^2.0.1",
-    "astro": "^7.0.6"
+    "astro": "^7.1.1"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9"
