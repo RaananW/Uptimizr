@@ -57,14 +57,14 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@uptimizr/agent-core": "workspace:*",
     "@uptimizr/schema": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^26.1.0",
-    "tsx": "^4.23.0",
+    "@types/node": "^26.1.2",
+    "tsx": "^4.23.1",
     "vitest": "^4.1.10"
   },
   "engines": {

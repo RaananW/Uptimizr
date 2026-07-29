@@ -35,8 +35,20 @@ minimumReleaseAgeExclude:
 overrides:
   # GHSA: stack overflow via deeply nested YAML (yaml < 2.8.3), via @astrojs/check.
   yaml: ">=2.8.3"
-  # GHSA: XSS via unescaped </style> in CSS stringify (postcss < 8.5.10), via next.
-  postcss: ">=8.5.10"
+  # GHSA: source-map path traversal (postcss < 8.5.18), via Next.js and Vite.
+  postcss: ">=8.5.18"
+  # GHSA: Windows path traversal in Hono's Node static serving adapter, via MCP SDK.
+  "@hono/node-server": ">=2.0.5 <3"
+  # GHSA: executable scripts survive SVG sanitization, via Astro.
+  svgo: ">=4.0.2 <5"
+  # GHSA: backslash host confusion in URI parsing, via Fastify, Astro, and MCP.
+  fast-uri: ">=3.1.4 <4"
+  # CVEs: inherited libvips vulnerabilities in sharp 0.34.x, via Next.js.
+  sharp: ">=0.35.0 <0.36"
+  # GHSA: HTTP/2 denial of service in find-my-way, via Fastify.
+  find-my-way: ">=9.6.1 <10"
+  # GHSA: unbounded brace expansion denial of service, via ESLint and Fastify.
+  brace-expansion: ">=5.0.8 <6"
   # GHSA: dev-server arbitrary file read on Windows (esbuild < 0.28.1), via astro.
   esbuild: ">=0.28.1"
   # GHSA-h67p-54hq-rp68: quadratic-complexity DoS via merge keys (js-yaml <= 4.1.1),
