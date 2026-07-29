@@ -61,14 +61,14 @@ importers:
   examples/playground:
     dependencies:
       '@babylonjs/core':
-        specifier: ^9.18.0
-        version: 9.18.0
+        specifier: ^9.18.1
+        version: 9.18.1
       '@babylonjs/lite':
         specifier: ^1.15.0
         version: 1.15.0(@webgpu/types@0.1.71)
       '@babylonjs/loaders':
         specifier: ^9.18.0
-        version: 9.18.0(@babylonjs/core@9.18.0)(babylonjs-gltf2interface@9.13.0)
+        version: 9.18.0(@babylonjs/core@9.18.1)(babylonjs-gltf2interface@9.13.0)
       '@react-three/fiber':
         specifier: 9.6.1
         version: 9.6.1(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.1)
@@ -189,11 +189,11 @@ importers:
   oss/apps/dashboard:
     dependencies:
       '@babylonjs/core':
-        specifier: ^9.18.0
-        version: 9.18.0
+        specifier: ^9.18.1
+        version: 9.18.1
       '@babylonjs/loaders':
         specifier: ^9.18.0
-        version: 9.18.0(@babylonjs/core@9.18.0)(babylonjs-gltf2interface@9.13.0)
+        version: 9.18.0(@babylonjs/core@9.18.1)(babylonjs-gltf2interface@9.13.0)
       '@mlc-ai/web-llm':
         specifier: ^0.2.79
         version: 0.2.84
@@ -315,8 +315,8 @@ importers:
         specifier: ^3.7.3
         version: 3.7.3
       '@babylonjs/core':
-        specifier: ^9.18.0
-        version: 9.18.0
+        specifier: ^9.18.1
+        version: 9.18.1
       '@fontsource-variable/space-grotesk':
         specifier: ^5.3.0
         version: 5.3.0
@@ -400,8 +400,8 @@ importers:
   oss/packages/heatmap:
     devDependencies:
       '@babylonjs/core':
-        specifier: ^9.18.0
-        version: 9.18.0
+        specifier: ^9.18.1
+        version: 9.18.1
       '@babylonjs/lite':
         specifier: ^1.15.0
         version: 1.15.0(@webgpu/types@0.1.71)
@@ -456,11 +456,11 @@ importers:
         version: link:../schema
     devDependencies:
       '@babylonjs/core':
-        specifier: ^9.18.0
-        version: 9.18.0
+        specifier: ^9.18.1
+        version: 9.18.1
       '@babylonjs/loaders':
         specifier: ^9.18.0
-        version: 9.18.0(@babylonjs/core@9.18.0)(babylonjs-gltf2interface@9.13.0)
+        version: 9.18.0(@babylonjs/core@9.18.1)(babylonjs-gltf2interface@9.13.0)
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -496,8 +496,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@babylonjs/core':
-        specifier: ^9.18.0
-        version: 9.18.0
+        specifier: ^9.18.1
+        version: 9.18.1
       '@babylonjs/lite':
         specifier: ^1.15.0
         version: 1.15.0(@webgpu/types@0.1.71)
@@ -559,8 +559,8 @@ importers:
         version: link:../sdk-core
     devDependencies:
       '@babylonjs/core':
-        specifier: ^9.18.0
-        version: 9.18.0
+        specifier: ^9.18.1
+        version: 9.18.1
       esbuild:
         specifier: '>=0.28.1'
         version: 0.28.1
@@ -855,8 +855,8 @@ packages:
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
 
-  '@babylonjs/core@9.18.0':
-    resolution: {integrity: sha512-Ypj9i29mOT8QGqdGaOCX2uQ9y7EhZ6RCBZLSDr84b6BzCltfp3yud75KQfCsOG8SjaZ77CsA40mX1J96kSUaaw==}
+  '@babylonjs/core@9.18.1':
+    resolution: {integrity: sha512-i0vnC6twHXhg2CmD+PSboRLUcTO4kxhrYvT1mY90zEqezM06QyL2Stix2u1YJ0y607fYdIl5XJuyfmPdbJfZSw==}
 
   '@babylonjs/lite@1.15.0':
     resolution: {integrity: sha512-p1LJ+hL4A8G4m5ux1e76T9bPyMENR3OwepMgDsvtKXa3n/2YSFOb/EVlNFNrF8sf+WiLCOnp8G899CbMjfSMiw==}
@@ -5780,15 +5780,15 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@babylonjs/core@9.18.0': {}
+  '@babylonjs/core@9.18.1': {}
 
   '@babylonjs/lite@1.15.0(@webgpu/types@0.1.71)':
     optionalDependencies:
       '@webgpu/types': 0.1.71
 
-  '@babylonjs/loaders@9.18.0(@babylonjs/core@9.18.0)(babylonjs-gltf2interface@9.13.0)':
+  '@babylonjs/loaders@9.18.0(@babylonjs/core@9.18.1)(babylonjs-gltf2interface@9.13.0)':
     dependencies:
-      '@babylonjs/core': 9.18.0
+      '@babylonjs/core': 9.18.1
       babylonjs-gltf2interface: 9.13.0
 
   '@bramus/specificity@2.4.2':

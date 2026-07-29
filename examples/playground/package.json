@@ -16,7 +16,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@babylonjs/core": "^9.18.0",
+    "@babylonjs/core": "^9.18.1",
     "@babylonjs/lite": "^1.15.0",
     "@babylonjs/loaders": "^9.18.0",
     "@react-three/fiber": "9.6.1",

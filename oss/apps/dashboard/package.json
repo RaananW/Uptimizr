@@ -48,7 +48,7 @@
     "clean": "rm -rf .next out"
   },
   "dependencies": {
-    "@babylonjs/core": "^9.18.0",
+    "@babylonjs/core": "^9.18.1",
     "@babylonjs/loaders": "^9.18.0",
     "@mlc-ai/web-llm": "^0.2.79",
     "@uptimizr/heatmap": "workspace:*",
