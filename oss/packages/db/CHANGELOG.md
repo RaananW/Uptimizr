@@ -1,5 +1,11 @@
 # @uptimizr/db
 
+## 0.7.3
+
+### Patch Changes
+
+- 1bb9846: Update the DuckDB and Model Context Protocol runtime dependencies to their latest compatible releases.
+
 ## 0.7.2
 
 ### Patch Changes

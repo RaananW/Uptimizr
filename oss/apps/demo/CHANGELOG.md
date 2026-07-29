@@ -1,5 +1,12 @@
 # @uptimizr/demo
 
+## 0.0.11
+
+### Patch Changes
+
+- Updated dependencies [1bb9846]
+  - @uptimizr/db@0.7.3
+
 ## 0.0.10
 
 ### Patch Changes

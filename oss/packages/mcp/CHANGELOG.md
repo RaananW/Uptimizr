@@ -1,5 +1,11 @@
 # @uptimizr/mcp
 
+## 0.2.4
+
+### Patch Changes
+
+- 1bb9846: Update the DuckDB and Model Context Protocol runtime dependencies to their latest compatible releases.
+
 ## 0.2.3
 
 ### Patch Changes
