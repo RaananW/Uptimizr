@@ -25,6 +25,7 @@ import { graphicsDiagnosticSchema } from "./graphicsDiagnostic.js";
 import { runtimeErrorSchema } from "./runtimeError.js";
 import { inputActionSchema } from "./inputAction.js";
 import { xrBoundaryProximitySchema } from "./xrBoundaryProximity.js";
+import { arPlacementSchema } from "./arPlacement.js";
 import { customSchema } from "./custom.js";
 
 /**
@@ -66,6 +67,7 @@ export const eventSchemaList = [
   runtimeErrorSchema,
   inputActionSchema,
   xrBoundaryProximitySchema,
+  arPlacementSchema,
   customSchema,
 ] as const;
 
@@ -101,6 +103,7 @@ export const anyEventSchema = z.discriminatedUnion("type", [
   runtimeErrorSchema,
   inputActionSchema,
   xrBoundaryProximitySchema,
+  arPlacementSchema,
   customSchema,
 ]);
 
@@ -139,6 +142,7 @@ export const eventSchemaByType = {
   runtime_error: runtimeErrorSchema,
   input_action: inputActionSchema,
   xr_boundary_proximity: xrBoundaryProximitySchema,
+  ar_placement: arPlacementSchema,
   custom: customSchema,
 } as const;
 
@@ -247,6 +251,12 @@ export {
 } from "./inputSource.js";
 export { inputActionSchema, type InputActionEvent } from "./inputAction.js";
 export { xrBoundaryProximitySchema, type XrBoundaryProximityEvent } from "./xrBoundaryProximity.js";
+export {
+  arPlacementSchema,
+  arPlacementSurfaceSchema,
+  type ArPlacementEvent,
+  type ArPlacementSurface,
+} from "./arPlacement.js";
 export {
   customSchema,
   customPropValueSchema,

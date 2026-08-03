@@ -18,6 +18,7 @@ import {
   renderScalePanel,
   perfDistributionPanel,
   perfChurnPanel,
+  placementFunnelPanel,
   worldHeatmapPanel,
   perfHeatmapPanel,
   errorHeatmapPanel,
@@ -96,7 +97,7 @@ function renderPanel(panel: PanelDefinition<unknown>): ReactElement {
 
 describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
   it("exposes the complete OSS panel set", () => {
-    expect(ossPanelCatalog).toHaveLength(31);
+    expect(ossPanelCatalog).toHaveLength(32);
   });
 
   it("every entry is a valid PanelDefinition with a unique id", () => {
@@ -134,6 +135,7 @@ describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
       renderScalePanel,
       perfDistributionPanel,
       perfChurnPanel,
+      placementFunnelPanel,
       worldHeatmapPanel,
       perfHeatmapPanel,
       errorHeatmapPanel,

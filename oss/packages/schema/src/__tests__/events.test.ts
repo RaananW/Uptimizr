@@ -651,6 +651,70 @@ describe("xr_boundary_proximity (guardian/boundary proximity, ADR 0048)", () => 
   });
 });
 
+describe("ar_placement (AR object-placement settle, #156 / ADR 0048 §1)", () => {
+  const basePlacement = {
+    ...baseEnvelope,
+    type: "ar_placement" as const,
+    mesh: "sofa",
+    position: [1.2, 0, -0.8],
+    attempts: 3,
+    timeToPlaceMs: 8200,
+    scale: 1,
+    final: true,
+  };
+
+  it("accepts a full placement with a coarse surface", () => {
+    const parsed = anyEventSchema.safeParse({ ...basePlacement, surface: "floor" });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts the minimal form (surface omitted)", () => {
+    const parsed = anyEventSchema.safeParse(basePlacement);
+    expect(parsed.success).toBe(true);
+    if (parsed.success && parsed.data.type === "ar_placement") {
+      expect(parsed.data.mesh).toBe("sofa");
+      expect(parsed.data.position).toEqual([1.2, 0, -0.8]);
+      expect(parsed.data.final).toBe(true);
+    }
+  });
+
+  it("accepts every coarse surface enum value", () => {
+    for (const surface of ["floor", "wall", "table", "ceiling", "unknown"] as const) {
+      expect(anyEventSchema.safeParse({ ...basePlacement, surface }).success).toBe(true);
+    }
+  });
+
+  it("rejects an unknown surface bucket", () => {
+    expect(anyEventSchema.safeParse({ ...basePlacement, surface: "outside" }).success).toBe(false);
+  });
+
+  it("requires a mesh name (the placed asset)", () => {
+    const { mesh: _mesh, ...noMesh } = basePlacement;
+    expect(anyEventSchema.safeParse(noMesh).success).toBe(false);
+    expect(anyEventSchema.safeParse({ ...basePlacement, mesh: "" }).success).toBe(false);
+  });
+
+  it("requires a final world position", () => {
+    const { position: _position, ...noPosition } = basePlacement;
+    expect(anyEventSchema.safeParse(noPosition).success).toBe(false);
+  });
+
+  it("rejects a non-positive or fractional attempts count", () => {
+    expect(anyEventSchema.safeParse({ ...basePlacement, attempts: 0 }).success).toBe(false);
+    expect(anyEventSchema.safeParse({ ...basePlacement, attempts: 1.5 }).success).toBe(false);
+  });
+
+  it("rejects a negative time-to-place and a non-positive scale", () => {
+    expect(anyEventSchema.safeParse({ ...basePlacement, timeToPlaceMs: -1 }).success).toBe(false);
+    expect(anyEventSchema.safeParse({ ...basePlacement, scale: 0 }).success).toBe(false);
+  });
+
+  it("requires the final flag (funnels must not guess the last settle)", () => {
+    const { final: _final, ...noFinal } = basePlacement;
+    expect(anyEventSchema.safeParse(noFinal).success).toBe(false);
+  });
+});
+
 describe("resource_sample (GPU / memory footprint, design §C)", () => {
   it("accepts a full footprint sample (#44)", () => {
     const parsed = anyEventSchema.safeParse({

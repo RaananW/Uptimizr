@@ -123,6 +123,15 @@ const fpsHistogramQueryParams = heatmapQueryParams.extend({
 });
 
 /**
+ * AR placement time-to-place params (#156, ADR 0048): range + scene/session
+ * filters plus a `bucketMs` bin width (capped at 60s; the builder defaults to
+ * 2000 ms) for the placement-latency histogram.
+ */
+const arPlacementTimeToPlaceQueryParams = heatmapQueryParams.extend({
+  bucketMs: z.coerce.number().int().positive().max(60_000).optional(),
+});
+
+/**
  * Perf-churn params (#144): range + scene/session filters plus the correlation
  * thresholds. `windowMs` is capped at 24h so the window stays a "shortly after"
  * signal; `fpsThreshold` at 240 (FPS) and `stallMs` at 60s bound the dip
@@ -905,6 +914,39 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.compileStalls(projectId, req.query);
+    },
+  );
+
+  // AR placement funnel (#156, ADR 0048) — retail "view in your room" friction:
+  // time-to-place distribution, re-placement (attempts) distribution, and coarse
+  // surface breakdown from `ar_placement` settles.
+  r.get(
+    "/api/v1/ar/placement/time-to-place",
+    { schema: { querystring: arPlacementTimeToPlaceQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.arPlacementTimeToPlace(projectId, req.query);
+    },
+  );
+
+  r.get(
+    "/api/v1/ar/placement/attempts",
+    { schema: { querystring: heatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.arPlacementAttempts(projectId, req.query);
+    },
+  );
+
+  r.get(
+    "/api/v1/ar/placement/surfaces",
+    { schema: { querystring: heatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.arPlacementSurfaces(projectId, req.query);
     },
   );
 

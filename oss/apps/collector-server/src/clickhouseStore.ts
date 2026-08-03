@@ -8,6 +8,9 @@ import {
   buildRageClicks,
   buildHoverDwell,
   buildCompileStalls,
+  buildArPlacementTimeToPlace,
+  buildArPlacementAttempts,
+  buildArPlacementSurfaces,
   buildResourceSummary,
   buildCapabilityChanges,
   buildCameraGestures,
@@ -72,6 +75,9 @@ import {
   type RageClickRow,
   type HoverDwellRow,
   type CompileStallRow,
+  type ArPlacementTimeToPlaceRow,
+  type ArPlacementAttemptsRow,
+  type ArPlacementSurfaceRow,
   type ResourceSummaryRow,
   type CapabilityChangeRow,
   type CameraGestureRow,
@@ -232,6 +238,15 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<HoverDwellRow>(ch, buildHoverDwell(projectId, opts, d)),
     compileStalls: (projectId, opts = {}) =>
       runClickhouseQuery<CompileStallRow>(ch, buildCompileStalls(projectId, opts, d)),
+    arPlacementTimeToPlace: (projectId, opts = {}) =>
+      runClickhouseQuery<ArPlacementTimeToPlaceRow>(
+        ch,
+        buildArPlacementTimeToPlace(projectId, opts, d),
+      ),
+    arPlacementAttempts: (projectId, opts = {}) =>
+      runClickhouseQuery<ArPlacementAttemptsRow>(ch, buildArPlacementAttempts(projectId, opts, d)),
+    arPlacementSurfaces: (projectId, opts = {}) =>
+      runClickhouseQuery<ArPlacementSurfaceRow>(ch, buildArPlacementSurfaces(projectId, opts, d)),
     resourceSummary: (projectId, opts = {}) =>
       runClickhouseQuery<ResourceSummaryRow>(ch, buildResourceSummary(projectId, opts, d)),
     capabilityChanges: (projectId, opts = {}) =>

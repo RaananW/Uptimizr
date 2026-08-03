@@ -54,6 +54,7 @@ export const EVENT_TYPES = [
   "runtime_error",
   "input_action",
   "xr_boundary_proximity",
+  "ar_placement",
   "custom",
 ] as const;
 
