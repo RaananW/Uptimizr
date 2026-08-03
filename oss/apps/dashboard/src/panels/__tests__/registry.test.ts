@@ -243,6 +243,38 @@ describe("builtinPanels — navigation-mix panel", () => {
   });
 });
 
+describe("builtinPanels — tracking-quality panel (#155)", () => {
+  const panel = builtinPanels.find((p) => p.id === "tracking-quality");
+
+  it("is registered as a half-width panel on both surfaces with no gate", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(1);
+    expect(panel?.clientOnly).toBeUndefined();
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+    expect(panel?.enabled).toBeUndefined();
+  });
+
+  it("loads per-session degraded-tracking rows and drops the source filter", async () => {
+    const trackingQuality = vi.fn().mockResolvedValue([
+      {
+        session_id: "s1",
+        degraded_ms: 1500,
+        hand_degraded_ms: 1500,
+        controller_degraded_ms: 0,
+        degraded_episodes: 2,
+        started_at: "2024-06-16 10:00:00.000",
+        ended_at: "2024-06-16 10:00:25.000",
+      },
+    ]);
+    const ctx = makeCtx({ params: { scene: "s", source: "hand" }, api: { trackingQuality } });
+    const data = (await panel?.load?.(ctx)) as unknown[];
+    expect(data).toHaveLength(1);
+    expect(trackingQuality).toHaveBeenCalledWith(
+      expect.objectContaining({ scene: "s", source: undefined }),
+    );
+  });
+});
+
 describe("builtinPanels — flow-sankey panel", () => {
   const panel = builtinPanels.find((p) => p.id === "flow-sankey-3d");
 

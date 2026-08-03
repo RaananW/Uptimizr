@@ -89,6 +89,7 @@ describe("duckdb parity (vs golden)", () => {
       "xrSourceUsage",
       "xrAbandonment",
       "xrLocomotion",
+      "trackingQuality",
       "interactionsBySource",
       "funnel",
       "loadBounceFunnel",

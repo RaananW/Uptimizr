@@ -48,6 +48,15 @@ export interface XrCaptureOptions {
   clicks?: boolean;
   /** Named hit on select/squeeze → `mesh_interaction`. Requires a {@link XrRayProbe}. */
   meshPicks?: boolean;
+  /**
+   * Best-effort tracking-quality transitions → `capability_change { kind: "tracking" }`
+   * (ADR 0048). A source dropping out of / re-appearing in the XR input registry
+   * mid-session is treated as tracking lost / recovered; the recovery reports the
+   * degraded-episode `durationMs`. Coarse by nature (a source turned off looks the
+   * same as one whose tracking was lost); apps with a real tracking-confidence hook
+   * can report precise transitions via `client.reportCapabilityChange(...)` instead.
+   */
+  tracking?: boolean;
 }
 
 /**

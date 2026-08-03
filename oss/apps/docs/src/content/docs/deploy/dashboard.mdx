@@ -35,9 +35,11 @@ with `x-api-key`. The key only ever reads its own project's data.
 - **Performance** — FPS/frame-time summaries with percentile aggregation, a **performance
   distribution** histogram (p05/p50/p95 bands), compile stalls, resource footprint.
 - **Navigation & XR** — camera gestures, coverage and a **dead-zone report** (proxy meshes visitors
-  never approach), XR rotation and source usage, and a **VR comfort & locomotion** panel (teleport
+  never approach), XR rotation and source usage, a **VR comfort & locomotion** panel (teleport
   vs. smooth-locomotion vs. navigate mix for XR sessions, correlated with early exits — a
-  motion-discomfort proxy).
+  motion-discomfort proxy), and a **tracking quality** panel (share of XR session time spent with
+  degraded or lost spatial tracking, split by hand vs. controller — from `capability_change`
+  `tracking` transitions).
 - **Scene retention funnel** — a canned level-retention preset: session counts flowing scene → scene
   in observed order (from `scene_change` markers), with drop-off visible per source scene and **no
   funnel steps to author** (#147).

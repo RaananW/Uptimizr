@@ -129,6 +129,7 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "xrSourceUsage",
       "xrAbandonment",
       "xrLocomotion",
+      "trackingQuality",
       "interactionsBySource",
       "funnel",
       "loadBounceFunnel",

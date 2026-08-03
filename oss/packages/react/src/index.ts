@@ -119,6 +119,7 @@ export {
   errorHeatmapPanel,
   navigationMixPanel,
   xrLocomotionComfortPanel,
+  trackingQualityPanel,
   sceneRetentionPanel,
   backtrackPanel,
   deadZonePanel,
@@ -152,6 +153,7 @@ export {
   comfortCorrelation,
   sessionDurationMs,
 } from "./catalog/views/XrLocomotionComfort";
+export { TrackingQualityView, trackingSummary } from "./catalog/views/TrackingQuality";
 export { SceneRetentionFunnelView } from "./catalog/views/SceneRetentionFunnel";
 export { LoadBounceFunnelView, LOAD_BANDS } from "./catalog/views/LoadBounceFunnel";
 export { PointerHeatmapView } from "./catalog/views/PointerHeatmap";
