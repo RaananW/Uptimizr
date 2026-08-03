@@ -117,3 +117,34 @@ const proxy = scanSceneProxy(scene, { sceneId: "lobby" });
 ```
 
 For a custom transport or a `beforeSend` hook, see [sdk-core (advanced)](/docs/connectors/sdk-core/).
+
+## AR placement (WebXR "view in your room")
+
+Retail AR placement is app-driven, so `babylonArPlacementCollector` turns three
+`Observable`s from your placement UI into exactly **one** `ar_placement` event per
+settle — never per frame. It counts re-placement attempts, times how long placement
+took, records the final scale, and classifies the surface coarsely from the WebXR
+hit-test normal (`floor` / `wall` / `table` / `ceiling` / `unknown`):
+
+```ts
+import { UptimizrClient } from "@uptimizr/sdk-core";
+import { babylonCollector, babylonArPlacementCollector } from "@uptimizr/babylon";
+
+const client = new UptimizrClient({ projectId, endpoint });
+client.use(babylonCollector({ scene }));
+client.use(
+  babylonArPlacementCollector({
+    mesh: "Sofa",
+    onPlacementStartObservable, // { mesh } — user entered placement mode
+    onPlaceObservable, // { position, normal? } — one fire per (re-)place
+    onSettleObservable, // { position, scale?, final? } — the commit
+    hitTest: xrHitTest, // optional Babylon WebXRHitTest feature
+  }),
+);
+client.start();
+```
+
+Signals are coarse and on-device only ([privacy](/docs/deploy/privacy/)): no plane
+polygons, no room dimensions, no PII — only the coarse surface bucket, counts, and
+durations leave the client. The data powers the dashboard's **AR placement funnel**
+panel and the `/api/v1/ar/placement/*` endpoints.

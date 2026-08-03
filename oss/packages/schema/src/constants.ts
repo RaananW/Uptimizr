@@ -53,6 +53,7 @@ export const EVENT_TYPES = [
   "graphics_diagnostic",
   "runtime_error",
   "input_action",
+  "ar_placement",
   "custom",
 ] as const;
 

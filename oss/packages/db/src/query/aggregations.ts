@@ -2801,6 +2801,115 @@ function funnelStepPredicate(bag: ParamBag, step: FunnelStepInput, i: number): s
  * The `steps` come from the caller (request input / CLI / hosted), not a stored
  * config — OSS has no authoring surface (ADR 0038).
  */
+/**
+ * AR placement time-to-place distribution (#156, ADR 0048 §1). Histograms each
+ * `ar_placement` settle's `timeToPlaceMs` (payload) into `bucketMs`-wide bins
+ * (default 2000 ms), one settle contributing one data point. The felt cost of
+ * getting a "view in your room" model onto a surface — a right shift means
+ * visitors struggled to place, the AR analogue of a slow add-to-cart.
+ *
+ * `timeToPlaceMs` rides in the JSON `payload` (no promoted column, ADR 0048), so
+ * it is read via the dialect's nullable-int JSON accessor and `coalesce`d to 0.
+ */
+export function buildArPlacementTimeToPlace(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions & { bucketMs?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const bucket = bag.add("bucketMs", "u32", opts.bucketMs ?? 2000);
+  const timeToPlace = d.jsonInt("payload", "timeToPlaceMs");
+  return {
+    query: `
+      SELECT
+        floor(coalesce(${timeToPlace}, 0) / ${bucket}) * ${bucket} AS bucket,
+        count() AS placements
+      FROM events
+      WHERE project_id = ${pid} AND event_type = 'ar_placement'${range}${scene}${session}
+      GROUP BY bucket
+      ORDER BY bucket ASC
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * AR re-placement (attempts) distribution (#156, ADR 0048 §1). Counts settles by
+ * their `attempts` (payload) — how many place/re-place actions the visitor made
+ * before committing. `attempts = 1` is a clean first-try placement; a long right
+ * tail is placement friction (fighting to position/scale the model).
+ *
+ * `attempts` rides in the JSON `payload` (no promoted column, ADR 0048); read via
+ * the nullable-int JSON accessor and `coalesce`d to 1 (a settle is at least one
+ * attempt) so a settle with an absent count still bins sensibly.
+ */
+export function buildArPlacementAttempts(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions,
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const attempts = d.jsonInt("payload", "attempts");
+  return {
+    query: `
+      SELECT
+        coalesce(${attempts}, 1) AS attempts,
+        count() AS placements
+      FROM events
+      WHERE project_id = ${pid} AND event_type = 'ar_placement'${range}${scene}${session}
+      GROUP BY attempts
+      ORDER BY attempts ASC
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * AR placement surface breakdown (#156, ADR 0048 §1). Per coarse surface bucket
+ * (`floor`/`wall`/`table`/`ceiling`/`unknown`), the number of settles and their
+ * average committed `scale`. Shows *where* visitors place models and how far off
+ * the authored real-world size they settle — the retail signal of whether the
+ * model's default scale matches how people actually use it.
+ *
+ * `surface` and `scale` ride in the JSON `payload` (no promoted columns, ADR
+ * 0048); `surface` is `coalesce`d to `'unknown'` so unclassified settles still
+ * group.
+ */
+export function buildArPlacementSurfaces(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions,
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const surface = d.jsonText("payload", "surface");
+  const scale = d.jsonFloat("payload", "scale");
+  return {
+    query: `
+      SELECT
+        coalesce(${surface}, 'unknown') AS surface,
+        count() AS placements,
+        avg(${scale}) AS avg_scale
+      FROM events
+      WHERE project_id = ${pid} AND event_type = 'ar_placement'${range}${scene}${session}
+      GROUP BY surface
+      ORDER BY placements DESC
+    `,
+    query_params: bag.values,
+  };
+}
+
 export function buildFunnel(projectId: string, opts: FunnelOptions, d: Dialect): QuerySpec {
   const bag = new ParamBag(d);
   const pid = bag.add("projectId", "string", projectId);

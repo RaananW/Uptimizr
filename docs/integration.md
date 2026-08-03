@@ -219,6 +219,7 @@ and pointer activity — the SDK also records these discrete lifecycle events
 | `capability_change`   | _app-reported_      | Fallback/recovery transition (`kind`, `from`, `to`, `reason`) — e.g. WebGPU→WebGL2.                                                                                                                                                                                                                                             |
 | `runtime_error`       | `sdk-core`          | Uncaught JS error / unhandled promise rejection (opt-in). Optional best-effort `position` (camera pose when it fired) powers the spatial error heatmap (#154).                                                                                                                                                                  |
 | `graphics_diagnostic` | engine connector    | Opt-in GPU-health signal — today: WebGPU `device.lost` (`category: device-lost`), `uncapturederror` rollup (`validation`/`out-of-memory`), and context-creation failure (`category: context-loss`, `fatal`). Babylon + three; WebGL device-loss no-op. Optional best-effort `position` powers the spatial error heatmap (#154). |
+| `ar_placement`        | `@uptimizr/babylon` | AR object-placement settle (#156, ADR 0048): emitted **once per placement settle** (not per frame) for retail "view in your room" AR. Carries `mesh`, final world `position`, coarse `surface` (`floor`/`wall`/`table`/`ceiling`/`unknown`), `attempts` (re-placements), `timeToPlaceMs`, `scale` (1 = authored real-world size), and `final`. App-driven via `babylonArPlacementCollector` (see below).                                        |
 
 The generic browser events are captured by `sdk-core` and controlled by
 `captureLifecycle` (default `true`); `viewport_resize` is debounced by
@@ -415,6 +416,37 @@ await client.stop("manual");
 `beforeSend` runs on every event after the envelope is filled in; use it to redact
 fields or sample a noisy channel. It is **not** exposed through `trackScene` —
 reach for the custom-client path when you need it.
+
+### AR placement capture (WebXR "view in your room")
+
+Retail AR placement is app-driven — only your app knows when the visitor enters
+placement mode, taps to (re-)place the model, and finally commits it. Wire those
+three moments (Babylon `Observable`s you already own) into
+`babylonArPlacementCollector` and it emits exactly **one** `ar_placement` per settle
+(#156, ADR 0048), counting re-placement `attempts`, timing `timeToPlaceMs`, and
+classifying the coarse `surface` from the WebXR hit-test normal:
+
+```ts
+import { babylonArPlacementCollector } from "@uptimizr/babylon";
+
+client.use(
+  babylonArPlacementCollector({
+    mesh: "Sofa",
+    // Your placement UI's observables:
+    onPlacementStartObservable, // fires with { mesh } when the user enters placement mode
+    onPlaceObservable, // fires on each (re-)place with { position, normal? }
+    onSettleObservable, // fires on confirm with { position, scale?, final? }
+    // Optional: let the collector classify the surface for you.
+    hitTest: xrHitTest, // Babylon WebXRHitTest feature (onHitTestResultObservable)
+  }),
+);
+```
+
+Signals are coarse and on-device only (ADR 0003): no plane polygons, no room
+dimensions, no PII — only the coarse surface bucket, counts, and durations leave the
+client; world `position` is voxel-binned downstream like every spatial signal. The
+three query endpoints (`/api/v1/ar/placement/*`) power the dashboard's **AR placement
+funnel** panel.
 
 ### Privacy
 
@@ -1158,6 +1190,9 @@ correctly). The dashboard's 3D world heatmap also normalizes color/size to the
 | `GET`  | `/api/v1/input-actions/top`       | Most-used shortcuts (#75, ADR 0023): per `(action, source)` `count` from `input_action` events — the app-level actions/shortcuts visitors trigger most, split by input source.                                                                                                                                                                                                                                                                   | `limit`, `scene`, `source`, `session`                                                                |
 | `GET`  | `/api/v1/xr/abandonment`          | XR session abandonment: per XR session `events`, `xr_interactions`, `started_at`, `ended_at` (short span ⇒ headset drop-off).                                                                                                                                                                                                                                                                                                                    | `limit`, `scene`, `session`                                                                          |
 | `GET`  | `/api/v1/xr/locomotion`           | XR locomotion & comfort (#148): per XR session `fly_gestures`, `navigate_gestures`, `teleports`, `locomotion_ms`, `started_at`, `ended_at`. Teleports emit both a `fly` gesture and a `mesh_interaction` teleport (ADR 0025), so smooth locomotion is `fly_gestures - teleports`; the session span correlates heavy locomotion with early exits (a discomfort proxy). Only sessions that used an XR input source are returned.                   | `limit`, `scene`, `session`                                                                          |
+| `GET`  | `/api/v1/ar/placement/time-to-place` | AR placement time-to-place (#156, ADR 0048): histogram of how long each `ar_placement` settle took (`bucket` lower edge in ms, `placements` count), bucketed by `bucketMs` (default 2000). The felt friction of retail "view in your room" placement.                                                                                                                                                                                          | `bucketMs` (default 2000, max 60000), `scene`, `session`                                             |
+| `GET`  | `/api/v1/ar/placement/attempts`   | AR re-placement distribution (#156, ADR 0048): how many placement settles took exactly `attempts` tries (`attempts`, `placements`) — the AR analogue of cart hesitation.                                                                                                                                                                                                                                                                         | `scene`, `session`                                                                                   |
+| `GET`  | `/api/v1/ar/placement/surfaces`   | AR surface breakdown (#156, ADR 0048): per coarse surface class (`floor`/`wall`/`table`/`ceiling`/`unknown`) the `placements` count and `avg_scale` (1 = authored real-world size). Where did models land, and did visitors resize them?                                                                                                                                                                                                          | `scene`, `session`                                                                                   |
 | `GET`  | `/api/v1/scenes`                  | Distinct scenes with activity (id, event count, last seen) for the scene picker (ADR 0010).                                                                                                                                                                                                                                                                                                                                                      | `limit`                                                                                              |
 | `GET`  | `/api/v1/timeseries`              | Event-volume buckets over time (`bucket` epoch-ms, `events`, `avg_fps`) — the time dimension.                                                                                                                                                                                                                                                                                                                                                    | `scene`, `interval` (sec), `type`                                                                    |
 | `GET`  | `/api/v1/event-counts`            | Per-event-type counts over the range (powers the scene-health panel).                                                                                                                                                                                                                                                                                                                                                                            | `scene`                                                                                              |

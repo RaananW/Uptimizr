@@ -98,6 +98,9 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
     compileStalls: async () => [
       { phase: "shader", stalls: 7, total_ms: 210, avg_ms: 30, max_ms: 64 },
     ],
+    arPlacementTimeToPlace: async () => [{ bucket: 0, placements: 3 }],
+    arPlacementAttempts: async () => [{ attempts: 1, placements: 5 }],
+    arPlacementSurfaces: async () => [{ surface: "floor", placements: 4, avg_scale: 1 }],
     resourceSummary: async () => [
       {
         samples: 4,
@@ -1054,6 +1057,80 @@ describe("collector app", () => {
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/perf/compile-stalls?scene=lobby&session=s1",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received).toMatchObject({ scene: "lobby", session: "s1" });
+    await app.close();
+  });
+
+  it("returns AR placement time-to-place buckets for a valid API key (#156)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/ar/placement/time-to-place",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([{ bucket: 0, placements: 3 }]);
+    await app.close();
+  });
+
+  it("forwards the bucket width to the AR time-to-place store call (#156)", async () => {
+    let received: unknown;
+    const store = makeStore({
+      arPlacementTimeToPlace: async (_projectId, opts) => {
+        received = opts;
+        return [];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/ar/placement/time-to-place?bucketMs=1000&scene=lobby&session=s1",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received).toMatchObject({ bucketMs: 1000, scene: "lobby", session: "s1" });
+    await app.close();
+  });
+
+  it("returns AR re-placement attempt distribution for a valid API key (#156)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/ar/placement/attempts",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([{ attempts: 1, placements: 5 }]);
+    await app.close();
+  });
+
+  it("returns AR surface-type breakdown for a valid API key (#156)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/ar/placement/surfaces",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([{ surface: "floor", placements: 4, avg_scale: 1 }]);
+    await app.close();
+  });
+
+  it("forwards scene/session filters to the AR surfaces store call (#156)", async () => {
+    let received: unknown;
+    const store = makeStore({
+      arPlacementSurfaces: async (_projectId, opts) => {
+        received = opts;
+        return [];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/ar/placement/surfaces?scene=lobby&session=s1",
       headers: { "x-api-key": "valid-key" },
     });
     expect(res.statusCode).toBe(200);

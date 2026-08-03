@@ -114,6 +114,7 @@ export {
   renderScalePanel,
   perfDistributionPanel,
   perfChurnPanel,
+  placementFunnelPanel,
   worldHeatmapPanel,
   perfHeatmapPanel,
   errorHeatmapPanel,

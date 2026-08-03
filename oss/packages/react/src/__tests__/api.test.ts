@@ -344,6 +344,49 @@ describe("CollectorApi", () => {
     ]);
   });
 
+  it("coerces AR placement time-to-place bins and forwards the ms bucket (#156)", async () => {
+    const fetchMock = mockFetch([{ bucket: "0", placements: "3" }]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.arPlacementTimeToPlace({ scene: "room", bucketMs: 1000 });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe(
+      "http://localhost:4318/api/v1/ar/placement/time-to-place",
+    );
+    expect(parsed.searchParams.get("scene")).toBe("room");
+    expect(parsed.searchParams.get("bucketMs")).toBe("1000");
+    expect(rows).toEqual([{ bucket: 0, placements: 3 }]);
+  });
+
+  it("coerces AR re-placement attempt rows and hits the attempts endpoint (#156)", async () => {
+    const fetchMock = mockFetch([{ attempts: "1", placements: "5" }]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.arPlacementAttempts({ session: "s1" });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/ar/placement/attempts");
+    expect(parsed.searchParams.get("session")).toBe("s1");
+    expect(rows).toEqual([{ attempts: 1, placements: 5 }]);
+  });
+
+  it("coerces AR surface-breakdown rows and hits the surfaces endpoint (#156)", async () => {
+    const fetchMock = mockFetch([{ surface: "floor", placements: "4", avg_scale: "1.25" }]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.arPlacementSurfaces({ scene: "room" });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe(
+      "http://localhost:4318/api/v1/ar/placement/surfaces",
+    );
+    expect(rows).toEqual([{ surface: "floor", placements: 4, avg_scale: 1.25 }]);
+  });
+
   it("coerces rendering-technology counts and hits the rendering-technology endpoint (#120)", async () => {
     const fetchMock = mockFetch([
       {
