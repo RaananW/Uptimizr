@@ -1575,10 +1575,7 @@ export function buildBoundaryHeatmap(
  */
 export function buildBoundaryHeatmapStats(
   projectId: string,
-  opts: RangeOptions &
-    SceneOptions &
-    SessionOptions &
-    RegionOptions & { cellSize?: number },
+  opts: RangeOptions & SceneOptions & SessionOptions & RegionOptions & { cellSize?: number },
   d: Dialect,
 ): QuerySpec {
   const bag = new ParamBag(d);

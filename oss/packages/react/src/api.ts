@@ -1172,11 +1172,13 @@ export class CollectorApi {
 
   /** Boundary-touch heatmap totals (ADR 0040 §3): the sibling of {@link worldHeatmapStats}. */
   boundaryHeatmapStats(params?: QueryParams): Promise<SpatialStats> {
-    return this.get<Record<string, unknown>>("api/v1/heatmaps/boundary/stats", params).then((r) => ({
-      cellSize: Number(r.cellSize ?? 0),
-      cells: Number(r.cells ?? 0),
-      hits: Number(r.hits ?? 0),
-    }));
+    return this.get<Record<string, unknown>>("api/v1/heatmaps/boundary/stats", params).then(
+      (r) => ({
+        cellSize: Number(r.cellSize ?? 0),
+        cells: Number(r.cells ?? 0),
+        hits: Number(r.hits ?? 0),
+      }),
+    );
   }
 
   /**

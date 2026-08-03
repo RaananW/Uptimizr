@@ -246,10 +246,7 @@ export {
   type Ray,
 } from "./inputSource.js";
 export { inputActionSchema, type InputActionEvent } from "./inputAction.js";
-export {
-  xrBoundaryProximitySchema,
-  type XrBoundaryProximityEvent,
-} from "./xrBoundaryProximity.js";
+export { xrBoundaryProximitySchema, type XrBoundaryProximityEvent } from "./xrBoundaryProximity.js";
 export {
   customSchema,
   customPropValueSchema,

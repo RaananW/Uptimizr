@@ -32,7 +32,9 @@ const SQUARE_BOUNDS = [
 /** A controllable session manager whose viewer pose we move between frames. */
 function makeManager() {
   const onXRFrameObservable = fakeObservable<{
-    getViewerPose?: (space: unknown) => { transform?: { position?: { x: number; y: number; z: number } } } | null;
+    getViewerPose?: (
+      space: unknown,
+    ) => { transform?: { position?: { x: number; y: number; z: number } } } | null;
   }>();
   const state = {
     pos: { x: 0, y: 1.6, z: 0 } as { x: number; y: number; z: number },
@@ -198,11 +200,7 @@ describe("babylonBoundaryCollector", () => {
     onXRFrameObservable.fire(frame);
 
     expect(emit).toHaveBeenCalledTimes(1);
-    expect(Object.keys(emit.mock.calls[0]![0]).sort()).toEqual([
-      "durationMs",
-      "position",
-      "type",
-    ]);
+    expect(Object.keys(emit.mock.calls[0]![0]).sort()).toEqual(["durationMs", "position", "type"]);
   });
 
   it("does not throw when no session manager is present", () => {

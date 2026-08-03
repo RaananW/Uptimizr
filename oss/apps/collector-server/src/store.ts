@@ -493,10 +493,7 @@ export interface CollectorStore {
    */
   boundaryHeatmapStats(
     projectId: string,
-    opts?: RangeOptions &
-      SceneOptions &
-      SessionOptions &
-      RegionOptions & { cellSize?: number },
+    opts?: RangeOptions & SceneOptions & SessionOptions & RegionOptions & { cellSize?: number },
   ): Promise<SpatialStatsRow>;
   /**
    * Always-on rendering-technology mix (#120, ADR 0021 part 1): `session_start`

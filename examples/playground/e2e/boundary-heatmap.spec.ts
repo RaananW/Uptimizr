@@ -85,10 +85,15 @@ async function readModel<T>(request: APIRequestContext, path: string): Promise<T
     });
     if (res.status() === 429 && attempt < 5) {
       const retryAfter = Number(res.headers()["retry-after"]);
-      await new Promise((r) => setTimeout(r, Number.isFinite(retryAfter) ? retryAfter * 1000 : 2000));
+      await new Promise((r) =>
+        setTimeout(r, Number.isFinite(retryAfter) ? retryAfter * 1000 : 2000),
+      );
       continue;
     }
-    expect(res.ok(), `read ${path} should succeed (got ${res.status()}: ${await res.text()})`).toBeTruthy();
+    expect(
+      res.ok(),
+      `read ${path} should succeed (got ${res.status()}: ${await res.text()})`,
+    ).toBeTruthy();
     return (await res.json()) as T;
   }
 }

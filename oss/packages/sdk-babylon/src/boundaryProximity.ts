@@ -147,11 +147,7 @@ function distanceToSegment(
  * loop of `bounds`). Returns `Infinity` when there is no usable boundary (fewer
  * than two vertices), so the caller simply never triggers.
  */
-export function distanceToBoundary(
-  px: number,
-  pz: number,
-  bounds: ArrayLike<XrPointLike>,
-): number {
+export function distanceToBoundary(px: number, pz: number, bounds: ArrayLike<XrPointLike>): number {
   const n = bounds.length;
   if (n < 2) return Infinity;
   let min = Infinity;
