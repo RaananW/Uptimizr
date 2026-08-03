@@ -61,12 +61,12 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@duckdb/node-api": "^1.5.5-r.2",
+    "@duckdb/node-api": "^1.5.5-r.3",
     "@uptimizr/schema": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
-    "tsx": "^4.23.1",
+    "tsx": "^4.23.4",
     "vitest": "^4.1.10"
   }
 }

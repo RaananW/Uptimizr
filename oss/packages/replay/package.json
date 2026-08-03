@@ -91,10 +91,10 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@babylonjs/core": "^9.18.0",
+    "@babylonjs/core": "^9.19.0",
     "@babylonjs/lite": "^1.15.0",
     "esbuild": "^0.28.1",
-    "playcanvas": "2.21.1",
+    "playcanvas": "2.21.3",
     "three": "^0.185.1",
     "vitest": "^4.1.10"
   }
