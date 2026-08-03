@@ -157,9 +157,11 @@ test("dashboard renders the guardian boundary heatmap + contacts panels (#157)",
   await expect(
     contactsPanel.getByRole("heading", { name: "Guardian boundary contacts" }),
   ).toBeVisible({ timeout: 20_000 });
-  // The seeded approaches populate the summary (not the empty state).
-  await expect(contactsPanel.getByText("Contacts", { exact: true })).toBeVisible();
-  await expect(contactsPanel.getByText("Sessions", { exact: true })).toBeVisible();
+  // The seeded approaches populate the summary stats (not the empty state). Target
+  // the summary <dt> terms specifically: "Contacts" also appears as a table column
+  // header, so a plain text match would be ambiguous under Playwright strict mode.
+  await expect(contactsPanel.locator("dt").filter({ hasText: /^Contacts$/ })).toBeVisible();
+  await expect(contactsPanel.locator("dt").filter({ hasText: /^Sessions$/ })).toBeVisible();
 });
 
 /** Open the dashboard pointed at the e2e collector and load the data. */
