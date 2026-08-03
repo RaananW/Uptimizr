@@ -732,6 +732,25 @@ export interface XrLocomotionRow {
 }
 
 /**
+ * Per-session guardian/boundary-contact row (ADR 0048, #157): how many times a
+ * session's tracked VR position approached its play-space boundary, and the total
+ * time spent in the near-boundary zone. A high `contacts` count is a room-scale
+ * comfort/frustration signal — the physical space didn't fit the experience.
+ *
+ * Sourced from `xr_boundary_proximity` events, each of which is one approach
+ * (ADR 0048), so `contacts` is a plain `count()` and `near_ms` sums their
+ * `durationMs` (stored in the shared `visible_ms` column). No boundary geometry
+ * is ever read — only the promoted position + duration each event already carries.
+ */
+export interface BoundaryContactsRow {
+  session_id: string;
+  /** Number of boundary approaches in the session (one per event). */
+  contacts: number;
+  /** Total time spent within the near-boundary zone, in ms (from `visible_ms`). */
+  near_ms: number;
+}
+
+/**
  * One funnel step predicate (ADR 0038): the structural subset of a
  * `@uptimizr/schema` `FunnelStep` the aggregation compiles to SQL. Each field
  * maps to a promoted column — `type`→`event_type`, `name`→the `name` column

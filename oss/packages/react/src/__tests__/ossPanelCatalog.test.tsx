@@ -21,8 +21,10 @@ import {
   worldHeatmapPanel,
   perfHeatmapPanel,
   errorHeatmapPanel,
+  boundaryHeatmapPanel,
   navigationMixPanel,
   xrLocomotionComfortPanel,
+  boundaryContactsPanel,
   sceneRetentionPanel,
   backtrackPanel,
   deadZonePanel,
@@ -40,6 +42,7 @@ const PANEL_3D_IDS = new Set([
   "world-heatmap-3d",
   "perf-heatmap-3d",
   "error-heatmap-3d",
+  "boundary-heatmap-3d",
   "flow-sankey-3d", // gitleaks:allow — panel id, not a secret
   "gaze-click-divergence-3d",
   "session-replay",
@@ -93,7 +96,7 @@ function renderPanel(panel: PanelDefinition<unknown>): ReactElement {
 
 describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
   it("exposes the complete OSS panel set", () => {
-    expect(ossPanelCatalog).toHaveLength(29);
+    expect(ossPanelCatalog).toHaveLength(31);
   });
 
   it("every entry is a valid PanelDefinition with a unique id", () => {
@@ -134,8 +137,10 @@ describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
       worldHeatmapPanel,
       perfHeatmapPanel,
       errorHeatmapPanel,
+      boundaryHeatmapPanel,
       navigationMixPanel,
       xrLocomotionComfortPanel,
+      boundaryContactsPanel,
       sceneRetentionPanel,
       backtrackPanel,
       deadZonePanel,

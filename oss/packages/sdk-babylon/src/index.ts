@@ -36,4 +36,15 @@ export type {
   XrRayHit,
   XrRayProbe,
 } from "./xr.js";
+export {
+  babylonBoundaryCollector,
+  distanceToBoundary,
+  DEFAULT_NEAR_METERS,
+  DEFAULT_HYSTERESIS_METERS,
+  DEFAULT_SAMPLE_MS,
+} from "./boundaryProximity.js";
+export type {
+  BabylonBoundaryCollectorOptions,
+  BabylonXrBoundaryExperienceLike,
+} from "./boundaryProximity.js";
 export { toVec3, clamp01 } from "./vec.js";

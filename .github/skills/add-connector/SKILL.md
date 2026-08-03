@@ -62,11 +62,24 @@ depend only on `@uptimizr/sdk-core` and `@uptimizr/schema`.
    - Expose sampling-rate options; register and clean up all listeners/observers on `dispose()`.
    - No cookies / no persistent client IDs (ADR 0003).
 
-6. **Replay (optional but recommended).**
+6. **WebXR guardian / boundary proximity (optional, room-scale VR — ADR 0048).**
+   - If the engine exposes a **bounded** WebXR reference space (`bounded-floor`, whose
+     `boundsGeometry` is the guardian/play-space polygon), emit `xr_boundary_proximity` when the
+     tracked HMD pose comes within a **near threshold** of that boundary — one event per approach,
+     carrying only a coarse voxel-binned `position` (closest approach) and `durationMs` (time inside
+     the near zone). Mirror `@uptimizr/babylon`'s `babylonBoundaryCollector`.
+   - **Recommended default `nearMeters` = 0.5 m** (with ~0.1 m exit hysteresis and ~100 ms
+     sampling) — close enough to flag a real reach-for-the-wall moment without firing on normal
+     room-centre movement. Expose it as an option so integrators can tune it per play space.
+   - ⚠️ **Privacy (ADR 0003 / ADR 0048): NEVER transmit the boundary polygon or room geometry.**
+     The bounds check runs entirely on-device; only the outcome (position + duration) leaves the
+     device. The event must carry no polygon, room size, or vertex data.
+
+7. **Replay (optional but recommended).**
    - Add a matching driver in `@uptimizr/replay` so sessions captured with this engine can be
      re-driven in the user's own scene.
 
-7. **Example + tests.**
+8. **Example + tests.**
    - Add an `examples/<engine>-playground` demo wired to the collector.
    - Unit-test event construction; ensure `pnpm lint typecheck build test` passes.
 
@@ -77,5 +90,7 @@ depend only on `@uptimizr/sdk-core` and `@uptimizr/schema`.
 - [ ] World-space data normalized to the canonical frame; `connector` provenance emitted (ADR 0018)
 - [ ] `graphics` backend metadata emitted on `session_start` (ADR 0021)
 - [ ] `dispose()` cleans up; no persistent client IDs
+- [ ] WebXR guardian/boundary proximity emitted for bounded reference spaces — on-device only, no
+      room geometry transmitted (ADR 0048); recommended `nearMeters` default 0.5 m
 - [ ] Optional replay driver added
 - [ ] Example playground + tests; CI green

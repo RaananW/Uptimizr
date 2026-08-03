@@ -1,5 +1,8 @@
 import {
   buildBacktrackRatio,
+  buildBoundaryContacts,
+  buildBoundaryHeatmap,
+  buildBoundaryHeatmapStats,
   buildCameraDirectionHeatmap,
   buildCameraDistance,
   buildCameraGestures,
@@ -197,14 +200,18 @@ export const DEMO_SPECIAL_GET_ROUTES = [
   "/api/v1/heatmaps/world/stats",
   "/api/v1/heatmaps/gaze",
   "/api/v1/heatmaps/gaze/stats",
+  "/api/v1/heatmaps/boundary",
+  "/api/v1/heatmaps/boundary/stats",
 ] as const;
 
-/** The four spatial heatmap routes resolved via {@link handleSpatialHeatmap}. */
+/** The spatial heatmap routes resolved via {@link handleSpatialHeatmap}. */
 const SPATIAL_HEATMAP_ROUTES = new Set<string>([
   "/api/v1/heatmaps/world",
   "/api/v1/heatmaps/world/stats",
   "/api/v1/heatmaps/gaze",
   "/api/v1/heatmaps/gaze/stats",
+  "/api/v1/heatmaps/boundary",
+  "/api/v1/heatmaps/boundary/stats",
 ]);
 
 export const READ_ROUTES: Record<string, BuilderRoute> = {
@@ -273,6 +280,7 @@ export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/xr/sources": (pid, o) => buildXrSourceUsage(pid, o, duckdbDialect),
   "/api/v1/xr/abandonment": (pid, o) => buildXrAbandonment(pid, o, duckdbDialect),
   "/api/v1/xr/locomotion": (pid, o) => buildXrLocomotionComfort(pid, o, duckdbDialect),
+  "/api/v1/xr/boundary-contacts": (pid, o) => buildBoundaryContacts(pid, o, duckdbDialect),
   "/api/v1/interactions/sources": (pid, o) => buildInteractionsBySource(pid, o, duckdbDialect),
   "/api/v1/input-actions/top": (pid, o) => buildTopInputActions(pid, o, duckdbDialect),
   "/api/v1/scenes": (pid, o) => buildDistinctScenes(pid, o, duckdbDialect),
@@ -373,8 +381,15 @@ async function handleSpatialHeatmap(
   if (path === "/api/v1/heatmaps/gaze") {
     return ok(await db.all(buildGazeHeatmap(pid, opts, duckdbDialect)));
   }
+  if (path === "/api/v1/heatmaps/boundary") {
+    return ok(await db.all(buildBoundaryHeatmap(pid, opts, duckdbDialect)));
+  }
   const build =
-    path === "/api/v1/heatmaps/world/stats" ? buildWorldHeatmapStats : buildGazeHeatmapStats;
+    path === "/api/v1/heatmaps/world/stats"
+      ? buildWorldHeatmapStats
+      : path === "/api/v1/heatmaps/gaze/stats"
+        ? buildGazeHeatmapStats
+        : buildBoundaryHeatmapStats;
   const rows = await db.all<SpatialStatsRow>(build(pid, opts, duckdbDialect));
   const stats = rows[0] ?? { cells: 0, hits: 0 };
   return ok({ cellSize: cellSize ?? 0.5, cells: Number(stats.cells), hits: Number(stats.hits) });

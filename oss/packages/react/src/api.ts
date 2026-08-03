@@ -436,6 +436,19 @@ export interface XrLocomotionStat {
   ended_at: string;
 }
 
+/**
+ * One session's guardian/boundary-contact rollup (#157, ADR 0048): how many
+ * times the headset approached its play-space boundary and how long it spent in
+ * the near-boundary zone. A room-scale comfort signal — no room geometry.
+ */
+export interface BoundaryContactStat {
+  session_id: string;
+  /** Number of near-boundary approaches (one `xr_boundary_proximity` event each). */
+  contacts: number;
+  /** Total time spent within the near-boundary zone across approaches, in ms. */
+  near_ms: number;
+}
+
 /** Input-source vocabulary for the pointer/world heatmap filter (ADR 0011). */
 export type InputSource =
   "mouse" | "touch" | "stylus" | "pen" | "xr-controller" | "hand" | "gaze" | "transient" | "other";
@@ -1141,6 +1154,32 @@ export class CollectorApi {
   }
 
   /**
+   * Guardian/boundary-touch heatmap (#157, ADR 0048): voxel-binned world
+   * `position` of `xr_boundary_proximity` events — *where* the headset neared its
+   * play-space boundary. Computed on-device; the boundary polygon/room geometry
+   * are never captured. Reuses the world-heatmap voxel shape.
+   */
+  boundaryHeatmap(params?: QueryParams): Promise<WorldHeatmapBin[]> {
+    return this.get<WorldHeatmapBin[]>("api/v1/heatmaps/boundary", params).then((rows) =>
+      rows.map((r) => ({
+        vx: Number(r.vx),
+        vy: Number(r.vy),
+        vz: Number(r.vz),
+        count: Number(r.count),
+      })),
+    );
+  }
+
+  /** Boundary-touch heatmap totals (ADR 0040 §3): the sibling of {@link worldHeatmapStats}. */
+  boundaryHeatmapStats(params?: QueryParams): Promise<SpatialStats> {
+    return this.get<Record<string, unknown>>("api/v1/heatmaps/boundary/stats", params).then((r) => ({
+      cellSize: Number(r.cellSize ?? 0),
+      cells: Number(r.cells ?? 0),
+      hits: Number(r.hits ?? 0),
+    }));
+  }
+
+  /**
    * World heatmap totals (ADR 0040 §3): the true occupied-cell and hit counts
    * behind the truncated voxel list, plus the effective `cellSize`. Pair with
    * {@link worldHeatmap} to label coverage and "showing top N of M cells".
@@ -1460,6 +1499,21 @@ export class CollectorApi {
         locomotion_ms: Number(r.locomotion_ms ?? 0),
         started_at: String(r.started_at ?? ""),
         ended_at: String(r.ended_at ?? ""),
+      })),
+    );
+  }
+
+  /**
+   * Guardian/boundary contacts (#157, ADR 0048): per XR session, how many times
+   * the headset approached its play-space boundary and the total near-boundary
+   * time. A room-scale comfort signal beside the VR locomotion panel.
+   */
+  boundaryContacts(params?: QueryParams): Promise<BoundaryContactStat[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/xr/boundary-contacts", params).then((rows) =>
+      rows.map((r) => ({
+        session_id: String(r.session_id ?? ""),
+        contacts: Number(r.contacts ?? 0),
+        near_ms: Number(r.near_ms ?? 0),
       })),
     );
   }

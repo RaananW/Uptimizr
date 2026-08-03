@@ -193,6 +193,32 @@ const worldStatsQueryParams = z.object({
 });
 
 /**
+ * Boundary-touch heatmap params (#157, ADR 0048): a positive voxel `cellSize`
+ * plus scene/session/region filters. No `source`/`cameraMode` — an
+ * `xr_boundary_proximity` approach is HMD-only, and the boundary polygon/room
+ * geometry are never captured (only the coarse on-device position + duration).
+ */
+const boundaryHeatmapQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  cellSize: z.coerce.number().positive().max(1000).optional(),
+  limit: z.coerce.number().int().positive().max(1000).optional(),
+  scene: sceneFilter,
+  session: sessionFilter,
+  region: regionFilter,
+});
+
+/** Boundary-touch heatmap totals params (ADR 0040 §3): boundary filters, no `limit`. */
+const boundaryStatsQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  cellSize: z.coerce.number().positive().max(1000).optional(),
+  scene: sceneFilter,
+  session: sessionFilter,
+  region: regionFilter,
+});
+
+/**
  * Gaze heatmap params (ADR 0030): a positive voxel `cellSize` plus scene/session
  * + camera-mode filters. Unlike the pointer world heatmap there is no `source`
  * (a camera-pose gaze hit has no input-source); a `session` scopes it to one visit.
@@ -1056,6 +1082,52 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     },
   );
 
+  // Guardian/boundary-touch heatmap (#157, ADR 0048) — voxel-binned world
+  // `position` of `xr_boundary_proximity` events: *where* in the play space the
+  // headset approached its guardian boundary. The boundary polygon and room
+  // geometry are never captured or transmitted; only the coarse on-device
+  // position + duration each approach carries participate (ADR 0003 / ADR 0048).
+  // Reuses the world-heatmap voxel path; cellSize resolves from scene/region
+  // bounds when unset so the stats endpoint can echo it.
+  r.get(
+    "/api/v1/heatmaps/boundary",
+    { schema: { querystring: boundaryHeatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      const { region, cellSize, ...rest } = req.query;
+      const resolved = await resolveSpatialCellSize(store, projectId, {
+        cellSize,
+        scene: rest.scene,
+        region,
+      });
+      return store.boundaryHeatmap(projectId, { ...rest, region, cellSize: resolved });
+    },
+  );
+
+  // Boundary-touch heatmap totals (ADR 0040 §3) — true occupied-cell + contact
+  // counts behind the truncated top-N voxels, echoing the effective cellSize.
+  r.get(
+    "/api/v1/heatmaps/boundary/stats",
+    { schema: { querystring: boundaryStatsQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      const { region, cellSize, ...rest } = req.query;
+      const resolved = await resolveSpatialCellSize(store, projectId, {
+        cellSize,
+        scene: rest.scene,
+        region,
+      });
+      const stats = await store.boundaryHeatmapStats(projectId, {
+        ...rest,
+        region,
+        cellSize: resolved,
+      });
+      return { cellSize: resolved ?? 1, cells: stats.cells, hits: stats.hits };
+    },
+  );
+
   // Always-on rendering-technology mix (#120, ADR 0021 part 1) — session count
   // crossed by (api, backend, api_version, shading_language) from
   // `session_start.graphics`. Always-on (unlike diagnostics), so a populated
@@ -1208,6 +1280,21 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.xrLocomotion(projectId, req.query);
+    },
+  );
+
+  // Guardian/boundary contacts (#157, ADR 0048) — per XR session, how many times
+  // the headset approached its play-space boundary and the total time spent in
+  // the near-boundary zone. A room-scale comfort signal beside VR locomotion;
+  // frequent contact means the physical space didn't fit the experience. Built
+  // from `xr_boundary_proximity` (one event per approach) — no room geometry.
+  r.get(
+    "/api/v1/xr/boundary-contacts",
+    { schema: { querystring: heatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.boundaryContacts(projectId, req.query);
     },
   );
 

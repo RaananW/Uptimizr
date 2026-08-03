@@ -24,6 +24,7 @@ import { contextLostSchema, contextRestoredSchema } from "./contextLoss.js";
 import { graphicsDiagnosticSchema } from "./graphicsDiagnostic.js";
 import { runtimeErrorSchema } from "./runtimeError.js";
 import { inputActionSchema } from "./inputAction.js";
+import { xrBoundaryProximitySchema } from "./xrBoundaryProximity.js";
 import { customSchema } from "./custom.js";
 
 /**
@@ -64,6 +65,7 @@ export const eventSchemaList = [
   graphicsDiagnosticSchema,
   runtimeErrorSchema,
   inputActionSchema,
+  xrBoundaryProximitySchema,
   customSchema,
 ] as const;
 
@@ -98,6 +100,7 @@ export const anyEventSchema = z.discriminatedUnion("type", [
   graphicsDiagnosticSchema,
   runtimeErrorSchema,
   inputActionSchema,
+  xrBoundaryProximitySchema,
   customSchema,
 ]);
 
@@ -135,6 +138,7 @@ export const eventSchemaByType = {
   graphics_diagnostic: graphicsDiagnosticSchema,
   runtime_error: runtimeErrorSchema,
   input_action: inputActionSchema,
+  xr_boundary_proximity: xrBoundaryProximitySchema,
   custom: customSchema,
 } as const;
 
@@ -242,6 +246,10 @@ export {
   type Ray,
 } from "./inputSource.js";
 export { inputActionSchema, type InputActionEvent } from "./inputAction.js";
+export {
+  xrBoundaryProximitySchema,
+  type XrBoundaryProximityEvent,
+} from "./xrBoundaryProximity.js";
 export {
   customSchema,
   customPropValueSchema,

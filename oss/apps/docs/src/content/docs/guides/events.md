@@ -135,6 +135,37 @@ filters (narrowing to engine diagnostics) and `errorKind` (narrowing to JS error
 the existing promoted column shared with `camera_sample`, so it inherits the same privacy posture —
 no new PII surface.
 
+## Guardian / boundary-touch heatmap (room-scale VR comfort)
+
+In room-scale WebXR, visitors move inside a physical **guardian / play-space boundary**. When the
+headset comes within a short **near threshold** of that boundary, `@uptimizr/babylon`'s opt-in
+`babylonBoundaryCollector` emits an `xr_boundary_proximity` event — **one per approach** — carrying
+only a coarse voxel-binned `position` (the HMD position at the closest approach) and `durationMs`
+(how long the pose stayed inside the near zone). Count is implied by frequency, not a running
+counter.
+
+```ts
+import { trackScene, babylonBoundaryCollector } from "@uptimizr/babylon";
+
+const client = trackScene(scene, { projectId, endpoint });
+// After you create the WebXR experience (bounded-floor reference space):
+client.use(babylonBoundaryCollector({ experience: xr, nearMeters: 0.5 }));
+```
+
+The recommended `nearMeters` default is **0.5 m** (with ~0.1 m exit hysteresis and ~100 ms
+sampling) — enough to catch a real reach-for-the-wall moment without firing on normal room-centre
+movement.
+
+> **Privacy (ADR 0003 / ADR 0048):** the boundary polygon and room geometry are **never
+> transmitted**. The bounds check runs entirely on-device; only the outcome (position + duration)
+> leaves the headset. `position` reuses the promoted world-space column, so it inherits the same
+> privacy posture as the pointer/gaze/error heatmaps — no new PII surface.
+
+The dashboard's **Boundary-touch heatmap (3D)** panel voxel-bins these positions into the same
+world-space grid as the pointer/gaze/error heatmaps (backed by `GET /api/v1/heatmaps/boundary`), and
+a **Guardian boundary contacts** panel lists per-session approach counts + near-zone time (backed by
+`GET /api/v1/xr/boundary-contacts`) as a comfort signal alongside the VR locomotion dashboard.
+
 ## Changing scenes / levels (`setScene`)
 
 A single session can span multiple scenes, areas, or levels — game levels, a viewer swapping models,

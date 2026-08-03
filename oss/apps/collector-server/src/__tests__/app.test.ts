@@ -163,6 +163,8 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
       { severity: "warning", category: "validation", backend: "webgl2", incidents: 5 },
     ],
     errorHeatmap: async () => [{ vx: 2, vy: 0, vz: 3, count: 4 }],
+    boundaryHeatmap: async () => [{ vx: 4, vy: 0, vz: 1, count: 3 }],
+    boundaryHeatmapStats: async () => ({ cells: 6, hits: 11 }),
     renderingTechnology: async () => [
       {
         api: "webgpu",
@@ -228,6 +230,7 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
         ended_at: "2024-06-16 10:00:25.000",
       },
     ],
+    boundaryContacts: async () => [{ session_id: "s1", contacts: 4, near_ms: 900 }],
     interactionsBySource: async () => [
       { event_type: "pointer_click", source: "mouse", count: 18, sessions: 3 },
       { event_type: "mesh_interaction", source: "xr-controller", count: 5, sessions: 2 },
@@ -1309,6 +1312,44 @@ describe("collector app", () => {
     await app.close();
   });
 
+  it("returns the guardian boundary-touch heatmap, threading cellSize + filters (#157)", async () => {
+    const captured: { projectId: string; opts: Record<string, unknown> }[] = [];
+    const store = makeStore({
+      boundaryHeatmap: async (projectId, opts = {}) => {
+        captured.push({ projectId, opts: opts as Record<string, unknown> });
+        return [{ vx: 4, vy: 0, vz: 1, count: 3 }];
+      },
+    });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/boundary?cellSize=1&scene=arena&session=s1",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([{ vx: 4, vy: 0, vz: 1, count: 3 }]);
+    expect(captured[0]!.projectId).toBe("p1");
+    expect(captured[0]!.opts).toMatchObject({ cellSize: 1, scene: "arena", session: "s1" });
+
+    // A read API key is still required.
+    const noKey = await app.inject({ method: "GET", url: "/api/v1/heatmaps/boundary" });
+    expect(noKey.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("returns boundary-touch heatmap totals, echoing the resolved cellSize (#157)", async () => {
+    const store = makeStore({ boundaryHeatmapStats: async () => ({ cells: 6, hits: 11 }) });
+    const app = await buildApp({ store, config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/boundary/stats?cellSize=0.5&scene=arena",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cellSize: 0.5, cells: 6, hits: 11 });
+    await app.close();
+  });
+
   it("returns rendering-technology counts by api/backend/version/shading-language for a valid API key (#120)", async () => {
     const app = await buildApp({ store: makeStore(), config });
     const res = await app.inject({
@@ -1499,6 +1540,22 @@ describe("collector app", () => {
         ended_at: "2024-06-16 10:00:25.000",
       },
     ]);
+    await app.close();
+  });
+
+  it("returns guardian boundary-contact rows for a valid API key (#157)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/xr/boundary-contacts?scene=arena&session=s1",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([{ session_id: "s1", contacts: 4, near_ms: 900 }]);
+
+    // A read API key is still required.
+    const noKey = await app.inject({ method: "GET", url: "/api/v1/xr/boundary-contacts" });
+    expect(noKey.statusCode).toBe(401);
     await app.close();
   });
 

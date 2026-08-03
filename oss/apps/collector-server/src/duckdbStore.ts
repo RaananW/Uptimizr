@@ -42,6 +42,9 @@ import {
   buildStabilityCounts,
   buildGraphicsDiagnosticCounts,
   buildErrorHeatmap,
+  buildBoundaryHeatmap,
+  buildBoundaryHeatmapStats,
+  buildBoundaryContacts,
   buildRenderingTechnology,
   buildPointerHeatmap,
   buildMeshUvHeatmap,
@@ -108,6 +111,7 @@ import {
   type XrSourceUsageRow,
   type XrAbandonmentRow,
   type XrLocomotionRow,
+  type BoundaryContactsRow,
   type InteractionSourceRow,
   type PerfSummaryRow,
   type RenderScaleTruthRow,
@@ -284,6 +288,15 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       ),
     errorHeatmap: (projectId, opts = {}) =>
       runDuckdbQuery<WorldHeatmapBinRow>(db, buildErrorHeatmap(projectId, opts, duckdbDialect)),
+    boundaryHeatmap: (projectId, opts = {}) =>
+      runDuckdbQuery<WorldHeatmapBinRow>(db, buildBoundaryHeatmap(projectId, opts, duckdbDialect)),
+    boundaryHeatmapStats: async (projectId, opts = {}) => {
+      const rows = await runDuckdbQuery<SpatialStatsRow>(
+        db,
+        buildBoundaryHeatmapStats(projectId, opts, duckdbDialect),
+      );
+      return rows[0] ?? { cells: 0, hits: 0 };
+    },
     renderingTechnology: (projectId, opts = {}) =>
       runDuckdbQuery<RenderingTechnologyRow>(
         db,
@@ -310,6 +323,11 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<XrAbandonmentRow>(db, buildXrAbandonment(projectId, opts, duckdbDialect)),
     xrLocomotion: (projectId, opts = {}) =>
       runDuckdbQuery<XrLocomotionRow>(db, buildXrLocomotionComfort(projectId, opts, duckdbDialect)),
+    boundaryContacts: (projectId, opts = {}) =>
+      runDuckdbQuery<BoundaryContactsRow>(
+        db,
+        buildBoundaryContacts(projectId, opts, duckdbDialect),
+      ),
     interactionsBySource: (projectId, opts = {}) =>
       runDuckdbQuery<InteractionSourceRow>(
         db,

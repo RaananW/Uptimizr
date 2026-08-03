@@ -127,6 +127,8 @@ export function createMemoryStore({
     stabilityCounts: async () => [],
     graphicsDiagnosticCounts: async () => [],
     errorHeatmap: async () => [],
+    boundaryHeatmap: async () => [],
+    boundaryHeatmapStats: async () => ({ cells: 0, hits: 0 }),
     renderingTechnology: async () => [],
     sceneCoverage: async () => [],
     perfHeatmap: async () => [],
@@ -137,6 +139,7 @@ export function createMemoryStore({
     xrSourceUsage: async () => [],
     xrAbandonment: async () => [],
     xrLocomotion: async () => [],
+    boundaryContacts: async () => [],
     interactionsBySource: async () => [],
     topInputActions: async () => [],
     scenes: async (_projectId, opts = {}) => {
