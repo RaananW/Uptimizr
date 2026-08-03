@@ -52,7 +52,7 @@
     "fontkit": "^2.0.4",
     "prettier": "^3.9.6",
     "sharp": "^0.35.3",
-    "turbo": "^2.10.7",
+    "turbo": "^2.10.8",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",
     "wawoff2": "^2.0.1"
