@@ -48,6 +48,7 @@ import type {
   ViewCoverageBin,
   WorldHeatmapBin,
   XrLocomotionStat,
+  BoundaryContactStat,
   TrackingQualityStat,
 } from "../api";
 import { mergeSceneProxies } from "./lib/sceneProxies";
@@ -144,6 +145,11 @@ import {
   XR_LOCOMOTION_SUBTITLE,
 } from "./views/XrLocomotionComfort";
 import {
+  BoundaryContactsView,
+  BOUNDARY_CONTACTS_TITLE,
+  BOUNDARY_CONTACTS_SUBTITLE,
+} from "./views/BoundaryContacts";
+import {
   TrackingQualityView,
   TRACKING_QUALITY_TITLE,
   TRACKING_QUALITY_SUBTITLE,
@@ -202,6 +208,8 @@ import {
   PERF_HEATMAP_SUBTITLE,
   ERROR_HEATMAP_TITLE,
   ERROR_HEATMAP_SUBTITLE,
+  BOUNDARY_HEATMAP_TITLE,
+  BOUNDARY_HEATMAP_SUBTITLE,
   GAZE_CLICK_TITLE,
   GAZE_CLICK_SUBTITLE,
   FLOW_SANKEY_TITLE,
@@ -354,6 +362,19 @@ const ERROR_HEATMAP_SETTINGS = {
     type: "number",
     label: "Voxel size",
     help: "World-space voxel size for binning error/diagnostic positions. Larger voxels smooth the heat; smaller ones sharpen where things break.",
+    default: WORLD_CELL_SIZE,
+    min: 0.1,
+    max: 2,
+    step: 0.1,
+    unit: "m",
+  },
+} as const satisfies PanelSettings;
+
+const BOUNDARY_HEATMAP_SETTINGS = {
+  cellSize: {
+    type: "number",
+    label: "Voxel size",
+    help: "World-space voxel size for binning guardian-boundary approaches. Larger voxels smooth the heat; smaller ones sharpen where headsets crowd the boundary.",
     default: WORLD_CELL_SIZE,
     min: 0.1,
     max: 2,
@@ -917,6 +938,12 @@ interface ErrorHeatmapData {
   proxyMeshes: SceneProxyMesh[];
 }
 
+/** Boundary-touch heatmap data: guardian-approach voxels + the scene-proxy backdrop. */
+interface BoundaryHeatmapData {
+  voxels: WorldHeatmapBin[];
+  proxyMeshes: SceneProxyMesh[];
+}
+
 /**
  * Performance heatmap (3D) — where FPS is bad in the scene (#145). `frame_perf`
  * samples are voxel-binned by the camera position captured at each sample, then
@@ -1017,6 +1044,49 @@ export const errorHeatmapPanel = definePanel<ErrorHeatmapData, typeof ERROR_HEAT
 });
 
 /**
+ * Guardian/boundary-touch heatmap (#157, ADR 0048) — Babylon scene, full width.
+ * Voxel-binned world `position` of `xr_boundary_proximity` events: *where* in the
+ * play space headsets approached their guardian boundary, drawn against the
+ * registered scene proxy backdrop (ADR 0014). Reuses the world-heatmap 3D view
+ * with guardian-flavored legend copy. The boundary polygon and room geometry are
+ * never captured — each event carries only a coarse on-device position + duration
+ * (ADR 0003). Client-only (Babylon loads in the browser); empty is the calm case.
+ */
+export const boundaryHeatmapPanel = definePanel<
+  BoundaryHeatmapData,
+  typeof BOUNDARY_HEATMAP_SETTINGS
+>({
+  id: "boundary-heatmap-3d",
+  title: BOUNDARY_HEATMAP_TITLE,
+  subtitle: BOUNDARY_HEATMAP_SUBTITLE,
+  span: 2,
+  surfaces: ["overview", "session"],
+  clientOnly: true,
+  settings: BOUNDARY_HEATMAP_SETTINGS,
+  load: async (ctx) => {
+    const [voxels, proxyMeshes] = await Promise.all([
+      ctx.api.boundaryHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
+      resolveProxyMeshes(ctx),
+    ]);
+    return { voxels, proxyMeshes };
+  },
+  render: ({ data, ctx }) => (
+    <Lazy3D>
+      <WorldHeatmap3DLazy
+        voxels={data.voxels}
+        cellSize={ctx.settings.cellSize}
+        proxyMeshes={data.proxyMeshes}
+        legendTitle="Boundary contact density"
+        legendLow="rare"
+        legendHigh="most contact"
+        legendNote="Each marker is a voxel where a headset neared its play-space (guardian) boundary, binned by the HMD position at closest approach. Color & size scale with the approach count. The boundary shape and room size are never captured — only the coarse on-device position of each approach."
+        emptyLabel="No guardian-boundary approaches in range. Room-scale sessions that never crowd the boundary leave this empty."
+      />
+    </Lazy3D>
+  ),
+});
+
+/**
  * Navigation-style mix — React/HTML breakdown, half width. Orbit vs. pan vs.
  * dolly vs. zoom vs. roll vs. fly share of deliberate camera navigation, plus
  * average gesture duration, from `camera_gesture` (ADR 0025). Gesture magnitude
@@ -1047,6 +1117,25 @@ export const xrLocomotionComfortPanel = definePanel<XrLocomotionStat[]>({
   surfaces: ["overview", "session"],
   load: (ctx) => ctx.api.xrLocomotion({ ...scoped(ctx), source: undefined }),
   render: ({ data }) => <XrLocomotionComfortView stats={data ?? []} />,
+});
+
+/**
+ * Guardian boundary contacts (#157, ADR 0048) — React/HTML, half width. A room-
+ * scale comfort companion to the VR locomotion panel: per XR session, how often
+ * the headset neared its play-space boundary and how long it lingered in the
+ * guardian zone, from `xr_boundary_proximity` events (one per approach). Frequent
+ * contact means the physical space didn't fit the experience. Privacy-preserving:
+ * only the coarse on-device position + duration is ever sent — never the boundary
+ * shape or room size (ADR 0003 / ADR 0048).
+ */
+export const boundaryContactsPanel = definePanel<BoundaryContactStat[]>({
+  id: "xr-boundary-contacts",
+  title: BOUNDARY_CONTACTS_TITLE,
+  subtitle: BOUNDARY_CONTACTS_SUBTITLE,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.boundaryContacts(scoped(ctx)),
+  render: ({ data }) => <BoundaryContactsView stats={data ?? []} />,
 });
 
 /**
@@ -1341,8 +1430,10 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   worldHeatmapPanel,
   perfHeatmapPanel,
   errorHeatmapPanel,
+  boundaryHeatmapPanel,
   navigationMixPanel,
   xrLocomotionComfortPanel,
+  boundaryContactsPanel,
   trackingQualityPanel,
   sceneRetentionPanel,
   backtrackPanel,

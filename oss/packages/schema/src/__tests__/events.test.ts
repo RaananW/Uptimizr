@@ -574,6 +574,83 @@ describe("compile_stall (shader / pipeline compile hitch, design §C)", () => {
   });
 });
 
+describe("xr_boundary_proximity (guardian/boundary proximity, ADR 0048)", () => {
+  it("accepts an approach with a position and duration (#157)", () => {
+    const parsed = anyEventSchema.safeParse({
+      ...baseEnvelope,
+      type: "xr_boundary_proximity",
+      position: [1.2, 0, -0.8],
+      durationMs: 640,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts a zero-duration approach", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "xr_boundary_proximity",
+        position: [0, 0, 0],
+        durationMs: 0,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a negative duration", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "xr_boundary_proximity",
+        position: [0, 0, 0],
+        durationMs: -1,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an approach without a position", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "xr_boundary_proximity",
+        durationMs: 100,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an approach without a duration", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "xr_boundary_proximity",
+        position: [0, 0, 0],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a malformed position (wrong arity)", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "xr_boundary_proximity",
+        position: [0, 0],
+        durationMs: 100,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("carries no boundary geometry — only position + duration (privacy)", () => {
+    const parsed = anyEventSchema.parse({
+      ...baseEnvelope,
+      type: "xr_boundary_proximity",
+      position: [1, 0, 2],
+      durationMs: 250,
+    });
+    expect(Object.keys(parsed).sort()).toEqual(
+      ["durationMs", "position", "projectId", "sdkVersion", "sessionId", "ts", "type"].sort(),
+    );
+  });
+});
+
 describe("ar_placement (AR object-placement settle, #156 / ADR 0048 §1)", () => {
   const basePlacement = {
     ...baseEnvelope,

@@ -43,6 +43,7 @@ import type {
   XrSourceUsageRow,
   XrAbandonmentRow,
   XrLocomotionRow,
+  BoundaryContactsRow,
   TrackingQualityRow,
   InteractionSourceRow,
   PerfSummaryRow,
@@ -499,6 +500,31 @@ export interface CollectorStore {
       ErrorHeatmapOptions & { cellSize?: number; limit?: number },
   ): Promise<WorldHeatmapBinRow[]>;
   /**
+   * Guardian/boundary-touch heatmap (#157, ADR 0048): voxel-binned world
+   * `position` of `xr_boundary_proximity` events — *where* in the play space the
+   * headset approached its guardian boundary. The boundary polygon and room
+   * geometry are never captured; only the coarse position + duration each event
+   * already carries (computed on-device) participate (ADR 0003 / ADR 0048).
+   * Region-aware; reuses the promoted `position` column (no migration).
+   */
+  boundaryHeatmap(
+    projectId: string,
+    opts?: RangeOptions &
+      SceneOptions &
+      SessionOptions &
+      RegionOptions & { cellSize?: number; limit?: number },
+  ): Promise<WorldHeatmapBinRow[]>;
+  /**
+   * Scene-wide totals for the boundary-touch heatmap (ADR 0040 §3): true
+   * occupied-cell and contact counts behind the truncated top-N voxels (no
+   * `LIMIT`), so the viewer can report coverage and "showing top N of M cells".
+   * Region-aware; shares every filter with {@link boundaryHeatmap}.
+   */
+  boundaryHeatmapStats(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions & RegionOptions & { cellSize?: number },
+  ): Promise<SpatialStatsRow>;
+  /**
    * Always-on rendering-technology mix (#120, ADR 0021 part 1): `session_start`
    * counts crossed by `(api, backend, api_version, shading_language)` over the
    * range. Always-on, so a populated result is the common case.
@@ -592,6 +618,17 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
   ): Promise<XrLocomotionRow[]>;
+  /**
+   * Per-session guardian/boundary-contact rollup (#157, ADR 0048): for every
+   * session that approached its play-space boundary, the number of approaches and
+   * the total time spent in the near-boundary zone — a room-scale comfort signal
+   * shown alongside the VR locomotion dashboard. Built from `xr_boundary_proximity`
+   * events (one per approach); no boundary geometry participates.
+   */
+  boundaryContacts(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
+  ): Promise<BoundaryContactsRow[]>;
   /**
    * XR tracking quality (#155, ADR 0048): per XR session that reported a tracking
    * transition, how much of the session ran with degraded / lost spatial tracking,

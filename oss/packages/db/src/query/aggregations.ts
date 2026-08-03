@@ -1517,6 +1517,136 @@ export function buildErrorHeatmap(
 }
 
 /**
+ * Guardian/boundary-touch heatmap (ADR 0048, #157): voxel-bin the HMD positions
+ * at which room-scale VR visitors approached their play-space boundary into a
+ * uniform grid of `cellSize`-sized cubes, returning the busiest `limit` voxels.
+ * This is the "where in the scene did people keep bumping into their guardian"
+ * map — a room-scale comfort signal game studios cannot see today.
+ *
+ * Reuses the same position voxel-bin path as {@link buildErrorHeatmap}: each
+ * `xr_boundary_proximity` event carries the coarse `position` at closest approach
+ * in the already-promoted `position` column (no migration), and the WebXR
+ * bounds-check that produced it ran entirely on-device — the boundary polygon and
+ * room geometry are never captured or stored (ADR 0003 / ADR 0048). Only rows
+ * with a full 3-vector participate (`length(position) = 3`). `region` drill-down
+ * and `scene`/`session` scoping compose like the other spatial heatmaps.
+ */
+export function buildBoundaryHeatmap(
+  projectId: string,
+  opts: RangeOptions &
+    SceneOptions &
+    SessionOptions &
+    RegionOptions & { cellSize?: number; limit?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const cellSize = bag.add("cellSize", "f64", opts.cellSize ?? 1);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const region = regionClause(bag, opts, POSITION_COLS);
+  const limit = bag.add("limit", "u32", opts.limit ?? 1000);
+  return {
+    query: `
+      SELECT
+        floor(position[1] / ${cellSize}) AS vx,
+        floor(position[2] / ${cellSize}) AS vy,
+        floor(position[3] / ${cellSize}) AS vz,
+        count() AS count
+      FROM events
+      WHERE project_id = ${pid}
+        AND event_type = 'xr_boundary_proximity'
+        AND length(position) = 3${range}${scene}${session}${region}
+      GROUP BY vx, vy, vz
+      ORDER BY count DESC
+      LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Scene-wide totals for the boundary-touch heatmap (ADR 0040 §3): the true count
+ * of occupied voxels and total boundary contacts, computed with no `LIMIT` so the
+ * viewer can report "showing top N of M cells". Shares every filter (including
+ * {@link RegionOptions.region}) with {@link buildBoundaryHeatmap}. Uses a grouped
+ * sub-select so the dialect needs no `COUNT(DISTINCT tuple)`.
+ */
+export function buildBoundaryHeatmapStats(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions & RegionOptions & { cellSize?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const cellSize = bag.add("cellSize", "f64", opts.cellSize ?? 1);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const region = regionClause(bag, opts, POSITION_COLS);
+  return {
+    query: `
+      SELECT count() AS cells, coalesce(sum(c), 0) AS hits
+      FROM (
+        SELECT
+          floor(position[1] / ${cellSize}) AS vx,
+          floor(position[2] / ${cellSize}) AS vy,
+          floor(position[3] / ${cellSize}) AS vz,
+          count() AS c
+        FROM events
+        WHERE project_id = ${pid}
+          AND event_type = 'xr_boundary_proximity'
+          AND length(position) = 3${range}${scene}${session}${region}
+        GROUP BY vx, vy, vz
+      ) t
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Per-session guardian/boundary-contact rollup (ADR 0048, #157): for every
+ * session that touched its play-space boundary, the number of approaches and the
+ * total time spent in the near-boundary zone. This is the comfort signal shown
+ * alongside the VR locomotion dashboard — frequent contact means the physical
+ * space didn't fit the experience.
+ *
+ * Each `xr_boundary_proximity` event is one approach (ADR 0048), so `contacts` is
+ * a plain `count()` and `near_ms` sums the per-approach `durationMs` (stored in
+ * the shared `visible_ms` column, reused by `mesh_visibility`/`hover_dwell`/
+ * `compile_stall`). No boundary geometry participates — only the promoted position
+ * + duration each event already carries.
+ */
+export function buildBoundaryContacts(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const limit = bag.add("limit", "u32", opts.limit ?? 500);
+  return {
+    query: `
+      SELECT
+        session_id,
+        count() AS contacts,
+        coalesce(sum(visible_ms), 0) AS near_ms
+      FROM events
+      WHERE project_id = ${pid}
+        AND event_type = 'xr_boundary_proximity'${range}${scene}${session}
+      GROUP BY session_id
+      ORDER BY contacts DESC
+      LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * Always-on rendering-technology mix from `session_start.graphics` (ADR 0021 part
  * 1): the fully-crossed `(api, backend, api_version, shading_language)` group with
  * one session count per cell, so the dashboard can derive the by-api, by-backend,

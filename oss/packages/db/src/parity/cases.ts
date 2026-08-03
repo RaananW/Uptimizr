@@ -61,6 +61,9 @@ import {
   buildStabilityCounts,
   buildGraphicsDiagnosticCounts,
   buildErrorHeatmap,
+  buildBoundaryHeatmap,
+  buildBoundaryHeatmapStats,
+  buildBoundaryContacts,
   buildRenderingTechnology,
   buildPointerHeatmap,
   buildMeshUvHeatmap,
@@ -110,8 +113,8 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["session_id"],
     ignoreColumns: ["started_at", "ended_at"],
     golden: [
-      { session_id: "s1", visitor_id: "", events: 9 },
-      { session_id: "s2", visitor_id: "", events: 7 },
+      { session_id: "s1", visitor_id: "", events: 10 },
+      { session_id: "s2", visitor_id: "", events: 9 },
     ],
   },
   {
@@ -615,6 +618,40 @@ export const PARITY_CASES: readonly ParityCase[] = [
     golden: [{ vx: 2, vy: 0, vz: 3, count: 2 }],
   },
   {
+    name: "boundaryHeatmap",
+    build: (d) => buildBoundaryHeatmap(PID, { ...PARITY_RANGE, cellSize: 1 }, d),
+    sortKeys: ["vx", "vy", "vz"],
+    // Guardian/boundary-touch heatmap (#157, ADR 0048): the s1 approach at
+    // [0,0,0] bins to voxel (0,0,0); the two s2 approaches ([4.2,0,1.1] and
+    // [4.6,0.3,1.8]) both floor to voxel (4,0,1), proving per-approach positions
+    // voxel-bin and roll up. Validates the position voxel bin and count roll-up
+    // render identically on both engines.
+    golden: [
+      { vx: 0, vy: 0, vz: 0, count: 1 },
+      { vx: 4, vy: 0, vz: 1, count: 2 },
+    ],
+  },
+  {
+    name: "boundaryHeatmapStats",
+    build: (d) => buildBoundaryHeatmapStats(PID, { ...PARITY_RANGE, cellSize: 1 }, d),
+    sortKeys: ["cells"],
+    // Two occupied voxels (0,0,0) and (4,0,1) hold 3 contacts (1 + 2). Computed
+    // with no LIMIT, so cells/hits are the true totals behind the top-N list.
+    golden: [{ cells: 2, hits: 3 }],
+  },
+  {
+    name: "boundaryContacts",
+    build: (d) => buildBoundaryContacts(PID, PARITY_RANGE, d),
+    sortKeys: ["session_id"],
+    // Per-session comfort signal (#157, ADR 0048): s1 has one approach (near_ms
+    // 100); s2 has two (near_ms 500 + 300 = 800). durationMs rides in the shared
+    // visible_ms column. Validates the count + duration sum render identically.
+    golden: [
+      { session_id: "s1", contacts: 1, near_ms: 100 },
+      { session_id: "s2", contacts: 2, near_ms: 800 },
+    ],
+  },
+  {
     name: "renderingTechnology",
     build: (d) => buildRenderingTechnology(PID, PARITY_RANGE, d),
     sortKeys: ["api", "backend", "api_version", "shading_language"],
@@ -760,6 +797,7 @@ export const PARITY_CASES: readonly ParityCase[] = [
       { day: PARITY_DAY, event_type: "pointer_move", events: 1 },
       { day: PARITY_DAY, event_type: "runtime_error", events: 1 },
       { day: PARITY_DAY, event_type: "session_start", events: 2 },
+      { day: PARITY_DAY, event_type: "xr_boundary_proximity", events: 3 },
     ],
   },
   {
@@ -768,15 +806,15 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["scene_id"],
     ignoreColumns: ["last_seen"],
     golden: [
-      { scene_id: "arena", events: 7 },
-      { scene_id: "lobby", events: 9 },
+      { scene_id: "arena", events: 9 },
+      { scene_id: "lobby", events: 10 },
     ],
   },
   {
     name: "timeseries",
     build: (d) => buildTimeseries(PID, { ...PARITY_RANGE, interval: 60 }, d),
     sortKeys: ["bucket"],
-    golden: [{ bucket: PARITY_T0, events: 16, avg_fps: 45 }],
+    golden: [{ bucket: PARITY_T0, events: 19, avg_fps: 45 }],
   },
   {
     name: "eventTypeCounts",
@@ -791,6 +829,7 @@ export const PARITY_CASES: readonly ParityCase[] = [
       { event_type: "pointer_move", count: 1 },
       { event_type: "runtime_error", count: 1 },
       { event_type: "session_start", count: 2 },
+      { event_type: "xr_boundary_proximity", count: 3 },
     ],
   },
   {

@@ -46,6 +46,9 @@ import {
   buildStabilityCounts,
   buildGraphicsDiagnosticCounts,
   buildErrorHeatmap,
+  buildBoundaryHeatmap,
+  buildBoundaryHeatmapStats,
+  buildBoundaryContacts,
   buildRenderingTechnology,
   buildPointerHeatmap,
   buildMeshUvHeatmap,
@@ -102,6 +105,7 @@ import {
   type XrSourceUsageRow,
   type XrAbandonmentRow,
   type XrLocomotionRow,
+  type BoundaryContactsRow,
   type TrackingQualityRow,
   type InteractionSourceRow,
   type PerfSummaryRow,
@@ -280,6 +284,15 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       ),
     errorHeatmap: (projectId, opts = {}) =>
       runClickhouseQuery<WorldHeatmapBinRow>(ch, buildErrorHeatmap(projectId, opts, d)),
+    boundaryHeatmap: (projectId, opts = {}) =>
+      runClickhouseQuery<WorldHeatmapBinRow>(ch, buildBoundaryHeatmap(projectId, opts, d)),
+    boundaryHeatmapStats: async (projectId, opts = {}) => {
+      const rows = await runClickhouseQuery<SpatialStatsRow>(
+        ch,
+        buildBoundaryHeatmapStats(projectId, opts, d),
+      );
+      return rows[0] ?? { cells: 0, hits: 0 };
+    },
     renderingTechnology: (projectId, opts = {}) =>
       runClickhouseQuery<RenderingTechnologyRow>(ch, buildRenderingTechnology(projectId, opts, d)),
     sceneCoverage: (projectId, opts = {}) =>
@@ -300,6 +313,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<XrAbandonmentRow>(ch, buildXrAbandonment(projectId, opts, d)),
     xrLocomotion: (projectId, opts = {}) =>
       runClickhouseQuery<XrLocomotionRow>(ch, buildXrLocomotionComfort(projectId, opts, d)),
+    boundaryContacts: (projectId, opts = {}) =>
+      runClickhouseQuery<BoundaryContactsRow>(ch, buildBoundaryContacts(projectId, opts, d)),
     trackingQuality: (projectId, opts = {}) =>
       runClickhouseQuery<TrackingQualityRow>(ch, buildTrackingQuality(projectId, opts, d)),
     interactionsBySource: (projectId, opts = {}) =>

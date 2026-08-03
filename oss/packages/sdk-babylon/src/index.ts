@@ -36,6 +36,17 @@ export type {
   XrRayHit,
   XrRayProbe,
 } from "./xr.js";
+export {
+  babylonBoundaryCollector,
+  distanceToBoundary,
+  DEFAULT_NEAR_METERS,
+  DEFAULT_HYSTERESIS_METERS,
+  DEFAULT_SAMPLE_MS,
+} from "./boundaryProximity.js";
+export type {
+  BabylonBoundaryCollectorOptions,
+  BabylonXrBoundaryExperienceLike,
+} from "./boundaryProximity.js";
 export { babylonArPlacementCollector, classifyArSurface } from "./arPlacement.js";
 export type {
   BabylonArPlacementOptions,

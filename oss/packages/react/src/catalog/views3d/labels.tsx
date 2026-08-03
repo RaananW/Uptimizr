@@ -23,6 +23,10 @@ export const ERROR_HEATMAP_TITLE = "Error heatmap (3D)";
 export const ERROR_HEATMAP_SUBTITLE =
   "Where errors & engine diagnostics fired, voxel-binned by the camera position at the moment they hit — drag to orbit, double-click to focus";
 
+export const BOUNDARY_HEATMAP_TITLE = "Guardian boundary heatmap (3D)";
+export const BOUNDARY_HEATMAP_SUBTITLE =
+  "Where headsets neared their play-space boundary, voxel-binned in world space — computed on-device, no room geometry captured. Drag to orbit, double-click to focus";
+
 export const GAZE_CLICK_TITLE = "Gaze vs. click divergence";
 export const GAZE_CLICK_SUBTITLE =
   "Where viewers look (gaze) vs. where they act (clicks), voxel-binned in world space — double-click to focus";

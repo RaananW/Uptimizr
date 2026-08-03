@@ -200,4 +200,26 @@ export const PARITY_EVENTS: AnyEvent[] = [
     message: "boom",
     position: [2.5, 0.4, 3.2],
   }),
+  // xr_boundary_proximity (#157, ADR 0048): one approach in s1/lobby and two in
+  // s2/arena. The two s2 approaches bin to the same voxel (4,0,1) at cellSize 1
+  // ([4.2,0,1.1] and [4.6,0.3,1.8]), proving the per-approach position voxel-bins
+  // and rolls up. durationMs lands in the shared `visible_ms` column, so
+  // `near_ms` sums 500+300=800 for s2 and 100 for s1. Only a coarse position +
+  // duration — never boundary geometry.
+  ev("xr_boundary_proximity", PARITY_T0 + 9_000, {
+    position: [0, 0, 0],
+    durationMs: 100,
+  }),
+  ev("xr_boundary_proximity", PARITY_T0 + 17_000, {
+    sessionId: "s2",
+    sceneId: "arena",
+    position: [4.2, 0, 1.1],
+    durationMs: 500,
+  }),
+  ev("xr_boundary_proximity", PARITY_T0 + 18_000, {
+    sessionId: "s2",
+    sceneId: "arena",
+    position: [4.6, 0.3, 1.8],
+    durationMs: 300,
+  }),
 ];
