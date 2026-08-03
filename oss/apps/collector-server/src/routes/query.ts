@@ -1253,6 +1253,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     },
   );
 
+  // XR tracking quality (#155, ADR 0048) — per XR session that reported a
+  // tracking transition, how much of the session ran with degraded / lost
+  // spatial tracking, split by hand vs. controller (a tracking-quality timeline).
+  r.get(
+    "/api/v1/xr/tracking",
+    { schema: { querystring: heatmapQueryParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.trackingQuality(projectId, req.query);
+    },
+  );
+
   // Input-source breakdown (ADR 0011) — per (event_type, source), how many
   // interactions came from each input source (mouse / touch / xr-controller /
   // hand / …) and across how many sessions. Turns `source` into an insight.

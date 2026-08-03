@@ -24,6 +24,7 @@ import {
   errorHeatmapPanel,
   navigationMixPanel,
   xrLocomotionComfortPanel,
+  trackingQualityPanel,
   sceneRetentionPanel,
   backtrackPanel,
   deadZonePanel,
@@ -94,7 +95,7 @@ function renderPanel(panel: PanelDefinition<unknown>): ReactElement {
 
 describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
   it("exposes the complete OSS panel set", () => {
-    expect(ossPanelCatalog).toHaveLength(30);
+    expect(ossPanelCatalog).toHaveLength(31);
   });
 
   it("every entry is a valid PanelDefinition with a unique id", () => {
@@ -138,6 +139,7 @@ describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
       errorHeatmapPanel,
       navigationMixPanel,
       xrLocomotionComfortPanel,
+      trackingQualityPanel,
       sceneRetentionPanel,
       backtrackPanel,
       deadZonePanel,

@@ -41,6 +41,7 @@ import {
   buildXrSourceUsage,
   buildXrAbandonment,
   buildXrLocomotionComfort,
+  buildTrackingQuality,
   buildInteractionsBySource,
   buildArPlacementTimeToPlace,
   buildArPlacementAttempts,
@@ -892,6 +893,18 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["session_id"],
     ignoreColumns: ["started_at", "ended_at"],
     // No session used an XR input source in the fixtures, so none qualifies.
+    golden: [],
+  },
+  {
+    name: "trackingQuality",
+    build: (d) => buildTrackingQuality(PID, PARITY_RANGE, d),
+    sortKeys: ["session_id"],
+    ignoreColumns: ["started_at", "ended_at"],
+    // No `capability_change { kind: "tracking" }` fixtures in the parity set, so no
+    // session qualifies and the result is empty on both engines. Validates that the
+    // per-session degraded-time roll-up (the `CASE`/`sum` split by source + the
+    // whole-session span join) renders identically on DuckDB and ClickHouse (#155).
+    // The degraded-share arithmetic is covered exhaustively by `trackingQuality.test.ts`.
     golden: [],
   },
   {

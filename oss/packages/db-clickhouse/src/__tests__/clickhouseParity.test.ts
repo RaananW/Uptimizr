@@ -69,7 +69,7 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
     }
   });
 
-  it("covers all 61 aggregations", () => {
+  it("covers all 65 aggregations", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
@@ -112,6 +112,9 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "rageClicks",
       "hoverDwell",
       "compileStalls",
+      "arPlacementTimeToPlace",
+      "arPlacementAttempts",
+      "arPlacementSurfaces",
       "resourceSummary",
       "capabilityChanges",
       "cameraGestures",
@@ -129,6 +132,7 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "xrSourceUsage",
       "xrAbandonment",
       "xrLocomotion",
+      "trackingQuality",
       "interactionsBySource",
       "funnel",
       "loadBounceFunnel",

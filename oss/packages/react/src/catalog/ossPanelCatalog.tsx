@@ -48,6 +48,7 @@ import type {
   ViewCoverageBin,
   WorldHeatmapBin,
   XrLocomotionStat,
+  TrackingQualityStat,
 } from "../api";
 import { mergeSceneProxies } from "./lib/sceneProxies";
 
@@ -142,6 +143,11 @@ import {
   XR_LOCOMOTION_TITLE,
   XR_LOCOMOTION_SUBTITLE,
 } from "./views/XrLocomotionComfort";
+import {
+  TrackingQualityView,
+  TRACKING_QUALITY_TITLE,
+  TRACKING_QUALITY_SUBTITLE,
+} from "./views/TrackingQuality";
 import {
   BacktrackRatioView,
   BACKTRACK_TITLE,
@@ -1044,6 +1050,23 @@ export const xrLocomotionComfortPanel = definePanel<XrLocomotionStat[]>({
 });
 
 /**
+ * Tracking quality (#155, ADR 0048) — React/HTML breakdown, half width. Sits
+ * alongside the scene-health panel: for XR sessions that reported a tracking
+ * transition, the share of session time spent with degraded / lost spatial
+ * tracking, split by hand vs. controller. Built from `capability_change
+ * { kind: "tracking" }` transitions + session span — no schema change.
+ */
+export const trackingQualityPanel = definePanel<TrackingQualityStat[]>({
+  id: "tracking-quality",
+  title: TRACKING_QUALITY_TITLE,
+  subtitle: TRACKING_QUALITY_SUBTITLE,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.trackingQuality({ ...scoped(ctx), source: undefined }),
+  render: ({ data }) => <TrackingQualityView stats={data ?? []} />,
+});
+
+/**
  * Scene/level retention funnel (#147) — React/HTML, half width. A canned Sankey
  * preset built directly from `scene_change` markers: session counts flowing
  * scene → scene in observed order, weighted by distinct sessions, so
@@ -1320,6 +1343,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   errorHeatmapPanel,
   navigationMixPanel,
   xrLocomotionComfortPanel,
+  trackingQualityPanel,
   sceneRetentionPanel,
   backtrackPanel,
   loadBounceFunnelPanel,

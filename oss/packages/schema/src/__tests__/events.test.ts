@@ -713,6 +713,50 @@ describe("capability_change (fallbacks & recovery, design §E)", () => {
     ).toBe(true);
   });
 
+  it("accepts a tracking degradation with source/handedness + durationMs (ADR 0048)", () => {
+    const parsed = anyEventSchema.safeParse({
+      ...baseEnvelope,
+      type: "capability_change",
+      kind: "tracking",
+      from: "6dof",
+      to: "lost",
+      reason: "occlusion",
+      source: "hand",
+      handedness: "left",
+      durationMs: 1_800,
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success && parsed.data.type === "capability_change") {
+      expect(parsed.data.kind).toBe("tracking");
+      expect(parsed.data.source).toBe("hand");
+      expect(parsed.data.handedness).toBe("left");
+      expect(parsed.data.durationMs).toBe(1_800);
+    }
+  });
+
+  it("accepts a bare tracking transition (source/handedness/durationMs optional)", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "capability_change",
+        kind: "tracking",
+        from: "controller",
+        to: "occluded",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a negative tracking durationMs", () => {
+    expect(
+      anyEventSchema.safeParse({
+        ...baseEnvelope,
+        type: "capability_change",
+        kind: "tracking",
+        durationMs: -1,
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects an unknown kind", () => {
     expect(
       anyEventSchema.safeParse({

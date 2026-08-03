@@ -436,6 +436,31 @@ export interface XrLocomotionStat {
   ended_at: string;
 }
 
+/**
+ * Per-XR-session tracking-quality row (#155, ADR 0048): how much of one XR
+ * session ran with degraded / lost spatial tracking, split by hand vs.
+ * controller, plus its wall-clock span so the dashboard can derive the degraded
+ * share as `degraded_ms / (ended_at − started_at)`. Sourced from the session's
+ * `capability_change { kind: "tracking" }` transitions (each carries the
+ * completed degraded-episode length). Only sessions that reported a tracking
+ * transition are returned.
+ */
+export interface TrackingQualityStat {
+  session_id: string;
+  /** Total degraded / lost-tracking time in the session, in ms (all sources). */
+  degraded_ms: number;
+  /** Degraded time attributed to hand tracking, in ms. */
+  hand_degraded_ms: number;
+  /** Degraded time attributed to controller (`xr-controller`) tracking, in ms. */
+  controller_degraded_ms: number;
+  /** Number of completed degraded episodes in the session. */
+  degraded_episodes: number;
+  /** First event timestamp for the session (engine-formatted). */
+  started_at: string;
+  /** Last event timestamp for the session (engine-formatted). */
+  ended_at: string;
+}
+
 /** Input-source vocabulary for the pointer/world heatmap filter (ADR 0011). */
 export type InputSource =
   "mouse" | "touch" | "stylus" | "pen" | "xr-controller" | "hand" | "gaze" | "transient" | "other";
@@ -1535,6 +1560,25 @@ export class CollectorApi {
         navigate_gestures: Number(r.navigate_gestures ?? 0),
         teleports: Number(r.teleports ?? 0),
         locomotion_ms: Number(r.locomotion_ms ?? 0),
+        started_at: String(r.started_at ?? ""),
+        ended_at: String(r.ended_at ?? ""),
+      })),
+    );
+  }
+
+  /**
+   * XR tracking quality (#155, ADR 0048): per XR session that reported a tracking
+   * transition, its degraded / lost-tracking time split by hand vs. controller
+   * and wall-clock span. Drives the tracking-quality timeline panel.
+   */
+  trackingQuality(params?: QueryParams): Promise<TrackingQualityStat[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/xr/tracking", params).then((rows) =>
+      rows.map((r) => ({
+        session_id: String(r.session_id ?? ""),
+        degraded_ms: Number(r.degraded_ms ?? 0),
+        hand_degraded_ms: Number(r.hand_degraded_ms ?? 0),
+        controller_degraded_ms: Number(r.controller_degraded_ms ?? 0),
+        degraded_episodes: Number(r.degraded_episodes ?? 0),
         started_at: String(r.started_at ?? ""),
         ended_at: String(r.ended_at ?? ""),
       })),

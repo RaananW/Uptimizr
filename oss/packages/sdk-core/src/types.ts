@@ -72,6 +72,20 @@ export interface CapabilityChangeReport {
   to?: string;
   /** Optional short, app-defined reason for the change (no PII). */
   reason?: string;
+  /**
+   * How long a transient degraded state lasted, in ms — used by the `"tracking"`
+   * kind (ADR 0048) to report a completed degradation episode (good tracking
+   * `from` → degraded tracking `to`, for `durationMs`). Feeds the tracking-quality
+   * timeline. Omit on the instantaneous non-tracking kinds.
+   */
+  durationMs?: number;
+  /**
+   * Which XR input source degraded, for the `"tracking"` kind (ADR 0011 / 0048):
+   * `"hand"` or `"xr-controller"`, so the timeline can split hand vs. controller.
+   */
+  source?: InputSource;
+  /** Which hand degraded, for paired XR sources (`"left"` / `"right"`). */
+  handedness?: Handedness;
 }
 
 /**
