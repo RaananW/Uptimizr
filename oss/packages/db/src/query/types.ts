@@ -377,6 +377,46 @@ export interface CompileStallRow {
   max_ms: number;
 }
 
+/**
+ * One bin of the AR placement time-to-place distribution (#156, ADR 0048 §1).
+ * `bucket` is the inclusive lower bound (ms) of a `bucketMs`-wide bin; `placements`
+ * is the number of placement settles whose `timeToPlaceMs` falls in it.
+ */
+export interface ArPlacementTimeToPlaceRow {
+  /** Inclusive lower bound (ms) of the time-to-place bin. */
+  bucket: number;
+  /** Number of placement settles in the bin. */
+  placements: number;
+}
+
+/**
+ * One bin of the AR re-placement (attempts) distribution (#156, ADR 0048 §1).
+ * `attempts` is the place/re-place count before a settle; `placements` is how many
+ * settles took exactly that many attempts. A right-skewed shape flags placement
+ * friction (visitors fighting to position the model).
+ */
+export interface ArPlacementAttemptsRow {
+  /** Number of place/re-place actions before the settle. */
+  attempts: number;
+  /** Number of placement settles that took exactly `attempts` actions. */
+  placements: number;
+}
+
+/**
+ * AR placement surface breakdown (#156, ADR 0048 §1): per coarse surface bucket,
+ * the number of settles and their average committed scale (relative to the
+ * model's authored real-world size). `surface` is `'unknown'` when the connector
+ * could not classify the surface.
+ */
+export interface ArPlacementSurfaceRow {
+  /** Coarse surface bucket (`floor`/`wall`/`table`/`ceiling`/`unknown`). */
+  surface: string;
+  /** Number of placement settles on the surface. */
+  placements: number;
+  /** Average final scale of settles on the surface (`1` = authored size). */
+  avg_scale: number;
+}
+
 /** GPU / memory footprint summary from `resource_sample` samples (#44). */
 export interface ResourceSummaryRow {
   /** Number of footprint samples in the range. */

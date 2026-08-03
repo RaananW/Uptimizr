@@ -7,6 +7,9 @@ import {
   buildCapabilityChanges,
   buildClickGazeRay,
   buildCompileStalls,
+  buildArPlacementTimeToPlace,
+  buildArPlacementAttempts,
+  buildArPlacementSurfaces,
   buildDeadClicks,
   buildAggregateTrajectories,
   buildDistinctScenes,
@@ -100,6 +103,7 @@ interface DemoOpts {
   limit?: number;
   cellSize?: number;
   bucket?: number;
+  bucketMs?: number;
   bucketSize?: number;
   interval?: number;
   type?: string;
@@ -145,6 +149,7 @@ function readOpts(sp: URLSearchParams): DemoOpts {
     limit: num(sp, "limit"),
     cellSize: num(sp, "cellSize"),
     bucket: num(sp, "bucket"),
+    bucketMs: num(sp, "bucketMs"),
     bucketSize: num(sp, "bucketSize"),
     interval: num(sp, "interval"),
     type: str(sp, "type"),
@@ -273,6 +278,10 @@ export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/xr/sources": (pid, o) => buildXrSourceUsage(pid, o, duckdbDialect),
   "/api/v1/xr/abandonment": (pid, o) => buildXrAbandonment(pid, o, duckdbDialect),
   "/api/v1/xr/locomotion": (pid, o) => buildXrLocomotionComfort(pid, o, duckdbDialect),
+  "/api/v1/ar/placement/time-to-place": (pid, o) =>
+    buildArPlacementTimeToPlace(pid, o, duckdbDialect),
+  "/api/v1/ar/placement/attempts": (pid, o) => buildArPlacementAttempts(pid, o, duckdbDialect),
+  "/api/v1/ar/placement/surfaces": (pid, o) => buildArPlacementSurfaces(pid, o, duckdbDialect),
   "/api/v1/interactions/sources": (pid, o) => buildInteractionsBySource(pid, o, duckdbDialect),
   "/api/v1/input-actions/top": (pid, o) => buildTopInputActions(pid, o, duckdbDialect),
   "/api/v1/scenes": (pid, o) => buildDistinctScenes(pid, o, duckdbDialect),

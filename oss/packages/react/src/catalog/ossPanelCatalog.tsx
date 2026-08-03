@@ -120,6 +120,13 @@ import {
   PERF_CHURN_HELP,
 } from "./views/PerfChurn";
 import {
+  PlacementFunnelView,
+  PLACEMENT_FUNNEL_TITLE,
+  PLACEMENT_FUNNEL_SUBTITLE,
+  PLACEMENT_FUNNEL_HELP,
+  type PlacementFunnelData,
+} from "./views/PlacementFunnel";
+import {
   RenderScaleTruthView,
   RENDER_SCALE_TITLE,
   RENDER_SCALE_SUBTITLE,
@@ -810,6 +817,31 @@ export const perfChurnPanel = definePanel<PerfChurn, typeof PERF_CHURN_SETTINGS>
 });
 
 /**
+ * AR placement funnel (#156, ADR 0048) — React/HTML, half width. For retail
+ * "view in your room" AR: time-to-place distribution, re-placement (attempts)
+ * distribution, and coarse surface breakdown, from `ar_placement` settles.
+ * Signals are coarse and on-device only (ADR 0003) — one row per settle, no
+ * room geometry. Wraps the three `arPlacement*` reads; no schema migration.
+ */
+export const placementFunnelPanel = definePanel<PlacementFunnelData>({
+  id: "ar-placement-funnel",
+  title: PLACEMENT_FUNNEL_TITLE,
+  subtitle: PLACEMENT_FUNNEL_SUBTITLE,
+  help: PLACEMENT_FUNNEL_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: async (ctx) => {
+    const [timeToPlace, attempts, surfaces] = await Promise.all([
+      ctx.api.arPlacementTimeToPlace(scoped(ctx)),
+      ctx.api.arPlacementAttempts(scoped(ctx)),
+      ctx.api.arPlacementSurfaces(scoped(ctx)),
+    ]);
+    return { timeToPlace, attempts, surfaces };
+  },
+  render: ({ data }) => <PlacementFunnelView data={data} />,
+});
+
+/**
  * Render-scale truth (#71, ADR 0021) — React/HTML stat block, half width. FPS
  * paired with the resolution the engine actually rendered at, flagging "good FPS
  * at a low render scale". A single aggregate row, so no client-only Babylon.
@@ -1282,6 +1314,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   renderScalePanel,
   perfDistributionPanel,
   perfChurnPanel,
+  placementFunnelPanel,
   worldHeatmapPanel,
   perfHeatmapPanel,
   errorHeatmapPanel,

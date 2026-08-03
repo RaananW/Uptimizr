@@ -8,6 +8,9 @@ import {
   buildRageClicks,
   buildHoverDwell,
   buildCompileStalls,
+  buildArPlacementTimeToPlace,
+  buildArPlacementAttempts,
+  buildArPlacementSurfaces,
   buildResourceSummary,
   buildCapabilityChanges,
   buildCameraGestures,
@@ -81,6 +84,9 @@ import {
   type RageClickRow,
   type HoverDwellRow,
   type CompileStallRow,
+  type ArPlacementTimeToPlaceRow,
+  type ArPlacementAttemptsRow,
+  type ArPlacementSurfaceRow,
   type ResourceSummaryRow,
   type CapabilityChangeRow,
   type CameraGestureRow,
@@ -234,6 +240,21 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<HoverDwellRow>(db, buildHoverDwell(projectId, opts, duckdbDialect)),
     compileStalls: (projectId, opts = {}) =>
       runDuckdbQuery<CompileStallRow>(db, buildCompileStalls(projectId, opts, duckdbDialect)),
+    arPlacementTimeToPlace: (projectId, opts = {}) =>
+      runDuckdbQuery<ArPlacementTimeToPlaceRow>(
+        db,
+        buildArPlacementTimeToPlace(projectId, opts, duckdbDialect),
+      ),
+    arPlacementAttempts: (projectId, opts = {}) =>
+      runDuckdbQuery<ArPlacementAttemptsRow>(
+        db,
+        buildArPlacementAttempts(projectId, opts, duckdbDialect),
+      ),
+    arPlacementSurfaces: (projectId, opts = {}) =>
+      runDuckdbQuery<ArPlacementSurfaceRow>(
+        db,
+        buildArPlacementSurfaces(projectId, opts, duckdbDialect),
+      ),
     resourceSummary: (projectId, opts = {}) =>
       runDuckdbQuery<ResourceSummaryRow>(db, buildResourceSummary(projectId, opts, duckdbDialect)),
     capabilityChanges: (projectId, opts = {}) =>

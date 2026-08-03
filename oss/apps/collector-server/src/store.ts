@@ -20,6 +20,9 @@ import type {
   HeatmapBinRow,
   HoverDwellRow,
   CompileStallRow,
+  ArPlacementTimeToPlaceRow,
+  ArPlacementAttemptsRow,
+  ArPlacementSurfaceRow,
   ResourceSummaryRow,
   CapabilityChangeRow,
   CameraGestureRow,
@@ -345,6 +348,31 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
   ): Promise<CompileStallRow[]>;
+  /**
+   * AR placement time-to-place distribution (#156, ADR 0048): a histogram of how
+   * long each `ar_placement` settle took, in `bucketMs`-wide bins — the AR
+   * analogue of add-to-cart latency for "view in your room" experiences.
+   */
+  arPlacementTimeToPlace(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions & { bucketMs?: number },
+  ): Promise<ArPlacementTimeToPlaceRow[]>;
+  /**
+   * AR re-placement distribution (#156, ADR 0048): settles grouped by their
+   * `attempts` count — a long right tail flags placement friction.
+   */
+  arPlacementAttempts(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions,
+  ): Promise<ArPlacementAttemptsRow[]>;
+  /**
+   * AR placement surface breakdown (#156, ADR 0048): per coarse surface bucket,
+   * the number of settles and their average committed scale.
+   */
+  arPlacementSurfaces(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions,
+  ): Promise<ArPlacementSurfaceRow[]>;
   /**
    * Resource footprint (#44): GPU / memory cost summary from `resource_sample`
    * events — average and peak texture/geometry bytes, triangles/vertices, and JS

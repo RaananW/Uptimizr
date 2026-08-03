@@ -24,6 +24,7 @@ import { contextLostSchema, contextRestoredSchema } from "./contextLoss.js";
 import { graphicsDiagnosticSchema } from "./graphicsDiagnostic.js";
 import { runtimeErrorSchema } from "./runtimeError.js";
 import { inputActionSchema } from "./inputAction.js";
+import { arPlacementSchema } from "./arPlacement.js";
 import { customSchema } from "./custom.js";
 
 /**
@@ -64,6 +65,7 @@ export const eventSchemaList = [
   graphicsDiagnosticSchema,
   runtimeErrorSchema,
   inputActionSchema,
+  arPlacementSchema,
   customSchema,
 ] as const;
 
@@ -98,6 +100,7 @@ export const anyEventSchema = z.discriminatedUnion("type", [
   graphicsDiagnosticSchema,
   runtimeErrorSchema,
   inputActionSchema,
+  arPlacementSchema,
   customSchema,
 ]);
 
@@ -135,6 +138,7 @@ export const eventSchemaByType = {
   graphics_diagnostic: graphicsDiagnosticSchema,
   runtime_error: runtimeErrorSchema,
   input_action: inputActionSchema,
+  ar_placement: arPlacementSchema,
   custom: customSchema,
 } as const;
 
@@ -242,6 +246,12 @@ export {
   type Ray,
 } from "./inputSource.js";
 export { inputActionSchema, type InputActionEvent } from "./inputAction.js";
+export {
+  arPlacementSchema,
+  arPlacementSurfaceSchema,
+  type ArPlacementEvent,
+  type ArPlacementSurface,
+} from "./arPlacement.js";
 export {
   customSchema,
   customPropValueSchema,
