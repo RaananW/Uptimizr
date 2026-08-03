@@ -520,6 +520,36 @@ export interface JankRate {
 }
 
 /**
+ * AR placement funnel (#156, ADR 0048). One bucket of the time-to-place
+ * histogram: `bucket` is the lower edge in ms (bucket .. bucket + bucketMs),
+ * `placements` is the count of `ar_placement` settles that landed in it.
+ */
+export interface ArPlacementTimeToPlaceBin {
+  bucket: number;
+  placements: number;
+}
+
+/**
+ * AR placement funnel (#156, ADR 0048). One row of the re-placement
+ * distribution: how many placement settles took exactly `attempts` tries.
+ */
+export interface ArPlacementAttemptsBin {
+  attempts: number;
+  placements: number;
+}
+
+/**
+ * AR placement funnel (#156, ADR 0048). One coarse surface class the object was
+ * placed on, with the placement count and the average final `scale`
+ * (1 = authored real-world size).
+ */
+export interface ArPlacementSurfaceRow {
+  surface: string;
+  placements: number;
+  avg_scale: number;
+}
+
+/**
  * Perf-correlated churn (#144): of the sessions that ended in range
  * (`sessions`), how many ended within the configured window after an FPS dip or
  * a `compile_stall` (`churn_sessions`), with the cause attributed. A session
@@ -687,6 +717,8 @@ export interface QueryParams {
   moveThreshold?: number;
   /** FPS histogram bin width (frames per second). */
   bucket?: number;
+  /** AR placement time-to-place histogram bin width, in ms (#156, default 2000). */
+  bucketMs?: number;
   /** Perf-churn (#144): correlation window before session end, in ms (default 30000). */
   windowMs?: number;
   /** Perf-churn (#144): a `frame_perf` sample below this FPS counts as a dip (default 30). */
@@ -990,6 +1022,51 @@ export class CollectorApi {
   fpsHistogram(params?: QueryParams): Promise<FpsHistogramBin[]> {
     return this.get<Record<string, unknown>[]>("api/v1/perf/fps-histogram", params).then((rows) =>
       rows.map((r) => ({ bucket: Number(r.bucket ?? 0), sessions: Number(r.sessions ?? 0) })),
+    );
+  }
+
+  /**
+   * AR placement time-to-place histogram (#156, ADR 0048): how long each
+   * "view in your room" placement took to settle, bucketed into `bucketMs`-wide
+   * bins (default 2000 ms).
+   */
+  arPlacementTimeToPlace(params?: QueryParams): Promise<ArPlacementTimeToPlaceBin[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/ar/placement/time-to-place", params).then(
+      (rows) =>
+        rows.map((r) => ({
+          bucket: Number(r.bucket ?? 0),
+          placements: Number(r.placements ?? 0),
+        })),
+    );
+  }
+
+  /**
+   * AR re-placement distribution (#156, ADR 0048): how many placement settles
+   * took exactly `attempts` tries — the friction/hesitation signal.
+   */
+  arPlacementAttempts(params?: QueryParams): Promise<ArPlacementAttemptsBin[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/ar/placement/attempts", params).then(
+      (rows) =>
+        rows.map((r) => ({
+          attempts: Number(r.attempts ?? 0),
+          placements: Number(r.placements ?? 0),
+        })),
+    );
+  }
+
+  /**
+   * AR placement surface breakdown (#156, ADR 0048): coarse surface class
+   * (floor/wall/table/ceiling/unknown) each object was placed on, with the
+   * average final scale.
+   */
+  arPlacementSurfaces(params?: QueryParams): Promise<ArPlacementSurfaceRow[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/ar/placement/surfaces", params).then(
+      (rows) =>
+        rows.map((r) => ({
+          surface: String(r.surface ?? "unknown"),
+          placements: Number(r.placements ?? 0),
+          avg_scale: Number(r.avg_scale ?? 0),
+        })),
     );
   }
 

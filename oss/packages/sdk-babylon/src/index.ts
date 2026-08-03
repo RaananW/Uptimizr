@@ -36,4 +36,13 @@ export type {
   XrRayHit,
   XrRayProbe,
 } from "./xr.js";
+export { babylonArPlacementCollector, classifyArSurface } from "./arPlacement.js";
+export type {
+  BabylonArPlacementOptions,
+  ArPlacementStart,
+  ArPlaceCandidate,
+  ArPlacementSettleInput,
+  ArHitTestLike,
+  ArHitResultLike,
+} from "./arPlacement.js";
 export { toVec3, clamp01 } from "./vec.js";

@@ -96,6 +96,9 @@ longer wash out the rest.
 | `GET`  | `/api/v1/xr/abandonment`  | XR session abandonment.                                                                                                                                                    | `limit`, `scene`, `session`                               |
 | `GET`  | `/api/v1/xr/locomotion`   | XR locomotion & comfort: per-session fly/navigate/teleport mix + span.                                                                                                     | `limit`, `scene`, `session`                               |
 | `GET`  | `/api/v1/xr/tracking`     | XR tracking quality: per-session degraded/lost-tracking time (hand vs controller) + span.                                                                                  | `limit`, `scene`, `session`                               |
+| `GET`  | `/api/v1/ar/placement/time-to-place` | AR placement time-to-place histogram (#156): `bucket` (ms lower edge), `placements`.                                                                             | `bucketMs` (default 2000), `scene`, `session`             |
+| `GET`  | `/api/v1/ar/placement/attempts` | AR re-placement distribution (#156): `attempts`, `placements`.                                                                                                        | `scene`, `session`                                        |
+| `GET`  | `/api/v1/ar/placement/surfaces` | AR surface breakdown (#156): `surface` (floor/wall/table/ceiling/unknown), `placements`, `avg_scale`.                                                                 | `scene`, `session`                                        |
 
 ## Time & volume
 

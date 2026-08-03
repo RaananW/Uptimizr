@@ -43,6 +43,9 @@ import {
   buildXrLocomotionComfort,
   buildTrackingQuality,
   buildInteractionsBySource,
+  buildArPlacementTimeToPlace,
+  buildArPlacementAttempts,
+  buildArPlacementSurfaces,
   buildFunnel,
   buildLoadBounceFunnel,
   buildPerfDaily,
@@ -668,6 +671,33 @@ export const PARITY_CASES: readonly ParityCase[] = [
     // No compile_stall fixtures in the parity set, so the per-phase compile-stall
     // roll-up is empty. Validates the GROUP/ORDER renders identically on both
     // engines (#42).
+    golden: [],
+  },
+  {
+    name: "arPlacementTimeToPlace",
+    build: (d) => buildArPlacementTimeToPlace(PID, PARITY_RANGE, d),
+    sortKeys: ["bucket"],
+    // No ar_placement fixtures in the parity set, so the time-to-place histogram
+    // is empty. Validates the payload `timeToPlaceMs` extraction, the floor-bucket
+    // arithmetic, and the GROUP/ORDER render identically on both engines (#156).
+    golden: [],
+  },
+  {
+    name: "arPlacementAttempts",
+    build: (d) => buildArPlacementAttempts(PID, PARITY_RANGE, d),
+    sortKeys: ["attempts"],
+    // No ar_placement fixtures in the parity set, so the re-placement distribution
+    // is empty. Validates the payload `attempts` extraction and the GROUP/ORDER
+    // render identically on both engines (#156).
+    golden: [],
+  },
+  {
+    name: "arPlacementSurfaces",
+    build: (d) => buildArPlacementSurfaces(PID, PARITY_RANGE, d),
+    sortKeys: ["surface"],
+    // No ar_placement fixtures in the parity set, so the surface breakdown is
+    // empty. Validates the payload `surface`/`scale` extraction, the unknown
+    // coalesce, and the GROUP/ORDER render identically on both engines (#156).
     golden: [],
   },
   {
