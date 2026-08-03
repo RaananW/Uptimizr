@@ -106,13 +106,13 @@ describe("AR placement funnel builders (#156, ADR 0048)", () => {
       buildArPlacementTimeToPlace(PID, RANGE, duckdbDialect),
     );
     // Default 2000 ms bins: 1500 -> 0, 3000 -> 2000, 4200 -> 4000.
-    expect(rows.map((r) => ({ bucket: Number(r.bucket), placements: Number(r.placements) }))).toEqual(
-      [
-        { bucket: 0, placements: 1 },
-        { bucket: 2000, placements: 1 },
-        { bucket: 4000, placements: 1 },
-      ],
-    );
+    expect(
+      rows.map((r) => ({ bucket: Number(r.bucket), placements: Number(r.placements) })),
+    ).toEqual([
+      { bucket: 0, placements: 1 },
+      { bucket: 2000, placements: 1 },
+      { bucket: 4000, placements: 1 },
+    ]);
   });
 
   it("honours a custom bucket width", async () => {
@@ -122,9 +122,9 @@ describe("AR placement funnel builders (#156, ADR 0048)", () => {
       buildArPlacementTimeToPlace(PID, { ...RANGE, bucketMs: 5000 }, duckdbDialect),
     );
     // 5000 ms bins collapse 1500/3000/4200 all into bucket 0.
-    expect(rows.map((r) => ({ bucket: Number(r.bucket), placements: Number(r.placements) }))).toEqual(
-      [{ bucket: 0, placements: 3 }],
-    );
+    expect(
+      rows.map((r) => ({ bucket: Number(r.bucket), placements: Number(r.placements) })),
+    ).toEqual([{ bucket: 0, placements: 3 }]);
   });
 
   it("distributes settles by their re-placement (attempts) count", async () => {

@@ -142,7 +142,9 @@ describe("babylonArPlacementCollector (#156, ADR 0048)", () => {
     collector.start(ctx);
 
     // A vertical plane (wall) reported by hit-test, then a place without a normal.
-    onHitTestResultObservable.fire([{ position: { x: 0, y: 1.4, z: 0 }, normal: { x: 1, y: 0, z: 0 } }]);
+    onHitTestResultObservable.fire([
+      { position: { x: 0, y: 1.4, z: 0 }, normal: { x: 1, y: 0, z: 0 } },
+    ]);
     onPlaceObservable.fire({ position: { x: 0, y: 1.4, z: 0 } });
     onSettleObservable.fire({});
 

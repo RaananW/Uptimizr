@@ -118,7 +118,7 @@ test("AR placement funnel panel renders the seeded placement friction", async ({
   // All three sub-sections render (not the empty state).
   await expect(panel.getByText("Time to place", { exact: true })).toBeVisible();
   await expect(panel.getByText("Re-placement attempts", { exact: true })).toBeVisible();
-  await expect(panel.getByText(/Surface breakdown/i)).toBeVisible();
+  await expect(panel.getByText("Surface breakdown (× avg scale)", { exact: true })).toBeVisible();
 
   // The seeded surfaces show up in the breakdown.
   await expect(panel.getByText("floor", { exact: true })).toBeVisible();

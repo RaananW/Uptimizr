@@ -1020,11 +1020,12 @@ export class CollectorApi {
    * took exactly `attempts` tries — the friction/hesitation signal.
    */
   arPlacementAttempts(params?: QueryParams): Promise<ArPlacementAttemptsBin[]> {
-    return this.get<Record<string, unknown>[]>("api/v1/ar/placement/attempts", params).then((rows) =>
-      rows.map((r) => ({
-        attempts: Number(r.attempts ?? 0),
-        placements: Number(r.placements ?? 0),
-      })),
+    return this.get<Record<string, unknown>[]>("api/v1/ar/placement/attempts", params).then(
+      (rows) =>
+        rows.map((r) => ({
+          attempts: Number(r.attempts ?? 0),
+          placements: Number(r.placements ?? 0),
+        })),
     );
   }
 
@@ -1034,12 +1035,13 @@ export class CollectorApi {
    * average final scale.
    */
   arPlacementSurfaces(params?: QueryParams): Promise<ArPlacementSurfaceRow[]> {
-    return this.get<Record<string, unknown>[]>("api/v1/ar/placement/surfaces", params).then((rows) =>
-      rows.map((r) => ({
-        surface: String(r.surface ?? "unknown"),
-        placements: Number(r.placements ?? 0),
-        avg_scale: Number(r.avg_scale ?? 0),
-      })),
+    return this.get<Record<string, unknown>[]>("api/v1/ar/placement/surfaces", params).then(
+      (rows) =>
+        rows.map((r) => ({
+          surface: String(r.surface ?? "unknown"),
+          placements: Number(r.placements ?? 0),
+          avg_scale: Number(r.avg_scale ?? 0),
+        })),
     );
   }
 

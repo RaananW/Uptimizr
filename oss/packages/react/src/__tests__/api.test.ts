@@ -368,7 +368,9 @@ describe("CollectorApi", () => {
 
     const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
     const parsed = new URL(String(url));
-    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/ar/placement/attempts");
+    expect(parsed.origin + parsed.pathname).toBe(
+      "http://localhost:4318/api/v1/ar/placement/attempts",
+    );
     expect(parsed.searchParams.get("session")).toBe("s1");
     expect(rows).toEqual([{ attempts: 1, placements: 5 }]);
   });

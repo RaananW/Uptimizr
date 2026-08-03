@@ -9,7 +9,7 @@ import { formatNumber } from "../../format";
 export const PLACEMENT_FUNNEL_TITLE = "AR placement funnel";
 export const PLACEMENT_FUNNEL_SUBTITLE = "How hard was it to place the object in the room?";
 export const PLACEMENT_FUNNEL_HELP =
-  "The friction of AR \"view in your room\" placement (#156, ADR 0048). Time-to-place is how long each object took to settle onto a surface, bucketed; re-placement counts how many tries (attempts) each settle needed — a hesitation signal; the surface breakdown shows which coarse surface class (floor / wall / table / ceiling / unknown) objects landed on and the average final scale (1 = authored real-world size). Signals are coarse and on-device only per ADR 0003 — no room geometry, images, or precise coordinates leave the client. One row per placement settle, not per frame.";
+  'The friction of AR "view in your room" placement (#156, ADR 0048). Time-to-place is how long each object took to settle onto a surface, bucketed; re-placement counts how many tries (attempts) each settle needed — a hesitation signal; the surface breakdown shows which coarse surface class (floor / wall / table / ceiling / unknown) objects landed on and the average final scale (1 = authored real-world size). Signals are coarse and on-device only per ADR 0003 — no room geometry, images, or precise coordinates leave the client. One row per placement settle, not per frame.';
 
 /** All three placement-funnel reads, loaded together for one panel. */
 export interface PlacementFunnelData {
