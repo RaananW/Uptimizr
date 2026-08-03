@@ -57,7 +57,15 @@ export function trackingSummary(stats: TrackingQualityStat[]): TrackingSummary {
     episodes += s.degraded_episodes;
   }
   const degradedShare = spanMs > 0 ? Math.min(1, degradedMs / spanMs) : 0;
-  return { sessions: stats.length, spanMs, degradedMs, handMs, controllerMs, episodes, degradedShare };
+  return {
+    sessions: stats.length,
+    spanMs,
+    degradedMs,
+    handMs,
+    controllerMs,
+    episodes,
+    degradedShare,
+  };
 }
 
 /** Compact duration label: sub-minute as `x.x s`, otherwise `x.x min`. */

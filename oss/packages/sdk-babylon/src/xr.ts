@@ -203,35 +203,53 @@ export function babylonXrCollector(options: BabylonXrCollectorOptions): Collecto
       // degraded episode is reported once (good `from` → degraded `to`) with its
       // measured `durationMs` (ADR 0048). Coarse by construction — apps with a real
       // tracking-confidence hook report precise transitions directly.
-      interface TrackingLoss {
+      interface TrackingIdentity {
         source: InputSource;
         handedness?: Handedness;
+      }
+      interface TrackingLoss extends TrackingIdentity {
         lostAt: number;
       }
       const pendingLoss = new Map<string, TrackingLoss>();
+      // The source/handedness captured when each controller was ADDED. Babylon may
+      // null out `controller.inputSource` by the time `onControllerRemovedObservable`
+      // fires, so recomputing the identity at removal can key the loss differently
+      // from the recovery (e.g. "xr-controller" vs. "left") and silently drop the
+      // episode. Capturing at add-time and reusing it on removal keeps the two keys
+      // consistent. Keyed by the controller instance.
+      const controllerIdentity = new Map<BabylonXrControllerLike, TrackingIdentity>();
       const now = (): number =>
         typeof performance !== "undefined" && typeof performance.now === "function"
           ? performance.now()
           : Date.now();
-      const controllerSource = (controller: BabylonXrControllerLike): TrackingLoss => {
+      const readIdentity = (controller: BabylonXrControllerLike): TrackingIdentity => {
         const src = controller.inputSource;
-        const source = src ? xrSource(src) : "xr-controller";
-        const handedness = src ? xrHandedness(src) : undefined;
-        return { source, handedness, lostAt: now() };
+        return {
+          source: src ? xrSource(src) : "xr-controller",
+          handedness: src ? xrHandedness(src) : undefined,
+        };
       };
       // The good-tracking token a source degrades from: hands report "hand", 6-DoF
       // controllers report "6dof" (matching the ADR's example vocabulary).
       const goodToken = (source: InputSource): string => (source === "hand" ? "hand" : "6dof");
-      const lossKey = (loss: TrackingLoss): string => loss.handedness ?? loss.source;
+      const lossKey = (identity: TrackingIdentity): string =>
+        identity.handedness ?? identity.source;
 
+      const captureIdentity = (controller: BabylonXrControllerLike) => {
+        if (!wantTracking) return;
+        controllerIdentity.set(controller, readIdentity(controller));
+      };
       const recordTrackingLoss = (controller: BabylonXrControllerLike) => {
         if (!wantTracking) return;
-        const loss = controllerSource(controller);
-        pendingLoss.set(lossKey(loss), loss);
+        // Prefer the identity captured at add-time; fall back to a live read only if
+        // the controller was never seen added (e.g. present before we subscribed).
+        const identity = controllerIdentity.get(controller) ?? readIdentity(controller);
+        controllerIdentity.delete(controller);
+        pendingLoss.set(lossKey(identity), { ...identity, lostAt: now() });
       };
       const recordTrackingRecovery = (controller: BabylonXrControllerLike) => {
         if (!wantTracking) return;
-        const key = lossKey(controllerSource(controller));
+        const key = lossKey(readIdentity(controller));
         const loss = pendingLoss.get(key);
         if (!loss) return;
         pendingLoss.delete(key);
@@ -370,11 +388,15 @@ export function babylonXrCollector(options: BabylonXrCollectorOptions): Collecto
       if (existing) {
         for (let i = 0; i < existing.length; i++) {
           const controller = existing[i];
-          if (controller) hookController(controller);
+          if (controller) {
+            captureIdentity(controller);
+            hookController(controller);
+          }
         }
       }
       addSub(input?.onControllerAddedObservable, (controller) => {
         recordTrackingRecovery(controller);
+        captureIdentity(controller);
         hookController(controller);
       });
       addSub(input?.onControllerRemovedObservable, (controller) => {
@@ -390,6 +412,7 @@ export function babylonXrCollector(options: BabylonXrCollectorOptions): Collecto
         // Session exit (or teardown): abandon any in-flight tracking loss so a
         // removal at session end can't surface as a bogus recovery next session.
         pendingLoss.clear();
+        controllerIdentity.clear();
         if (timer === undefined) return;
         clearInterval(timer);
         timer = undefined;

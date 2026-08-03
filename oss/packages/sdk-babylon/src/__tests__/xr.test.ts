@@ -392,6 +392,35 @@ describe("babylonXrCollector — tracking quality (ADR 0048)", () => {
     handle.stop();
   });
 
+  it("still emits an episode when inputSource is cleared before removal", () => {
+    // Regression: Babylon can null out `controller.inputSource` before
+    // onControllerRemovedObservable fires. The loss identity must come from the
+    // value captured at add-time, not a stale/absent inputSource, so the removal
+    // key ("left") still matches the recovery key.
+    const left = makeController([0, 0, 0]);
+    const { experience, input } = makeExperience([left]);
+    const { ctx } = makeCtx();
+    const report = ctx.reportCapabilityChange as ReturnType<typeof vi.fn>;
+    const handle = babylonXrCollector({ experience, sampleMs: 100 }).start(ctx);
+
+    // Simulate Babylon clearing the input source at teardown of the controller.
+    (left as { inputSource?: unknown }).inputSource = null;
+    input.onControllerRemovedObservable.fire(left);
+    expect(report).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1_000);
+
+    // The same-handed controller returns — the episode must be reported.
+    input.onControllerAddedObservable.fire(makeController([0, 0, 0]));
+    expect(report).toHaveBeenCalledTimes(1);
+    const change = report.mock.calls[0]![0] as Record<string, unknown>;
+    expect(change.kind).toBe("tracking");
+    expect(change.handedness).toBe("left");
+    expect(change.source).toBe("xr-controller");
+
+    handle.stop();
+  });
+
   it("does not report tracking when capture.tracking is disabled", () => {
     const left = makeController([0, 0, 0]);
     const { experience, input } = makeExperience([left]);
