@@ -44,6 +44,7 @@ import type {
   XrAbandonmentRow,
   XrLocomotionRow,
   BoundaryContactsRow,
+  TrackingQualityRow,
   InteractionSourceRow,
   PerfSummaryRow,
   PerfDistributionRow,
@@ -628,6 +629,17 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
   ): Promise<BoundaryContactsRow[]>;
+  /**
+   * XR tracking quality (#155, ADR 0048): per XR session that reported a tracking
+   * transition, how much of the session ran with degraded / lost spatial tracking,
+   * split by hand vs. controller. Turns `capability_change { kind: "tracking" }`
+   * transitions into a tracking-quality timeline (% of a session spent degraded)
+   * that FPS/perf metrics can't reveal.
+   */
+  trackingQuality(
+    projectId: string,
+    opts?: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
+  ): Promise<TrackingQualityRow[]>;
   /**
    * Input-source breakdown (ADR 0011): per `(event_type, source)`, how many
    * interactions came from each input source (mouse / touch / xr-controller /

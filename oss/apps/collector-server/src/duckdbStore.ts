@@ -28,6 +28,7 @@ import {
   buildXrSourceUsage,
   buildXrAbandonment,
   buildXrLocomotionComfort,
+  buildTrackingQuality,
   buildInteractionsBySource,
   buildMeshDwell,
   buildMeshBlindSpots,
@@ -118,6 +119,7 @@ import {
   type XrAbandonmentRow,
   type XrLocomotionRow,
   type BoundaryContactsRow,
+  type TrackingQualityRow,
   type InteractionSourceRow,
   type PerfSummaryRow,
   type RenderScaleTruthRow,
@@ -349,6 +351,8 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
         db,
         buildBoundaryContacts(projectId, opts, duckdbDialect),
       ),
+    trackingQuality: (projectId, opts = {}) =>
+      runDuckdbQuery<TrackingQualityRow>(db, buildTrackingQuality(projectId, opts, duckdbDialect)),
     interactionsBySource: (projectId, opts = {}) =>
       runDuckdbQuery<InteractionSourceRow>(
         db,

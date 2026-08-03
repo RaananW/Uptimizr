@@ -321,6 +321,37 @@ describe("CollectorApi", () => {
     });
   });
 
+  it("coerces XR tracking-quality rows and hits the xr/tracking endpoint (#155)", async () => {
+    const fetchMock = mockFetch([
+      {
+        session_id: "xr1",
+        degraded_ms: "1500",
+        hand_degraded_ms: "1500",
+        controller_degraded_ms: "0",
+        degraded_episodes: "2",
+        started_at: "2024-06-16 10:00:00.000",
+        ended_at: "2024-06-16 10:00:25.000",
+      },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.trackingQuality({ scene: "arena", session: "xr1" });
+
+    const [url] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.origin + parsed.pathname).toBe("http://localhost:4318/api/v1/xr/tracking");
+    expect(parsed.searchParams.get("scene")).toBe("arena");
+    expect(rows[0]).toEqual({
+      session_id: "xr1",
+      degraded_ms: 1500,
+      hand_degraded_ms: 1500,
+      controller_degraded_ms: 0,
+      degraded_episodes: 2,
+      started_at: "2024-06-16 10:00:00.000",
+      ended_at: "2024-06-16 10:00:25.000",
+    });
+  });
+
   it("coerces graphics-diagnostic counts and hits the graphics-diagnostics endpoint (#16)", async () => {
     const fetchMock = mockFetch([
       { severity: "fatal", category: "device-lost", backend: "webgpu", incidents: "2" },

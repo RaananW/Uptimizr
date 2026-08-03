@@ -326,3 +326,116 @@ describe("babylonXrCollector — XR state gating", () => {
     handle.stop();
   });
 });
+
+describe("babylonXrCollector — tracking quality (ADR 0048)", () => {
+  it("reports one tracking capability_change per lost→recovered episode with durationMs", () => {
+    const left = makeController([0, 0, 0]);
+    const { experience, input } = makeExperience([left]);
+    const { ctx } = makeCtx();
+    const report = ctx.reportCapabilityChange as ReturnType<typeof vi.fn>;
+    const handle = babylonXrCollector({ experience, sampleMs: 100 }).start(ctx);
+
+    // Controller drops out of the registry (tracking lost): no event yet.
+    input.onControllerRemovedObservable.fire(left);
+    expect(report).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(2_000);
+
+    // A same-handed controller re-appears (tracking recovered): one episode.
+    input.onControllerAddedObservable.fire(makeController([0, 0, 0]));
+    expect(report).toHaveBeenCalledTimes(1);
+    const change = report.mock.calls[0]![0] as Record<string, unknown>;
+    expect(change.kind).toBe("tracking");
+    expect(change.from).toBe("6dof");
+    expect(change.to).toBe("lost");
+    expect(change.source).toBe("xr-controller");
+    expect(change.handedness).toBe("left");
+    expect(typeof change.durationMs).toBe("number");
+    expect(change.durationMs as number).toBeGreaterThanOrEqual(0);
+
+    handle.stop();
+  });
+
+  it("reports a hand source with the hand good-token", () => {
+    const hand = makeController([0, 0, 0]);
+    (hand as { inputSource?: unknown }).inputSource = { handedness: "right", hand: {} };
+    const { experience, input } = makeExperience([hand]);
+    const { ctx } = makeCtx();
+    const report = ctx.reportCapabilityChange as ReturnType<typeof vi.fn>;
+    const handle = babylonXrCollector({ experience, sampleMs: 100 }).start(ctx);
+
+    input.onControllerRemovedObservable.fire(hand);
+    const recovered = makeController([0, 0, 0]);
+    (recovered as { inputSource?: unknown }).inputSource = { handedness: "right", hand: {} };
+    input.onControllerAddedObservable.fire(recovered);
+
+    expect(report).toHaveBeenCalledTimes(1);
+    const change = report.mock.calls[0]![0] as Record<string, unknown>;
+    expect(change.from).toBe("hand");
+    expect(change.source).toBe("hand");
+    expect(change.handedness).toBe("right");
+
+    handle.stop();
+  });
+
+  it("does not report a recovery for a controller that was never lost", () => {
+    const left = makeController([0, 0, 0]);
+    const { experience, input } = makeExperience([left]);
+    const { ctx } = makeCtx();
+    const report = ctx.reportCapabilityChange as ReturnType<typeof vi.fn>;
+    const handle = babylonXrCollector({ experience, sampleMs: 100 }).start(ctx);
+
+    // A brand-new controller joins (initial connect, not a recovery).
+    input.onControllerAddedObservable.fire(makeController([0, 0, 0]));
+    expect(report).not.toHaveBeenCalled();
+
+    handle.stop();
+  });
+
+  it("still emits an episode when inputSource is cleared before removal", () => {
+    // Regression: Babylon can null out `controller.inputSource` before
+    // onControllerRemovedObservable fires. The loss identity must come from the
+    // value captured at add-time, not a stale/absent inputSource, so the removal
+    // key ("left") still matches the recovery key.
+    const left = makeController([0, 0, 0]);
+    const { experience, input } = makeExperience([left]);
+    const { ctx } = makeCtx();
+    const report = ctx.reportCapabilityChange as ReturnType<typeof vi.fn>;
+    const handle = babylonXrCollector({ experience, sampleMs: 100 }).start(ctx);
+
+    // Simulate Babylon clearing the input source at teardown of the controller.
+    (left as { inputSource?: unknown }).inputSource = null;
+    input.onControllerRemovedObservable.fire(left);
+    expect(report).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1_000);
+
+    // The same-handed controller returns — the episode must be reported.
+    input.onControllerAddedObservable.fire(makeController([0, 0, 0]));
+    expect(report).toHaveBeenCalledTimes(1);
+    const change = report.mock.calls[0]![0] as Record<string, unknown>;
+    expect(change.kind).toBe("tracking");
+    expect(change.handedness).toBe("left");
+    expect(change.source).toBe("xr-controller");
+
+    handle.stop();
+  });
+
+  it("does not report tracking when capture.tracking is disabled", () => {
+    const left = makeController([0, 0, 0]);
+    const { experience, input } = makeExperience([left]);
+    const { ctx } = makeCtx();
+    const report = ctx.reportCapabilityChange as ReturnType<typeof vi.fn>;
+    const handle = babylonXrCollector({
+      experience,
+      sampleMs: 100,
+      capture: { tracking: false },
+    }).start(ctx);
+
+    input.onControllerRemovedObservable.fire(left);
+    input.onControllerAddedObservable.fire(makeController([0, 0, 0]));
+    expect(report).not.toHaveBeenCalled();
+
+    handle.stop();
+  });
+});

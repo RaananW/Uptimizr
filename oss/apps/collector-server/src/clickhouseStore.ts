@@ -28,6 +28,7 @@ import {
   buildXrSourceUsage,
   buildXrAbandonment,
   buildXrLocomotionComfort,
+  buildTrackingQuality,
   buildInteractionsBySource,
   buildMeshDwell,
   buildMeshBlindSpots,
@@ -105,6 +106,7 @@ import {
   type XrAbandonmentRow,
   type XrLocomotionRow,
   type BoundaryContactsRow,
+  type TrackingQualityRow,
   type InteractionSourceRow,
   type PerfSummaryRow,
   type RenderScaleTruthRow,
@@ -313,6 +315,8 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<XrLocomotionRow>(ch, buildXrLocomotionComfort(projectId, opts, d)),
     boundaryContacts: (projectId, opts = {}) =>
       runClickhouseQuery<BoundaryContactsRow>(ch, buildBoundaryContacts(projectId, opts, d)),
+    trackingQuality: (projectId, opts = {}) =>
+      runClickhouseQuery<TrackingQualityRow>(ch, buildTrackingQuality(projectId, opts, d)),
     interactionsBySource: (projectId, opts = {}) =>
       runClickhouseQuery<InteractionSourceRow>(ch, buildInteractionsBySource(projectId, opts, d)),
     topInputActions: (projectId, opts = {}) =>

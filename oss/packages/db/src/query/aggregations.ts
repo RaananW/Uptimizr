@@ -2889,6 +2889,64 @@ export function buildXrLocomotionComfort(
 }
 
 /**
+ * XR tracking-quality timeline (#155, ADR 0048): per session that reported a
+ * tracking transition, how much of the session ran with degraded / lost spatial
+ * tracking, split by hand vs. controller. Turns the `capability_change
+ * { kind: "tracking" }` transitions into the tracking-quality timeline (% of a
+ * session spent degraded) that XR/AR developers otherwise can't see — a session
+ * that looked fine in FPS metrics can still have been unusable because the user's
+ * hands kept disappearing.
+ *
+ * A tracking `capability_change` carries the completed degraded-episode length in
+ * the shared `visible_ms` column (from the event's `durationMs` — no migration,
+ * same reuse as `hover_dwell` / `compile_stall`) and the `source` that degraded
+ * (ADR 0011). `degraded_ms` therefore sums plain durations (parity-comparable),
+ * while `started_at` / `ended_at` bound the **whole** session (every event, not
+ * just the tracking ones — same XR-session gate as {@link buildXrLocomotionComfort})
+ * so the consumer derives the degraded share as `degraded_ms / (ended_at −
+ * started_at)`. The wall-clock bounds are engine-specific and excluded from parity;
+ * the durations/counts are compared. Sessions with no tracking transition are
+ * omitted entirely.
+ */
+export function buildTrackingQuality(
+  projectId: string,
+  opts: RangeOptions & SceneOptions & SessionOptions & { limit?: number },
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const session = sessionClause(bag, opts);
+  const limit = bag.add("limit", "u32", opts.limit ?? 500);
+  return {
+    query: `
+      SELECT
+        session_id,
+        sum(CASE WHEN event_type = 'capability_change' AND name = 'tracking' THEN visible_ms ELSE 0 END) AS degraded_ms,
+        sum(CASE WHEN event_type = 'capability_change' AND name = 'tracking' AND source = 'hand' THEN visible_ms ELSE 0 END) AS hand_degraded_ms,
+        sum(CASE WHEN event_type = 'capability_change' AND name = 'tracking' AND source = 'xr-controller' THEN visible_ms ELSE 0 END) AS controller_degraded_ms,
+        sum(CASE WHEN event_type = 'capability_change' AND name = 'tracking' THEN 1 ELSE 0 END) AS degraded_episodes,
+        min(ts) AS started_at,
+        max(ts) AS ended_at
+      FROM events
+      WHERE project_id = ${pid}${range}${scene}${session}
+        AND session_id IN (
+          SELECT session_id
+          FROM events
+          WHERE project_id = ${pid}
+            AND event_type = 'capability_change'
+            AND name = 'tracking'
+        )
+      GROUP BY session_id
+      ORDER BY degraded_ms DESC
+      LIMIT ${limit}
+    `,
+    query_params: bag.values,
+  };
+}
+
+/**
  * Render one funnel step's predicate against the wide `events` columns (ADR
  * 0038). Every field compiles to plain equality on a promoted column, so the
  * predicate is engine-agnostic and parameter-bound (injection-safe): `type` →

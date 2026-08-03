@@ -143,6 +143,7 @@ export function createMemoryStore({
     xrAbandonment: async () => [],
     xrLocomotion: async () => [],
     boundaryContacts: async () => [],
+    trackingQuality: async () => [],
     interactionsBySource: async () => [],
     topInputActions: async () => [],
     scenes: async (_projectId, opts = {}) => {

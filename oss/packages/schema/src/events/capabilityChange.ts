@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineEvent } from "./defineEvent.js";
+import { inputSourceShape } from "./inputSource.js";
 
 /**
  * What *class* of capability changed. Kept deliberately small so it stays a
@@ -14,6 +15,13 @@ import { defineEvent } from "./defineEvent.js";
  *   re-initialised, possibly at a *different* capability. This is the higher-level
  *   companion to the raw `context_lost` / `context_restored` lifecycle events: it
  *   records what the app came back as, not just that it came back.
+ * - `tracking`         — XR spatial tracking quality changed (ADR 0048): hand or
+ *   inside-out controller tracking degraded or dropped under occlusion / poor
+ *   lighting (e.g. `"6dof"`→`"3dof"`, `"hand"`→`"lost"`, `"controller"`→
+ *   `"occluded"`). Carries `source`/`handedness` so a dashboard can split by which
+ *   hand/controller degraded, and an optional `durationMs` for how long the
+ *   degraded episode lasted. App/connector-reported and best-effort, exactly like
+ *   `device-recovery` — runtimes rarely expose a clean tracking-confidence hook.
  * - `feature`          — a specific optional feature was turned off/on (e.g. a
  *   post-process disabled because an extension was unavailable).
  * - `other`            — anything the app can't attribute to the above.
@@ -22,6 +30,7 @@ export const capabilityChangeKindSchema = z.enum([
   "graphics-backend",
   "quality",
   "device-recovery",
+  "tracking",
   "feature",
   "other",
 ]);
@@ -55,6 +64,22 @@ export const capabilityChangeSchema = defineEvent("capability_change", {
   to: z.string().max(64).optional(),
   /** Optional short, app-defined reason for the change (no PII). */
   reason: z.string().max(120).optional(),
+  /**
+   * How long a transient degraded state lasted, in ms — used by the `tracking`
+   * kind (ADR 0048) to report a completed degradation episode (from good tracking
+   * `from`, into degraded tracking `to`, for `durationMs`), the way `compile_stall`
+   * / `hover_dwell` report one bucketed duration per occurrence. Feeds the
+   * tracking-quality timeline (% of session spent with degraded/lost tracking).
+   * Absent on the non-tracking kinds, which are instantaneous transitions.
+   */
+  durationMs: z.number().nonnegative().optional(),
+  /**
+   * Which XR input source degraded and (for paired sources) which hand, spread
+   * from the shared {@link inputSourceShape} (ADR 0011). Populated by the
+   * `tracking` kind so the timeline can split hand vs. controller; absent on the
+   * other kinds. Only `source`/`handedness` are meaningful here.
+   */
+  ...inputSourceShape,
 });
 
 export type CapabilityChangeEvent = z.infer<typeof capabilityChangeSchema>;

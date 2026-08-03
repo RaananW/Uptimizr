@@ -6,7 +6,7 @@ import {
   xrSource,
 } from "@uptimizr/sdk-core";
 import type { XrCaptureOptions, XrInputSourceLike, XrRayProbe } from "@uptimizr/sdk-core";
-import type { Vec3 } from "@uptimizr/schema";
+import type { Handedness, InputSource, Vec3 } from "@uptimizr/schema";
 
 // Re-export the shared XR option/probe shapes so consumers can import them from the
 // Babylon connector surface alongside the collector.
@@ -160,12 +160,18 @@ function readPointerPose(node: BabylonNodeLike | undefined): PoseLH | undefined 
  * while the session is `IN_XR` (so booting on desktop and entering XR later is
  * captured automatically, with no timer until then); otherwise it falls back to an
  * always-on timer that simply no-ops while `input.controllers` is empty.
+ *
+ * It also reports best-effort **tracking-quality** transitions (ADR 0048): a source
+ * leaving the input registry mid-session, then a same-handedness source rejoining,
+ * surfaces as one `capability_change { kind: "tracking" }` per degraded episode with
+ * its `durationMs`, via the shared `client.reportCapabilityChange(...)` path.
  */
 export function babylonXrCollector(options: BabylonXrCollectorOptions): Collector {
   const { experience, sampleMs = 250, capture = {}, raycast } = options;
   const wantPointerMove = capture.pointerMove ?? true;
   const wantClicks = capture.clicks ?? true;
   const wantMeshPicks = capture.meshPicks ?? true;
+  const wantTracking = capture.tracking ?? true;
 
   return {
     name: "babylon-xr",
@@ -189,6 +195,73 @@ export function babylonXrCollector(options: BabylonXrCollectorOptions): Collecto
         const list = controllerSubs.get(controller) ?? [];
         list.push(fn);
         controllerSubs.set(controller, list);
+      };
+
+      // --- Best-effort tracking quality → capability_change (kind: "tracking") ----
+      // A source dropping out of the input registry mid-session is treated as
+      // tracking lost; when a source with the same handedness re-appears, the
+      // degraded episode is reported once (good `from` → degraded `to`) with its
+      // measured `durationMs` (ADR 0048). Coarse by construction — apps with a real
+      // tracking-confidence hook report precise transitions directly.
+      interface TrackingIdentity {
+        source: InputSource;
+        handedness?: Handedness;
+      }
+      interface TrackingLoss extends TrackingIdentity {
+        lostAt: number;
+      }
+      const pendingLoss = new Map<string, TrackingLoss>();
+      // The source/handedness captured when each controller was ADDED. Babylon may
+      // null out `controller.inputSource` by the time `onControllerRemovedObservable`
+      // fires, so recomputing the identity at removal can key the loss differently
+      // from the recovery (e.g. "xr-controller" vs. "left") and silently drop the
+      // episode. Capturing at add-time and reusing it on removal keeps the two keys
+      // consistent. Keyed by the controller instance.
+      const controllerIdentity = new Map<BabylonXrControllerLike, TrackingIdentity>();
+      const now = (): number =>
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+      const readIdentity = (controller: BabylonXrControllerLike): TrackingIdentity => {
+        const src = controller.inputSource;
+        return {
+          source: src ? xrSource(src) : "xr-controller",
+          handedness: src ? xrHandedness(src) : undefined,
+        };
+      };
+      // The good-tracking token a source degrades from: hands report "hand", 6-DoF
+      // controllers report "6dof" (matching the ADR's example vocabulary).
+      const goodToken = (source: InputSource): string => (source === "hand" ? "hand" : "6dof");
+      const lossKey = (identity: TrackingIdentity): string =>
+        identity.handedness ?? identity.source;
+
+      const captureIdentity = (controller: BabylonXrControllerLike) => {
+        if (!wantTracking) return;
+        controllerIdentity.set(controller, readIdentity(controller));
+      };
+      const recordTrackingLoss = (controller: BabylonXrControllerLike) => {
+        if (!wantTracking) return;
+        // Prefer the identity captured at add-time; fall back to a live read only if
+        // the controller was never seen added (e.g. present before we subscribed).
+        const identity = controllerIdentity.get(controller) ?? readIdentity(controller);
+        controllerIdentity.delete(controller);
+        pendingLoss.set(lossKey(identity), { ...identity, lostAt: now() });
+      };
+      const recordTrackingRecovery = (controller: BabylonXrControllerLike) => {
+        if (!wantTracking) return;
+        const key = lossKey(readIdentity(controller));
+        const loss = pendingLoss.get(key);
+        if (!loss) return;
+        pendingLoss.delete(key);
+        ctx.reportCapabilityChange({
+          kind: "tracking",
+          from: goodToken(loss.source),
+          to: "lost",
+          reason: "signal-lost",
+          source: loss.source,
+          ...(loss.handedness ? { handedness: loss.handedness } : {}),
+          durationMs: Math.max(0, now() - loss.lostAt),
+        });
       };
 
       // --- Continuous pose sampling → pointer_move (ray) -------------------------
@@ -315,17 +388,31 @@ export function babylonXrCollector(options: BabylonXrCollectorOptions): Collecto
       if (existing) {
         for (let i = 0; i < existing.length; i++) {
           const controller = existing[i];
-          if (controller) hookController(controller);
+          if (controller) {
+            captureIdentity(controller);
+            hookController(controller);
+          }
         }
       }
-      addSub(input?.onControllerAddedObservable, (controller) => hookController(controller));
-      addSub(input?.onControllerRemovedObservable, (controller) => unhookController(controller));
+      addSub(input?.onControllerAddedObservable, (controller) => {
+        recordTrackingRecovery(controller);
+        captureIdentity(controller);
+        hookController(controller);
+      });
+      addSub(input?.onControllerRemovedObservable, (controller) => {
+        recordTrackingLoss(controller);
+        unhookController(controller);
+      });
 
       const startTimer = () => {
         if (!wantPointerMove || timer !== undefined) return;
         timer = setInterval(sample, sampleMs);
       };
       const stopTimer = () => {
+        // Session exit (or teardown): abandon any in-flight tracking loss so a
+        // removal at session end can't surface as a bogus recovery next session.
+        pendingLoss.clear();
+        controllerIdentity.clear();
         if (timer === undefined) return;
         clearInterval(timer);
         timer = undefined;

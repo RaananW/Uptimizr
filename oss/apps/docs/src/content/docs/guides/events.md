@@ -70,11 +70,27 @@ auto-capture this — report it from your app whenever you perform a fallback or
 client.reportCapabilityChange({ kind: "graphics-backend", from: "webgpu", to: "webgl2" });
 // or a runtime quality/LOD auto-downgrade:
 client.reportCapabilityChange({ kind: "quality", from: "high", to: "low", reason: "low-fps" });
+// or a completed XR tracking-degradation episode (ADR 0048):
+client.reportCapabilityChange({
+  kind: "tracking",
+  from: "hand",
+  to: "lost",
+  reason: "signal-lost",
+  source: "hand",
+  handedness: "left",
+  durationMs: 1200,
+});
 ```
 
-`kind` is one of `graphics-backend` / `quality` / `device-recovery` / `feature` / `other`; `from` /
-`to` / `reason` are optional, low-cardinality, app-defined tokens (never raw device strings or PII).
-This pairs with the raw [`context_lost` / `context_restored`](/docs/guides/sessions/#engine--browser-lifecycle-events)
+`kind` is one of `graphics-backend` / `quality` / `device-recovery` / `tracking` / `feature` /
+`other`; `from` / `to` / `reason` are optional, low-cardinality, app-defined tokens (never raw
+device strings or PII). The `tracking` kind additionally carries the input `source` / `handedness`
+that degraded and an optional `durationMs` (the completed degraded-episode length — one event per
+episode, emitted on recovery), which powers the tracking-quality timeline
+(`GET /api/v1/xr/tracking`). The Babylon connector reports coarse XR tracking loss/recovery
+automatically when a hand or controller drops out of the input registry mid-session (toggle via the
+XR capture `tracking` option, default on). This pairs with the raw
+[`context_lost` / `context_restored`](/docs/guides/sessions/#engine--browser-lifecycle-events)
 events — it's the higher-level "what we ran as" signal. Read the rollup from `GET /api/v1/capabilities`.
 
 ## Rendering technology (always-on)

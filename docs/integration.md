@@ -134,11 +134,27 @@ connectors do **not** auto-capture this — report it from your app with
 client.reportCapabilityChange({ kind: "graphics-backend", from: "webgpu", to: "webgl2" });
 // or a runtime quality/LOD auto-downgrade:
 client.reportCapabilityChange({ kind: "quality", from: "high", to: "low", reason: "low-fps" });
+// or a completed XR tracking-degradation episode (#155, ADR 0048):
+client.reportCapabilityChange({
+  kind: "tracking",
+  from: "hand",
+  to: "lost",
+  reason: "signal-lost",
+  source: "hand",
+  handedness: "left",
+  durationMs: 1200,
+});
 ```
 
-`kind` is one of `graphics-backend` / `quality` / `device-recovery` / `feature` /
-`other`; `from` / `to` / `reason` are optional, low-cardinality, app-defined tokens
-(never raw device strings or PII, ADR 0003). This pairs with the raw `context_lost`
+`kind` is one of `graphics-backend` / `quality` / `device-recovery` / `tracking` /
+`feature` / `other`; `from` / `to` / `reason` are optional, low-cardinality,
+app-defined tokens (never raw device strings or PII, ADR 0003). The `tracking` kind
+also carries the input `source` / `handedness` that degraded and an optional
+`durationMs` (the completed degraded-episode length — one event per episode, emitted
+on recovery), which powers the tracking-quality timeline (`GET /api/v1/xr/tracking`).
+The Babylon connector reports coarse tracking loss/recovery automatically when a hand
+or controller drops out of the input registry mid-session (toggle with the XR
+capture option `tracking`, default on). This pairs with the raw `context_lost`
 / `context_restored` events — it's the higher-level "what we ran as" signal. Read
 the rollup from `GET /api/v1/capabilities`.
 
@@ -216,7 +232,7 @@ and pointer activity — the SDK also records these discrete lifecycle events
 | `context_lost`        | `@uptimizr/babylon` | Engine lost its GPU context (rendering suspended).                                                                                                                                                                                                                                                                                                                                                       |
 | `context_restored`    | `@uptimizr/babylon` | Engine recovered its GPU context.                                                                                                                                                                                                                                                                                                                                                                        |
 | `compile_stall`       | `@uptimizr/babylon` | Main-thread shader/pipeline compilation hitch (`durationMs`, `phase`).                                                                                                                                                                                                                                                                                                                                   |
-| `capability_change`   | _app-reported_      | Fallback/recovery transition (`kind`, `from`, `to`, `reason`) — e.g. WebGPU→WebGL2.                                                                                                                                                                                                                                                                                                                      |
+| `capability_change`   | _app-reported_      | Fallback/recovery transition (`kind`, `from`, `to`, `reason`) — e.g. WebGPU→WebGL2, or an XR `tracking` degradation (`source`, `handedness`, `durationMs`; #155).                                                                                                                                                                                                                                        |
 | `runtime_error`       | `sdk-core`          | Uncaught JS error / unhandled promise rejection (opt-in). Optional best-effort `position` (camera pose when it fired) powers the spatial error heatmap (#154).                                                                                                                                                                                                                                           |
 | `graphics_diagnostic` | engine connector    | Opt-in GPU-health signal — today: WebGPU `device.lost` (`category: device-lost`), `uncapturederror` rollup (`validation`/`out-of-memory`), and context-creation failure (`category: context-loss`, `fatal`). Babylon + three; WebGL device-loss no-op. Optional best-effort `position` powers the spatial error heatmap (#154).                                                                          |
 | `ar_placement`        | `@uptimizr/babylon` | AR object-placement settle (#156, ADR 0048): emitted **once per placement settle** (not per frame) for retail "view in your room" AR. Carries `mesh`, final world `position`, coarse `surface` (`floor`/`wall`/`table`/`ceiling`/`unknown`), `attempts` (re-placements), `timeToPlaceMs`, `scale` (1 = authored real-world size), and `final`. App-driven via `babylonArPlacementCollector` (see below). |
@@ -233,11 +249,14 @@ Babylon-only.
 
 `capability_change` events (#49) are **app-reported**, not auto-captured: engines
 pick their backend at init and expose no reliable runtime "I downgraded" hook. When
-your app falls back (WebGPU→WebGL2), auto-downgrades quality/LOD, or re-initialises
-after a lost device, report the transition with
-`client.reportCapabilityChange({ kind, from?, to?, reason? })` (`kind` is one of
-`graphics-backend` / `quality` / `device-recovery` / `feature` / `other`). It pairs
-with the raw `context_lost` / `context_restored` events and explains perf and
+your app falls back (WebGPU→WebGL2), auto-downgrades quality/LOD, re-initialises
+after a lost device, or observes XR tracking degrade (#155, ADR 0048), report the
+transition with
+`client.reportCapabilityChange({ kind, from?, to?, reason?, source?, handedness?, durationMs? })`
+(`kind` is one of `graphics-backend` / `quality` / `device-recovery` / `tracking` /
+`feature` / `other`). The `tracking` kind additionally carries the input
+`source` / `handedness` that degraded and the completed episode's `durationMs`. It
+pairs with the raw `context_lost` / `context_restored` events and explains perf and
 visual-fidelity variance across your user base. Pass low-cardinality, app-defined
 tokens only — never raw device strings or PII (ADR 0003).
 The session flush-on-hidden and end-on-`pagehide` behavior above is always active,
@@ -1193,6 +1212,7 @@ correctly). The dashboard's 3D world heatmap also normalizes color/size to the
 | `GET`  | `/api/v1/xr/abandonment`             | XR session abandonment: per XR session `events`, `xr_interactions`, `started_at`, `ended_at` (short span ⇒ headset drop-off).                                                                                                                                                                                                                                                                                                                                                                                            | `limit`, `scene`, `session`                                                                          |
 | `GET`  | `/api/v1/xr/locomotion`              | XR locomotion & comfort (#148): per XR session `fly_gestures`, `navigate_gestures`, `teleports`, `locomotion_ms`, `started_at`, `ended_at`. Teleports emit both a `fly` gesture and a `mesh_interaction` teleport (ADR 0025), so smooth locomotion is `fly_gestures - teleports`; the session span correlates heavy locomotion with early exits (a discomfort proxy). Only sessions that used an XR input source are returned.                                                                                           | `limit`, `scene`, `session`                                                                          |
 | `GET`  | `/api/v1/xr/boundary-contacts`       | XR guardian **boundary contacts** (#157, ADR 0048): per XR session `contacts` (near-boundary approaches) + `near_ms` (total time in the near-boundary zone), ordered by `contacts` desc — a room-scale comfort signal shown alongside the locomotion dashboard. Frequent contact means the physical space didn't fit the experience. Only the on-device outcome (position + duration) is stored; no room geometry.                                                                                                       | `limit`, `scene`, `session`                                                                          |
+| `GET`  | `/api/v1/xr/tracking`                | XR tracking quality (#155, ADR 0048): per XR session that reported a tracking transition, `degraded_ms`, `hand_degraded_ms`, `controller_degraded_ms`, `degraded_episodes`, `started_at`, `ended_at`. Sourced from `capability_change { kind: "tracking" }` transitions; each degraded episode's length reuses the shared `visible_ms` column (no migration). The degraded share of a session is `degraded_ms / (ended_at − started_at)`. Only sessions that reported a tracking transition are returned.                | `limit`, `scene`, `session`                                                                          |
 | `GET`  | `/api/v1/ar/placement/time-to-place` | AR placement time-to-place (#156, ADR 0048): histogram of how long each `ar_placement` settle took (`bucket` lower edge in ms, `placements` count), bucketed by `bucketMs` (default 2000). The felt friction of retail "view in your room" placement.                                                                                                                                                                                                                                                                    | `bucketMs` (default 2000, max 60000), `scene`, `session`                                             |
 | `GET`  | `/api/v1/ar/placement/attempts`      | AR re-placement distribution (#156, ADR 0048): how many placement settles took exactly `attempts` tries (`attempts`, `placements`) — the AR analogue of cart hesitation.                                                                                                                                                                                                                                                                                                                                                 | `scene`, `session`                                                                                   |
 | `GET`  | `/api/v1/ar/placement/surfaces`      | AR surface breakdown (#156, ADR 0048): per coarse surface class (`floor`/`wall`/`table`/`ceiling`/`unknown`) the `placements` count and `avg_scale` (1 = authored real-world size). Where did models land, and did visitors resize them?                                                                                                                                                                                                                                                                                 | `scene`, `session`                                                                                   |

@@ -63,6 +63,7 @@ import {
   buildWorldHeatmapStats,
   buildXrAbandonment,
   buildXrLocomotionComfort,
+  buildTrackingQuality,
   buildXrRotationRate,
   buildXrSourceUsage,
   defaultCellSizeForBounds,
@@ -286,6 +287,7 @@ export const READ_ROUTES: Record<string, BuilderRoute> = {
   "/api/v1/xr/abandonment": (pid, o) => buildXrAbandonment(pid, o, duckdbDialect),
   "/api/v1/xr/locomotion": (pid, o) => buildXrLocomotionComfort(pid, o, duckdbDialect),
   "/api/v1/xr/boundary-contacts": (pid, o) => buildBoundaryContacts(pid, o, duckdbDialect),
+  "/api/v1/xr/tracking": (pid, o) => buildTrackingQuality(pid, o, duckdbDialect),
   "/api/v1/ar/placement/time-to-place": (pid, o) =>
     buildArPlacementTimeToPlace(pid, o, duckdbDialect),
   "/api/v1/ar/placement/attempts": (pid, o) => buildArPlacementAttempts(pid, o, duckdbDialect),

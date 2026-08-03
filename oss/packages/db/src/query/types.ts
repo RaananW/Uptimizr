@@ -791,6 +791,36 @@ export interface BoundaryContactsRow {
 }
 
 /**
+ * Per-XR-session tracking-quality row (#155, ADR 0048): how much of a session ran
+ * with degraded / lost spatial tracking, split by hand vs. controller, so the
+ * dashboard can build a tracking-quality timeline (% of session degraded). Built
+ * from `capability_change { kind: "tracking" }` transitions — each carries the
+ * degraded-episode `durationMs` in the shared `visible_ms` column (no migration)
+ * and the `source` that degraded (ADR 0011).
+ *
+ * `degraded_ms` sums those episode durations (parity-comparable); `started_at` /
+ * `ended_at` bound the **whole** session (all events, not just tracking ones) so
+ * the consumer computes the degraded share as `degraded_ms / (ended_at −
+ * started_at)`. The timestamps are engine-formatted and excluded from parity, as
+ * in {@link XrLocomotionRow}. Sessions with no tracking transition are omitted.
+ */
+export interface TrackingQualityRow {
+  session_id: string;
+  /** Total degraded/lost tracking time in the session, in ms (from `visible_ms`). */
+  degraded_ms: number;
+  /** Degraded time attributed to hand tracking (`source = 'hand'`), in ms. */
+  hand_degraded_ms: number;
+  /** Degraded time attributed to controller tracking (`source = 'xr-controller'`), in ms. */
+  controller_degraded_ms: number;
+  /** Number of completed degraded episodes (tracking transitions) in the session. */
+  degraded_episodes: number;
+  /** First event timestamp for the session (engine-formatted; excluded from parity). */
+  started_at: string;
+  /** Last event timestamp for the session (engine-formatted; excluded from parity). */
+  ended_at: string;
+}
+
+/**
  * One funnel step predicate (ADR 0038): the structural subset of a
  * `@uptimizr/schema` `FunnelStep` the aggregation compiles to SQL. Each field
  * maps to a promoted column — `type`→`event_type`, `name`→the `name` column

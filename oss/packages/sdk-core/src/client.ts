@@ -329,6 +329,9 @@ export class UptimizrClient {
       ...(change.from ? { from: change.from } : {}),
       ...(change.to ? { to: change.to } : {}),
       ...(change.reason ? { reason: change.reason } : {}),
+      ...(typeof change.durationMs === "number" ? { durationMs: change.durationMs } : {}),
+      ...(change.source ? { source: change.source } : {}),
+      ...(change.handedness ? { handedness: change.handedness } : {}),
     } as EventInput);
   }
 
