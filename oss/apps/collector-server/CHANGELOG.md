@@ -1,5 +1,47 @@
 # @uptimizr/collector-server
 
+## 0.7.0
+
+### Minor Changes
+
+- 6d883d0: Add guardian / boundary-touch spatial analytics for room-scale VR (#157, ADR 0048).
+
+  - **schema:** new `xr_boundary_proximity` event — a coarse voxel-binned `position` (HMD position at
+    the closest approach) plus `durationMs` (time within the near-boundary zone). One event per
+    approach; count is implied by frequency.
+  - **sdk-babylon:** opt-in `babylonBoundaryCollector` detects, entirely on-device, when the tracked
+    WebXR pose comes within a near threshold (default 0.5 m) of a bounded reference space's guardian
+    boundary and emits one event per approach. The boundary polygon / room geometry is **never**
+    transmitted (ADR 0003 / ADR 0048).
+  - **@uptimizr/db:** dialect-agnostic `buildBoundaryHeatmap`, `buildBoundaryHeatmapStats`, and
+    `buildBoundaryContacts` builders that reuse the existing world-heatmap voxel path (no migration —
+    the promoted `position` column is reused).
+  - **collector-server:** new `GET /api/v1/heatmaps/boundary`, `/api/v1/heatmaps/boundary/stats`, and
+    `/api/v1/xr/boundary-contacts` endpoints.
+  - **@uptimizr/react:** a boundary-touch heatmap panel (3D, reusing the world-heatmap render path) and
+    a per-session guardian boundary-contacts comfort panel, both registered in the OSS panel catalog.
+
+### Patch Changes
+
+- fa842eb: Update runtime dependencies to their latest releases: Fastify and its rate-limit
+  plugin (collector-server), Babylon.js core and loaders (dashboard), and the DuckDB
+  Node API (db). Development-only tooling across the workspace was refreshed to latest
+  as well; TypeScript is intentionally held back pending the 7.x migration.
+- c84fec4: Resolve three security advisories in transitive runtime dependencies by tightening the
+  workspace overrides: `brace-expansion` to `>=5.0.9` (GHSA-rgw5-rvv9-x895, denial of service
+  via unbounded intermediate arrays — reached through `@fastify/static`), `fast-uri` to
+  `>=3.1.5` (GHSA-7p8r-x3mc-p8w7, host confusion via a backslash authority introducer — reached
+  through Fastify and the MCP SDK), and a new `hono` override at `>=4.12.34`
+  (GHSA-8j4g-w8fx-2239, regular-expression denial of service in the CORS middleware — reached
+  through the MCP SDK). No API or behavior changes.
+- Updated dependencies [0e8b8a8]
+- Updated dependencies [6d883d0]
+- Updated dependencies [fa842eb]
+- Updated dependencies [8041ca2]
+  - @uptimizr/schema@0.6.0
+  - @uptimizr/db@0.8.0
+  - @uptimizr/db-clickhouse@0.3.6
+
 ## 0.6.3
 
 ### Patch Changes
