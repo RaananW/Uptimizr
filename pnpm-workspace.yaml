@@ -39,16 +39,19 @@ overrides:
   postcss: ">=8.5.18"
   # GHSA: Windows path traversal in Hono's Node static serving adapter, via MCP SDK.
   "@hono/node-server": ">=2.0.5 <3"
+  # GHSA-8j4g-w8fx-2239: ReDoS in Hono's CORS middleware via
+  # Access-Control-Request-Headers, via the MCP SDK's HTTP transport.
+  hono: ">=4.12.34 <5"
   # GHSA: executable scripts survive SVG sanitization, via Astro.
   svgo: ">=4.0.2 <5"
   # GHSA: backslash host confusion in URI parsing, via Fastify, Astro, and MCP.
-  fast-uri: ">=3.1.4 <4"
+  fast-uri: ">=3.1.5 <4"
   # CVEs: inherited libvips vulnerabilities in sharp 0.34.x, via Next.js.
   sharp: ">=0.35.0 <0.36"
   # GHSA: HTTP/2 denial of service in find-my-way, via Fastify.
   find-my-way: ">=9.6.1 <10"
   # GHSA: unbounded brace expansion denial of service, via ESLint and Fastify.
-  brace-expansion: ">=5.0.8 <6"
+  brace-expansion: ">=5.0.9 <6"
   # GHSA: dev-server arbitrary file read on Windows (esbuild < 0.28.1), via astro.
   esbuild: ">=0.28.1"
   # GHSA-h67p-54hq-rp68: quadratic-complexity DoS via merge keys (js-yaml <= 4.1.1),
