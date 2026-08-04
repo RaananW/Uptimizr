@@ -1,5 +1,75 @@
 # @uptimizr/react
 
+## 0.13.0
+
+### Minor Changes
+
+- 0e8b8a8: Add the `ar_placement` event and AR placement funnel analytics (#156, ADR 0048).
+
+  - **schema:** new source-neutral `ar_placement` event, emitted once per placement
+    "settle" for retail "view in your room" AR — `mesh`, final world `position`, coarse
+    `surface` (`floor`/`wall`/`table`/`ceiling`/`unknown`), `attempts`, `timeToPlaceMs`,
+    `scale`, and `final`. Reuses the promoted `mesh`/`position` columns, so no DB
+    migration.
+  - **@uptimizr/babylon:** `babylonArPlacementCollector` captures WebXR hit-test/anchor
+    placement and enqueues one `ar_placement` per settle, classifying the surface coarsely
+    from the hit normal (`classifyArSurface`). Coarse, on-device-only signals (ADR 0003).
+  - **@uptimizr/db:** dialect-agnostic `buildArPlacementTimeToPlace`,
+    `buildArPlacementAttempts`, and `buildArPlacementSurfaces` builders for the placement
+    funnel (time-to-place distribution, re-placement count, surface breakdown), with parity
+    cases.
+  - **@uptimizr/react:** `arPlacementTimeToPlace` / `arPlacementAttempts` /
+    `arPlacementSurfaces` API methods and an **AR placement funnel** dashboard panel.
+
+- 6d883d0: Add guardian / boundary-touch spatial analytics for room-scale VR (#157, ADR 0048).
+
+  - **schema:** new `xr_boundary_proximity` event — a coarse voxel-binned `position` (HMD position at
+    the closest approach) plus `durationMs` (time within the near-boundary zone). One event per
+    approach; count is implied by frequency.
+  - **sdk-babylon:** opt-in `babylonBoundaryCollector` detects, entirely on-device, when the tracked
+    WebXR pose comes within a near threshold (default 0.5 m) of a bounded reference space's guardian
+    boundary and emits one event per approach. The boundary polygon / room geometry is **never**
+    transmitted (ADR 0003 / ADR 0048).
+  - **@uptimizr/db:** dialect-agnostic `buildBoundaryHeatmap`, `buildBoundaryHeatmapStats`, and
+    `buildBoundaryContacts` builders that reuse the existing world-heatmap voxel path (no migration —
+    the promoted `position` column is reused).
+  - **collector-server:** new `GET /api/v1/heatmaps/boundary`, `/api/v1/heatmaps/boundary/stats`, and
+    `/api/v1/xr/boundary-contacts` endpoints.
+  - **@uptimizr/react:** a boundary-touch heatmap panel (3D, reusing the world-heatmap render path) and
+    a per-session guardian boundary-contacts comfort panel, both registered in the OSS panel catalog.
+
+- 8041ca2: Add an XR **tracking-quality timeline** (#155, ADR 0048) by extending the existing
+  `capability_change` event with a new `"tracking"` kind — events live once, no new
+  event type, no DB migration.
+
+  - **schema.** `capabilityChangeKindSchema` gains `"tracking"`, and
+    `capabilityChangeSchema` now spreads `inputSourceShape` (`source` / `handedness`)
+    and an optional `durationMs` (the completed degraded-episode length). A tracking
+    transition reuses the event's existing `from` / `to` / `reason` shape (e.g.
+    `"hand"` → `"lost"`, `"6dof"` → `"3dof"`).
+  - **sdk-core.** `reportCapabilityChange(...)` threads `source` / `handedness` /
+    `durationMs` through, and the XR capture options gain a `tracking` toggle.
+  - **@uptimizr/babylon.** The XR collector reports coarse, best-effort tracking
+    loss/recovery — when a hand or controller drops out of the input registry
+    mid-session it emits one `capability_change { kind: "tracking" }` per completed
+    degraded episode (via the same `reportCapabilityChange` path as `device-recovery`).
+  - **@uptimizr/db.** New dialect-agnostic `buildTrackingQuality(projectId, opts, d)`
+    aggregation (per session: `degraded_ms`, `hand_degraded_ms`,
+    `controller_degraded_ms`, `degraded_episodes`, span) plus a `PARITY_CASES` entry so
+    DuckDB and ClickHouse stay provably equal. The degraded duration reuses the shared
+    `visible_ms` column.
+  - **@uptimizr/react.** New `trackingQuality()` API method (`GET /api/v1/xr/tracking`)
+    and a **Tracking quality** catalog panel (share of session time degraded, split by
+    hand vs. controller) surfaced on the overview alongside scene health.
+
+### Patch Changes
+
+- Updated dependencies [0e8b8a8]
+- Updated dependencies [6d883d0]
+- Updated dependencies [8041ca2]
+  - @uptimizr/schema@0.6.0
+  - @uptimizr/replay@0.2.5
+
 ## 0.12.1
 
 ### Patch Changes

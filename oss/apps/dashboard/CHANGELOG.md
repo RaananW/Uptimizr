@@ -1,5 +1,19 @@
 # @uptimizr/dashboard
 
+## 0.4.6
+
+### Patch Changes
+
+- fa842eb: Update runtime dependencies to their latest releases: Fastify and its rate-limit
+  plugin (collector-server), Babylon.js core and loaders (dashboard), and the DuckDB
+  Node API (db). Development-only tooling across the workspace was refreshed to latest
+  as well; TypeScript is intentionally held back pending the 7.x migration.
+- Updated dependencies [0e8b8a8]
+- Updated dependencies [6d883d0]
+- Updated dependencies [8041ca2]
+  - @uptimizr/react@0.13.0
+  - @uptimizr/replay@0.2.5
+
 ## 0.4.5
 
 ### Patch Changes
