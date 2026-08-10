@@ -79,8 +79,8 @@
     "@uptimizr/schema": "workspace:*"
   },
   "devDependencies": {
-    "@babylonjs/core": "^9.19.0",
-    "@babylonjs/loaders": "^9.19.0",
+    "@babylonjs/core": "^9.20.0",
+    "@babylonjs/loaders": "^9.20.0",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
