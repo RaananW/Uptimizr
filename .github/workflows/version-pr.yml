@@ -35,7 +35,7 @@ jobs:
         uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -44,12 +44,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Create or update the Version Packages PR
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
-          version: pnpm changeset version
-          title: "chore(release): version packages"
-          commit: "chore(release): version packages"
-          # No `publish` input: this workflow only maintains the version PR.
-          # Publishing happens in release.yml after the PR is merged.
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_GH_TOKEN }}
+          version-script: pnpm changeset version
+          pr-title: "chore(release): version packages"
+          commit-message: "chore(release): version packages"
+          # No `publish-script` input: this workflow only maintains the version
+          # PR. Publishing happens in release.yml after the PR is merged.
+          github-token: ${{ secrets.RELEASE_GH_TOKEN }}

@@ -77,7 +77,7 @@
     }
   },
   "devDependencies": {
-    "@mlc-ai/web-llm": "^0.2.79",
+    "@mlc-ai/web-llm": "^0.2.84",
     "vitest": "^4.1.10"
   },
   "engines": {

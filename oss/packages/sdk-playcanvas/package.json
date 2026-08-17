@@ -58,8 +58,8 @@
     "@uptimizr/sdk-core": "workspace:*"
   },
   "devDependencies": {
-    "esbuild": "^0.28.1",
-    "playcanvas": "2.21.3",
+    "esbuild": "^0.28.2",
+    "playcanvas": "2.21.4",
     "vitest": "^4.1.10"
   }
 }

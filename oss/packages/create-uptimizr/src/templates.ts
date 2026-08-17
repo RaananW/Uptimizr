@@ -65,11 +65,11 @@ export function renderPackageJson(
     migrate: "uptimizr migrate",
   };
   const dependencies: Record<string, string> = {
-    "@uptimizr/collector-server": "^0.6.2",
+    "@uptimizr/collector-server": "^0.7.0",
   };
   if (extras.withDashboard) {
     // The dashboard ships its own zero-dep static server (`uptimizr-dashboard`).
-    dependencies["@uptimizr/dashboard"] = "^0.4.0";
+    dependencies["@uptimizr/dashboard"] = "^0.4.6";
     scripts.dashboard = `uptimizr-dashboard --port ${DASHBOARD_PORT}`;
   }
   if (extras.withDemo) {
