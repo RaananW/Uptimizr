@@ -79,12 +79,12 @@
     "@uptimizr/schema": "workspace:*"
   },
   "devDependencies": {
-    "@babylonjs/core": "^9.19.0",
-    "@babylonjs/loaders": "^9.19.0",
+    "@babylonjs/core": "^9.21.1",
+    "@babylonjs/loaders": "^9.21.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
-    "happy-dom": "^20.11.1",
+    "happy-dom": "^20.11.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "vitest": "^4.1.10"
