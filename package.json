@@ -44,17 +44,17 @@
     "release": "changeset publish"
   },
   "devDependencies": {
-    "@changesets/cli": "^3.0.0",
+    "@changesets/cli": "^3.0.1",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "dotenv-cli": "^11.0.0",
-    "eslint": "^10.8.1",
+    "eslint": "^10.9.1",
     "fontkit": "^2.0.4",
     "prettier": "^3.9.6",
-    "sharp": "^0.35.3",
-    "turbo": "^2.10.10",
+    "sharp": "^0.35.4",
+    "turbo": "^2.10.12",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.67.0",
+    "typescript-eslint": "^8.68.0",
     "wawoff2": "^2.0.1"
   }
 }
