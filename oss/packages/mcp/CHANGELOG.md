@@ -1,5 +1,14 @@
 # @uptimizr/mcp
 
+## 0.2.6
+
+### Patch Changes
+
+- 0af8209: Update runtime dependencies: Fastify 5.12.1 and @fastify/helmet 13.1.1 (collector-server), Next.js 16.3.3 and Babylon.js 9.23.0 (dashboard), and Zod 4.5.4 (schema, agent-core, mcp, replay, collector-server). Dev-only dependency bumps across the remaining packages are not released.
+- Updated dependencies [0af8209]
+  - @uptimizr/agent-core@0.3.1
+  - @uptimizr/schema@0.6.1
+
 ## 0.2.5
 
 ### Patch Changes

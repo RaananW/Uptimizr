@@ -1,5 +1,13 @@
 # @uptimizr/db-clickhouse
 
+## 0.3.8
+
+### Patch Changes
+
+- Updated dependencies [0af8209]
+  - @uptimizr/schema@0.6.1
+  - @uptimizr/db@0.8.2
+
 ## 0.3.7
 
 ### Patch Changes
