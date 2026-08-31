@@ -60,12 +60,12 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@uptimizr/agent-core": "workspace:*",
     "@uptimizr/schema": "workspace:*",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
-    "tsx": "^4.23.12",
-    "vitest": "^4.1.10"
+    "@types/node": "^26.4.0",
+    "tsx": "^4.23.13",
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=22"

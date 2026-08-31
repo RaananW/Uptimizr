@@ -12,6 +12,11 @@ const basePath = process.env.NEXT_BASE_PATH || undefined;
 
 const nextConfig = {
   reactStrictMode: true,
+  // Next 16.3.2+ writes a managed agent-rules block into a per-app
+  // AGENTS.md/CLAUDE.md on every dev/build. This repo keeps agent guidance in
+  // the root AGENTS.md and .github/instructions, so opt out rather than carry a
+  // second, machine-owned instruction surface that dirties the tree each build.
+  agentRules: false,
   ...(isStatic ? { output: "export" } : {}),
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
   // Expose the base path to the client so public-folder assets (logo, favicon)

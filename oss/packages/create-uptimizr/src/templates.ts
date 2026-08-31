@@ -26,7 +26,7 @@ export const DEMO_PORT = 5173;
 
 /** Pinned versions used by the browser-side demo (loaded from a CDN, no bundler). */
 const BABYLON_CDN_RANGE = "9";
-const UPTIMIZR_BABYLON_VERSION = "0.4.1";
+const UPTIMIZR_BABYLON_VERSION = "0.5.0";
 
 /** Optional extras a developer can fold into the scaffold. */
 export interface ScaffoldExtras {

@@ -189,6 +189,7 @@ full list):
 | `COLLECTOR_PORT`                          | Port the collector listens on (default `4318`).                                               |
 | `VISITOR_HASH_SECRET`                     | Secret for the daily-rotating, server-side visitor hash.                                      |
 | `COLLECTOR_CORS_ORIGINS`                  | Allowed browser origins for ingestion/query (comma-separated).                                |
+| `COLLECTOR_TRUST_PROXY`                   | Trust `X-Forwarded-*` behind a reverse proxy: `true`, or a trusted IP/CIDR list.              |
 | `ENABLE_RAW_SESSION_RETENTION`            | Opt-in raw per-session event retention, required for replay.                                  |
 
 See [Privacy & configuration](/docs/deploy/privacy/) for the privacy-relevant settings.

@@ -41,10 +41,11 @@ export interface CollectorConfig {
    * Trust `X-Forwarded-*` headers from a reverse proxy / load balancer. Required
    * when the collector runs behind TLS termination so the per-visitor hash and
    * the rate-limit bucket key on the real client IP rather than the proxy's.
-   * `false` (default) trusts only the direct socket peer. Accepts `true`/`false`,
-   * a hop count, or an IP/subnet/comma-list passed through to Fastify.
+   * `false` (default) trusts only the direct socket peer. Accepts `true`/`false`
+   * or an IP/subnet/comma-list passed through to Fastify. Hop counts are not
+   * accepted — see `parseTrustProxy`.
    */
-  trustProxy: boolean | number | string;
+  trustProxy: boolean | string;
   /** Max accepted request body size in bytes (defends against oversized payloads). */
   bodyLimit: number;
   /** Content-Security-Policy for the bundled dashboard: `strict` (default) or `off`. */
@@ -64,17 +65,32 @@ function bool(value: string | undefined): boolean {
 
 /**
  * Parse `COLLECTOR_TRUST_PROXY` into a value Fastify's `trustProxy` accepts:
- * a boolean, a hop count, or an IP/subnet/comma-separated list passed through
- * verbatim. Empty/unset means do not trust proxy headers.
+ * a boolean, or an IP/subnet/comma-separated list passed through verbatim.
+ * Empty/unset means do not trust proxy headers.
+ *
+ * A bare hop count (`COLLECTOR_TRUST_PROXY=1`) used to be accepted, but Fastify
+ * 5.12.1 disabled numeric hop-count trust: it cannot validate the immediate peer,
+ * so a direct client could spoof `X-Forwarded-*` by supplying enough hops.
+ * Fastify now fails closed on a number and silently ignores the headers — which
+ * would quietly bucket the visitor hash and rate limit on the proxy's IP. Reject
+ * it here instead, so a stale deployment fails loudly at startup rather than
+ * degrading in production.
  */
-function parseTrustProxy(value: string | undefined): boolean | number | string {
+function parseTrustProxy(value: string | undefined): boolean | string {
   if (value == null || value.trim() === "") return false;
   const trimmed = value.trim();
   const lower = trimmed.toLowerCase();
   if (lower === "true") return true;
   if (lower === "false") return false;
   const n = Number(trimmed);
-  if (Number.isInteger(n) && String(n) === trimmed) return n;
+  if (Number.isInteger(n) && String(n) === trimmed) {
+    throw new Error(
+      `COLLECTOR_TRUST_PROXY no longer accepts a hop count (got "${trimmed}"). ` +
+        "Fastify disabled numeric hop-count trust because it cannot validate the " +
+        "immediate peer. Set the trusted proxy IP/CIDR (or a comma-separated list) " +
+        "instead, or `true` when the collector is not directly reachable.",
+    );
+  }
   return trimmed;
 }
 

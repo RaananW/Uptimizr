@@ -66,7 +66,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "peerDependencies": {
     "@mlc-ai/web-llm": "^0.2.0"
@@ -78,7 +78,7 @@
   },
   "devDependencies": {
     "@mlc-ai/web-llm": "^0.2.84",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=22"
