@@ -14,10 +14,10 @@
     "clean": "rm -rf dist .astro node_modules/.vite"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.41.7",
+    "@astrojs/starlight": "^0.41.9",
     "@vercel/analytics": "^2.0.1",
-    "astro": "^7.2.2",
-    "sharp": "^0.35.3"
+    "astro": "^7.2.9",
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10"
