@@ -1,5 +1,14 @@
 # @uptimizr/react
 
+## 0.13.1
+
+### Patch Changes
+
+- Updated dependencies [0af8209]
+  - @uptimizr/agent-core@0.3.1
+  - @uptimizr/replay@0.2.6
+  - @uptimizr/schema@0.6.1
+
 ## 0.13.0
 
 ### Minor Changes

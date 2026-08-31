@@ -1,5 +1,13 @@
 # @uptimizr/playcanvas
 
+## 0.2.5
+
+### Patch Changes
+
+- Updated dependencies [0af8209]
+  - @uptimizr/schema@0.6.1
+  - @uptimizr/sdk-core@0.5.1
+
 ## 0.2.4
 
 ### Patch Changes

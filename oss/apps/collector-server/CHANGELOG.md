@@ -1,5 +1,23 @@
 # @uptimizr/collector-server
 
+## 0.8.0
+
+### Minor Changes
+
+- 0af8209: `COLLECTOR_TRUST_PROXY` no longer accepts a bare hop count and now fails at startup with an explanatory error if one is set.
+
+  Fastify 5.12.1 disabled numeric hop-count trust: a hop count cannot validate the immediate peer, so a client talking to the collector directly could spoof `X-Forwarded-*` by supplying enough hops. Fastify now fails closed on a number and silently ignores the forwarded headers — which would quietly bucket the cookieless visitor hash and the rate limiter on the proxy's IP instead of the client's.
+
+  **Action required** if you set a hop count (e.g. `COLLECTOR_TRUST_PROXY=1`): name the trusted proxy instead — a single IP, a CIDR, or a comma-separated list (`COLLECTOR_TRUST_PROXY=10.0.0.0/8`), or `true` when the collector is not directly reachable. Deployments that leave it unset, or already set `true`/an IP list, are unaffected.
+
+### Patch Changes
+
+- 0af8209: Update runtime dependencies: Fastify 5.12.1 and @fastify/helmet 13.1.1 (collector-server), Next.js 16.3.3 and Babylon.js 9.23.0 (dashboard), and Zod 4.5.4 (schema, agent-core, mcp, replay, collector-server). Dev-only dependency bumps across the remaining packages are not released.
+- Updated dependencies [0af8209]
+  - @uptimizr/schema@0.6.1
+  - @uptimizr/db@0.8.2
+  - @uptimizr/db-clickhouse@0.3.8
+
 ## 0.7.1
 
 ### Patch Changes
