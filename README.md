@@ -56,7 +56,8 @@ oss/        Open-source product (Apache-2.0)
   packages/   schema, sdk-core, replay, react (embeddable panels), heatmap, mcp (query server),
               create-uptimizr (scaffolder), db (DuckDB store + contracts), db-clickhouse
               (optional scale store), and the connectors: sdk-babylon, sdk-babylon-lite,
-              sdk-three, sdk-r3f, sdk-playcanvas, sdk-aframe
+              sdk-three, sdk-r3f, sdk-playcanvas, sdk-aframe, plus the web-export tier
+              (web-export foundation + unity, godot, unreal)
 examples/   playground — multi-engine demo scene for end-to-end testing
 infra/      docker-compose for the optional ClickHouse + Postgres scale engines
 docs/       architecture, phase plans, and ADRs
@@ -73,7 +74,7 @@ the project** itself.
 straight from npm:
 
 ```bash
-npm i @uptimizr/babylon                              # or @uptimizr/three, @uptimizr/r3f, @uptimizr/playcanvas, @uptimizr/aframe, …
+npm i @uptimizr/babylon                              # or @uptimizr/three, @uptimizr/r3f, @uptimizr/playcanvas, @uptimizr/aframe, @uptimizr/unity, @uptimizr/godot, …
 npm create uptimizr@latest                           # scaffold a self-host (prompts to add the dashboard + a demo)
 # …or run the collector CLI directly:
 npx -p @uptimizr/collector-server uptimizr init      # create the DuckDB store + a project + API key

@@ -31,5 +31,9 @@ to be extractable into a standalone repository.
 - [`packages/sdk-r3f`](./packages/sdk-r3f) — `@uptimizr/r3f`: react-three-fiber collector adapter.
 - [`packages/sdk-playcanvas`](./packages/sdk-playcanvas) — `@uptimizr/playcanvas`: PlayCanvas collector adapter.
 - [`packages/sdk-aframe`](./packages/sdk-aframe) — `@uptimizr/aframe`: A-Frame / WebXR collector adapter.
+- [`packages/web-export`](./packages/web-export) — `@uptimizr/web-export`: shared foundation for WebAssembly engine exports (JS-only tier + versioned engine bridge + native-frame normalization).
+- [`packages/unity`](./packages/unity) — `@uptimizr/unity`: Unity WebGL export connector.
+- [`packages/godot`](./packages/godot) — `@uptimizr/godot`: Godot 4 Web export connector.
+- [`packages/unreal`](./packages/unreal) — `@uptimizr/unreal`: Unreal web export connector (best-effort).
 
 See [docs/architecture/overview.md](../docs/architecture/overview.md) for how these fit together.

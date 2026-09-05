@@ -76,14 +76,12 @@ test("web-export JS-only tier + bridge round-trips to the collector", async ({ p
   // (left-handed, y-up, meters), so the pushed pick survives unchanged.
   const events = await readSessionEvents(request, sessionId);
   const pick = events.find((e) => e.type === "mesh_interaction") as unknown as
-    | { mesh?: string; point?: number[] }
-    | undefined;
+    { mesh?: string; point?: number[] } | undefined;
   expect(pick?.mesh, "pick carries the developer-named object").toBe("crate");
   expect(pick?.point, "Unity pick point is canonical (identity)").toEqual([2, 0.5, 3]);
 
   // The session is attributed to the unity connector (provenance, ADR 0018).
   const start = events.find((e) => e.type === "session_start") as unknown as
-    | { connector?: { name?: string } }
-    | undefined;
+    { connector?: { name?: string } } | undefined;
   expect(start?.connector?.name).toBe("unity");
 });
