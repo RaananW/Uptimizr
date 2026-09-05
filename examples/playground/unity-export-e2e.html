@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Uptimizr — Unity WebGL export e2e harness</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0b0e14;
+        color: #e2e8f0;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      /* A fixed-size canvas the real Unity WebGL export renders into. Unity sizes its
+         framebuffer from the CSS box, so keep it explicit and stable. */
+      #unity-canvas {
+        display: block;
+        width: 960px;
+        height: 600px;
+        background: #1b2434;
+        touch-action: none;
+      }
+      #status {
+        padding: 8px 12px;
+        font: 13px/1.4 ui-monospace, monospace;
+        color: #94a3b8;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+    <div id="status">starting…</div>
+    <script type="module" src="/src/unity-export-e2e.ts"></script>
+  </body>
+</html>
