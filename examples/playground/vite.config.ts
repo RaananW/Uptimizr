@@ -115,5 +115,10 @@ export default defineConfig({
   // so a single copy is shared (mismatched copies break instanceof checks).
   resolve: { dedupe: ["three"] },
   server: { port: 5173, strictPort: true },
-  build: { target: "es2022" },
+  build: {
+    target: "es2022",
+    // Each engine is its own lazily-loaded chunk (PlayCanvas ≈ 1.9 MB, Babylon ≈ 1 MB
+    // minified); that is the engine, not something to split further.
+    chunkSizeWarningLimit: 2500,
+  },
 });

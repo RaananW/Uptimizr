@@ -1,4 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
+// `node:fs` is looked up at runtime rather than imported: this route reads the
+// developer's local registry file at a runtime-computed path, and a static import
+// makes Turbopack trace the whole project ("Dynamic filesystem access causes tracing
+// of the whole project") on every build. The file is external to the build by
+// design. `process.getBuiltinModule` is Node ≥ 22.3 (the repo requires Node 22).
+import type * as NodeFs from "node:fs";
+
+const { existsSync, readFileSync } = process.getBuiltinModule("node:fs") as typeof NodeFs;
 import { resolve } from "node:path";
 
 // Reads the local, gitignored project registry written by `pnpm playground:new`

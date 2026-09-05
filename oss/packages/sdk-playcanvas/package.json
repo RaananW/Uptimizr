@@ -42,7 +42,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run bundle && pnpm run bundle:global",
     "bundle": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --external:playcanvas --minify --legal-comments=none --banner:js=\"/* @uptimizr/playcanvas standalone bundle — Apache-2.0. Async-import into any page that already runs PlayCanvas; playcanvas stays external (peer dependency, never bundled). */\" --outfile=dist/uptimizr-playcanvas.js",
-    "bundle:global": "esbuild src/index.ts --bundle --format=iife --global-name=Uptimizr --platform=browser --target=es2022 --external:playcanvas --minify --legal-comments=none --banner:js=\"/* @uptimizr/playcanvas standalone bundle (global) — Apache-2.0. Inject via a <script> tag into a page that runs PlayCanvas; exposes window.Uptimizr. playcanvas stays external (peer dependency, never bundled). */\" --outfile=dist/uptimizr-playcanvas.global.js",
+    "bundle:global": "esbuild src/index.ts --bundle --format=iife --log-override:empty-import-meta=silent --global-name=Uptimizr --platform=browser --target=es2022 --external:playcanvas --minify --legal-comments=none --banner:js=\"/* @uptimizr/playcanvas standalone bundle (global) — Apache-2.0. Inject via a <script> tag into a page that runs PlayCanvas; exposes window.Uptimizr. playcanvas stays external (peer dependency, never bundled). */\" --outfile=dist/uptimizr-playcanvas.global.js",
     "bundle:watch": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --external:playcanvas --sourcemap --watch --outfile=dist/uptimizr-playcanvas.js",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",

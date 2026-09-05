@@ -76,6 +76,11 @@ function stripDuckdbWorkerSourcemaps(): Plugin {
  * git-ignored build output.
  */
 export default defineConfig({
+  build: {
+    // The demo bundles Babylon and the embedded playground engines as lazy chunks;
+    // ≈1 MB engine chunks are expected, not a splitting problem.
+    chunkSizeWarningLimit: 2500,
+  },
   // The react plugin only transforms `.tsx`.
   plugins: [react(), stripDuckdbWorkerSourcemaps()],
   // Served at the subdomain root in production.
