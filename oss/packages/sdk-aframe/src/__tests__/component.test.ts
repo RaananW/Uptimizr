@@ -92,6 +92,7 @@ function mount(
     cameraGesture: true,
     xr: true,
     xrSampleMs: 0,
+    xrRaycast: true,
     disabled: false,
     debug: false,
     ...data,
@@ -185,10 +186,33 @@ describe("uptimizr component", () => {
 
   it("forwards the XR sample rate when xrSampleMs is set", () => {
     const def = createUptimizrComponent(LIB_VERSION);
-    mount(def, makeSceneEl(true), { xrSampleMs: 120 });
+    mount(def, makeSceneEl(true), { xrSampleMs: 120, xrRaycast: false });
 
     const opts = h.trackScene.mock.calls[0]![3] as { xr?: { sampleMs?: number } };
     expect(opts.xr).toEqual({ sampleMs: 120 });
+  });
+
+  it("supplies an XR scene raycast probe by default (in-scene hit resolution)", () => {
+    const def = createUptimizrComponent(LIB_VERSION);
+    mount(def, makeSceneEl(true), { xrSampleMs: 120 });
+
+    const opts = h.trackScene.mock.calls[0]![3] as {
+      xr?: { sampleMs?: number; raycast?: (o: number[], d: number[]) => unknown };
+    };
+    expect(opts.xr).toMatchObject({ sampleMs: 120 });
+    expect(typeof opts.xr?.raycast).toBe("function");
+    // The probe reads the live scene graph on each call; the fake scene has no
+    // children, so a ray resolves to a miss rather than throwing.
+    expect(opts.xr?.raycast?.([0, 0, 0], [0, 0, -1])).toBeUndefined();
+  });
+
+  it("omits the XR probe when xrRaycast is false (rays + clicks only)", () => {
+    const def = createUptimizrComponent(LIB_VERSION);
+    mount(def, makeSceneEl(true), { xrRaycast: false });
+
+    const opts = h.trackScene.mock.calls[0]![3] as { xr?: unknown };
+    // Nothing to override ⇒ three's default-on XR capture applies untouched.
+    expect(opts.xr).toBeUndefined();
   });
 
   it("disables WebXR capture when xr is false", () => {

@@ -793,6 +793,17 @@ over-attribute gaze to whatever sits at screen center. Read the result via
 `GET /api/v1/heatmaps/gaze` (below); it reuses the world heatmap's voxel grid,
 params, and 3D renderer.
 
+### WebXR in-scene hits (`xr.raycast`)
+
+In an immersive session the three-based connectors map controller/gaze pose to
+`pointer_move` rays and `select`/`squeeze` to `pointer_click` / `mesh_interaction`
+(ADR 0011). Resolving those rays to a world hit (`hitPoint`/`hitMesh` on the ray
+samples, the object a `mesh_interaction` attaches to) takes a probe:
+
+- **`@uptimizr/three`** — `createXrRaycaster(scene, { maxDistance?, predicate? })` builds a world-space ray probe (single reused `THREE.Raycaster`; `uptimizr-` overlays skipped). Pass it as `trackScene(…, { xr: { raycast } })`. Without a probe, rays and clicks are still captured.
+- **`@uptimizr/r3f`** — same `xr` option through `useUptimizr` / `<Uptimizr>`.
+- **`@uptimizr/aframe`** — **on by default**: the component builds the probe over the live scene graph; `<a-scene uptimizr="…; xrRaycast: false">` opts out (rays + clicks only).
+
 ### Frame performance (`frame_perf`) fields
 
 Beyond `fps`/`frameTimeMs`/`drawCalls`, each `frame_perf` sample reports
