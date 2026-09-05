@@ -29,9 +29,15 @@ arguments (`camera`, `renderer`).
 > JS errors — no engine code) that is live from `trackUnity` / `trackGodot` /
 > `trackUnreal`, and a **bridged tier** (camera pose, world-space picks, replay) driven
 > by a thin engine-side **copy-in shim** that pushes world-space samples over a
-> versioned bridge. The engine is **not** an npm peer dependency. See the
+> versioned bridge. The engine is **not** an npm peer dependency. Each engine package
+> ships the shim as a copy-in asset — e.g. `@uptimizr/godot` includes a `JavaScriptBridge`
+> autoload (`bridge/UptimizrGodot.gd` / `.cs`) you register in **Project Settings →
+> Autoload**. See the
 > [web-export connector docs](https://uptimizr.dev/connectors/web-export) for the
-> bridge contract and per-engine native frames.
+> bridge contract and per-engine native frames. The Godot bridged tier is **verified**
+> by an automated headless Godot 4 Web export driven by Playwright in CI; the reference
+> integration is [`examples/godot-web-export`](../examples/godot-web-export/README.md)
+> (`pnpm godot:fetch && pnpm godot:export && pnpm test:e2e:godot`).
 
 ---
 

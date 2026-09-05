@@ -193,3 +193,74 @@ jobs:
             examples/playground/test-results
           if-no-files-found: ignore
           retention-days: 7
+
+  godot-export-e2e:
+    name: Godot export E2E (Playwright)
+    runs-on: ubuntu-latest
+    # Proves the @uptimizr/godot engine-side shim actually runs (#252): fetches the
+    # pinned Godot headless editor + the nothreads Web template (range-fetched out of
+    # the 1.2 GB templates bundle, ~85 MB total), exports examples/godot-web-export
+    # headlessly, then runs only the godot spec against the same Playwright harness
+    # as the `e2e` job. Kept separate so the default suite never needs Godot.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
+      - name: Build workspace packages
+        run: pnpm build
+
+      # Version + template list must match GODOT_VERSION / GODOT_WEB_TEMPLATES in
+      # scripts/godot-common.mjs — bump the key when either changes.
+      - name: Cache Godot editor + web export template
+        uses: actions/cache@v6
+        with:
+          path: ~/.local/share/godot
+          key: godot-${{ runner.os }}-4.7.2-stable-web_nothreads_release-v1
+
+      - name: Fetch Godot (headless editor + web_nothreads_release template)
+        run: pnpm godot:fetch
+
+      - name: Verify the sample's shim copy matches the package source
+        run: pnpm godot:check-bridge
+
+      - name: Export the sample project (Web, nothreads)
+        run: pnpm godot:export
+
+      - name: Install Playwright browser
+        run: pnpm --filter @uptimizr/example-playground test:e2e:install
+
+      - name: Run Godot export E2E
+        run: pnpm test:e2e:godot
+        env:
+          # A missing export must fail this job, not skip the spec.
+          GODOT_E2E_REQUIRED: "1"
+
+      - name: Upload Playwright artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-godot
+          path: |
+            examples/playground/playwright-report
+            examples/playground/test-results
+          if-no-files-found: ignore
+          retention-days: 7

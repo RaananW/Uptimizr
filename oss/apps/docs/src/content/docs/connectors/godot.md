@@ -38,10 +38,50 @@ engine-side shim to `bridge` to add camera pose, picks, and replay.
 ## Engine-side bridge
 
 The bridged tier needs a thin **copy-in shim** — a `JavaScriptBridge` autoload that
-samples the active `Camera3D` and calls the bridge each frame. It's a copy-in asset,
-not an npm dependency. The contract and a GDScript sketch live in the package's
+samples the active `Camera3D` and calls the bridge each frame. It ships with the package as
+a copy-in asset (not an npm dependency), in both GDScript and C#:
+
+1. Copy [`UptimizrGodot.gd`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/godot/bridge/UptimizrGodot.gd)
+   (or [`UptimizrGodot.cs`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/godot/bridge/UptimizrGodot.cs)
+   for .NET projects) into your Godot 4 project.
+2. Register it as a singleton: **Project → Project Settings → Globals → Autoload**, add the
+   script with node name `UptimizrGodot`, and enable it.
+
+On the next Web export the autoload finds `window.__uptimizr_godot__` (exposed by
+`trackGodot`), asserts the bridge protocol version, and starts pushing camera pose, FPS, and
+left-click raycast picks automatically. Off the Web export it guards on
+`OS.has_feature("web")` and is a no-op, so it is safe to leave enabled in every build.
+
+For world-space object engagement and replay completeness, mark nodes with
+`add_to_group("uptimizr_tracked")` and call `UptimizrGodot.push_scene_proxy()` once after
+your scene is built. The full contract, options, and coordinate notes live in the package's
 [`bridge/README.md`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/godot/bridge/README.md).
-The full shim is authored in the Godot web-export sub-issue.
+
+## Verification status
+
+| Tier        | Status       | Verified by                                                                                                                                                                                                                                                                                                        |
+| ----------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **JS-only** | **Stable**   | Unit tests + the web-export Playwright round trip.                                                                                                                                                                                                                                                                 |
+| **Bridged** | **Verified** | An **automated headless Godot 4.7.2 Web export** driven by Playwright in CI: the real WASM build boots with the shipped `UptimizrGodot.gd` autoload, and the test asserts `camera_sample` (Z negated), `mesh_interaction` (a raycast pick naming the node), `frame_perf`, and the scene proxy reach the collector. |
+
+### Reference integration
+
+[`examples/godot-web-export`](https://github.com/RaananW/Uptimizr/tree/main/examples/godot-web-export)
+is the reference project the CI proof exports: a minimal Godot 4 scene with the autoload
+registered, a `Camera3D`, and named pickable `StaticBody3D` props (`Crate`, `Orb`) that opt
+into the scene proxy from `main.gd`. Its copy of the shim is checked byte-for-byte against
+the package source, so the test always exercises the asset you copy in. Reproduce it locally
+from the repo root:
+
+```bash
+pnpm godot:fetch      # pinned headless editor + web_nothreads_release template (~85 MB)
+pnpm godot:export     # headless --export-release Web → examples/godot-web-export/dist
+pnpm test:e2e:godot   # boots the export in the playground and asserts the round trip
+```
+
+The sample uses the **nothreads** Web template (`variant/thread_support=false`), so the
+export runs without SharedArrayBuffer and the host page needs no COOP/COEP headers —
+the simplest deployment for self-hosters.
 
 ## Coordinate frame
 
