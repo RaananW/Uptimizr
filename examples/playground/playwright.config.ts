@@ -59,6 +59,10 @@ export default defineConfig({
       port: COLLECTOR_PORT,
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
+      // In CI, forward the collector's request log into the job output so a
+      // "timed out waiting for event types" failure can be traced to what the
+      // collector actually received (#263). Locally it stays quiet.
+      stdout: process.env.CI ? "pipe" : "ignore",
       env: {
         VISITOR_HASH_SECRET: "e2e-secret",
         COLLECTOR_STORE: "duckdb",
