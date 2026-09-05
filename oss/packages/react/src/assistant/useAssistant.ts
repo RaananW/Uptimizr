@@ -29,6 +29,7 @@ import {
   type AssistantBackendConfig,
   type CuratedModel,
   type InitProgress,
+  type WebLlmCachePolicy,
 } from "@uptimizr/agent-core/providers";
 import { CollectorApi } from "../api";
 import { useOptionalUptimizr } from "../provider";
@@ -91,6 +92,19 @@ export interface UseAssistantOptions {
    * download. Return `false` to abort — nothing is downloaded.
    */
   confirmDownload?: (model: CuratedModel) => boolean | Promise<boolean>;
+  /**
+   * What the local (WebLLM) backend does with **other** curated models' cached
+   * weights when a model loads. Defaults to `"active-only"`: switching models
+   * evicts the previous model's ~4 GB cache so caches never stack up in the
+   * origin's storage. Pass `"keep-all"` to keep every downloaded model for fast
+   * switching at the cost of disk. See `WebLlmCachePolicy` in agent-core.
+   */
+  cachePolicy?: WebLlmCachePolicy;
+  /**
+   * Called after a local model load evicted other models' cached weights (under
+   * `"active-only"`), with the ids actually removed — possibly empty.
+   */
+  onCacheEvicted?: (modelIds: readonly string[]) => void;
   /** Persist backend changes to `localStorage`. Defaults to `true`. */
   persistBackend?: boolean;
   /**
@@ -139,6 +153,15 @@ export interface UseAssistantResult {
   cancel: () => void;
   /** Clear the conversation (keeps the loaded model). */
   reset: () => void;
+  /**
+   * Delete every curated local model's cached weights from this browser's Cache
+   * Storage (the active one included) and resolve with the ids removed. Reclaims
+   * the multi-GB space WebLLM accumulated without touching anything else on the
+   * origin. A currently loaded model keeps running from GPU memory; the next
+   * page load re-downloads behind consent. Rejects if the Cache API fails, and
+   * needs the optional `@mlc-ai/web-llm` peer to be installed.
+   */
+  clearCachedModels: () => Promise<string[]>;
 }
 
 /** True when a provider exposes a GPU-releasing `unload()` (WebLLM does). */
@@ -161,6 +184,8 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     systemPrompt = DEFAULT_SYSTEM_PROMPT,
     maxSteps = DEFAULT_ASSISTANT_MAX_STEPS,
     confirmDownload,
+    cachePolicy,
+    onCacheEvicted,
     persistBackend = true,
     now = () => Date.now(),
   } = options;
@@ -195,6 +220,8 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
   backendRef.current = backend;
   const nowRef = useRef(now);
   nowRef.current = now;
+  const onCacheEvictedRef = useRef(onCacheEvicted);
+  onCacheEvictedRef.current = onCacheEvicted;
   const providerRef = useRef<{ key: string; provider: LlmProvider } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -223,6 +250,10 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
         return createWebLlmProvider({
           model: cfg.webllm?.model,
           confirmDownload,
+          // Switching models evicts the previous model's cached weights by
+          // default (#216); hosts opt into "keep-all" for fast switching.
+          cachePolicy,
+          onCacheEvicted: (ids) => onCacheEvictedRef.current?.(ids),
           onInitProgress: (p) => {
             setInitProgress(p);
             setStatus(p.progress >= 1 ? "thinking" : "initializing");
@@ -236,8 +267,16 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
       const { api: hostedApi, endpoint, apiKey: key, model } = cfg.hosted;
       return createHostedProvider({ api: hostedApi, endpoint, apiKey: key, model });
     },
-    [confirmDownload],
+    [confirmDownload, cachePolicy],
   );
+
+  // The "Clear cached models" action. Lazily imports the WebLLM subpath (like
+  // the provider factory) so a consumer who never touches the local backend
+  // still pays nothing for it; the heavy runtime loads only inside the helper.
+  const clearCachedModels = useCallback(async (): Promise<string[]> => {
+    const { clearCachedModels: clear } = await import("@uptimizr/agent-core/providers/webllm");
+    return clear();
+  }, []);
 
   const ensureProvider = useCallback(
     async (cfg: AssistantBackendConfig): Promise<LlmProvider> => {
@@ -421,5 +460,6 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     setBackend,
     cancel,
     reset,
+    clearCachedModels,
   };
 }

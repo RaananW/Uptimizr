@@ -31,6 +31,7 @@ export type {
   HostedApi,
   HostedBackendConfig,
   WebLlmBackendConfig,
+  WebLlmCachePolicy,
   CuratedModel,
   InitProgress,
 } from "@uptimizr/agent-core/providers";

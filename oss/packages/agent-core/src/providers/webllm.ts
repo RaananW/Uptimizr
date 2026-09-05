@@ -7,7 +7,10 @@
  * the user actually runs the assistant, so `@uptimizr/agent-core` stays small
  * and browser-safe for everyone else. Model weights are downloaded on first use
  * (behind explicit consent) and cached by the runtime in the browser's Cache
- * Storage — never part of any precache.
+ * Storage — never part of any precache. By default only the **active** model
+ * stays cached: loading a model evicts the other curated models' weights so
+ * switching never stacks multiple ~4 GB caches (see {@link WebLlmCachePolicy}),
+ * and {@link clearCachedModels} reclaims everything on demand.
  */
 
 import type { AgentMessage, LlmProvider, ProviderRequest, ProviderResponse } from "../provider.js";
@@ -161,7 +164,38 @@ export interface WebLlmRuntime {
     engineConfig?: { initProgressCallback?: (report: { progress: number; text: string }) => void },
     chatOpts?: WebLlmChatOptions,
   ): Promise<WebLlmEngine>;
+  /**
+   * Whether a model's weights are present in the browser's Cache Storage.
+   * Optional so an older/minimal runtime degrades to "no eviction" gracefully.
+   */
+  hasModelInCache?(modelId: string): Promise<boolean>;
+  /**
+   * Delete everything WebLLM cached for a model (weights, wasm, chat config).
+   * Optional for the same reason as {@link WebLlmRuntime.hasModelInCache}.
+   */
+  deleteModelAllInfoInCache?(modelId: string): Promise<void>;
 }
+
+/**
+ * How the adapter treats **other** curated models' cached weights when it loads
+ * one (issue #216):
+ *
+ * - `"active-only"` (default) — when a model loads, every other known local
+ *   model's cached weights are evicted first, so switching among the curated
+ *   models never stacks multiple ~4 GB caches in the origin's storage (the root
+ *   cause of the storage-quota errors). The user pays a re-download to switch back.
+ * - `"keep-all"` — never evict on load; every downloaded model stays cached for
+ *   fast switching at the cost of disk. Users can still reclaim space explicitly
+ *   via {@link clearCachedModels} / `WebLlmProvider.clearCachedModels()`.
+ *
+ * Eviction is scoped to the ids in {@link SUPPORTED_TOOL_CALLING_MODELS} — the
+ * only models this adapter can ever have loaded — and never touches any other
+ * cache on the origin.
+ */
+export type WebLlmCachePolicy = "active-only" | "keep-all";
+
+/** The default {@link WebLlmCachePolicy}: keep only the active model cached. */
+export const DEFAULT_CACHE_POLICY: WebLlmCachePolicy = "active-only";
 
 /** Options for {@link createWebLlmProvider}. */
 export interface WebLlmProviderOptions {
@@ -183,6 +217,18 @@ export interface WebLlmProviderOptions {
    */
   contextWindowSize?: number;
   /**
+   * What to do with **other** curated models' cached weights when this model
+   * loads. Defaults to {@link DEFAULT_CACHE_POLICY} (`"active-only"`): evict them
+   * so a single active model never stacks caches. See {@link WebLlmCachePolicy}.
+   */
+  cachePolicy?: WebLlmCachePolicy;
+  /**
+   * Called after the load-time eviction under `"active-only"` with the ids that
+   * were actually removed from Cache Storage (possibly empty). Useful to tell the
+   * user which previously downloaded model was reclaimed.
+   */
+  onCacheEvicted?: (modelIds: readonly string[]) => void;
+  /**
    * Injectable runtime loader (for tests / custom hosting). Defaults to a lazy
    * `import("@mlc-ai/web-llm")`.
    */
@@ -191,10 +237,29 @@ export interface WebLlmProviderOptions {
   hasWebGpu?: () => boolean;
 }
 
-/** A WebLLM provider, plus a hook to release GPU resources. */
+/** A WebLLM provider, plus hooks to release GPU resources and cached weights. */
 export interface WebLlmProvider extends LlmProvider {
   /** Release the loaded engine and its GPU memory. Safe to call repeatedly. */
   unload(): Promise<void>;
+  /**
+   * Delete **every** known local model's cached weights from the browser's
+   * Cache Storage — including the active model's — and return the ids that were
+   * actually removed. Reclaims the space that "clear site data" would, without
+   * touching anything else on the origin. An already-loaded engine keeps running
+   * from GPU memory; the next page load re-downloads (behind consent).
+   */
+  clearCachedModels(): Promise<string[]>;
+}
+
+/** Options for the standalone {@link clearCachedModels} helper. */
+export interface ClearCachedModelsOptions {
+  /**
+   * Injectable runtime loader (for tests / custom hosting). Defaults to a lazy
+   * `import("@mlc-ai/web-llm")`.
+   */
+  loadRuntime?: () => Promise<WebLlmRuntime>;
+  /** Model ids to keep (skipped even when cached). Defaults to none. */
+  keep?: readonly string[];
 }
 
 /** Thrown when the local backend is used on a browser without WebGPU. */
@@ -246,7 +311,7 @@ export class WebLlmStorageError extends Error {
     super(
       message ??
         "Your browser is out of storage for the local model (each model needs ~4 GB of cache). " +
-          "Free up disk space, clear this site's cached data, or switch to a hosted backend, then retry.",
+          "Clear the cached models, free up disk space, or switch to a hosted backend, then retry.",
     );
     this.name = "WebLlmStorageError";
   }
@@ -407,6 +472,51 @@ const defaultLoadRuntime = (): Promise<WebLlmRuntime> =>
   import("@mlc-ai/web-llm") as unknown as Promise<WebLlmRuntime>;
 
 /**
+ * Evict the cached weights of every known local model except those in `keep`,
+ * using an already-loaded runtime. Returns the ids that were actually removed.
+ *
+ * Scoped strictly to {@link SUPPORTED_TOOL_CALLING_MODELS} (plain `includes` on
+ * the id — never a regex) so nothing else cached on the origin is ever touched.
+ * A runtime without the cache APIs is a no-op. Errors propagate to the caller,
+ * which decides whether eviction is best-effort (load-time) or must surface
+ * (an explicit user action).
+ */
+async function evictCachedModels(
+  runtime: WebLlmRuntime,
+  keep: readonly string[],
+): Promise<string[]> {
+  const hasModelInCache = runtime.hasModelInCache;
+  const deleteModelAllInfoInCache = runtime.deleteModelAllInfoInCache;
+  if (typeof hasModelInCache !== "function" || typeof deleteModelAllInfoInCache !== "function") {
+    return [];
+  }
+  const evicted: string[] = [];
+  for (const id of SUPPORTED_TOOL_CALLING_MODELS) {
+    if (keep.includes(id)) continue;
+    if (!(await hasModelInCache.call(runtime, id))) continue;
+    await deleteModelAllInfoInCache.call(runtime, id);
+    evicted.push(id);
+  }
+  return evicted;
+}
+
+/**
+ * Delete every known local model's cached weights from the browser's Cache
+ * Storage and return the ids that were removed. The user-facing "Clear cached
+ * models" action: it reclaims the multi-GB space WebLLM accumulated (the same
+ * space the browser's "clear site data" would) without needing a provider
+ * instance and without touching any other cache on the origin. Errors from the
+ * runtime/Cache API propagate so the UI can report them.
+ *
+ * Loads the runtime lazily via `import("@mlc-ai/web-llm")` (or the injected
+ * `loadRuntime`); a runtime without the cache APIs resolves to `[]`.
+ */
+export async function clearCachedModels(options: ClearCachedModelsOptions = {}): Promise<string[]> {
+  const runtime = await (options.loadRuntime ?? defaultLoadRuntime)();
+  return evictCachedModels(runtime, options.keep ?? []);
+}
+
+/**
  * Create a local WebLLM provider. The runtime and model weights load lazily on
  * the first {@link LlmProvider.complete} call — construction is cheap and has no
  * side effects, so it is safe to build eagerly and feature-detect via
@@ -422,7 +532,25 @@ export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLl
   const loadRuntime = options.loadRuntime ?? defaultLoadRuntime;
   const hasWebGpu = options.hasWebGpu ?? (() => isWebGpuAvailable());
   const contextWindowSize = options.contextWindowSize ?? DEFAULT_LOCAL_CONTEXT_WINDOW;
+  const cachePolicy = options.cachePolicy ?? DEFAULT_CACHE_POLICY;
   let enginePromise: Promise<WebLlmEngine> | undefined;
+
+  /**
+   * Under `"active-only"`, reclaim every OTHER known model's cached weights
+   * before this model's download so switching models never stacks caches
+   * (#216). Best-effort: a Cache API failure must never block the load — the
+   * write-time quota classifier still catches a genuinely full origin.
+   */
+  async function evictOtherModels(runtime: WebLlmRuntime): Promise<void> {
+    if (cachePolicy !== "active-only") return;
+    let evicted: string[];
+    try {
+      evicted = await evictCachedModels(runtime, [model.id]);
+    } catch {
+      return;
+    }
+    options.onCacheEvicted?.(evicted);
+  }
 
   function ensureEngine(): Promise<WebLlmEngine> {
     if (!enginePromise) {
@@ -441,10 +569,14 @@ export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLl
       const ok = await options.confirmDownload(model);
       if (!ok) throw new WebLlmConsentError();
     }
+    // The runtime module is a small import — the multi-GB weights only download
+    // inside CreateMLCEngine below. Load it first so the cache eviction can run
+    // BEFORE the storage preflight measures free space.
+    const runtime = await loadRuntime();
+    await evictOtherModels(runtime);
     // Fail fast if free browser storage is unambiguously too small for the
     // multi-GB download, avoiding a corrupt half-download (silent no-response).
     await preflightStorage(model);
-    const runtime = await loadRuntime();
     // Override the model record's default context window (4096 for the curated
     // Hermes records) so the assistant's system prompt + tool schemas + results
     // fit. `sliding_window_size` is left at its model-record default (-1); the
@@ -498,6 +630,11 @@ export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLl
       if (!promise) return;
       const engine = await promise.catch(() => undefined);
       await engine?.unload?.();
+    },
+    async clearCachedModels(): Promise<string[]> {
+      // Explicit user action: clears EVERY known model (the active one too) and
+      // lets runtime/Cache API errors propagate so the UI can report them.
+      return clearCachedModels({ loadRuntime });
     },
   };
 }

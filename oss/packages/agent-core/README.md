@@ -104,7 +104,12 @@ import {
 - **`createWebLlmProvider`** — local, in-browser inference on WebGPU via
   [`@mlc-ai/web-llm`](https://github.com/mlc-ai/web-llm). The runtime is an **optional** dependency
   loaded with a lazy `import()` only on first use; model weights download behind an explicit consent
-  gate and are cached in the browser's Cache Storage (never precached). **Zero data egress.**
+  gate and are cached in the browser's Cache Storage (never precached). **Zero data egress.** By
+  default only the **active** model stays cached (`cachePolicy: "active-only"`): loading a model
+  evicts the other curated models' ~4 GB caches so switching never fills the origin's storage
+  quota; pass `cachePolicy: "keep-all"` to keep every download for fast switching. The standalone
+  `clearCachedModels()` helper (and `provider.clearCachedModels()`) reclaims every cached model on
+  demand.
 - **`createHostedProvider`** — bring-your-own **OpenAI-compatible** or **Anthropic** endpoint + key,
   stored only in the browser; the browser calls your provider directly. Only the prompt and
   aggregated results leave, to **your own** provider (ADR 0050 §4/§5).

@@ -38,7 +38,9 @@ WebGPU browser" note, and the hosted backend provides broader reach at the cost 
 aggregated analytics to your own provider. Your choice persists, so returning users go straight to
 the chat. You can change it — including switching between local and hosted — at **any time** via
 **Change backend**, which returns you to the same side-by-side selection cards; picking the other
-backend releases the previous model (freeing GPU memory) and activates the new one.
+backend releases the previous model (freeing GPU memory) and activates the new one. Switching
+between **local models** also reclaims the previous model's cached weights by default (see
+[the storage note below](#local-backend-webllm--webgpu)).
 
 ```ts
 import { defaultBackendKind, isWebGpuAvailable } from "@uptimizr/agent-core/providers";
@@ -68,7 +70,15 @@ const provider = createWebLlmProvider({
   confirmDownload: (model) =>
     confirm(`Download ${model.label} (${model.downloadSize})? It runs 100% locally.`),
   onInitProgress: ({ progress, text }) => updateProgressBar(progress, text),
+  // Optional. "active-only" (the default) evicts the OTHER curated models' cached
+  // weights when this one loads, so switching never stacks ~4 GB caches;
+  // "keep-all" keeps every download for fast switching at the cost of disk.
+  cachePolicy: "active-only",
+  onCacheEvicted: (ids) => console.info("reclaimed cached models:", ids),
 });
+
+// Reclaim every cached model on demand (the same space "clear site data" frees).
+const reclaimed = await provider.clearCachedModels(); // → the model ids removed
 ```
 
 Install the runtime alongside the assistant (it is an optional peer dependency):
@@ -144,15 +154,24 @@ The assistant is tuned for that reality:
 
 > **Local models need browser storage — plan for ~4–5 GB per model.** WebLLM caches a model's
 > weights in your browser's **Cache Storage** on first use, and each curated model is roughly
-> **4–5 GB**. Trying several models (or switching between them) **accumulates** their caches rather
-> than replacing them, so the origin's storage quota can fill up. When it does, the browser's Cache
-> API throws a storage-quota error — this is a **browser storage** limit, not an LLM API quota (the
-> local backend has zero network egress), and the assistant surfaces it with a clear remedy. To
-> reclaim space, free up disk space or **clear this site's cached data** (your browser's
-> Settings → Privacy → _Clear site data / storage_), then retry — or pick the smallest model or a
-> hosted backend. Before a large download the adapter also runs a best-effort
-> `navigator.storage.estimate()` preflight and fails fast when free space is clearly insufficient,
-> avoiding a corrupt half-download.
+> **4–5 GB**. To keep that from piling up, the adapter keeps **only the active model** cached by
+> default: when you switch to a different curated model, the previously downloaded model's weights
+> are **evicted** (via WebLLM's `hasModelInCache` / `deleteModelAllInfoInCache`) **before** the new
+> download starts, so caches never stack and switching back simply re-downloads. Hosts who prefer
+> fast switching at the cost of disk can opt out with `cachePolicy: "keep-all"` (on
+> `createWebLlmProvider`, `useAssistant`, or `<AssistantPanel>`). Eviction is scoped strictly to
+> the curated/known model ids — nothing else cached on the origin is touched. Should the origin's
+> quota still fill up, the browser's Cache API throws a storage-quota error — a **browser storage**
+> limit, not an LLM API quota (the local backend has zero network egress) — and the assistant
+> surfaces it with a clear remedy plus a one-click **Clear cached models** action (also shown in the
+> panel's local-backend footer) that deletes every cached curated model and reports what it
+> reclaimed. The same is available programmatically as `clearCachedModels()` from
+> `@uptimizr/agent-core/providers/webllm`, `provider.clearCachedModels()`, and
+> `useAssistant().clearCachedModels()`. Alternatively free up disk space or **clear this site's
+> cached data** in your browser settings, pick the smallest model, or switch to a hosted backend.
+> Before a large download the adapter also runs a best-effort `navigator.storage.estimate()`
+> preflight (after the eviction, so freed space counts) and fails fast when free space is clearly
+> insufficient, avoiding a corrupt half-download.
 
 > **Local models manage their own function-calling system prompt.** WebLLM injects its own
 > tool-calling system prompt for the Hermes family and rejects a caller-supplied `system` message
@@ -293,7 +312,9 @@ function MyAssistant() {
   // messages: the transcript · send(text): run a turn · status: "idle" | "initializing" |
   // "thinking" | "error" · isBusy: a turn is in flight (show a working indicator) · toolActivity:
   // live tool-call progress · notice: {kind:"no_answer"|"stopped_on_max_steps",steps?} when a turn
-  // produced no written answer · setBackend(cfg): switch + persist.
+  // produced no written answer · setBackend(cfg): switch + persist · clearCachedModels(): delete
+  // every cached local model's weights and resolve with the ids reclaimed. Options: cachePolicy
+  // ("active-only" default | "keep-all") and onCacheEvicted(ids) for the local backend.
 }
 ```
 

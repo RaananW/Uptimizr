@@ -29,18 +29,22 @@ export {
 export { type HostedProviderConfig, HostedProviderError, createHostedProvider } from "./hosted.js";
 
 export {
+  type ClearCachedModelsOptions,
   type CuratedModel,
   type InitProgress,
+  type WebLlmCachePolicy,
   type WebLlmEngine,
   type WebLlmProvider,
   type WebLlmProviderOptions,
   type WebLlmRuntime,
   CURATED_MODELS,
+  DEFAULT_CACHE_POLICY,
   SUPPORTED_TOOL_CALLING_MODELS,
   UnsupportedToolCallingModelError,
   WebGpuUnavailableError,
   WebLlmConsentError,
   WebLlmStorageError,
+  clearCachedModels,
   createWebLlmProvider,
   isQuotaExceededError,
 } from "./webllm.js";

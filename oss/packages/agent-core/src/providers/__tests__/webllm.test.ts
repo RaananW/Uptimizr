@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentMessage, ProviderRequest } from "../provider.js";
 import {
+  clearCachedModels,
   CURATED_MODELS,
   createWebLlmProvider,
+  DEFAULT_CACHE_POLICY,
   DEFAULT_LOCAL_CONTEXT_WINDOW,
   foldSystemPromptForHermes,
   isQuotaExceededError,
@@ -404,12 +406,14 @@ describe("WebLLM provider — browser storage errors", () => {
 
   it("preflight throws WebLlmStorageError before download when storage is clearly too small", async () => {
     // Only ~1 GB free but the default model needs ~3.9 GB — fail fast, no download.
+    // (The small runtime module may load — it is needed for the cache eviction
+    // that runs before the preflight — but the weights never do.)
     stubStorageEstimate({ quota: 5 * GIB, usage: 4 * GIB });
-    const { load } = fakeRuntime({ choices: [{ message: { content: "x" } }] });
+    const { load, createEngine } = fakeRuntime({ choices: [{ message: { content: "x" } }] });
     const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
 
     await expect(provider.complete(request)).rejects.toBeInstanceOf(WebLlmStorageError);
-    expect(load).not.toHaveBeenCalled();
+    expect(createEngine).not.toHaveBeenCalled();
   });
 
   it("preflight is skipped when the estimate shows ample free space", async () => {
@@ -450,6 +454,230 @@ describe("WebLLM provider — browser storage errors", () => {
     await expect(provider.complete(request)).rejects.toBeInstanceOf(WebLlmStorageError);
     await expect(provider.complete(request)).resolves.toEqual({ kind: "final", content: "ok" });
     expect(createEngine).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * A fake runtime whose Cache Storage starts out holding `cached` model ids, with
+ * spied cache APIs so tests can assert exactly what was probed and deleted.
+ * Nothing is ever downloaded: `CreateMLCEngine` returns a scripted engine.
+ */
+function cachingRuntime(cached: readonly string[]): {
+  runtime: WebLlmRuntime;
+  load: ReturnType<typeof vi.fn>;
+  createEngine: ReturnType<typeof vi.fn>;
+  hasModelInCache: ReturnType<typeof vi.fn>;
+  deleteModelAllInfoInCache: ReturnType<typeof vi.fn>;
+  cache: Set<string>;
+} {
+  const cache = new Set(cached);
+  const engine: WebLlmEngine = {
+    chat: { completions: { create: async () => ({ choices: [{ message: { content: "ok" } }] }) } },
+  };
+  const createEngine = vi.fn(async (modelId: string) => {
+    cache.add(modelId);
+    return engine;
+  });
+  const hasModelInCache = vi.fn(async (id: string) => cache.has(id));
+  const deleteModelAllInfoInCache = vi.fn(async (id: string) => {
+    cache.delete(id);
+  });
+  const runtime: WebLlmRuntime = {
+    CreateMLCEngine: createEngine,
+    hasModelInCache,
+    deleteModelAllInfoInCache,
+  };
+  const load = vi.fn(async () => runtime);
+  return { runtime, load, createEngine, hasModelInCache, deleteModelAllInfoInCache, cache };
+}
+
+const HERMES_3 = "Hermes-3-Llama-3.1-8B-q4f16_1-MLC";
+const HERMES_2_LLAMA = "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC";
+const HERMES_2_MISTRAL = "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC";
+
+describe("WebLLM provider — cache eviction on model switch (#216)", () => {
+  it("defaults to the active-only policy", () => {
+    expect(DEFAULT_CACHE_POLICY).toBe("active-only");
+  });
+
+  it("evicts every other cached model before loading the new one (active-only, default)", async () => {
+    // The user previously ran Hermes 3 and Hermes 2 Pro (Llama); now they switch
+    // to Hermes 2 Pro (Mistral). Both previous ~4 GB caches must go, so the new
+    // download never stacks on top of them.
+    const rt = cachingRuntime([HERMES_3, HERMES_2_LLAMA]);
+    const onCacheEvicted = vi.fn();
+    const provider = createWebLlmProvider({
+      model: HERMES_2_MISTRAL,
+      loadRuntime: rt.load,
+      hasWebGpu: () => true,
+      onCacheEvicted,
+    });
+
+    await provider.complete(request);
+
+    expect(rt.deleteModelAllInfoInCache.mock.calls.map((c) => c[0]).sort()).toEqual(
+      [HERMES_2_LLAMA, HERMES_3].sort(),
+    );
+    // The active model is never evicted, and only known model ids are probed.
+    expect(rt.deleteModelAllInfoInCache).not.toHaveBeenCalledWith(HERMES_2_MISTRAL);
+    for (const [id] of rt.hasModelInCache.mock.calls) {
+      expect(SUPPORTED_TOOL_CALLING_MODELS).toContain(id);
+    }
+    expect(rt.hasModelInCache).not.toHaveBeenCalledWith(HERMES_2_MISTRAL);
+    // Eviction happened BEFORE the engine (and its download) was created.
+    const firstDelete = rt.deleteModelAllInfoInCache.mock.invocationCallOrder[0]!;
+    const engineCreate = rt.createEngine.mock.invocationCallOrder[0]!;
+    expect(firstDelete).toBeLessThan(engineCreate);
+    // The host is told exactly which ids were reclaimed.
+    expect(onCacheEvicted).toHaveBeenCalledTimes(1);
+    expect([...onCacheEvicted.mock.calls[0]![0]].sort()).toEqual([HERMES_2_LLAMA, HERMES_3].sort());
+    // Only the active model remains cached afterwards.
+    expect([...rt.cache]).toEqual([HERMES_2_MISTRAL]);
+  });
+
+  it("deletes nothing when no other model is cached, and reports an empty eviction", async () => {
+    const rt = cachingRuntime([HERMES_3]);
+    const onCacheEvicted = vi.fn();
+    const provider = createWebLlmProvider({
+      model: HERMES_3,
+      loadRuntime: rt.load,
+      hasWebGpu: () => true,
+      onCacheEvicted,
+    });
+
+    await provider.complete(request);
+
+    expect(rt.deleteModelAllInfoInCache).not.toHaveBeenCalled();
+    expect(onCacheEvicted).toHaveBeenCalledWith([]);
+  });
+
+  it("keeps every cached model under the keep-all policy", async () => {
+    const rt = cachingRuntime([HERMES_3, HERMES_2_LLAMA]);
+    const onCacheEvicted = vi.fn();
+    const provider = createWebLlmProvider({
+      model: HERMES_2_MISTRAL,
+      loadRuntime: rt.load,
+      hasWebGpu: () => true,
+      cachePolicy: "keep-all",
+      onCacheEvicted,
+    });
+
+    await provider.complete(request);
+
+    expect(rt.hasModelInCache).not.toHaveBeenCalled();
+    expect(rt.deleteModelAllInfoInCache).not.toHaveBeenCalled();
+    expect(onCacheEvicted).not.toHaveBeenCalled();
+    expect([...rt.cache].sort()).toEqual([HERMES_2_LLAMA, HERMES_2_MISTRAL, HERMES_3].sort());
+  });
+
+  it("evicts before the storage preflight, so freed space counts toward the download", async () => {
+    // With the stale cache still counted, only ~1 GB would be free (preflight
+    // would throw). Eviction runs first and the estimate then reports room.
+    let usage = 4 * GIB;
+    vi.stubGlobal("navigator", {
+      storage: { estimate: vi.fn(async () => ({ quota: 5 * GIB, usage })) },
+    });
+    const rt = cachingRuntime([HERMES_3]);
+    rt.deleteModelAllInfoInCache.mockImplementation(async (id: string) => {
+      rt.cache.delete(id);
+      usage = 0;
+    });
+    const provider = createWebLlmProvider({
+      model: HERMES_2_MISTRAL,
+      loadRuntime: rt.load,
+      hasWebGpu: () => true,
+    });
+
+    await expect(provider.complete(request)).resolves.toEqual({ kind: "final", content: "ok" });
+    expect(rt.deleteModelAllInfoInCache).toHaveBeenCalledWith(HERMES_3);
+    vi.unstubAllGlobals();
+  });
+
+  it("treats a Cache API failure during load-time eviction as best-effort (the model still loads)", async () => {
+    const rt = cachingRuntime([HERMES_3]);
+    rt.hasModelInCache.mockRejectedValue(new DOMException("nope", "SecurityError"));
+    const onCacheEvicted = vi.fn();
+    const provider = createWebLlmProvider({
+      model: HERMES_2_MISTRAL,
+      loadRuntime: rt.load,
+      hasWebGpu: () => true,
+      onCacheEvicted,
+    });
+
+    await expect(provider.complete(request)).resolves.toEqual({ kind: "final", content: "ok" });
+    expect(rt.createEngine).toHaveBeenCalledTimes(1);
+    expect(onCacheEvicted).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op on a runtime without the cache APIs", async () => {
+    const { load, createEngine } = fakeRuntime({ choices: [{ message: { content: "ok" } }] });
+    const provider = createWebLlmProvider({ loadRuntime: load, hasWebGpu: () => true });
+
+    await expect(provider.complete(request)).resolves.toEqual({ kind: "final", content: "ok" });
+    expect(createEngine).toHaveBeenCalledTimes(1);
+    await expect(provider.clearCachedModels()).resolves.toEqual([]);
+  });
+
+  it("does not evict when the user declines consent (nothing changes without a download)", async () => {
+    const rt = cachingRuntime([HERMES_3]);
+    const provider = createWebLlmProvider({
+      model: HERMES_2_MISTRAL,
+      loadRuntime: rt.load,
+      hasWebGpu: () => true,
+      confirmDownload: async () => false,
+    });
+
+    await expect(provider.complete(request)).rejects.toBeInstanceOf(WebLlmConsentError);
+    expect(rt.deleteModelAllInfoInCache).not.toHaveBeenCalled();
+    expect([...rt.cache]).toEqual([HERMES_3]);
+  });
+});
+
+describe("clearCachedModels (#216)", () => {
+  it("deletes every cached known model — the active one included — and returns the ids", async () => {
+    // keep-all so the load leaves both cached; the explicit action then removes
+    // both — including the ACTIVE model, unlike the load-time eviction.
+    const rt = cachingRuntime([HERMES_3, HERMES_2_MISTRAL]);
+    const provider = createWebLlmProvider({
+      model: HERMES_3,
+      loadRuntime: rt.load,
+      hasWebGpu: () => true,
+      cachePolicy: "keep-all",
+    });
+    await provider.complete(request);
+    expect(rt.cache.size).toBe(2);
+
+    const cleared = await provider.clearCachedModels();
+
+    expect([...cleared].sort()).toEqual([HERMES_2_MISTRAL, HERMES_3].sort());
+    expect(rt.cache.size).toBe(0);
+    // Only known model ids are ever probed/deleted — never anything else on the origin.
+    for (const [id] of rt.deleteModelAllInfoInCache.mock.calls) {
+      expect(SUPPORTED_TOOL_CALLING_MODELS).toContain(id);
+    }
+  });
+
+  it("works standalone without a provider instance, honoring `keep`", async () => {
+    const rt = cachingRuntime([HERMES_3, HERMES_2_LLAMA, HERMES_2_MISTRAL]);
+
+    const cleared = await clearCachedModels({ loadRuntime: rt.load, keep: [HERMES_3] });
+
+    expect([...cleared].sort()).toEqual([HERMES_2_LLAMA, HERMES_2_MISTRAL].sort());
+    expect([...rt.cache]).toEqual([HERMES_3]);
+    expect(rt.load).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves to an empty list when nothing is cached", async () => {
+    const rt = cachingRuntime([]);
+    await expect(clearCachedModels({ loadRuntime: rt.load })).resolves.toEqual([]);
+    expect(rt.deleteModelAllInfoInCache).not.toHaveBeenCalled();
+  });
+
+  it("propagates a Cache API failure so the UI can report it (explicit action, not best-effort)", async () => {
+    const rt = cachingRuntime([HERMES_3]);
+    const boom = new DOMException("denied", "SecurityError");
+    rt.deleteModelAllInfoInCache.mockRejectedValue(boom);
+    await expect(clearCachedModels({ loadRuntime: rt.load })).rejects.toBe(boom);
   });
 });
 
