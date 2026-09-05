@@ -1,5 +1,12 @@
 # @uptimizr/db-postgres
 
+## 1.0.1
+
+### Patch Changes
+
+- Updated dependencies [cd44b11]
+  - @uptimizr/db@1.0.1
+
 ## 1.0.0
 
 ### Major Changes
