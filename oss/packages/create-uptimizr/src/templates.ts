@@ -26,7 +26,7 @@ export const DEMO_PORT = 5173;
 
 /** Pinned versions used by the browser-side demo (loaded from a CDN, no bundler). */
 const BABYLON_CDN_RANGE = "9";
-const UPTIMIZR_BABYLON_VERSION = "0.5.1";
+const UPTIMIZR_BABYLON_VERSION = "1.0.0";
 
 /** Optional extras a developer can fold into the scaffold. */
 export interface ScaffoldExtras {
@@ -65,11 +65,11 @@ export function renderPackageJson(
     migrate: "uptimizr migrate",
   };
   const dependencies: Record<string, string> = {
-    "@uptimizr/collector-server": "^0.8.0",
+    "@uptimizr/collector-server": "^1.0.0",
   };
   if (extras.withDashboard) {
     // The dashboard ships its own zero-dep static server (`uptimizr-dashboard`).
-    dependencies["@uptimizr/dashboard"] = "^0.4.8";
+    dependencies["@uptimizr/dashboard"] = "^1.0.0";
     scripts.dashboard = `uptimizr-dashboard --port ${DASHBOARD_PORT}`;
   }
   if (extras.withDemo) {
