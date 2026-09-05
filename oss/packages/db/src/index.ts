@@ -11,7 +11,13 @@
  */
 
 export { readDbSettings } from "./env.js";
-export type { DbSettings, DuckdbSettings, ClickhouseSettings, PostgresSettings } from "./env.js";
+export type {
+  DbSettings,
+  DuckdbSettings,
+  ClickhouseSettings,
+  PostgresSettings,
+  MssqlSettings,
+} from "./env.js";
 
 // --- Engine-neutral event-row mapping (ADR 0020) ---
 export { toEventRow, formatUtcTimestamp } from "./events.js";
@@ -45,8 +51,17 @@ export {
   toPostgresTimestamp,
   POSTGRES_NEAREST_ROW_JOIN,
 } from "./query/postgresDialect.js";
-// Relational building blocks shared by the row-store dialects (Postgres today,
-// SQL Server next — #85): ASOF emulation and named→positional param rewriting.
+export {
+  mssqlDialect,
+  toMssqlTimestamp,
+  toTsql,
+  mssqlVectorElement,
+  MSSQL_NEAREST_ROW_JOIN,
+  MSSQL_BIN_COLLATION,
+  MSSQL_QUANTILE_FUNCTION,
+} from "./query/mssqlDialect.js";
+// Relational building blocks shared by the row-store dialects (Postgres and SQL
+// Server — #84, #85): ASOF emulation and named→positional param rewriting.
 export {
   renderNativeAsofJoin,
   renderNearestRowJoin,

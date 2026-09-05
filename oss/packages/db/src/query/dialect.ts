@@ -7,8 +7,9 @@
  * `quantile`, vector norm, array length, time bucketing, ASOF joins, and the
  * rollup `-Merge` combinators — is funnelled through this interface so the bulk
  * of each query stays shared. The OSS default engine is DuckDB; the single-tenant
- * ClickHouse and Postgres dialects serve self-hosters who outgrow DuckDB's
- * single-writer file (`@uptimizr/db-clickhouse`, `@uptimizr/db-postgres`).
+ * ClickHouse, Postgres and SQL Server dialects serve self-hosters who outgrow
+ * DuckDB's single-writer file (`@uptimizr/db-clickhouse`, `@uptimizr/db-postgres`,
+ * `@uptimizr/db-mssql`).
  *
  * Invariant: this layer carries **no multi-tenant concepts** (no `org_id`, no
  * tenant isolation). Those live only in the proprietary scale layer, which keeps
@@ -87,7 +88,8 @@ export interface Dialect {
    * Number of elements in an array-valued `expr` (0 for an empty array). Used
    * to guard vector columns (`arrayLength("position") = 3`) before indexing
    * them; element indexing itself (`position[1]`) is 1-based on every supported
-   * engine and stays inline in the shared SQL.
+   * engine and stays inline in the shared SQL (SQL Server, which has no arrays,
+   * rewrites it to JSON extraction at execution time — see `toTsql`).
    */
   arrayLength(expr: string): string;
   /** Conditional average: mean of `value` over rows where `cond` holds. */
