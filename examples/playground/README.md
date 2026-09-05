@@ -240,5 +240,5 @@ The suite covers the stack, including:
   locomotion analytics.
 
 Real immersive-browser automation is intentionally out of scope; XR analytics are
-covered with seeded XR-input events, and A-Frame is excluded from the E2E matrix
-because it loads from a CDN.
+covered with seeded XR-input events (A-Frame's desktop capture is covered by
+`aframe.spec.ts`, which serves the CDN build from memory).
