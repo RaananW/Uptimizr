@@ -154,6 +154,7 @@ export function AssistantPanel({
     cancel,
     setBackend,
     models,
+    clearCachedModels,
   } = assistant;
 
   const [draft, setDraft] = useState("");
@@ -383,15 +384,36 @@ export function AssistantPanel({
                     Your browser is out of storage for the local model.
                   </span>
                   <span>
-                    Each local model caches about 4 GB in this site&apos;s browser storage, and
-                    trying several models stacks them up. To fix it: free up disk space, clear this
-                    site&apos;s cached data (browser settings → clear site data / storage), or pick
-                    the smallest model — or switch to a hosted backend. Then retry.
+                    Each local model caches about 4 GB in this site&apos;s browser storage. To fix
+                    it: clear the cached models below, free up disk space, or pick the smallest
+                    model — or switch to a hosted backend. Then retry.
                   </span>
+                  <ClearCachedModelsButton
+                    clearCachedModels={clearCachedModels}
+                    disabled={isBusy}
+                    models={models}
+                  />
                 </div>
               ) : (
                 <span>{error.message}</span>
               )}
+            </div>
+          )}
+
+          {backend?.backend === "local" && (
+            <div
+              className="flex flex-wrap items-center gap-2 text-[11px] text-fg-muted"
+              data-role="cache-controls"
+            >
+              <span>
+                Model weights are cached in this browser (~4 GB each); switching models reclaims the
+                previous one.
+              </span>
+              <ClearCachedModelsButton
+                clearCachedModels={clearCachedModels}
+                disabled={isBusy}
+                models={models}
+              />
             </div>
           )}
 
@@ -655,6 +677,84 @@ function BackendPicker({
         </div>
       )}
     </fieldset>
+  );
+}
+
+/** Outcome of the last "Clear cached models" click, for the inline status text. */
+type ClearCacheState =
+  | { kind: "idle" }
+  | { kind: "clearing" }
+  | { kind: "cleared"; count: number }
+  | { kind: "error"; message: string };
+
+/** Friendly label for a curated model id (falls back to the raw id). */
+function modelLabel(id: string, models: readonly CuratedModel[]): string {
+  return models.find((m) => m.id === id)?.label ?? id;
+}
+
+/**
+ * "Clear cached models" — deletes every curated local model's cached weights
+ * from this browser's Cache Storage via the WebLLM adapter (#216), reclaiming
+ * the multi-GB space without the user hunting for the browser's "clear site
+ * data". Reports exactly what was reclaimed (or that nothing was cached) inline,
+ * and surfaces a failure as text rather than throwing. Errors are shown by
+ * `message` only — no parsing of their text.
+ */
+function ClearCachedModelsButton({
+  clearCachedModels,
+  disabled,
+  models = [],
+}: {
+  clearCachedModels: () => Promise<string[]>;
+  disabled?: boolean;
+  models?: readonly CuratedModel[];
+}) {
+  const [state, setState] = useState<ClearCacheState>({ kind: "idle" });
+  const [clearedIds, setClearedIds] = useState<string[]>([]);
+
+  const onClick = useCallback(async () => {
+    setState({ kind: "clearing" });
+    try {
+      const ids = await clearCachedModels();
+      setClearedIds(ids);
+      setState({ kind: "cleared", count: ids.length });
+    } catch (err) {
+      setState({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Could not clear the cached models.",
+      });
+    }
+  }, [clearCachedModels]);
+
+  const statusText =
+    state.kind === "clearing"
+      ? "Clearing cached models…"
+      : state.kind === "cleared"
+        ? state.count === 0
+          ? "No cached models to clear."
+          : `Cleared ${state.count} cached model${state.count === 1 ? "" : "s"} (${clearedIds
+              .map((id) => modelLabel(id, models))
+              .join(", ")}).`
+        : state.kind === "error"
+          ? `Could not clear cached models: ${state.message}`
+          : null;
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void onClick()}
+        disabled={disabled || state.kind === "clearing"}
+        className="rounded-md border border-edge px-2 py-0.5 text-[11px] text-fg-muted hover:text-fg disabled:opacity-50"
+      >
+        Clear cached models
+      </button>
+      {statusText && (
+        <span role="status" data-role="cache-status" data-kind={state.kind}>
+          {statusText}
+        </span>
+      )}
+    </span>
   );
 }
 

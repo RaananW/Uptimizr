@@ -11,6 +11,9 @@ import { useAssistant } from "../useAssistant";
 // config/detection barrel runs for real (pure, no network).
 let nextProvider: LlmProvider;
 let lastWebllmOptions: unknown;
+// The cache-clearing helper is mocked too: the real one imports the WebLLM
+// runtime and touches the browser Cache API, neither of which exists here.
+const clearCachedModelsMock = vi.fn(async (): Promise<string[]> => []);
 
 vi.mock("@uptimizr/agent-core/providers/webllm", async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
@@ -18,6 +21,7 @@ vi.mock("@uptimizr/agent-core/providers/webllm", async (importActual) => ({
     lastWebllmOptions = options;
     return nextProvider;
   },
+  clearCachedModels: (...args: unknown[]) => clearCachedModelsMock(...(args as [])),
 }));
 vi.mock("@uptimizr/agent-core/providers/hosted", async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
@@ -44,6 +48,8 @@ const HOSTED = {
 
 beforeEach(() => {
   lastWebllmOptions = undefined;
+  clearCachedModelsMock.mockReset();
+  clearCachedModelsMock.mockResolvedValue([]);
   localStorage.clear();
 });
 afterEach(() => {
@@ -243,6 +249,62 @@ describe("useAssistant", () => {
     expect((lastWebllmOptions as { onInitProgress?: unknown }).onInitProgress).toBeTypeOf(
       "function",
     );
+  });
+
+  it("forwards the cache policy and eviction callback to the WebLLM factory (#216)", async () => {
+    nextProvider = scriptedProvider([{ kind: "final", content: "ok" }]);
+    const onCacheEvicted = vi.fn();
+    const { result } = renderHook(() =>
+      useAssistant({
+        api: fakeApi(),
+        backend: { backend: "local", webllm: { model: "M" } },
+        cachePolicy: "keep-all",
+        onCacheEvicted,
+      }),
+    );
+    await act(async () => {
+      await result.current.send("hi");
+    });
+    expect(lastWebllmOptions).toMatchObject({ model: "M", cachePolicy: "keep-all" });
+    // The factory's callback is wired through to the host's, with the evicted ids.
+    const opts = lastWebllmOptions as { onCacheEvicted?: (ids: readonly string[]) => void };
+    expect(opts.onCacheEvicted).toBeTypeOf("function");
+    opts.onCacheEvicted!(["Hermes-3-Llama-3.1-8B-q4f16_1-MLC"]);
+    expect(onCacheEvicted).toHaveBeenCalledWith(["Hermes-3-Llama-3.1-8B-q4f16_1-MLC"]);
+  });
+
+  it("leaves the cache policy to the adapter default when not specified", async () => {
+    nextProvider = scriptedProvider([{ kind: "final", content: "ok" }]);
+    const { result } = renderHook(() =>
+      useAssistant({ api: fakeApi(), backend: { backend: "local", webllm: { model: "M" } } }),
+    );
+    await act(async () => {
+      await result.current.send("hi");
+    });
+    expect((lastWebllmOptions as { cachePolicy?: unknown }).cachePolicy).toBeUndefined();
+  });
+
+  it("clearCachedModels delegates to the WebLLM helper and returns the reclaimed ids (#216)", async () => {
+    // Works without a provider having been built (no send yet) — the user may
+    // need to reclaim space BEFORE a download can succeed.
+    clearCachedModelsMock.mockResolvedValue(["Hermes-3-Llama-3.1-8B-q4f16_1-MLC"]);
+    const { result } = renderHook(() => useAssistant({ api: fakeApi() }));
+
+    let cleared: string[] = [];
+    await act(async () => {
+      cleared = await result.current.clearCachedModels();
+    });
+
+    expect(clearCachedModelsMock).toHaveBeenCalledTimes(1);
+    expect(cleared).toEqual(["Hermes-3-Llama-3.1-8B-q4f16_1-MLC"]);
+    expect(lastWebllmOptions).toBeUndefined();
+  });
+
+  it("clearCachedModels propagates a Cache API failure to the caller", async () => {
+    const boom = new Error("cache denied");
+    clearCachedModelsMock.mockRejectedValue(boom);
+    const { result } = renderHook(() => useAssistant({ api: fakeApi() }));
+    await expect(result.current.clearCachedModels()).rejects.toBe(boom);
   });
 
   it("errors when a hosted backend is selected but not configured", async () => {
