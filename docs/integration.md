@@ -131,6 +131,13 @@ to find.
    bridge. It defaults to `Camera.main`.
 3. Ensure `trackUnity(...)` runs on the host page **before** the export starts.
 
+The bridged tier is **preview** until verified against a local build: the `.jslib` shim
+is sanity-tested under `node:vm` on every `pnpm test`, and the sample Unity project in
+[`examples/unity-web-export/`](../examples/unity-web-export) turns full verification into
+a single **WebGL build** (Compression Format: Disabled) that
+`examples/playground/e2e/unity-export.spec.ts` serves and drives; the spec skips when no
+build is present.
+
 Unity's native world frame is **left-handed, y-up, meters** — already Uptimizr's
 canonical wire frame — so world-space payloads need no axis conversion; the connector
 records the native frame as `connector.coordinateSystem` on `session_start`. The shim

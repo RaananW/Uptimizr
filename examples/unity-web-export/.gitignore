@@ -1,0 +1,20 @@
+# Unity-generated state (never committed). The tracked project is only Assets/,
+# Packages/manifest.json and the three ProjectSettings files.
+Library/
+Temp/
+Obj/
+Logs/
+UserSettings/
+Packages/packages-lock.json
+ProjectSettings/*
+!ProjectSettings/ProjectVersion.txt
+!ProjectSettings/EditorBuildSettings.asset
+!ProjectSettings/ProjectSettings.asset
+*.csproj
+*.sln
+.vs/
+.vsconfig
+
+# The WebGL build output the Playwright spec serves (File → Build Settings → Build
+# into this folder). Local-only: builds are large and machine-specific.
+dist/

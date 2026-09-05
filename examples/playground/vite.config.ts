@@ -3,6 +3,7 @@ import { extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { UNITY_DIST_DIR, serveUnityBuild } from "./e2e/helpers/unity-build.js";
 
 /**
  * Expose the scene→project bindings from `.uptimizr/projects.json` (written by the
@@ -89,9 +90,24 @@ function godotExportPlugin(): Plugin {
   };
 }
 
+/**
+ * Serve a locally built Unity WebGL export (`examples/unity-web-export/dist/`) at
+ * `/unity-build/` for the `unity-export-e2e.html` harness + `e2e/unity-export.spec.ts`.
+ * Dev-server only: the build is the maintainer's one manual step and is git-ignored,
+ * so this is a no-op (the manifest 404s and the spec skips) when nothing was built.
+ */
+function unityBuildPlugin(): Plugin {
+  return {
+    name: "uptimizr-unity-build",
+    configureServer(server) {
+      server.middlewares.use(serveUnityBuild(UNITY_DIST_DIR));
+    },
+  };
+}
+
 export default defineConfig({
   // The react plugin only transforms `.tsx`; the non-React engines are untouched.
-  plugins: [react(), sceneProjectsPlugin(), godotExportPlugin()],
+  plugins: [react(), sceneProjectsPlugin(), godotExportPlugin(), unityBuildPlugin()],
   // Read VITE_* vars from the repo-root `.env` so the playground shares the same
   // env file as the rest of the stack (no separate `.env.local` to maintain).
   envDir: "../..",
