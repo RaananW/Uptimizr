@@ -1105,7 +1105,12 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
         const secondsDelta = (now - lastFrameTime) / 1000;
         lastFrame = frame;
         lastFrameTime = now;
-        if (secondsDelta <= 0) return;
+        // A negative frame delta means the renderer's counter restarted: three swaps
+        // in a fresh `WebGLInfo` on context restore, and hosts may call
+        // `info.reset()`. Skip the sample instead of emitting a negative fps (the
+        // schema rejects it, and a rejected batch would block later flushes); the
+        // counters are resynced above, so the next tick measures cleanly.
+        if (secondsDelta <= 0 || framesDelta < 0) return;
         const fps = framesDelta / secondsDelta;
         // three has no per-frame delta window (no engine render observable the
         // connector owns), so the perf snapshot carries an empty frame-time window;
