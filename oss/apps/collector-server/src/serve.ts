@@ -3,6 +3,7 @@ import { loadConfig } from "./config.js";
 import { createClickhouseStore } from "./clickhouseStore.js";
 import { createDuckdbStore } from "./duckdbStore.js";
 import { createMemoryStore } from "./memoryStore.js";
+import { createPostgresStore } from "./postgresStore.js";
 import type { CollectorStore } from "./store.js";
 
 /**
@@ -10,6 +11,10 @@ import type { CollectorStore } from "./store.js";
  * - `duckdb` (default) — the OSS single-file DuckDB store (events + metadata in
  *   one file, full analytics, zero external services; ADR 0020). Path from
  *   `DUCKDB_PATH`.
+ * - `postgres` — the optional single-tenant Postgres store (multi-writer
+ *   relational backend for shops that already run Postgres; ADR 0020, #84).
+ *   Connection from `POSTGRES_URL` (or `DATABASE_URL`) plus the optional
+ *   `POSTGRES_SCHEMA` / `POSTGRES_POOL_MAX`. Requires a reachable Postgres.
  * - `clickhouse` — the optional single-tenant ClickHouse store for scale
  *   (concurrent, high-volume ingestion; ADR 0020). Connection from the
  *   `CLICKHOUSE_*` env vars. Requires a reachable ClickHouse server.
@@ -26,6 +31,8 @@ export function createStore(env: NodeJS.ProcessEnv = process.env): Promise<Colle
           apiKey: env.COLLECTOR_MEMORY_API_KEY ?? "utk_memory_dev",
         }),
       );
+    case "postgres":
+      return createPostgresStore();
     case "clickhouse":
       return createClickhouseStore();
     case "duckdb":

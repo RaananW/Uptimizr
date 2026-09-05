@@ -113,7 +113,8 @@ Need more projects/keys later? `npx -p @uptimizr/collector-server uptimizr new-p
 DuckDB is an embedded, single-writer store: only **one process** may open the file read-write at a
 time. Run a single collector instance against a given file, and stop it before inspecting with
 another writer. Concurrent readers are fine in read-only mode. For multi-writer / horizontal scale,
-use the [`clickhouse` store](#scale-path-clickhouse).
+use the [`postgres` store](#relational-path-postgres) or the
+[`clickhouse` store](#scale-path-clickhouse).
 :::
 
 ## Serve the dashboard too
@@ -121,6 +122,46 @@ use the [`clickhouse` store](#scale-path-clickhouse).
 The collector can optionally serve the dashboard static assets at `/`, so a single process exposes
 the ingestion API, query API, UI, and the DuckDB file. See [Serve the
 dashboard](/docs/deploy/dashboard/) for the all-in-one and standalone options.
+
+## Relational path: Postgres
+
+If you already operate **PostgreSQL** and want a familiar, multi-writer backend — several collector
+instances sharing one store, managed backups, your existing monitoring — switch the store to
+Postgres without changing any application code or queries:
+
+```bash
+export COLLECTOR_STORE=postgres
+export POSTGRES_URL=postgresql://uptimizr:uptimizr@localhost:5432/uptimizr
+npx -p @uptimizr/collector-server uptimizr serve
+```
+
+This is a **single-tenant Postgres store**: events **and** metadata (projects, API keys, scene
+representations) live in one database. The database itself must exist (your provider or
+`docker compose` creates it); the collector creates the schema, tables, indexes and views on
+first boot, and several instances may boot concurrently (migrations are serialized behind an
+advisory lock). `DATABASE_URL` is accepted as a fallback for `POSTGRES_URL`, so platform-injected
+connection strings work as-is; `?sslmode=require` and the other libpq URI options apply.
+
+The full analytics surface returns **identical results** to DuckDB and ClickHouse (verified by the
+cross-engine parity suite against a live Postgres). Two row-store trade-offs are worth knowing:
+
+- **ASOF joins are emulated.** The click↔gaze ray, flow, reachability, navigation and backtrack
+  aggregations pair each event with its nearest-in-time neighbour. Postgres has no `ASOF JOIN`,
+  so these render as an indexed nearest-row lookup per left row (`JOIN LATERAL … ORDER BY ts DESC
+  LIMIT 1`). Results are the same; on very large sessions these reads are slower than the
+  columnar engines' single merge pass.
+- **Daily rollups are recomputed at query time.** `perf_daily` / `events_daily` are plain views —
+  fine at single-tenant scale; the incremental rollups remain the ClickHouse scale tier.
+
+Choose Postgres when you need:
+
+- **Multiple collector instances** behind a load balancer, without running ClickHouse.
+- A database your team **already runs** (managed Postgres, RDS, Cloud SQL, Supabase, Neon…).
+- Transactional, easily-inspected storage (`psql`, standard backups and replication).
+
+Choose [ClickHouse](#scale-path-clickhouse) instead for high-volume ingestion and large historical
+ranges. Postgres 14 or newer is supported; the monorepo's `infra/docker` ships a `postgres:16`
+service (`pnpm stack:up`).
 
 ## Scale path: ClickHouse
 
@@ -181,8 +222,11 @@ full list):
 
 | Variable                                  | Purpose                                                                                       |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `COLLECTOR_STORE`                         | `duckdb` (default), `clickhouse` (scale tier), or `memory` (dev/E2E).                         |
+| `COLLECTOR_STORE`                         | `duckdb` (default), `postgres`, `clickhouse` (scale tier), or `memory` (dev/E2E).             |
 | `DUCKDB_PATH`                             | Path to the DuckDB file (default `./data/uptimizr.duckdb`).                                   |
+| `POSTGRES_URL` (or `DATABASE_URL`)        | Postgres connection string when `COLLECTOR_STORE=postgres` (`postgresql://user:pw@host/db`).  |
+| `POSTGRES_SCHEMA`                         | Schema for the store's tables (default `public`; created on first boot).                      |
+| `POSTGRES_POOL_MAX`                       | Max pooled connections per collector process (default `10`).                                  |
 | `CLICKHOUSE_URL`                          | ClickHouse HTTP endpoint when `COLLECTOR_STORE=clickhouse` (default `http://localhost:8123`). |
 | `CLICKHOUSE_DATABASE`                     | ClickHouse database name (default `uptimizr`; created on first boot).                         |
 | `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD` | ClickHouse credentials (default `default` / empty).                                           |

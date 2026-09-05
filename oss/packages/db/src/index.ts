@@ -11,7 +11,7 @@
  */
 
 export { readDbSettings } from "./env.js";
-export type { DbSettings, DuckdbSettings, ClickhouseSettings } from "./env.js";
+export type { DbSettings, DuckdbSettings, ClickhouseSettings, PostgresSettings } from "./env.js";
 
 // --- Engine-neutral event-row mapping (ADR 0020) ---
 export { toEventRow, formatUtcTimestamp } from "./events.js";
@@ -37,9 +37,22 @@ export type {
 // The aggregation builders and dialects are shared across engines (and used by
 // the cross-engine parity harness). Each builder renders a `QuerySpec` for the
 // dialect it is given.
-export type { Dialect, ParamType } from "./query/dialect.js";
+export type { Dialect, ParamType, AsofJoinSpec } from "./query/dialect.js";
 export { duckdbDialect, toDuckdbTimestamp } from "./query/duckdbDialect.js";
 export { clickhouseDialect, toClickhouseTimestamp } from "./query/clickhouseDialect.js";
+export {
+  postgresDialect,
+  toPostgresTimestamp,
+  POSTGRES_NEAREST_ROW_JOIN,
+} from "./query/postgresDialect.js";
+// Relational building blocks shared by the row-store dialects (Postgres today,
+// SQL Server next — #85): ASOF emulation and named→positional param rewriting.
+export {
+  renderNativeAsofJoin,
+  renderNearestRowJoin,
+  toPositionalParams,
+} from "./query/relational.js";
+export type { NearestRowJoinTokens, PositionalQuery } from "./query/relational.js";
 export {
   buildListSessions,
   buildPointerHeatmap,

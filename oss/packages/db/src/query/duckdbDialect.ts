@@ -17,6 +17,7 @@
  */
 
 import type { Dialect, ParamType } from "./dialect.js";
+import { renderNativeAsofJoin } from "./relational.js";
 
 /**
  * Format an epoch-millisecond timestamp as a naive-UTC `YYYY-MM-DD HH:MM:SS.mmm`
@@ -48,6 +49,9 @@ export const duckdbDialect: Dialect = {
   },
   vectorNorm(expr) {
     return `sqrt(list_dot_product(${expr}, ${expr}))`;
+  },
+  arrayLength(expr) {
+    return `length(${expr})`;
   },
   avgIf(value, cond) {
     return `avg(${value}) FILTER (WHERE ${cond})`;
@@ -92,6 +96,7 @@ export const duckdbDialect: Dialect = {
   quantileMerge(stateExpr, q) {
     return `quantile_cont(${stateExpr}, ${q})`;
   },
-  asofInnerJoin: "ASOF INNER JOIN",
-  asofLeftJoin: "ASOF LEFT JOIN",
+  asofJoin(spec) {
+    return renderNativeAsofJoin(spec);
+  },
 };

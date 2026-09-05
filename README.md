@@ -24,7 +24,7 @@ camera, a view vector, or a mesh. Uptimizr fills that gap.
 
 Uptimizr is an **open-source data-collector** — a self-hostable SDK + ingestion + dashboard,
 licensed Apache-2.0. Run it on a single embedded DuckDB file with no external database service,
-or scale out to ClickHouse + Postgres when you need to.
+or switch to a Postgres or ClickHouse store when you need multi-writer scale.
 
 ## Live demo
 
@@ -41,7 +41,9 @@ wipes everything. From source, run it with `pnpm dev:web` (demo on `http://local
 - **Dashboard:** Next.js + Tailwind
 - **Event store (default):** a single embedded **DuckDB** file holds events **and** metadata — no
   external database service ([ADR 0020](./docs/adr/0020-open-core-storage-boundary.md))
-- **Event store (optional scale tier):** ClickHouse (events) + Postgres (metadata)
+- **Event store (optional):** a single-tenant **Postgres** store (`COLLECTOR_STORE=postgres`) for
+  self-hosters who already run Postgres, or the **ClickHouse** scale tier
+  (`COLLECTOR_STORE=clickhouse`) for high-volume ingestion
   ([ADR 0002](./docs/adr/0002-database.md))
 - **3D connectors:** Babylon.js, Babylon Lite, three.js, react-three-fiber, PlayCanvas, and
   A-Frame (WebXR)
@@ -54,8 +56,8 @@ oss/        Open-source product (Apache-2.0)
   apps/       collector-server (Fastify), dashboard (Next.js), demo (in-browser test drive),
               docs (documentation site), web (landing site)
   packages/   schema, sdk-core, replay, react (embeddable panels), heatmap, mcp (query server),
-              create-uptimizr (scaffolder), db (DuckDB store + contracts), db-clickhouse
-              (optional scale store), and the connectors: sdk-babylon, sdk-babylon-lite,
+              create-uptimizr (scaffolder), db (DuckDB store + contracts), db-postgres and db-clickhouse
+              (optional stores), and the connectors: sdk-babylon, sdk-babylon-lite,
               sdk-three, sdk-r3f, sdk-playcanvas, sdk-aframe
 examples/   playground — multi-engine demo scene for end-to-end testing
 infra/      docker-compose for the optional ClickHouse + Postgres scale engines
@@ -103,7 +105,8 @@ pnpm dev:dashboard               # optional: the analytics dashboard
 - **Back up** = copy the `.duckdb` file. **Reset** = delete it and re-run `pnpm db:setup`.
 - **Single-writer constraint:** DuckDB is embedded and single-writer — only one process may open
   the file read-write at a time. Run a single collector per file. For multi-writer / horizontal
-  scale, use the optional ClickHouse + Postgres scale tier (via `infra/docker`)
+  scale, use the optional Postgres or ClickHouse store (`COLLECTOR_STORE=postgres` /
+  `COLLECTOR_STORE=clickhouse`, local servers via `infra/docker`)
   ([ADR 0020](./docs/adr/0020-open-core-storage-boundary.md)).
 
 To run the full stack locally and verify it end-to-end (collector, dashboard, Babylon

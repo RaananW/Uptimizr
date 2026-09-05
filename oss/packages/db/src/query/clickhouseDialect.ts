@@ -26,6 +26,7 @@
  */
 
 import type { Dialect, ParamType } from "./dialect.js";
+import { renderNativeAsofJoin } from "./relational.js";
 
 /** Map a logical {@link ParamType} to its ClickHouse parameter type name. */
 function chParamType(type: ParamType): string {
@@ -76,6 +77,9 @@ export const clickhouseDialect: Dialect = {
   },
   vectorNorm(expr) {
     return `L2Norm(${expr})`;
+  },
+  arrayLength(expr) {
+    return `length(${expr})`;
   },
   avgIf(value, cond) {
     return `avgIf(${value}, ${cond})`;
@@ -129,6 +133,7 @@ export const clickhouseDialect: Dialect = {
   quantileMerge(stateExpr, q) {
     return `quantile(${q})(${stateExpr})`;
   },
-  asofInnerJoin: "ASOF INNER JOIN",
-  asofLeftJoin: "ASOF LEFT JOIN",
+  asofJoin(spec) {
+    return renderNativeAsofJoin(spec);
+  },
 };

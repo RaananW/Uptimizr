@@ -44,6 +44,19 @@ The store creates its database and tables on first boot. A live ClickHouse also 
 cross-engine parity tests in `@uptimizr/db-clickhouse` (they skip gracefully when it is unreachable,
 so the default `pnpm test` stays Docker-free).
 
+The same applies to the **Postgres store** (`COLLECTOR_STORE=postgres`): `pnpm stack:up` also
+starts a `postgres:16` service, and the parity + store suites in `@uptimizr/db-postgres` run
+against it whenever `POSTGRES_URL` (or `DATABASE_URL`) is reachable — they assert every
+aggregation against both the golden output and DuckDB directly, and skip otherwise:
+
+```bash
+pnpm stack:up
+COLLECTOR_STORE=postgres POSTGRES_URL=postgresql://uptimizr:uptimizr@localhost:5432/uptimizr pnpm dev:collector
+POSTGRES_URL=postgresql://uptimizr:uptimizr@localhost:5432/uptimizr pnpm --filter @uptimizr/db-postgres test
+```
+
+In CI the opt-in **Store parity (Postgres)** job runs the same suite against a service container.
+
 For the full end-to-end loop (collector, dashboard, a playground scene, replay), see the repo's
 manual testing guide and the `run-local-stack` workflow.
 

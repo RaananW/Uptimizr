@@ -91,6 +91,60 @@ jobs:
       - name: Test
         run: pnpm test
 
+  store-parity-postgres:
+    name: Store parity (Postgres)
+    runs-on: ubuntu-latest
+    # Opt-in cross-engine parity for the optional Postgres store (#84). The suites
+    # in @uptimizr/db-postgres skip when no server is reachable, which keeps the
+    # default `build` job Docker-free; here a postgres:16 service container is
+    # provided and POSTGRES_PARITY_REQUIRED turns a missing server into a failure
+    # so an outage can never masquerade as a green skip.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: uptimizr
+          POSTGRES_PASSWORD: uptimizr
+          POSTGRES_DB: uptimizr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U uptimizr -d uptimizr"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      POSTGRES_URL: postgresql://uptimizr:uptimizr@localhost:5432/uptimizr
+      POSTGRES_PARITY_REQUIRED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
+      - name: Build the store and its dependencies
+        run: pnpm --filter @uptimizr/db-postgres... build
+
+      - name: Parity + store suites against Postgres
+        run: pnpm --filter @uptimizr/db-postgres test
+
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest

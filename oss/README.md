@@ -24,6 +24,7 @@ to be extractable into a standalone repository.
 - [`packages/mcp`](./packages/mcp) — `@uptimizr/mcp`: read-only MCP server over the collector query API.
 - [`packages/create-uptimizr`](./packages/create-uptimizr) — `create-uptimizr`: self-host scaffolding CLI.
 - [`packages/db`](./packages/db) — `@uptimizr/db`: storage contracts, dialect-agnostic query layer, and DuckDB store.
+- [`packages/db-postgres`](./packages/db-postgres) — `@uptimizr/db-postgres`: optional single-tenant Postgres store.
 - [`packages/db-clickhouse`](./packages/db-clickhouse) — `@uptimizr/db-clickhouse`: optional ClickHouse store.
 - [`packages/sdk-babylon`](./packages/sdk-babylon) — `@uptimizr/babylon`: Babylon.js collector adapter.
 - [`packages/sdk-babylon-lite`](./packages/sdk-babylon-lite) — `@uptimizr/babylon-lite`: Babylon Lite collector adapter.
