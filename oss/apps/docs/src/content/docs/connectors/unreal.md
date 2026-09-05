@@ -9,7 +9,7 @@ works in two tiers: a **JS-only tier** (no engine code — pointer heatmaps, FPS
 errors) and a **bridged tier** (a thin copy-in shim adds camera pose, world-space
 picks, and replay).
 
-:::caution[Best-effort]
+:::caution[Alpha — best-effort, unverified]
 Epic has **no official UE5 HTML5/WASM target** (it was deprecated after UE 4.24) and Pixel
 Streaming is server-side (no client-side scene to read). The bridged tier therefore targets
 the real, **Emscripten-based, client-side** web exports that do exist — the community
