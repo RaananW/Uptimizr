@@ -1,6 +1,12 @@
 import { z } from "zod";
 import type { CollectorClient } from "./client.js";
-import type { AgentMessage, AgentToolCall, AgentToolSchema, LlmProvider } from "./provider.js";
+import type {
+  AgentMessage,
+  AgentToolCall,
+  AgentToolSchema,
+  LlmProvider,
+  ProviderResponse,
+} from "./provider.js";
 import { readTools, type ReadTool } from "./tools.js";
 
 /** Default cap on provider turns before the loop gives up (guards against loops). */
@@ -78,7 +84,36 @@ export interface RunAgentOptions {
   maxToolResultChars?: number;
   /** Optional cancellation signal forwarded to the provider. */
   signal?: AbortSignal;
+  /**
+   * Optional streaming observer. When set, the loop passes an `onToken`
+   * listener to every `provider.complete()` and re-emits what arrives as
+   * {@link AgentStreamEvent}s, so a UI can render the reply as it is generated.
+   * A provider that does not stream simply produces no `delta` events; the
+   * loop's result is identical either way. See {@link AgentStreamEvent} for
+   * how final-answer turns are told apart from tool-call turns.
+   */
+  onStream?: (event: AgentStreamEvent) => void;
 }
+
+/**
+ * A streaming event emitted through {@link RunAgentOptions.onStream}.
+ *
+ * - `delta` — the provider produced more assistant text for the current turn:
+ *   `delta` is the new fragment and `text` the turn's accumulated text so far
+ *   (a fresh turn starts again from its first fragment).
+ * - `turn_end` — the provider finished a turn. `outcome: "final"` means the
+ *   streamed `text` IS the answer (the loop returns it, or — if it was empty —
+ *   makes one more forced synthesis turn, which streams as a new turn).
+ *   `outcome: "tool_calls"` means the turn asked for tools: any text streamed
+ *   for it is the model's pre-tool commentary, not the answer, and a UI that
+ *   only shows the answer should discard it.
+ *
+ * `step` is the loop's provider-turn counter; the forced synthesis pass (which
+ * does not count as a step) reports the step it followed.
+ */
+export type AgentStreamEvent =
+  | { type: "delta"; step: number; delta: string; text: string }
+  | { type: "turn_end"; step: number; outcome: "final" | "tool_calls" };
 
 /** The outcome of a completed agent run. */
 export interface RunAgentResult {
@@ -108,7 +143,7 @@ export interface RunAgentResult {
  * at most one such forced turn per run.
  */
 export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult> {
-  const { provider, client, signal } = options;
+  const { provider, client, signal, onStream } = options;
   const tools = options.tools ?? readTools;
   const maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
   const forceFinalAnswer = options.forceFinalAnswer ?? true;
@@ -119,6 +154,34 @@ export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult
 
   let steps = 0;
   let alreadyForced = false;
+
+  /**
+   * One provider turn. When an `onStream` observer is present, hands the
+   * provider an `onToken` listener that accumulates this turn's text and
+   * re-emits `delta` events, then reports how the turn ended. Without an
+   * observer no listener is passed, so providers stay in their non-streaming
+   * path and behave exactly as before.
+   */
+  async function completeTurn(
+    turnMessages: AgentMessage[],
+    turnTools: AgentToolSchema[],
+  ): Promise<ProviderResponse> {
+    if (!onStream) return provider.complete({ messages: turnMessages, tools: turnTools, signal });
+    const step = steps;
+    let text = "";
+    const response = await provider.complete({
+      messages: turnMessages,
+      tools: turnTools,
+      signal,
+      onToken: (delta) => {
+        if (!delta) return;
+        text += delta;
+        onStream({ type: "delta", step, delta, text });
+      },
+    });
+    onStream({ type: "turn_end", step, outcome: response.kind });
+    return response;
+  }
 
   /**
    * One tools-disabled synthesis turn: ask the provider to answer in prose from
@@ -133,13 +196,13 @@ export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult
       ...messages,
       { role: "user", content: FORCE_FINAL_DIRECTIVE },
     ];
-    const response = await provider.complete({ messages: forcedMessages, tools: [], signal });
+    const response = await completeTurn(forcedMessages, []);
     return response.kind === "final" ? response.content : (response.content ?? "");
   }
 
   while (steps < maxSteps) {
     steps += 1;
-    const response = await provider.complete({ messages, tools: toolSchemas, signal });
+    const response = await completeTurn(messages, toolSchemas);
 
     if (response.kind === "final") {
       // The model may emit an empty final early — the reported failure where the

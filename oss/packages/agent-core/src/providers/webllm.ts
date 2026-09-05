@@ -16,13 +16,16 @@
 import type { AgentMessage, LlmProvider, ProviderRequest, ProviderResponse } from "../provider.js";
 import { isWebGpuAvailable } from "./config.js";
 import {
+  createOpenAiStreamAssembler,
   parseOpenAiCompletion,
   toOpenAiMessages,
   toOpenAiTools,
   type OpenAiCompletion,
   type OpenAiMessage,
+  type OpenAiStreamChunk,
   type OpenAiTool,
 } from "./openai.js";
+import { abortError } from "./sse.js";
 
 /** A curated model the user may install (ADR 0050 §4). */
 export interface CuratedModel {
@@ -142,18 +145,31 @@ export interface InitProgress {
   text: string;
 }
 
+/** The chat-completion request shape this adapter sends to the runtime. */
+export interface WebLlmChatRequest {
+  messages: OpenAiMessage[];
+  tools?: OpenAiTool[];
+  tool_choice?: "auto";
+  stream?: boolean;
+}
+
 /** The minimal slice of the `@mlc-ai/web-llm` runtime this adapter uses. */
 export interface WebLlmEngine {
   chat: {
     completions: {
-      create(request: {
-        messages: OpenAiMessage[];
-        tools?: OpenAiTool[];
-        tool_choice?: "auto";
-        stream?: false;
-      }): Promise<OpenAiCompletion>;
+      /**
+       * OpenAI-compatible completion. With `stream: true` the runtime resolves
+       * to an async iterable of `chat.completion.chunk`s; otherwise to one
+       * completion. Typed as a union (not overloads) so a fake engine in tests
+       * can return either.
+       */
+      create(
+        request: WebLlmChatRequest,
+      ): Promise<OpenAiCompletion | AsyncIterable<OpenAiStreamChunk>>;
     };
   };
+  /** Stop the in-flight streamed generation (WebLLM's `interruptGenerate`). */
+  interruptGenerate?(): void;
   unload?(): Promise<void>;
 }
 
@@ -454,6 +470,39 @@ export function foldSystemPromptForHermes(messages: readonly AgentMessage[]): Ag
   });
 }
 
+/** Duck-type an async iterable (a streamed `create()` result). */
+function isAsyncIterable(value: unknown): value is AsyncIterable<OpenAiStreamChunk> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === "function"
+  );
+}
+
+/**
+ * Drain a streamed completion: forward each text delta to `onToken` as it is
+ * generated and assemble the chunks into one complete completion. Honors an
+ * abort signal by interrupting the runtime's generation (releasing the GPU
+ * pipeline) and rejecting with an `AbortError`, like a cancelled `fetch`.
+ */
+async function collectStreamedChunks(
+  engine: WebLlmEngine,
+  chunks: AsyncIterable<OpenAiStreamChunk>,
+  onToken: (delta: string) => void,
+  signal: AbortSignal | undefined,
+): Promise<OpenAiCompletion> {
+  const assembler = createOpenAiStreamAssembler();
+  for await (const chunk of chunks) {
+    if (signal?.aborted) {
+      engine.interruptGenerate?.();
+      throw abortError();
+    }
+    const delta = assembler.push(chunk);
+    if (delta) onToken(delta);
+  }
+  return assembler.finish();
+}
+
 function resolveModel(id: string | undefined): CuratedModel {
   const model = id ? CURATED_MODELS.find((m) => m.id === id) : CURATED_MODELS[0];
   return (
@@ -609,15 +658,28 @@ export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLl
       // Without tools (e.g. the loop's forced synthesis pass) a custom `system`
       // message is allowed, so we keep it and send no function-calling at all.
       const messages = hasTools ? foldSystemPromptForHermes(request.messages) : request.messages;
+      // Stream only the tools-less turn. With `tools` present WebLLM's Hermes
+      // function-calling path forces a JSON-grammar tool-call array as the whole
+      // output (non-streaming returns `content: null`), so its deltas are
+      // tool-call JSON — never user-visible text — and streaming them would only
+      // leak that JSON into a UI. The answer text always arrives on the
+      // tools-disabled turn (the loop's forced synthesis pass), which streams.
+      const onToken = request.onToken;
+      const stream = Boolean(onToken) && !hasTools;
       try {
-        const completion = await engine.chat.completions.create({
+        const result = await engine.chat.completions.create({
           messages: toOpenAiMessages(messages),
           ...(hasTools
             ? { tools: toOpenAiTools(request.tools), tool_choice: "auto" as const }
             : {}),
-          stream: false,
+          stream,
         });
-        return parseOpenAiCompletion(completion);
+        if (stream && onToken && isAsyncIterable(result)) {
+          return parseOpenAiCompletion(
+            await collectStreamedChunks(engine, result, onToken, request.signal),
+          );
+        }
+        return parseOpenAiCompletion(result as OpenAiCompletion);
       } catch (err) {
         // Generation can also write to Cache Storage (e.g. lazily fetched shards),
         // so a quota failure here maps to the same actionable storage error.
