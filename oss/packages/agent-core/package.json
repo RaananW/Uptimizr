@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/agent-core",
-  "version": "0.3.1",
+  "version": "1.0.0",
   "description": "Framework-agnostic, browser-safe core for Uptimizr analytics agents — the single read-only tool catalog over the collector query API, a headless LLM provider-adapter interface, and the tool-calling loop.",
   "keywords": [
     "uptimizr",

@@ -1,5 +1,25 @@
 # @uptimizr/aframe
 
+## 1.0.0
+
+### Major Changes
+
+- 9dd78e8: Uptimizr 1.0.0 — first stable release. Every package moves to 1.0.0 together; from here on the public API, the versioned event schema, and the collector's HTTP API follow semantic versioning (a breaking change is a major). Highlights since the public beta: six stable live-JS connectors (Babylon.js, Babylon Lite, three.js, react-three-fiber, PlayCanvas, A-Frame/WebXR) with per-engine capture parity and end-to-end coverage; WebXR in-scene hit resolution; three optional multi-writer stores (ClickHouse, PostgreSQL, SQL Server) behind the same `CollectorStore` contract with cross-engine parity tests; the in-browser analytics assistant with a local (WebLLM) or hosted model, tool-calling over the read-only analytics catalog, and streamed replies; and the MCP server for desktop AI clients. No wire-format or API changes are bundled with this bump — it marks the point where they become breaking.
+
+### Minor Changes
+
+- 92bf392: The `uptimizr` A-Frame component gains `sceneId` (tags every event with a scene/area id, ADR 0010) and `cameraType` (overrides the camera-kind classification recorded on `session_start`, e.g. `arc-rotate` for orbit-style scenes so they are not treated as walkable). Both are optional; invalid `cameraType` values fall back to three's structural classification.
+- ee96878: XR in-scene hit resolution. `@uptimizr/three` adds `createXrRaycaster(scene, { maxDistance, predicate })`, a world-space ray probe for the WebXR collector's `xr.raycast` option. `@uptimizr/aframe` now supplies it by default, so controller/gaze ray samples carry `hitPoint`/`hitMesh` and select/squeeze attach a `mesh_interaction` to the object hit; set `xrRaycast: false` on the component to capture rays and clicks only.
+
+### Patch Changes
+
+- Updated dependencies [ee96878]
+- Updated dependencies [4c5f44f]
+- Updated dependencies [9dd78e8]
+  - @uptimizr/three@1.0.0
+  - @uptimizr/sdk-core@1.0.0
+  - @uptimizr/schema@1.0.0
+
 ## 0.1.8
 
 ### Patch Changes

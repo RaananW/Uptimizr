@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/db-mssql",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Optional single-tenant Microsoft SQL Server store for Uptimizr — composes the @uptimizr/db dialect-agnostic query layer and CollectorStore contract for self-hosters standardized on SQL Server / Azure SQL who want a multi-writer relational backend.",
   "keywords": [
     "uptimizr",

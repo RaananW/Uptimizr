@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/godot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Godot 4 (Web export) connector for Uptimizr — JS-only pointer/perf capture plus a bridged camera-pose / world-space tier via a thin engine-side shim.",
   "keywords": [
     "uptimizr",

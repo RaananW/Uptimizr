@@ -1,5 +1,0 @@
----
-"@uptimizr/agent-core": minor
----
-
-Token streaming across the provider seam. `ProviderRequest` gains an optional `onToken(delta)` listener — additive, so `LlmProvider.complete()` still returns `Promise<ProviderResponse>` and every existing provider keeps working unchanged. The hosted adapter now requests a streamed reply whenever a listener is present and parses both the OpenAI-compatible and Anthropic Server-Sent Events formats (partial chunks across reads, `[DONE]`, tool-call deltas) using string membership and linear scans only — no regex over model output — while still returning the complete assembled response; a gateway that ignores `stream` falls back to the JSON body. The WebLLM adapter streams the tools-less answer turn straight from the GPU (tool-calling turns stay non-streaming because WebLLM's Hermes grammar emits a JSON tool-call array there) and honours the abort signal mid-stream. `runAgent` gains `onStream`, re-emitting per-turn `delta` / `turn_end` events (`AgentStreamEvent`) so a UI can render the answer as it is generated and tell an answer turn apart from a tool-call turn; the tool-calling loop is unchanged.

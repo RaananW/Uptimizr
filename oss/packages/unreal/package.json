@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/unreal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Unreal Engine (web export) connector for Uptimizr — best-effort, pending a viable WASM/HTML5 target. JS-only pointer/perf capture plus a bridged camera-pose / world-space tier via a thin engine-side shim.",
   "keywords": [
     "uptimizr",

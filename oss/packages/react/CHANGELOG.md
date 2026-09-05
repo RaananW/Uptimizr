@@ -1,5 +1,27 @@
 # @uptimizr/react
 
+## 1.0.0
+
+### Major Changes
+
+- 9dd78e8: Uptimizr 1.0.0 — first stable release. Every package moves to 1.0.0 together; from here on the public API, the versioned event schema, and the collector's HTTP API follow semantic versioning (a breaking change is a major). Highlights since the public beta: six stable live-JS connectors (Babylon.js, Babylon Lite, three.js, react-three-fiber, PlayCanvas, A-Frame/WebXR) with per-engine capture parity and end-to-end coverage; WebXR in-scene hit resolution; three optional multi-writer stores (ClickHouse, PostgreSQL, SQL Server) behind the same `CollectorStore` contract with cross-engine parity tests; the in-browser analytics assistant with a local (WebLLM) or hosted model, tool-calling over the read-only analytics catalog, and streamed replies; and the MCP server for desktop AI clients. No wire-format or API changes are bundled with this bump — it marks the point where they become breaking.
+
+### Minor Changes
+
+- 8194192: Assistant (`/assistant` subpath): replies now stream in incrementally for both the local (WebLLM) and hosted backends. `useAssistant` exposes `partialText` — the answer streamed so far for the in-flight turn (`null` when nothing is streaming; text a tool-calling turn streams is discarded when that turn ends, so it never shows tool chatter) — and `<AssistantPanel>` renders it live as the assistant bubble, with the busy indicator turning into **Streaming…** once tokens arrive. The partial bubble is replaced by the final assistant turn in the same render (never duplicated), the streamed tokens are kept out of the `aria-live` status region, and the no-text-answer fallback still applies.
+- 6b6a2fe: Assistant (`/assistant` subpath): add a **Clear cached models** action to `<AssistantPanel>` — shown in the local-backend footer and inside the browser-storage-quota error — that deletes every cached local model's weights and reports what was reclaimed. `useAssistant` gains `clearCachedModels()` plus `cachePolicy` (`"active-only"` default | `"keep-all"`) and `onCacheEvicted` options forwarded to the WebLLM adapter, so switching local models evicts the previous model's ~4 GB cache instead of accumulating until the storage quota is hit.
+
+### Patch Changes
+
+- 4bf345a: Assistant: refresh the current-time stamp in the system prompt on **every** send, not just the first turn. The conversation's single system message is updated in place (never duplicated), so a long-lived conversation that crosses a calendar boundary still resolves "today" / "this week" against the real current time. Adds the pure `refreshSystemPrompt(messages, basePrompt, nowMs)` helper on the `/assistant` subpath.
+- Updated dependencies [8194192]
+- Updated dependencies [9dd78e8]
+- Updated dependencies [6b6a2fe]
+  - @uptimizr/agent-core@1.0.0
+  - @uptimizr/schema@1.0.0
+  - @uptimizr/replay@1.0.0
+  - @uptimizr/heatmap@1.0.0
+
 ## 0.13.1
 
 ### Patch Changes
