@@ -1,6 +1,6 @@
 # ADR 0045: Web-export engine connectors (Unity, Godot, Unreal)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-06-28
 - **Deciders:** Project owner, engineering
 
