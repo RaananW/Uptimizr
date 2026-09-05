@@ -45,6 +45,24 @@ timer, and animation-frame callback — no cookies, no persistent IDs. World-spa
 to the canonical wire frame by `@uptimizr/three`; the session is attributed to the `aframe`
 connector.
 
+## Scene id and camera kind
+
+Every connector tags events with a scene/area id (ADR 0010) so you can filter and compare scenes.
+Declaratively that is the `sceneId` attribute. three's classification records every
+`PerspectiveCamera` as a first-person (`free`) camera, so orbit-style scenes should set
+`cameraType: arc-rotate` to avoid being treated as walkable in the dashboard:
+
+```html
+<a-scene
+  uptimizr="projectId: your-project; collector: https://collect.example.com; sceneId: showroom; cameraType: arc-rotate"
+></a-scene>
+```
+
+| Attribute    | Meaning                                                                 |
+| ------------ | ----------------------------------------------------------------------- |
+| `sceneId`    | Scene/area id every event carries (empty ⇒ the connector default scene) |
+| `cameraType` | `arc-rotate`, `free`, `follow`, `static`, or `other`; empty ⇒ automatic |
+
 ## WebXR input
 
 A-Frame is WebXR-first, so the connector maps XR input onto the existing source-neutral events

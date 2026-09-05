@@ -27,6 +27,8 @@ export const UPTIMIZR_SCHEMA = {
   samplePerfMs: { type: "number", default: 0 },
   pointerMoveThrottleMs: { type: "number", default: 0 },
   sceneDescription: { type: "string", default: "" },
+  sceneId: { type: "string", default: "" },
+  cameraType: { type: "string", default: "" },
   meshVisibility: { type: "boolean", default: false },
   hoverDwell: { type: "boolean", default: false },
   resourceSample: { type: "boolean", default: false },

@@ -99,6 +99,8 @@ The component schema maps onto the three connector's
 | `sampleCameraMs` / `samplePerfMs`                  | Sampling intervals (`0` ⇒ connector default)      |
 | `pointerMoveThrottleMs`                            | Pointer-move throttle (`0` ⇒ default)             |
 | `sceneDescription`                                 | Free-text scene label                             |
+| `sceneId`                                          | Scene/area id on every event (ADR 0010)           |
+| `cameraType`                                       | Camera-kind override (`arc-rotate`, `free`, …)    |
 | `meshVisibility` / `hoverDwell` / `resourceSample` | Opt-in capture channels (off by default)          |
 | `gaze`                                             | Opt-in world-space gaze hits (off by default)     |
 | `cameraGesture`                                    | Navigation gesture capture (default `true`)       |

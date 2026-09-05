@@ -85,6 +85,8 @@ function mount(
     samplePerfMs: 0,
     pointerMoveThrottleMs: 0,
     sceneDescription: "",
+    sceneId: "",
+    cameraType: "",
     meshVisibility: false,
     hoverDwell: false,
     resourceSample: false,
@@ -152,6 +154,35 @@ describe("uptimizr component", () => {
 
     const opts = h.trackScene.mock.calls[0]![3] as { connector?: { name?: string } };
     expect(opts.connector).toEqual({ name: "aframe" });
+  });
+
+  it("tags every event with sceneId via the three connector's meta (ADR 0010)", () => {
+    const def = createUptimizrComponent(LIB_VERSION);
+    mount(def, makeSceneEl(true), { sceneId: "lobby" });
+
+    const opts = h.trackScene.mock.calls[0]![3] as { meta?: { sceneId?: string } };
+    expect(opts.meta).toEqual({ sceneId: "lobby" });
+  });
+
+  it("leaves meta unset when sceneId is empty (connector default scene)", () => {
+    const def = createUptimizrComponent(LIB_VERSION);
+    mount(def, makeSceneEl(true));
+
+    const opts = h.trackScene.mock.calls[0]![3] as { meta?: unknown };
+    expect(opts.meta).toBeUndefined();
+  });
+
+  it("forwards a valid cameraType override and ignores an invalid one", () => {
+    const def = createUptimizrComponent(LIB_VERSION);
+    mount(def, makeSceneEl(true), { cameraType: "arc-rotate" });
+    let opts = h.trackScene.mock.calls[0]![3] as { cameraType?: string };
+    expect(opts.cameraType).toBe("arc-rotate");
+
+    h.trackScene.mockClear();
+    mount(def, makeSceneEl(true), { cameraType: "orbit" });
+    opts = h.trackScene.mock.calls[0]![3] as { cameraType?: string };
+    // Not in the schema enum ⇒ three's structural classification applies.
+    expect(opts.cameraType).toBeUndefined();
   });
 
   it("maps the opt-in capture toggles onto the three connector", () => {

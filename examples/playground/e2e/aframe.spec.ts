@@ -119,6 +119,12 @@ test("[aframe] captures the interaction set end to end", async ({ page, request 
   );
   expect(sources).toContain("mouse");
 
+  // The declarative `sceneId` attribute tags every event (ADR 0010, #259).
+  const scenes = new Set(
+    events.map((e) => e.sceneId).filter((s): s is string => typeof s === "string"),
+  );
+  expect(scenes).toContain("lobby");
+
   const counts = await request
     .get(`${COLLECTOR_URL}/api/v1/event-counts?session=${sessionId}`, {
       headers: { "x-api-key": API_KEY },

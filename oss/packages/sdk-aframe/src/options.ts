@@ -1,3 +1,4 @@
+import { cameraKindSchema } from "@uptimizr/schema";
 import type { TrackSceneOptions, ThreeCaptureOptions, XrRayProbe } from "@uptimizr/three";
 
 import type { UptimizrComponentData } from "./types.js";
@@ -48,6 +49,14 @@ export function buildTrackOptions(
   if (data.samplePerfMs > 0) options.samplePerfMs = data.samplePerfMs;
   if (data.pointerMoveThrottleMs > 0) options.pointerMoveThrottleMs = data.pointerMoveThrottleMs;
   if (data.sceneDescription) options.sceneDescription = data.sceneDescription;
+  // Scene/area tagging (ADR 0010) rides the three connector's `meta.sceneId`.
+  if (data.sceneId) options.meta = { sceneId: data.sceneId };
+  // Camera-kind override: validated against the schema enum so a typo falls back
+  // to three's structural classification instead of failing schema validation.
+  if (data.cameraType) {
+    const kind = cameraKindSchema.safeParse(data.cameraType);
+    if (kind.success) options.cameraType = kind.data;
+  }
   if (Object.keys(capture).length > 0) options.capture = capture;
   // WebXR capture is on by default in three (auto-detects session entry). A-Frame is
   // WebXR-first, so we only forward an override: disable it, set the sample rate,
