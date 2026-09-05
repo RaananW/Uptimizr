@@ -19,6 +19,10 @@ export type { UptimizrClientRef } from "./useUptimizr.js";
 export { Uptimizr } from "./Uptimizr.js";
 export type { UptimizrOptions } from "./options.js";
 
+// Runtime helpers R3F hosts need without a direct `@uptimizr/three` dependency:
+// the raycast probes for pointer / gaze / WebXR in-scene hit resolution.
+export { createSceneRaycaster, createGazeRaycaster, createXrRaycaster } from "@uptimizr/three";
+
 // Re-export the three connector option types so R3F users configure capture from one
 // import (the option surface is the three connector's `TrackSceneOptions`).
 export type {
