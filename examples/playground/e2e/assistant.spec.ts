@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { expect, test, type Route } from "@playwright/test";
 
 import { API_KEY, COLLECTOR_URL, DASHBOARD_URL } from "./constants.js";
@@ -217,10 +219,12 @@ test("assistant answers a grounded question end to end", async ({ page, request 
   // 5a) The panel makes it obvious the assistant is working: a live status region
   //     shows a spinner + label (Running analytics… / Thinking…) for the whole
   //     in-flight turn, before any answer arrives. This is the fix for "I can't
-  //     tell it's doing anything" — it must appear even though the LLM does not
-  //     stream. The regex targets our own fixed UI labels only (no ReDoS surface).
+  //     tell it's doing anything" — it must appear even when the LLM does not
+  //     stream (this mock answers in one JSON body; the streaming path is covered
+  //     by the dedicated SSE test below). The regex targets our own fixed UI
+  //     labels only (no ReDoS surface).
   await expect(assistant.getByRole("status")).toContainText(
-    /Thinking|Running analytics|Loading model/,
+    /Thinking|Running analytics|Loading model|Streaming/,
     { timeout: 20_000 },
   );
 
@@ -551,4 +555,190 @@ test("tool-activity list never overlaps the message column (layout regression)",
   // And, being vertically ordered, the message must end at or above the tool list
   // (a 1px tolerance absorbs sub-pixel rounding).
   expect(messageBox!.y + messageBox!.height).toBeLessThanOrEqual(toolBox!.y + 1);
+});
+
+/**
+ * A tiny OpenAI-compatible **streaming** mock (issue #212). Playwright's
+ * `route.fulfill` hands the browser a whole body at once, so it cannot exercise
+ * incremental delivery; this real `node:http` server does, answering the
+ * panel's hosted adapter with `text/event-stream` chunks spaced out in time —
+ * a tool call first (as tool-call deltas), then the grounded answer one word at
+ * a time. It sends permissive CORS headers because the dashboard calls it
+ * cross-origin, exactly like a user's own provider would. Bound to 127.0.0.1 on
+ * an ephemeral port; closed by the test.
+ */
+async function startStreamingLlm(options: {
+  /** The answer, as the fragments to stream, given the parsed tool result. */
+  answerFor: (toolResult: unknown) => string[];
+  /** Delay between streamed fragments (ms). */
+  intervalMs: number;
+}): Promise<{ endpoint: string; close: () => Promise<void> }> {
+  const cors = {
+    "access-control-allow-origin": "*",
+    "access-control-allow-headers": "content-type, authorization",
+    "access-control-allow-methods": "POST, OPTIONS",
+  };
+  const server = createServer((req, res) => {
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, cors);
+      res.end();
+      return;
+    }
+    let raw = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk: string) => (raw += chunk));
+    req.on("end", () => {
+      let body: { messages?: OpenAiRequestMessage[] };
+      try {
+        body = JSON.parse(raw) as { messages?: OpenAiRequestMessage[] };
+      } catch {
+        body = {};
+      }
+      const toolResult = latestToolResult(body.messages ?? []);
+      res.writeHead(200, {
+        ...cors,
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+      });
+      res.flushHeaders();
+      const send = (chunk: unknown) => res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      const done = () => {
+        res.write("data: [DONE]\n\n");
+        res.end();
+      };
+
+      if (toolResult === null) {
+        // Turn 1: a tool call, split across two deltas the way OpenAI streams it.
+        send({
+          choices: [
+            {
+              delta: {
+                content: null,
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_top_meshes",
+                    type: "function",
+                    function: { name: "top_meshes", arguments: "" },
+                  },
+                ],
+              },
+            },
+          ],
+        });
+        send({
+          choices: [
+            {
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ limit: 5 }) } }],
+              },
+            },
+          ],
+        });
+        send({ choices: [{ delta: {}, finish_reason: "tool_calls" }] });
+        done();
+        return;
+      }
+
+      // Turn 2: stream the grounded answer fragment by fragment, spaced in time.
+      const fragments = options.answerFor(toolResult);
+      let i = 0;
+      const timer = setInterval(() => {
+        if (i < fragments.length) {
+          send({ choices: [{ delta: { content: fragments[i++] } }] });
+          return;
+        }
+        clearInterval(timer);
+        send({ choices: [{ delta: {}, finish_reason: "stop" }] });
+        done();
+      }, options.intervalMs);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    endpoint: `http://127.0.0.1:${port}/v1`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
+/**
+ * Streaming E2E (issue #212): the answer must render **incrementally** as the
+ * model produces it, for the hosted backend end to end — browser →
+ * `<AssistantPanel>` → hosted adapter (SSE, `stream: true`) → real streamed
+ * chunks — while the tool-calling loop (a streamed tool call executed against
+ * the real collector) keeps working. We assert the intermediate state (a live
+ * assistant bubble holding a prefix of the answer while the status says
+ * Streaming…), then the final state: one assistant bubble with the full,
+ * grounded answer, no streaming marker, indicator cleared.
+ */
+test("assistant streams the answer incrementally (hosted SSE)", async ({ page, request }) => {
+  // 1) Real session so `top_meshes` has data.
+  await enableAllCapture(page, "babylon");
+  const sessionId = await bootEngine(page, "babylon");
+  await driveInteractions(page, { keyboard: true });
+  await waitForEventTypes(request, sessionId, ["mesh_interaction", "pointer_click"]);
+
+  const topRes = await request.get(`${COLLECTOR_URL}/api/v1/meshes/top`, {
+    headers: { "x-api-key": API_KEY },
+  });
+  expect(topRes.ok()).toBeTruthy();
+  const expectedTopMesh = topMeshFromResult(await topRes.json());
+  expect(expectedTopMesh, "seeded session should yield a top mesh").toBeTruthy();
+
+  // 2) A real streaming mock provider: a streamed tool call, then the grounded
+  //    answer delivered as eight fragments 250 ms apart (~2 s of streaming).
+  const llm = await startStreamingLlm({
+    intervalMs: 250,
+    answerFor: (toolResult) => {
+      const mesh = topMeshFromResult(toolResult) ?? "unknown";
+      return ["The ", "most-", "interacted ", "mesh ", "in ", "this ", "scene ", `is ${mesh}.`];
+    },
+  });
+
+  try {
+    // 3) Connect the dashboard and point the hosted backend at the mock.
+    await page.goto(DASHBOARD_URL);
+    await page.getByPlaceholder("http://localhost:4318").fill(COLLECTOR_URL);
+    await page.getByPlaceholder("utk_…").fill(API_KEY);
+    await page.getByRole("button", { name: /load/i }).click();
+    await expect(page.getByText("Top meshes")).toBeVisible({ timeout: 20_000 });
+
+    await page.getByRole("button", { name: "Ask the assistant" }).click();
+    const assistant = page.getByRole("region", { name: "Analytics assistant" });
+    await assistant.getByRole("button", { name: "Use hosted key" }).click();
+    await assistant.getByLabel("Endpoint").fill(llm.endpoint);
+    await assistant.getByLabel("API key").fill("mock-key");
+    await assistant.getByLabel("Hosted model").fill("mock-model");
+    await assistant.getByRole("button", { name: "Use this provider" }).click();
+
+    // 4) Ask; the streamed tool call runs against the real collector.
+    await assistant.getByLabel("Message").fill("What was the most-interacted mesh?");
+    await assistant.getByRole("button", { name: "Send" }).click();
+    const toolActivity = assistant.getByRole("list", { name: "Tool activity" });
+    await expect(toolActivity.getByText("top_meshes")).toBeVisible({ timeout: 20_000 });
+
+    // 5) INCREMENTAL: while the answer is still streaming, a live assistant
+    //    bubble shows the prefix received so far and the status says Streaming….
+    const streaming = assistant.locator('[data-role="assistant"][data-streaming="true"]');
+    await expect(streaming).toBeVisible({ timeout: 20_000 });
+    await expect(streaming).toContainText("The most-");
+    // Captured mid-stream: the answer is not complete yet (the mesh name is the
+    // last fragment, ~2 s after the first).
+    await expect(streaming).not.toContainText(expectedTopMesh!);
+    await expect(assistant.getByRole("status")).toContainText("Streaming");
+
+    // 6) FINAL: the complete grounded answer, as exactly one assistant bubble
+    //    (the live bubble was replaced, not duplicated), no streaming marker, and
+    //    the working indicator cleared.
+    const answer = assistant.locator('[data-role="assistant"]');
+    await expect(answer).toContainText(`is ${expectedTopMesh!}.`, { timeout: 20_000 });
+    await expect(answer).toHaveCount(1);
+    await expect(streaming).toHaveCount(0);
+    await expect(answer).toContainText("The most-interacted mesh in this scene is");
+    await expect(assistant.getByRole("status")).toHaveText("");
+    await expect(assistant.locator('[data-role="notice"]')).toHaveCount(0);
+  } finally {
+    await llm.close();
+  }
 });

@@ -265,16 +265,29 @@ is no second transport.
 
 ### Knowing when it's working
 
-Local generation is **not** instant. The in-browser model does not stream tokens, so a single
-answer on a 7–8B Hermes model can take anywhere from a few seconds to a couple of minutes on
-modest hardware — with nothing sent to a server in the meantime. To make that obvious rather than
-looking frozen, the panel always shows a small spinner and a status label while a turn is in
-flight (in an `aria-live` region, so it's announced to screen readers):
+Local generation is **not** instant: a single answer on a 7–8B Hermes model can take anywhere
+from a few seconds to a couple of minutes on modest hardware — with nothing sent to a server in
+the meantime. Two things keep that from looking frozen.
+
+**Answers stream in.** Both backends stream tokens, so the reply appears in the conversation
+word by word as the model produces it ("watch it type") instead of landing all at once at the end.
+Hosted providers stream over Server-Sent Events (OpenAI-compatible `stream: true` and the Anthropic
+Messages stream — parsed with plain string scans, never a regex over model output); the local
+WebLLM backend streams the answer turn directly from the GPU. Tool-calling turns are **not** shown
+as text: WebLLM's function-calling mode emits a JSON tool-call array as its whole output, and a
+hosted model's pre-tool commentary is dropped when that turn ends — only the answer turn renders
+live. If a provider or gateway ignores the stream request and returns one JSON body, the answer
+simply lands in one piece as before.
+
+**A status label is always visible** while a turn is in flight (a small spinner in an `aria-live`
+region, so it's announced to screen readers — the streamed tokens themselves are deliberately kept
+out of that region so a screen reader isn't read every fragment):
 
 - **Loading model…** while a local model downloads/initializes (a progress bar replaces it once
   download progress is available),
 - **Running analytics…** while a read-only tool call is executing (the per-tool list is shown too),
-- **Thinking…** while the model is composing its answer.
+- **Thinking…** while the model is composing its answer, becoming
+- **Streaming…** once the first tokens of the answer arrive and the live text is rendering.
 
 Small local models sometimes gather the data but then stall — either returning an empty answer or
 tool-calling until the step cap without ever writing a reply. To fix that at the source, when a run
@@ -310,7 +323,10 @@ function MyAssistant() {
     // can render your own chooser before anything loads.
   });
   // messages: the transcript · send(text): run a turn · status: "idle" | "initializing" |
-  // "thinking" | "error" · isBusy: a turn is in flight (show a working indicator) · toolActivity:
+  // "thinking" | "error" · isBusy: a turn is in flight (show a working indicator) · partialText:
+  // the answer streamed so far for the in-flight turn (null when nothing is streaming; render it
+  // as the live assistant bubble — it clears in the same render the final turn lands in
+  // `messages`, so never both) · toolActivity:
   // live tool-call progress · notice: {kind:"no_answer"|"stopped_on_max_steps",steps?} when a turn
   // produced no written answer · setBackend(cfg): switch + persist · clearCachedModels(): delete
   // every cached local model's weights and resolve with the ids reclaimed. Options: cachePolicy

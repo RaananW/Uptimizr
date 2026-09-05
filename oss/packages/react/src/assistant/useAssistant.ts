@@ -130,6 +130,17 @@ export interface UseAssistantResult {
   /** WebLLM download/init progress while a local model loads, else `null`. */
   initProgress: InitProgress | null;
   /**
+   * The answer being streamed for the in-flight turn — the accumulated text so
+   * far — or `null` when nothing is streaming. Populated only for **answer**
+   * turns: text a tool-calling turn streams (pre-tool commentary) is discarded
+   * when that turn ends, so this never shows tool-call chatter as the reply.
+   * Cleared, in the same render as `messages` gains the final assistant turn,
+   * when the turn completes — so a UI renders the live text and the final
+   * answer never both. Providers that do not stream leave it `null`; the answer
+   * then lands in `messages` at the end as before.
+   */
+  partialText: string | null;
+  /**
    * Set when the last completed turn produced no written answer, so the UI can
    * explain the outcome (and suggest a next step) instead of rendering nothing.
    * `null` otherwise. Reset at the start of every send, and on cancel/reset.
@@ -212,6 +223,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
   const [toolActivity, setToolActivity] = useState<AssistantToolActivity[]>([]);
   const [initProgress, setInitProgress] = useState<InitProgress | null>(null);
   const [notice, setNotice] = useState<AssistantNotice | null>(null);
+  const [partialText, setPartialText] = useState<string | null>(null);
 
   // Refs so `send` reads fresh values without being re-created every render.
   const messagesRef = useRef(messages);
@@ -350,6 +362,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
       try {
         const provider = await ensureProvider(cfg);
         setStatus("thinking");
+        setPartialText(null);
 
         const trackingProvider: LlmProvider = {
           async complete(request) {
@@ -398,6 +411,14 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
           tools: selectReadTools(cfg.backend === "local" ? "core" : "full"),
           maxSteps,
           signal: controller.signal,
+          // Live partial answer. A turn's accumulated text is shown as it
+          // streams; if that turn ends as a tool call its text was pre-tool
+          // commentary, not the answer, so it is dropped (the loop then runs
+          // the tool and the next turn streams afresh).
+          onStream: (event) => {
+            if (event.type === "delta") setPartialText(event.text);
+            else if (event.outcome === "tool_calls") setPartialText(null);
+          },
         });
         setMessages(result.messages);
         // Any tool that never reached client.get (unknown tool / bad args) is settled.
@@ -422,6 +443,9 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
         setStatus("error");
       } finally {
         setInitProgress(null);
+        // Batched with the `setMessages` above on success, so the streamed
+        // bubble and the final assistant turn never render together.
+        setPartialText(null);
         if (abortRef.current === controller) abortRef.current = null;
       }
     },
@@ -439,6 +463,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     setError(null);
     setInitProgress(null);
     setNotice(null);
+    setPartialText(null);
     setStatus("idle");
   }, []);
 
@@ -450,6 +475,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     error,
     toolActivity,
     initProgress,
+    partialText,
     notice,
     backend,
     webGpuAvailable,
