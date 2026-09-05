@@ -1,5 +1,11 @@
 # @uptimizr/db
 
+## 1.0.1
+
+### Patch Changes
+
+- cd44b11: Ship the `uptimizr-db-migrate` / `uptimizr-db-new-project` bins as checked-in launchers under `bin/` (importing the built CLI), so package managers can link them at install time instead of warning that the `dist/` targets do not exist yet.
+
 ## 1.0.0
 
 ### Major Changes
