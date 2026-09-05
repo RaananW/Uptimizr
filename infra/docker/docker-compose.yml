@@ -1,11 +1,12 @@
-# Optional scale tier for Uptimizr — ClickHouse (events) + Postgres (metadata).
+# Optional stores for Uptimizr — ClickHouse, Postgres and SQL Server.
 #
 # NOT required for the OSS default. The open-source collector self-hosts on a single
 # DuckDB file with no external database service (ADR 0020); see the `run-local-stack`
-# skill and the root README quickstart. These engines back a ClickHouse-backed store
-# behind the `@uptimizr/db` contracts and the cross-engine parity suite.
+# skill and the root README quickstart. These engines back the optional
+# `COLLECTOR_STORE=clickhouse` / `postgres` / `mssql` stores behind the `@uptimizr/db`
+# contracts and the cross-engine parity suites.
 #
-#   docker compose up -d        # start ClickHouse + Postgres (+ Adminer)
+#   docker compose up -d        # start ClickHouse + Postgres + SQL Server (+ Adminer)
 #   # run the scale migrations/seed against these engines
 #   docker compose down [-v]    # stop (-v also drops data volumes)
 #
@@ -57,6 +58,32 @@ services:
       timeout: 3s
       retries: 10
 
+  # SQL Server 2022 for the optional `COLLECTOR_STORE=mssql` store (#85). The
+  # image creates no application database; the collector creates `uptimizr` on
+  # first boot (the `sa` login may), and the parity suites use throwaway ones.
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: uptimizr-mssql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-Uptimizr!Local1}"
+      MSSQL_PID: Developer
+    ports:
+      # Host port is configurable to avoid clashes with a local SQL Server
+      # (set MSSQL_HOST_PORT in your .env). Container side is 1433.
+      - "${MSSQL_HOST_PORT:-1433}:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q ''SELECT 1'' -b',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   adminer:
     image: adminer:4
     container_name: uptimizr-adminer
@@ -69,3 +96,4 @@ services:
 volumes:
   clickhouse-data:
   postgres-data:
+  mssql-data:

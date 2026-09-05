@@ -1208,19 +1208,22 @@ The API is identical whichever store backs it — the dashboard, SDKs and this
 reference never see the engine (ADR 0020). Select the store with
 `COLLECTOR_STORE`:
 
-| Store        | When to use                                                                                          | Connection settings                                                                                   |
-| ------------ | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `duckdb`     | **Default.** Single-file embedded store, zero services, one collector process per file.              | `DUCKDB_PATH` (default `./data/uptimizr.duckdb`)                                                      |
-| `postgres`   | You already run PostgreSQL and want a multi-writer relational backend (several collector instances). | `POSTGRES_URL` (or `DATABASE_URL`), optional `POSTGRES_SCHEMA` (`public`), `POSTGRES_POOL_MAX` (`10`) |
-| `clickhouse` | High-volume ingestion / large historical ranges (the scale tier).                                    | `CLICKHOUSE_URL`, `CLICKHOUSE_DATABASE`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`                     |
-| `memory`     | Dependency-free in-memory store for local dev / E2E only.                                            | `COLLECTOR_MEMORY_PROJECT_ID`, `COLLECTOR_MEMORY_API_KEY`                                             |
+| Store        | When to use                                                                                                       | Connection settings                                                                                                                                                                                                   |
+| ------------ | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `duckdb`     | **Default.** Single-file embedded store, zero services, one collector process per file.                           | `DUCKDB_PATH` (default `./data/uptimizr.duckdb`)                                                                                                                                                                      |
+| `postgres`   | You already run PostgreSQL and want a multi-writer relational backend (several collector instances).              | `POSTGRES_URL` (or `DATABASE_URL`), optional `POSTGRES_SCHEMA` (`public`), `POSTGRES_POOL_MAX` (`10`)                                                                                                                 |
+| `mssql`      | Your team is standardized on Microsoft SQL Server / Azure SQL and wants the same multi-writer relational backend. | `MSSQL_URL` (ADO.NET connection string) or `MSSQL_SERVER` / `MSSQL_PORT` / `MSSQL_DATABASE` / `MSSQL_USER` / `MSSQL_PASSWORD` (+ `MSSQL_ENCRYPT`, `MSSQL_TRUST_SERVER_CERTIFICATE`), optional `MSSQL_POOL_MAX` (`10`) |
+| `clickhouse` | High-volume ingestion / large historical ranges (the scale tier).                                                 | `CLICKHOUSE_URL`, `CLICKHOUSE_DATABASE`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`                                                                                                                                     |
+| `memory`     | Dependency-free in-memory store for local dev / E2E only.                                                         | `COLLECTOR_MEMORY_PROJECT_ID`, `COLLECTOR_MEMORY_API_KEY`                                                                                                                                                             |
 
-Every analytics endpoint below returns **identical results** on all three SQL
+Every analytics endpoint below returns **identical results** on all four SQL
 stores — each aggregation is authored once against the dialect-agnostic query
 layer in `@uptimizr/db` and verified by the cross-engine parity suite. On
-Postgres the ASOF (nearest-in-time) joins behind the click↔gaze ray, flow,
-reachability and navigation reads are emulated with an indexed `LATERAL`
-nearest-row lookup, and the daily rollups are recomputed at query time. See the
+Postgres and SQL Server the ASOF (nearest-in-time) joins behind the click↔gaze
+ray, flow, reachability and navigation reads are emulated with an indexed
+nearest-row lookup (`LATERAL` / `CROSS APPLY`), and the daily rollups are
+recomputed at query time; SQL Server additionally stores vector columns as JSON
+arrays and computes percentiles through a small T-SQL helper function. See the
 [self-hosting guide](https://uptimizr.com/docs/deploy/collector/) for the
 full walkthrough of each store.
 

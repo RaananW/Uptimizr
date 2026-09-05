@@ -1,6 +1,6 @@
 /**
- * Connection settings for the OSS DuckDB store, read from the environment
- * (ADR 0020).
+ * Connection settings for the OSS DuckDB store and the optional engines, read
+ * from the environment (ADR 0020).
  *
  * Names mirror `.env.example`. Everything has a local-dev default so the package
  * is usable out of the box (a single persisted `.duckdb` file).
@@ -53,10 +53,45 @@ export interface PostgresSettings {
   poolMax: number;
 }
 
+/**
+ * Microsoft SQL Server (optional single-tenant relational store, ADR 0020 /
+ * #85) connection settings. Read from the environment but unused by the default
+ * DuckDB store, so the OSS install needs neither a SQL Server nor the `mssql`
+ * client until opted into via `COLLECTOR_STORE=mssql`. Mirrors the `MSSQL_*`
+ * names in `.env.example`: either one `MSSQL_URL` connection string or the
+ * discrete `MSSQL_SERVER` / `MSSQL_PORT` / `MSSQL_DATABASE` / `MSSQL_USER` /
+ * `MSSQL_PASSWORD` fields.
+ */
+export interface MssqlSettings {
+  /**
+   * ADO.NET-style connection string (`Server=host,1433;Database=uptimizr;User
+   * Id=sa;Password=…;Encrypt=true;TrustServerCertificate=true`). When set it
+   * takes precedence over the discrete fields below.
+   */
+  url: string | undefined;
+  /** Host name (discrete form). */
+  server: string;
+  /** TCP port (discrete form). */
+  port: number;
+  /** Target database (created on first boot when the login may). */
+  database: string;
+  /** SQL login (discrete form). */
+  user: string;
+  /** SQL login password (discrete form; `MSSQL_PASSWORD`, else `MSSQL_SA_PASSWORD`). */
+  password: string;
+  /** TLS-encrypt the connection (discrete form; default on, as Azure SQL requires). */
+  encrypt: boolean;
+  /** Accept a self-signed server certificate (discrete form; default off). */
+  trustServerCertificate: boolean;
+  /** Maximum pooled connections per collector process. */
+  poolMax: number;
+}
+
 export interface DbSettings {
   duckdb: DuckdbSettings;
   clickhouse: ClickhouseSettings;
   postgres: PostgresSettings;
+  mssql: MssqlSettings;
   /** Opt-in raw per-session retention for replay (ADR 0003). */
   enableRawSessionRetention: boolean;
 }
@@ -127,6 +162,19 @@ export function readDbSettings(env: Env = process.env): DbSettings {
         "postgresql://uptimizr:uptimizr@localhost:5432/uptimizr",
       schema: env.POSTGRES_SCHEMA ?? "public",
       poolMax: positiveInt(env.POSTGRES_POOL_MAX, 10),
+    },
+    mssql: {
+      url: env.MSSQL_URL || undefined,
+      server: env.MSSQL_SERVER ?? "localhost",
+      port: positiveInt(env.MSSQL_PORT, 1433),
+      database: env.MSSQL_DATABASE ?? "uptimizr",
+      user: env.MSSQL_USER ?? "sa",
+      // `MSSQL_SA_PASSWORD` is the variable the SQL Server image itself reads, so
+      // a docker-compose `.env` needs to state the password only once.
+      password: env.MSSQL_PASSWORD ?? env.MSSQL_SA_PASSWORD ?? "Uptimizr!Local1",
+      encrypt: bool(env.MSSQL_ENCRYPT, true),
+      trustServerCertificate: bool(env.MSSQL_TRUST_SERVER_CERTIFICATE, false),
+      poolMax: positiveInt(env.MSSQL_POOL_MAX, 10),
     },
     enableRawSessionRetention: bool(env.ENABLE_RAW_SESSION_RETENTION, false),
   };

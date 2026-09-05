@@ -57,6 +57,19 @@ POSTGRES_URL=postgresql://uptimizr:uptimizr@localhost:5432/uptimizr pnpm --filte
 
 In CI the opt-in **Store parity (Postgres)** job runs the same suite against a service container.
 
+Likewise for the **SQL Server store** (`COLLECTOR_STORE=mssql`): `pnpm stack:up` starts a
+`mcr.microsoft.com/mssql/server:2022-latest` service, and the parity + store suites in
+`@uptimizr/db-mssql` run against it whenever the server behind `MSSQL_URL` (or the discrete
+`MSSQL_*` variables) is reachable, in throwaway databases they create and drop:
+
+```bash
+pnpm stack:up
+MSSQL_URL="Server=localhost,1433;Database=master;User Id=sa;Password=Uptimizr!Local1;Encrypt=false;TrustServerCertificate=true" pnpm --filter @uptimizr/db-mssql test
+```
+
+In CI the opt-in **Store parity (MSSQL)** job runs it against a SQL Server 2022 service container
+with `MSSQL_PARITY_REQUIRED=1`, so an unreachable server fails instead of skipping.
+
 For the full end-to-end loop (collector, dashboard, a playground scene, replay), see the repo's
 manual testing guide and the `run-local-stack` workflow.
 

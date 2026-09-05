@@ -626,21 +626,21 @@ export function buildClickGazeRay(
         SELECT
           ja.hx AS hx, ja.hy AS hy, ja.hz AS hz, ja.mesh AS mesh,
           CASE
-            WHEN ja.has_ray THEN ja.rox
-            WHEN ja.recon THEN ja.px + ja.dx * ja.near / ja.dlen
+            WHEN ja.has_ray = 1 THEN ja.rox
+            WHEN ja.recon = 1 THEN ja.px + ja.dx * ja.near / ja.dlen
               + (ja.dz / ja.hlen) * ja.off_r
               + (-(ja.dx * ja.dy) / (ja.dlen * ja.hlen)) * ja.off_u
             WHEN ja.cam_present = 1 THEN ja.px
           END AS ox,
           CASE
-            WHEN ja.has_ray THEN ja.roy
-            WHEN ja.recon THEN ja.py + ja.dy * ja.near / ja.dlen
+            WHEN ja.has_ray = 1 THEN ja.roy
+            WHEN ja.recon = 1 THEN ja.py + ja.dy * ja.near / ja.dlen
               + (ja.hlen / ja.dlen) * ja.off_u
             WHEN ja.cam_present = 1 THEN ja.py
           END AS oy,
           CASE
-            WHEN ja.has_ray THEN ja.roz
-            WHEN ja.recon THEN ja.pz + ja.dz * ja.near / ja.dlen
+            WHEN ja.has_ray = 1 THEN ja.roz
+            WHEN ja.recon = 1 THEN ja.pz + ja.dz * ja.near / ja.dlen
               + (-(ja.dx) / ja.hlen) * ja.off_r
               + (-(ja.dy * ja.dz) / (ja.dlen * ja.hlen)) * ja.off_u
             WHEN ja.cam_present = 1 THEN ja.pz
@@ -656,16 +656,17 @@ export function buildClickGazeRay(
             sqrt(m.dx * m.dx + m.dz * m.dz) AS hlen,
             (2 * c.sx - 1) * m.cam_near * tan(m.cam_fov / 2) * m.cam_aspect AS off_r,
             (1 - 2 * c.sy) * m.cam_near * tan(m.cam_fov / 2) AS off_u,
-            (NOT c.has_ray) AND c.has_screen
+            CASE WHEN c.has_ray = 0 AND c.has_screen = 1
               AND m.cam_fov > 0 AND m.cam_aspect > 0 AND m.cam_near > 0
               AND sqrt(m.dx * m.dx + m.dz * m.dz)
-                  > 1e-6 * sqrt(m.dx * m.dx + m.dy * m.dy + m.dz * m.dz) AS recon
+                  > 1e-6 * sqrt(m.dx * m.dx + m.dy * m.dy + m.dz * m.dz)
+              THEN 1 ELSE 0 END AS recon
           FROM (
             SELECT session_id, ts,
               hit_point[1] AS hx, hit_point[2] AS hy, hit_point[3] AS hz, mesh,
-              ${d.arrayLength("ray_origin")} = 3 AS has_ray,
+              CASE WHEN ${d.arrayLength("ray_origin")} = 3 THEN 1 ELSE 0 END AS has_ray,
               ray_origin[1] AS rox, ray_origin[2] AS roy, ray_origin[3] AS roz,
-              ${d.arrayLength("screen")} = 2 AS has_screen,
+              CASE WHEN ${d.arrayLength("screen")} = 2 THEN 1 ELSE 0 END AS has_screen,
               screen[1] AS sx, screen[2] AS sy
             FROM events
             WHERE project_id = ${pid}
@@ -810,12 +811,12 @@ export function buildFlowHeatmap(
         SELECT
           c.mesh AS mesh,
           m.dx AS dx, m.dy AS dy, m.dz AS dz,
-          CASE WHEN c.has_ray THEN c.rox ELSE m.px END AS ox,
-          CASE WHEN c.has_ray THEN c.roy ELSE m.py END AS oy,
-          CASE WHEN c.has_ray THEN c.roz ELSE m.pz END AS oz
+          CASE WHEN c.has_ray = 1 THEN c.rox ELSE m.px END AS ox,
+          CASE WHEN c.has_ray = 1 THEN c.roy ELSE m.py END AS oy,
+          CASE WHEN c.has_ray = 1 THEN c.roz ELSE m.pz END AS oz
         FROM (
           SELECT session_id, ts, mesh,
-            ${d.arrayLength("ray_origin")} = 3 AS has_ray,
+            CASE WHEN ${d.arrayLength("ray_origin")} = 3 THEN 1 ELSE 0 END AS has_ray,
             ray_origin[1] AS rox, ray_origin[2] AS roy, ray_origin[3] AS roz
           FROM events
           WHERE project_id = ${pid}

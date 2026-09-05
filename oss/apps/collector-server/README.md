@@ -185,14 +185,22 @@ The storage backend is chosen with `COLLECTOR_STORE`:
   instance per file; back up by copying the file.
 - `memory` — a dependency-free in-memory store for local dev / E2E only (seed its
   project/key via `COLLECTOR_MEMORY_PROJECT_ID` / `COLLECTOR_MEMORY_API_KEY`).
+- `postgres` — a **single-tenant Postgres store** (`@uptimizr/db-postgres`): events **and**
+  metadata in one Postgres database (`POSTGRES_URL` / `DATABASE_URL`, optional `POSTGRES_SCHEMA`,
+  `POSTGRES_POOL_MAX`). Multi-writer; identical analytics results (parity suite).
+- `mssql` — a **single-tenant Microsoft SQL Server store** (`@uptimizr/db-mssql`): events **and**
+  metadata in one SQL Server / Azure SQL database (`MSSQL_URL`, or `MSSQL_SERVER` / `MSSQL_PORT` /
+  `MSSQL_DATABASE` / `MSSQL_USER` / `MSSQL_PASSWORD`), created on first boot. Multi-writer;
+  identical analytics results (parity suite); SQL Server 2022+ / Azure SQL.
 - `clickhouse` — a **single-tenant ClickHouse store** for the scale tier: events **and**
   metadata (projects, API keys, scene representations) live in one ClickHouse database
   (`CLICKHOUSE_URL` / `CLICKHOUSE_DATABASE` / `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD`), created
   on first boot. Use it for concurrent writers / horizontal scale and high-volume ingestion. The
   full analytics surface returns results identical to DuckDB (cross-engine parity suite).
 
-For multi-writer / horizontal scale, choose the `clickhouse` store; spin up a local ClickHouse
-with `infra/docker` (`pnpm stack:up`). The default DuckDB store needs no external service.
+For multi-writer / horizontal scale, choose the `postgres`, `mssql` or `clickhouse` store; spin
+up local servers with `infra/docker` (`pnpm stack:up`). The default DuckDB store needs no external
+service.
 
 ## Develop
 

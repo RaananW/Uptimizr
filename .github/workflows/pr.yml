@@ -145,6 +145,60 @@ jobs:
       - name: Parity + store suites against Postgres
         run: pnpm --filter @uptimizr/db-postgres test
 
+  store-parity-mssql:
+    name: Store parity (MSSQL)
+    runs-on: ubuntu-latest
+    # Opt-in cross-engine parity for the optional SQL Server store (#85). The
+    # suites in @uptimizr/db-mssql skip when no server is reachable, which keeps
+    # the default `build` job Docker-free; here a SQL Server 2022 service
+    # container is provided and MSSQL_PARITY_REQUIRED turns a missing server into
+    # a failure so an outage can never masquerade as a green skip.
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Uptimizr!Local1"
+          MSSQL_PID: Developer
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Uptimizr!Local1' -Q 'SELECT 1' -b"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      MSSQL_URL: "Server=localhost,1433;Database=master;User Id=sa;Password=Uptimizr!Local1;Encrypt=false;TrustServerCertificate=true"
+      MSSQL_PARITY_REQUIRED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
+      - name: Build the store and its dependencies
+        run: pnpm --filter @uptimizr/db-mssql... build
+
+      - name: Parity + store suites against SQL Server
+        run: pnpm --filter @uptimizr/db-mssql test
+
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
