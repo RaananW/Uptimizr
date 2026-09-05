@@ -34,7 +34,10 @@ arguments (`camera`, `renderer`).
 > autoload (`bridge/UptimizrGodot.gd` / `.cs`) you register in **Project Settings →
 > Autoload**. See the
 > [web-export connector docs](https://uptimizr.dev/connectors/web-export) for the
-> bridge contract and per-engine native frames.
+> bridge contract and per-engine native frames. The Godot bridged tier is **verified**
+> by an automated headless Godot 4 Web export driven by Playwright in CI; the reference
+> integration is [`examples/godot-web-export`](../examples/godot-web-export/README.md)
+> (`pnpm godot:fetch && pnpm godot:export && pnpm test:e2e:godot`).
 
 ---
 

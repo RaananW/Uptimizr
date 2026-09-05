@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Uptimizr — Godot web-export e2e harness</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0b0e14;
+      }
+      /* The real Godot 4 Web export (examples/godot-web-export, built by
+         `pnpm godot:export`) renders into this canvas. The connector starts against
+         it BEFORE the engine boots, so the UptimizrGodot autoload finds the bridge
+         in its `_ready`. */
+      #godotCanvas {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        display: block;
+        touch-action: none;
+        outline: none;
+      }
+      #status {
+        position: fixed;
+        left: 8px;
+        bottom: 8px;
+        font: 12px/1.4 ui-monospace, monospace;
+        color: #9aa4b2;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="godotCanvas" tabindex="0"></canvas>
+    <div id="status">loading…</div>
+    <script type="module" src="/src/godot-export-e2e.ts"></script>
+  </body>
+</html>

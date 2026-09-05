@@ -213,6 +213,17 @@ The suite covers the stack, including:
   registering scopes **one proxy per section** (each stored with its own tower/overlook-
   tight bounds, not the whole world), and that the registered large bounds drive a
   **coarse** bounds-driven cell size when `cellSize` is omitted.
+- **`web-export.spec.ts` / `godot-export.spec.ts`** — the web-export connectors
+  (ADR 0045). `web-export` drives the JS-only tier off a bare canvas and pushes
+  synthetic bridge samples through the real `@uptimizr/unity` connector.
+  `godot-export` boots a **real Godot 4 WebAssembly export** in-page
+  (`/godot-export-e2e.html`, served from `examples/godot-web-export/dist` by a Vite
+  plugin) with the real `@uptimizr/godot` connector started first, so the exported
+  `UptimizrGodot.gd` autoload finds the bridge; it then clicks the canvas and asserts
+  `camera_sample` (Z negated), `mesh_interaction` (raycast pick named `Crate`),
+  `frame_perf`, `pointer_click`, and the scene proxy reach the collector. It
+  **skips itself** when no export is present (`pnpm godot:fetch && pnpm godot:export`
+  builds one; CI's `godot-export-e2e` job sets `GODOT_E2E_REQUIRED=1`).
 - Additional specs cover live presence/follow, panel configuration, rendering
   technology, performance/resource panels, error and perf heatmaps, scene
   retention, load-bounce, variant leaderboards, replay backdrops, and seeded XR

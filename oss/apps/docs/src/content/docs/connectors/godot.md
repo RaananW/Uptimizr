@@ -57,6 +57,32 @@ For world-space object engagement and replay completeness, mark nodes with
 your scene is built. The full contract, options, and coordinate notes live in the package's
 [`bridge/README.md`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/godot/bridge/README.md).
 
+## Verification status
+
+| Tier        | Status       | Verified by                                                                                                                                                                                                                                                                                                        |
+| ----------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **JS-only** | **Stable**   | Unit tests + the web-export Playwright round trip.                                                                                                                                                                                                                                                                 |
+| **Bridged** | **Verified** | An **automated headless Godot 4.7.2 Web export** driven by Playwright in CI: the real WASM build boots with the shipped `UptimizrGodot.gd` autoload, and the test asserts `camera_sample` (Z negated), `mesh_interaction` (a raycast pick naming the node), `frame_perf`, and the scene proxy reach the collector. |
+
+### Reference integration
+
+[`examples/godot-web-export`](https://github.com/RaananW/Uptimizr/tree/main/examples/godot-web-export)
+is the reference project the CI proof exports: a minimal Godot 4 scene with the autoload
+registered, a `Camera3D`, and named pickable `StaticBody3D` props (`Crate`, `Orb`) that opt
+into the scene proxy from `main.gd`. Its copy of the shim is checked byte-for-byte against
+the package source, so the test always exercises the asset you copy in. Reproduce it locally
+from the repo root:
+
+```bash
+pnpm godot:fetch      # pinned headless editor + web_nothreads_release template (~85 MB)
+pnpm godot:export     # headless --export-release Web → examples/godot-web-export/dist
+pnpm test:e2e:godot   # boots the export in the playground and asserts the round trip
+```
+
+The sample uses the **nothreads** Web template (`variant/thread_support=false`), so the
+export runs without SharedArrayBuffer and the host page needs no COOP/COEP headers —
+the simplest deployment for self-hosters.
+
 ## Coordinate frame
 
 Godot's native world frame is **right-handed, y-up, meters**, so the connector negates

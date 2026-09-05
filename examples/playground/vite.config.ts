@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
@@ -48,9 +49,49 @@ function sceneProjectsPlugin(): Plugin {
   };
 }
 
+/**
+ * Serve the headless Godot Web export of `examples/godot-web-export` (built by
+ * `pnpm godot:export` into its gitignored `dist/`) under `/godot-export/` on the dev
+ * server, so `godot-export-e2e.html` can boot the real engine in-page and the
+ * `godot-export.spec.ts` e2e can drive the bridged tier through the shipped
+ * `UptimizrGodot.gd` autoload. The export is built with the **nothreads** template,
+ * so no COOP/COEP headers are needed. 404s when no export has been built (the spec
+ * skips itself in that case).
+ */
+function godotExportPlugin(): Plugin {
+  const prefix = "/godot-export/";
+  const distDir = fileURLToPath(new URL("../godot-web-export/dist/", import.meta.url));
+  const mime: Record<string, string> = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".wasm": "application/wasm",
+    ".pck": "application/octet-stream",
+    ".png": "image/png",
+    ".json": "application/json",
+  };
+  return {
+    name: "uptimizr-godot-export",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = (req.url ?? "").split("?")[0] ?? "";
+        if (!url.startsWith(prefix)) return next();
+        const file = resolve(distDir, decodeURIComponent(url.slice(prefix.length)));
+        if (!file.startsWith(distDir) || !existsSync(file) || !statSync(file).isFile()) {
+          res.statusCode = 404;
+          res.end(`no Godot export at ${url} — run 'pnpm godot:fetch && pnpm godot:export'`);
+          return;
+        }
+        res.setHeader("Content-Type", mime[extname(file)] ?? "application/octet-stream");
+        res.setHeader("Content-Length", statSync(file).size);
+        createReadStream(file).pipe(res);
+      });
+    },
+  };
+}
+
 export default defineConfig({
   // The react plugin only transforms `.tsx`; the non-React engines are untouched.
-  plugins: [react(), sceneProjectsPlugin()],
+  plugins: [react(), sceneProjectsPlugin(), godotExportPlugin()],
   // Read VITE_* vars from the repo-root `.env` so the playground shares the same
   // env file as the rest of the stack (no separate `.env.local` to maintain).
   envDir: "../..",

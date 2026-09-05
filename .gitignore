@@ -54,3 +54,6 @@ postgres-data/
 *.duckdb.tmp/
 /data/
 oss/apps/collector-server/data/
+
+# Godot import cache of the web-export sample project (examples/godot-web-export)
+examples/godot-web-export/.godot/
