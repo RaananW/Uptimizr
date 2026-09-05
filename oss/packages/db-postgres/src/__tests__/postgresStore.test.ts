@@ -77,8 +77,18 @@ function ev(type: string, ts: number, extra: Record<string, unknown> = {}): AnyE
 const EXTENDED_EVENTS: AnyEvent[] = [
   ...PARITY_EVENTS,
   ev("mesh_interaction", T0 + 2_500, { mesh: "box", kind: "hover", source: "mouse" }),
-  ev("mesh_interaction", T0 + 2_600, { mesh: "box", kind: "pick", source: "touch", point: [0.2, 0.2, 0.2] }),
-  ev("mesh_interaction", T0 + 4_500, { mesh: "sphere", kind: "drag", source: "mouse", point: [5, 5, 5] }),
+  ev("mesh_interaction", T0 + 2_600, {
+    mesh: "box",
+    kind: "pick",
+    source: "touch",
+    point: [0.2, 0.2, 0.2],
+  }),
+  ev("mesh_interaction", T0 + 4_500, {
+    mesh: "sphere",
+    kind: "drag",
+    source: "mouse",
+    point: [5, 5, 5],
+  }),
   ev("hover_dwell", T0 + 2_700, { mesh: "box", dwellMs: 1200, source: "mouse" }),
   ev("hover_dwell", T0 + 2_800, { mesh: "sphere", dwellMs: 300, source: "mouse" }),
   ev("compile_stall", T0 + 5_500, { durationMs: 18, phase: "shader" }),
@@ -366,8 +376,7 @@ describe.skipIf(!available)("postgres store", () => {
     for (const [variant, baseOpts] of Object.entries(VARIANTS)) {
       for (const [name, build] of builders) {
         // The per-session trajectory is the one builder with a required session.
-        const opts =
-          name === "buildSessionTrajectory" ? { session: "s1", ...baseOpts } : baseOpts;
+        const opts = name === "buildSessionTrajectory" ? { session: "s1", ...baseOpts } : baseOpts;
         it(`${name} (${variant})`, async () => {
           await insertEvents(pg, EXTENDED_EVENTS);
           const pgRows = await runPostgresQuery<Record<string, unknown>>(

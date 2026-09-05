@@ -135,9 +135,7 @@ export function createPostgresClient(settings: PostgresSettings): PostgresClient
       const conn = await pool.connect();
       try {
         await conn.query("BEGIN");
-        const tx = makeExecutor((sql, values) =>
-          conn.query(sql, values ? [...values] : undefined),
-        );
+        const tx = makeExecutor((sql, values) => conn.query(sql, values ? [...values] : undefined));
         const result = await fn(tx);
         await conn.query("COMMIT");
         return result;

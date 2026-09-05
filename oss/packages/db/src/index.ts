@@ -11,12 +11,7 @@
  */
 
 export { readDbSettings } from "./env.js";
-export type {
-  DbSettings,
-  DuckdbSettings,
-  ClickhouseSettings,
-  PostgresSettings,
-} from "./env.js";
+export type { DbSettings, DuckdbSettings, ClickhouseSettings, PostgresSettings } from "./env.js";
 
 // --- Engine-neutral event-row mapping (ADR 0020) ---
 export { toEventRow, formatUtcTimestamp } from "./events.js";
