@@ -205,10 +205,6 @@ The suite covers the stack, including:
   provenance (`connector.name`), the A-Frame `sceneId` attribute, and the dashboard's
   aggregation endpoints. A-Frame is loaded from its CDN, fetched once per run and
   served from memory via `page.route` so the browser never waits on the CDN mid-test.
-- **`web-export.spec.ts`** — the web-export tier (ADR 0045): a bare `<canvas>` page
-  boots the real `@uptimizr/unity` connector and the spec drives both the JS-only
-  tier (DOM pointer input, rAF perf) and the bridged tier (`pushPose` / `pushPick` /
-  `pushPerf` exactly as an engine shim would), asserting every channel lands in DuckDB.
 - **`playground.spec.ts`** — the original capture → collector → replay round-trip
   per WebGL engine, plus a first-person walkable session (ADR 0026): it walks a Babylon free camera with WASD and asserts the
   `cameraType: "free"` label, the floor-plan position heatmap, the session's
