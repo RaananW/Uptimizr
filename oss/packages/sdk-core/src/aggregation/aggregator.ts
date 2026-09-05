@@ -83,6 +83,11 @@ export interface Aggregator {
 }
 
 /** Create an {@link Aggregator}. */
+function isFiniteAabb(b: Aabb): boolean {
+  for (let i = 0; i < b.length; i++) if (!Number.isFinite(b[i])) return false;
+  return true;
+}
+
 export function createAggregator(options: AggregatorOptions): Aggregator {
   const emit = options.emit;
 
@@ -97,6 +102,10 @@ export function createAggregator(options: AggregatorOptions): Aggregator {
   const sentBounds = new Map<string, Aabb>();
 
   function handlePerf(s: PerfSnapshot): void {
+    // Never emit a value the schema rejects (`fps` is a non-negative number): a
+    // NaN/Infinity serializes to `null` and a negative fps fails validation, and
+    // either would get the whole batch rejected by the collector.
+    if (!Number.isFinite(s.fps) || s.fps < 0) return;
     const window = s.frameTimes;
     let percentiles:
       { frameTimeP95Ms: number; frameTimeP99Ms: number; longFrames: number } | undefined;
@@ -188,7 +197,9 @@ export function createAggregator(options: AggregatorOptions): Aggregator {
     for (const [mesh, acc] of pending) {
       if (acc.visibleMs <= 0) continue;
       let bounds: Aabb | undefined;
-      if (acc.bounds) {
+      // An empty/disposed object yields an infinite box (three's empty Box3 is
+      // ±Infinity); JSON turns that into `null`, which the schema rejects.
+      if (acc.bounds && isFiniteAabb(acc.bounds)) {
         const prev = sentBounds.get(mesh);
         if (!prev || !aabbClose(prev, acc.bounds, boundsEps)) {
           bounds = roundAabb(acc.bounds);

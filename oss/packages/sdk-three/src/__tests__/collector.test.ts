@@ -271,6 +271,43 @@ describe("threeCollector", () => {
     expect(events.length).toBe(before); // no events after stop
   });
 
+  it("skips the perf sample when the renderer frame counter restarts (context restore)", () => {
+    const canvas = makeCanvas();
+    const renderer = makeRenderer(canvas);
+    const { ctx, events, now } = makeCtx({ value: 1000 });
+    const handle = threeCollector({
+      scene: emptyScene,
+      camera: makeCamera(),
+      renderer,
+      samplePerfMs: 1000,
+      capture: { camera: false },
+      raycast: () => undefined,
+    }).start(ctx)!;
+
+    renderer.info.render.frame = 60;
+    now.value = 2000;
+    vi.advanceTimersByTime(1000);
+    expect(events.filter((e) => e.type === "frame_perf")).toHaveLength(1);
+
+    // three swaps in a fresh WebGLInfo on `webglcontextrestored`, so the counter
+    // restarts below the last reading. A naive delta would be negative (−50 fps)
+    // and the schema rejects it — the sample must be skipped, not emitted.
+    renderer.info.render.frame = 10;
+    now.value = 3000;
+    vi.advanceTimersByTime(1000);
+    expect(events.filter((e) => e.type === "frame_perf")).toHaveLength(1);
+
+    // Counters resynced on the skipped tick: the next second measures cleanly.
+    renderer.info.render.frame = 70;
+    now.value = 4000;
+    vi.advanceTimersByTime(1000);
+    const perf = events.filter((e) => e.type === "frame_perf");
+    expect(perf).toHaveLength(2);
+    expect(perf[1]).toMatchObject({ type: "frame_perf", fps: 60 });
+
+    handle.stop();
+  });
+
   it("removes every DOM listener, timer, and rAF callback on stop", () => {
     const canvas = makeCanvas();
     const { ctx, events } = makeCtx();

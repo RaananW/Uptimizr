@@ -89,7 +89,11 @@ export interface CapabilityChangeReport {
 }
 
 /**
- * A transport delivers a batch to the collector. Returns `true` on success.
+ * A transport delivers a batch to the collector. Resolve `true` when the batch
+ * needs no further attempt — delivered, **or definitively rejected** (a 4xx other
+ * than 408/429: retrying an identical payload cannot succeed, and re-queueing it
+ * would block every later flush). Resolve `false` only for transient failures
+ * (network error, 5xx, 408, 429) so the client re-queues the events.
  * Swappable so callers can provide a custom transport (extension point).
  */
 export interface Transport {

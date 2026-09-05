@@ -267,8 +267,8 @@ async function pingCollector(): Promise<void> {
 /**
  * A fetch transport that confirms delivery: it POSTs the batch, reads the
  * `{ accepted }` count the collector returns, and reports it so the UI can show
- * how many events were actually stored. Returns `false` on any failure so the SDK
- * re-queues the batch for the next flush.
+ * how many events were actually stored. Returns `false` on transient failures so
+ * the SDK re-queues the batch; a definitive 4xx rejection is reported and dropped.
  */
 function createReportingTransport(endpoint: string): Transport {
   const url = `${endpoint.replace(/\/$/, "")}/api/v1/collect`;
@@ -282,8 +282,22 @@ function createReportingTransport(endpoint: string): Transport {
           body: JSON.stringify(batch),
         });
         if (!res.ok) {
-          setConnection("bad", `Collector: rejected batch (${res.status})`);
-          return false;
+          // Surface the collector's reason (the zod validator names the offending
+          // field) so a rejected batch is diagnosable from the status line.
+          let detail = "";
+          try {
+            const body = (await res.json()) as { message?: string; error?: string };
+            detail = body.message ?? body.error ?? "";
+          } catch {
+            /* non-JSON error body */
+          }
+          setConnection(
+            "bad",
+            `Collector: rejected batch (${res.status})${detail ? `: ${detail}` : ""}`,
+          );
+          // Match the default transport: a definitive 4xx is handled (dropped), a
+          // transient failure (5xx/408/429) is re-queued by the SDK.
+          return res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429;
         }
         const body = (await res.json()) as { accepted?: number };
         deliveredCount += body.accepted ?? batch.events.length;

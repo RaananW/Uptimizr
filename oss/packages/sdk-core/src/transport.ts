@@ -33,7 +33,13 @@ export function createBeaconTransport(endpoint: string): Transport {
           body: payload,
           keepalive: payload.length < 64_000,
         });
-        return res.ok;
+        if (res.ok) return true;
+        // A definitive rejection (schema/auth/oversize — any 4xx other than the
+        // transient 408/429) can never succeed on retry, so report it as handled:
+        // re-queueing it would put the same invalid payload at the head of every
+        // later batch and block delivery until the queue evicts it. Network
+        // errors, 5xx, 408 and 429 stay retryable.
+        return res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429;
       } catch {
         return false;
       }

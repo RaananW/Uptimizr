@@ -92,6 +92,17 @@ describe("aggregator: perf channel", () => {
     expectValid(events[0]!);
   });
 
+  it("drops non-finite or negative fps samples instead of emitting an invalid event", () => {
+    const { agg, events } = collect();
+    for (const fps of [Number.NaN, Number.POSITIVE_INFINITY, -5]) {
+      agg.ingest({ channel: "perf", frameTimes: new Float32Array(0), fps, jankFrameMs: 50 });
+    }
+    expect(events).toHaveLength(0);
+    agg.ingest({ channel: "perf", frameTimes: new Float32Array(0), fps: 30, jankFrameMs: 50 });
+    expect(events).toHaveLength(1);
+    expectValid(events[0]!);
+  });
+
   it("omits percentiles for an empty window", () => {
     const { agg, events } = collect();
     agg.ingest({ channel: "perf", frameTimes: new Float32Array(0), fps: 60, jankFrameMs: 50 });
@@ -207,6 +218,31 @@ describe("aggregator: visibility channel", () => {
     expect(e.visibleMs).toBe(Math.round(16.7 * 3));
     expect(e.centeredMs).toBe(Math.round(16.7 * 3)); // dead ahead → centred
     expect(typeof e.maxScreenFraction).toBe("number");
+    expectValid(events[0]!);
+  });
+
+  it("omits an infinite bounds box (empty/disposed object) instead of emitting null", () => {
+    const events: EventInput[] = [];
+    const agg = createAggregator({
+      emit: (e) => events.push(e),
+      visibility: { centeredCos: Math.cos((12 * Math.PI) / 180), boundingBox: true },
+    });
+    // three's empty Box3 is (+Inf, +Inf, +Inf, -Inf, -Inf, -Inf); JSON serializes
+    // Infinity as null, which the schema rejects — and with it the whole batch.
+    const inf = Number.POSITIVE_INFINITY;
+    agg.ingest({
+      channel: "visibilityTick",
+      stepMs: 16.7,
+      camPos: [0, 0, 0],
+      forward: [0, 0, 1],
+      fov: 0.8,
+      meshes: [
+        { mesh: "ghost", center: [0, 0, 5], radius: 1, aabb: [inf, inf, inf, -inf, -inf, -inf] },
+      ],
+    });
+    agg.ingest({ channel: "visibilityFlush" });
+    expect(events).toHaveLength(1);
+    expect(events[0]).not.toHaveProperty("bounds");
     expectValid(events[0]!);
   });
 

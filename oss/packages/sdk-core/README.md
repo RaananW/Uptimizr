@@ -72,7 +72,10 @@ events. See the `add-connector` skill.
 ## Transport
 
 The default transport prefers `navigator.sendBeacon` (so batches survive page unload) and falls
-back to `fetch` with `keepalive`. Provide your own via the `transport` option to integrate a
+back to `fetch` with `keepalive`. A custom transport resolves `true` when the batch needs no
+further attempt — delivered **or definitively rejected** (a 4xx other than 408/429; re-sending an
+invalid payload can never succeed and would block later flushes) — and `false` only for transient
+failures (network error, 5xx, 408, 429), which the client re-queues. Provide your own via the `transport` option to integrate a
 different delivery mechanism.
 
 ## Offloading work to a Web Worker
