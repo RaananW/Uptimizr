@@ -15,6 +15,7 @@
 "@uptimizr/db": major
 "@uptimizr/db-clickhouse": major
 "@uptimizr/db-postgres": major
+"@uptimizr/db-mssql": major
 "@uptimizr/collector-server": major
 "@uptimizr/dashboard": major
 ---
