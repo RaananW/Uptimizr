@@ -147,8 +147,6 @@ Rules specific to this monorepo:
 
 - **`@uptimizr/schema` is the contract.** Any change to an event shape is a **major** for `schema`
   and ripples to every SDK that imports it ("events live once").
-- **Pre-1.0 caveat:** while packages are `0.x`, a minor (`0.x`) bump may carry breaking changes; we
-  call those out explicitly in the changeset summary.
 - You don't write a changeset for packages that only need an internal-dependency bump — the release
   config bumps those as a `patch` automatically (`updateInternalDependencies: "patch"`).
 
