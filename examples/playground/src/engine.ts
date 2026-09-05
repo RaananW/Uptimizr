@@ -297,7 +297,10 @@ export interface EngineMountContext {
 
 /** A live, mounted engine the shell can drive. */
 export interface EngineInstance {
-  /** The live client, or `null` for the declarative A-Frame path. */
+  /**
+   * The live client, or `null` when the engine could not surface one (the
+   * declarative A-Frame path resolves it from its component after the scene loads).
+   */
   readonly client: UptimizrClient | null;
   /** Briefly highlight a mesh by name (used for live picks and replay). */
   flashMesh(name: string): void;

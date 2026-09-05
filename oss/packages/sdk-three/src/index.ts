@@ -31,8 +31,14 @@ export { readConnector } from "./connector.js";
 export { readSceneMeta, classifyCamera } from "./scene.js";
 export { scanSceneProxy } from "./proxy.js";
 export type { ScanSceneProxyOptions } from "./proxy.js";
-export { createSceneRaycaster, createGazeRaycaster } from "./raycast.js";
-export type { RaycastHit, RaycastProbe, GazeProbe, GazeProbeOptions } from "./raycast.js";
+export { createSceneRaycaster, createGazeRaycaster, createXrRaycaster } from "./raycast.js";
+export type {
+  RaycastHit,
+  RaycastProbe,
+  GazeProbe,
+  GazeProbeOptions,
+  XrRaycastOptions,
+} from "./raycast.js";
 export { xrCollector } from "./xr.js";
 export type {
   XrCollectorOptions,

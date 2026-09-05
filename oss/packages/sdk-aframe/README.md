@@ -79,9 +79,11 @@ with **no new event types or fields**:
 
 The head/headset pose is already captured as `camera_sample` by `@uptimizr/three` (in
 XR, three's active camera is the headset). XR capture is on by default; disable it with
-`uptimizr="...; xr: false"`. In-scene XR hits (`hitPoint`/`hitMesh` and
-`mesh_interaction`) require a ray raycast probe — see `xrCollector`'s `raycast` option;
-without one, controller/gaze rays and `pointer_click` are still captured. The only id
+`uptimizr="...; xr: false"`. In-scene XR hits (`hitPoint`/`hitMesh` on the ray samples and
+`mesh_interaction` on select/squeeze) are resolved by default with three's raycaster over
+the live scene graph (`createXrRaycaster` from `@uptimizr/three`); set `xrRaycast: false`
+to capture controller/gaze rays and `pointer_click` only. Programmatic hosts using the
+re-exported `trackScene` can supply their own probe via `xr: { raycast }`. The only id
 emitted is the ephemeral, session-local `handedness` disambiguator — never a persistent
 device/user id.
 
@@ -90,20 +92,21 @@ device/user id.
 The component schema maps onto the three connector's
 [`TrackSceneOptions`](../sdk-three/src/trackScene.ts):
 
-| Attribute                                          | Meaning                                        |
-| -------------------------------------------------- | ---------------------------------------------- |
-| `projectId`                                        | Project identifier (public, non-secret)        |
-| `collector`                                        | Collector endpoint base URL                    |
-| `sampleCameraMs` / `samplePerfMs`                  | Sampling intervals (`0` ⇒ connector default)   |
-| `pointerMoveThrottleMs`                            | Pointer-move throttle (`0` ⇒ default)          |
-| `sceneDescription`                                 | Free-text scene label                          |
-| `meshVisibility` / `hoverDwell` / `resourceSample` | Opt-in capture channels (off by default)       |
-| `gaze`                                             | Opt-in world-space gaze hits (off by default)  |
-| `cameraGesture`                                    | Navigation gesture capture (default `true`)    |
-| `xr`                                               | WebXR controller/gaze capture (default `true`) |
-| `xrSampleMs`                                       | XR pose sampling interval (`0` ⇒ 250 ms)       |
-| `disabled`                                         | Collect nothing                                |
-| `debug`                                            | Console debug logs                             |
+| Attribute                                          | Meaning                                           |
+| -------------------------------------------------- | ------------------------------------------------- |
+| `projectId`                                        | Project identifier (public, non-secret)           |
+| `collector`                                        | Collector endpoint base URL                       |
+| `sampleCameraMs` / `samplePerfMs`                  | Sampling intervals (`0` ⇒ connector default)      |
+| `pointerMoveThrottleMs`                            | Pointer-move throttle (`0` ⇒ default)             |
+| `sceneDescription`                                 | Free-text scene label                             |
+| `meshVisibility` / `hoverDwell` / `resourceSample` | Opt-in capture channels (off by default)          |
+| `gaze`                                             | Opt-in world-space gaze hits (off by default)     |
+| `cameraGesture`                                    | Navigation gesture capture (default `true`)       |
+| `xr`                                               | WebXR controller/gaze capture (default `true`)    |
+| `xrSampleMs`                                       | XR pose sampling interval (`0` ⇒ 250 ms)          |
+| `xrRaycast`                                        | Resolve XR rays to in-scene hits (default `true`) |
+| `disabled`                                         | Collect nothing                                   |
+| `debug`                                            | Console debug logs                                |
 
 ## Replay
 

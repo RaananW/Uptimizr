@@ -32,6 +32,12 @@ export interface UptimizrComponentData {
   xr: boolean;
   /** XR controller/gaze pose sampling interval in ms (`0` ⇒ default). */
   xrSampleMs: number;
+  /**
+   * Resolve XR controller/gaze rays to in-scene hits (`hitPoint`/`hitMesh` on the
+   * ray samples, `mesh_interaction` on select/squeeze) with a scene raycast probe.
+   * Default `true`; set `false` to capture rays and clicks only.
+   */
+  xrRaycast: boolean;
   /** Collect nothing (e.g. respect Do-Not-Track). */
   disabled: boolean;
   /** Emit debug logs to the console. */

@@ -7,6 +7,7 @@
 import { Raycaster } from "three";
 import type { Camera, Object3D, Scene, Vector2 } from "three";
 import type { Vec3 } from "@uptimizr/schema";
+import type { XrRayHit, XrRayProbe } from "@uptimizr/sdk-core";
 
 /** A raycast result: the world-space hit point and the hit object's name. */
 export interface RaycastHit {
@@ -120,6 +121,56 @@ export function createGazeRaycaster(
       const name = typeof obj.name === "string" ? obj.name : "";
       if (name.startsWith(OVERLAY_PREFIX)) continue;
       if (allow && !allow.has(name)) continue;
+      if (predicate && !predicate(hit.object as unknown as Object3D)) continue;
+      const p = hit.point;
+      return { point: [p.x, p.y, p.z], name };
+    }
+    return undefined;
+  };
+}
+
+/** XR controller/gaze ray probe tuning (`pointer_move.hitPoint`/`hitMesh`, ADR 0011). */
+export interface XrRaycastOptions {
+  /**
+   * Max ray length in world units (sets `Raycaster.far`). Caps how far a
+   * controller/gaze ray reaches before it counts as a miss. Default 1000.
+   */
+  maxDistance?: number;
+  /**
+   * Predicate escape hatch: return `false` to exclude an object from XR hit
+   * resolution (e.g. sky, ground, the controller models themselves).
+   */
+  predicate?: (object: Object3D) => boolean;
+}
+
+/**
+ * Build an {@link XrRayProbe} backed by a single reused `THREE.Raycaster` that
+ * casts an arbitrary **world-space ray** (origin + unit direction, three's
+ * right-handed frame) into the scene. This is the in-scene hit resolver for the
+ * WebXR collector: `xrCollector` reads each controller's / the gaze target-ray
+ * space's pose and, with this probe, resolves `hitPoint` / `hitMesh` on the
+ * `pointer_move` ray samples and attaches `mesh_interaction` to `select` /
+ * `squeeze` (ADR 0011). Without a probe the rays and clicks are still captured;
+ * only the hit fields need one.
+ *
+ * Performance: one reused raycaster, no per-sample allocation (`ray.origin` /
+ * `ray.direction` are set in place), `far` clamps the ray. Overlay objects
+ * (`uptimizr-` prefix) are always skipped. Reads only — never mutates the scene.
+ * The hit point is in the source frame; the XR collector normalizes it.
+ */
+export function createXrRaycaster(scene: Scene, options: XrRaycastOptions = {}): XrRayProbe {
+  const raycaster = new Raycaster();
+  raycaster.far = typeof options.maxDistance === "number" ? options.maxDistance : 1000;
+  const predicate = options.predicate;
+  return (origin: Vec3, direction: Vec3): XrRayHit | undefined => {
+    raycaster.ray.origin.set(origin[0], origin[1], origin[2]);
+    raycaster.ray.direction.set(direction[0], direction[1], direction[2]).normalize();
+    const children = (scene as unknown as SceneChildrenView).children ?? [];
+    const hits = raycaster.intersectObjects(children, true);
+    for (const hit of hits) {
+      const obj = hit.object as unknown as HitObjectView;
+      const name = typeof obj.name === "string" ? obj.name : "";
+      if (name.startsWith(OVERLAY_PREFIX)) continue;
       if (predicate && !predicate(hit.object as unknown as Object3D)) continue;
       const p = hit.point;
       return { point: [p.x, p.y, p.z], name };

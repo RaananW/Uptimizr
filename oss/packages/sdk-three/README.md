@@ -115,7 +115,10 @@ threeCollector({ scene, camera, renderer, sampling: { camera: 10, pointerMove: 6
 `trackScene` registers `xrCollector` by default. It stays idle until `renderer.xr` enters an
 immersive session, then maps controller/gaze rays plus `select`/`squeeze` actions onto the shared
 pointer and `mesh_interaction` events. Pass `xr: false` to disable it, or `xr: { sampleMs,
-capture, raycast }` to tune XR pose sampling and hit resolution.
+capture, raycast }` to tune XR pose sampling and hit resolution. `createXrRaycaster(scene)`
+builds a ready-made `raycast` probe (world-space ray → nearest named hit) over the live scene
+graph, so controller/gaze rays carry `hitPoint`/`hitMesh` and select/squeeze attach to the
+object hit.
 
 ### Opt-in dwell capture (mesh_visibility #37, hover_dwell #48)
 
