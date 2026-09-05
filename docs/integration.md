@@ -1118,6 +1118,28 @@ The collector exposes one ingestion endpoint and a set of read endpoints. Reads
 are authenticated with a project API key (`x-api-key`); the project is resolved
 from the key, so a client can only ever read its own data.
 
+### Storage backends (`COLLECTOR_STORE`)
+
+The API is identical whichever store backs it — the dashboard, SDKs and this
+reference never see the engine (ADR 0020). Select the store with
+`COLLECTOR_STORE`:
+
+| Store        | When to use                                                                                          | Connection settings                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `duckdb`     | **Default.** Single-file embedded store, zero services, one collector process per file.              | `DUCKDB_PATH` (default `./data/uptimizr.duckdb`)                                                      |
+| `postgres`   | You already run PostgreSQL and want a multi-writer relational backend (several collector instances). | `POSTGRES_URL` (or `DATABASE_URL`), optional `POSTGRES_SCHEMA` (`public`), `POSTGRES_POOL_MAX` (`10`) |
+| `clickhouse` | High-volume ingestion / large historical ranges (the scale tier).                                    | `CLICKHOUSE_URL`, `CLICKHOUSE_DATABASE`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`                     |
+| `memory`     | Dependency-free in-memory store for local dev / E2E only.                                            | `COLLECTOR_MEMORY_PROJECT_ID`, `COLLECTOR_MEMORY_API_KEY`                                             |
+
+Every analytics endpoint below returns **identical results** on all three SQL
+stores — each aggregation is authored once against the dialect-agnostic query
+layer in `@uptimizr/db` and verified by the cross-engine parity suite. On
+Postgres the ASOF (nearest-in-time) joins behind the click↔gaze ray, flow,
+reachability and navigation reads are emulated with an indexed `LATERAL`
+nearest-row lookup, and the daily rollups are recomputed at query time. See the
+[self-hosting guide](https://uptimizr.com/docs/deploy/collector/) for the
+full walkthrough of each store.
+
 ### Ingestion
 
 | Method | Path              | Notes                                                                                                          |
@@ -1265,10 +1287,11 @@ curl -H "x-api-key: $KEY" \
   "https://collect.example.com/api/v1/perf?session=<session-id>"
 ```
 
-> Aggregate columns (`count()`, percentiles, sums) come back as JSON numbers from
-> every store, including ClickHouse — the `clickhouse` store disables 64-bit
-> integer quoting so results match the DuckDB store byte-for-byte. The dashboard's
-> `CollectorApi` still coerces defensively.
+> Aggregate columns (`count(*)`, percentiles, sums) come back as JSON numbers from
+> every store — the `clickhouse` store disables 64-bit integer quoting and the
+> `postgres` store parses `int8`/`numeric` columns to numbers, so results match
+> the DuckDB store byte-for-byte. The dashboard's `CollectorApi` still coerces
+> defensively.
 
 ### Funnels (`/api/v1/funnel`) — caller-configured (ADR 0038, #78)
 
