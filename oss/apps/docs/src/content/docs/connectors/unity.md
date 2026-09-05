@@ -9,6 +9,14 @@ works in two tiers: a **JS-only tier** (no engine code — pointer heatmaps, FPS
 errors) and a **bridged tier** (a thin copy-in shim adds camera pose, world-space
 picks, and replay).
 
+:::note[Status]
+The JS-only tier is covered end to end by the Playwright suite. The bridged tier is
+**preview**: the `.jslib` shim is sanity-tested on every `pnpm test`, and the full round
+trip through a real Unity WebGL export runs against a **local build** of the sample
+project — it is labelled **verified against a local build** once a maintainer has run
+that spec. See [Verifying against a real export](#verifying-against-a-real-export).
+:::
+
 ## Install
 
 ```bash
@@ -69,6 +77,34 @@ missing or a different version. The shim's JS API:
 
 See [`bridge/README.md`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/unity/bridge/README.md)
 for the full contract.
+
+## Verifying against a real export
+
+Unity is not part of the JS toolchain, so verification is split in two:
+
+- **Always on (CI).** A `node:vm` sanity test evaluates `Uptimizr.jslib` with mocked
+  Emscripten globals and asserts every export forwards to `window.__uptimizr_unity__`,
+  declares its `__deps`, and matches the `[DllImport]`s in `UptimizrUnityBridge.cs`.
+- **One manual step.** The sample project
+  [`examples/unity-web-export/`](https://github.com/RaananW/Uptimizr/tree/main/examples/unity-web-export)
+  (Unity 2022.3 LTS) ships a scene with a camera and three named cubes, the bridge
+  files already in place, and player settings pre-set to **Compression Format:
+  Disabled** so the output serves from a plain static server. Open it in Unity Hub,
+  **File → Build Settings → WebGL → Build** into `examples/unity-web-export/dist/`, then
+  run the Playwright spec:
+
+  ```bash
+  pnpm --filter @uptimizr/example-playground exec playwright test unity-export
+  ```
+
+  The harness page starts `trackUnity(...)` **before** `createUnityInstance` (so the
+  bridge global exists when the C# `Start()` runs), clicks the centre cube, and asserts
+  `session_start.connector.name === "unity"`, `camera_sample`, `mesh_interaction`, and
+  `frame_perf` reach the collector. Without a build the spec skips — the CI default.
+
+Any WebGL template works as long as it does not stop the host page from adding its own
+scripts; the spec bypasses Unity's generated `index.html` and loads `Build/*.loader.js`
+itself.
 
 ## Coordinate frame
 

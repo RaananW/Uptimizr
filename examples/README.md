@@ -10,6 +10,11 @@ Runnable demos used for manual and end-to-end testing of the OSS collector.
   Used to generate real events and verify capture, heatmaps, and session replay end
   to end. See its `README.md` for the engine capability matrix, env vars, and the
   Playwright e2e harness.
+- `unity-web-export` — a minimal **Unity 2022.3 LTS** project wired to the
+  `@uptimizr/unity` engine-side bridge (a scene with a camera + three named cubes, the
+  `.jslib` and `MonoBehaviour` copied in). Build it once (WebGL → `dist/`, git-ignored)
+  and the playground's `e2e/unity-export.spec.ts` drives the real export through the
+  collector; without a build the spec skips. See its `README.md`.
 
 - `godot-web-export` — the **reference integration** for the `@uptimizr/godot` bridged
   tier (ADR 0045, #252): a minimal Godot 4 project with the `UptimizrGodot.gd` autoload
