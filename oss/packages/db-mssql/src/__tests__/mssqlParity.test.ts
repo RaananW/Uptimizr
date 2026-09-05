@@ -135,10 +135,7 @@ describe.skipIf(!available)("mssql parity (vs golden, vs duckdb)", () => {
 
   for (const parityCase of PARITY_CASES) {
     it(`matches golden: ${parityCase.name}`, async () => {
-      const rows = await runMssqlQuery<Record<string, unknown>>(
-        ms,
-        parityCase.build(mssqlDialect),
-      );
+      const rows = await runMssqlQuery<Record<string, unknown>>(ms, parityCase.build(mssqlDialect));
       const errors = diffParity(rows, parityCase.golden, {
         sortKeys: parityCase.sortKeys,
         ignoreColumns: parityCase.ignoreColumns,

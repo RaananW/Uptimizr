@@ -3,6 +3,7 @@ import { loadConfig } from "./config.js";
 import { createClickhouseStore } from "./clickhouseStore.js";
 import { createDuckdbStore } from "./duckdbStore.js";
 import { createMemoryStore } from "./memoryStore.js";
+import { createMssqlStore } from "./mssqlStore.js";
 import { createPostgresStore } from "./postgresStore.js";
 import type { CollectorStore } from "./store.js";
 
@@ -15,6 +16,10 @@ import type { CollectorStore } from "./store.js";
  *   relational backend for shops that already run Postgres; ADR 0020, #84).
  *   Connection from `POSTGRES_URL` (or `DATABASE_URL`) plus the optional
  *   `POSTGRES_SCHEMA` / `POSTGRES_POOL_MAX`. Requires a reachable Postgres.
+ * - `mssql` — the optional single-tenant Microsoft SQL Server store (for shops
+ *   standardized on SQL Server / Azure SQL; ADR 0020, #85). Connection from
+ *   `MSSQL_URL` or `MSSQL_SERVER` / `MSSQL_PORT` / `MSSQL_DATABASE` /
+ *   `MSSQL_USER` / `MSSQL_PASSWORD`. Requires a reachable SQL Server 2022+.
  * - `clickhouse` — the optional single-tenant ClickHouse store for scale
  *   (concurrent, high-volume ingestion; ADR 0020). Connection from the
  *   `CLICKHOUSE_*` env vars. Requires a reachable ClickHouse server.
@@ -33,6 +38,8 @@ export function createStore(env: NodeJS.ProcessEnv = process.env): Promise<Colle
       );
     case "postgres":
       return createPostgresStore();
+    case "mssql":
+      return createMssqlStore();
     case "clickhouse":
       return createClickhouseStore();
     case "duckdb":

@@ -167,6 +167,9 @@ importers:
       '@uptimizr/db-clickhouse':
         specifier: workspace:*
         version: link:../../packages/db-clickhouse
+      '@uptimizr/db-mssql':
+        specifier: workspace:*
+        version: link:../../packages/db-mssql
       '@uptimizr/db-postgres':
         specifier: workspace:*
         version: link:../../packages/db-postgres

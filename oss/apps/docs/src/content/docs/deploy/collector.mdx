@@ -113,7 +113,8 @@ Need more projects/keys later? `npx -p @uptimizr/collector-server uptimizr new-p
 DuckDB is an embedded, single-writer store: only **one process** may open the file read-write at a
 time. Run a single collector instance against a given file, and stop it before inspecting with
 another writer. Concurrent readers are fine in read-only mode. For multi-writer / horizontal scale,
-use the [`postgres` store](#relational-path-postgres) or the
+use the [`postgres` store](#relational-path-postgres), the
+[`mssql` store](#relational-path-sql-server) or the
 [`clickhouse` store](#scale-path-clickhouse).
 :::
 
@@ -148,7 +149,7 @@ cross-engine parity suite against a live Postgres). Two row-store trade-offs are
 - **ASOF joins are emulated.** The click↔gaze ray, flow, reachability, navigation and backtrack
   aggregations pair each event with its nearest-in-time neighbour. Postgres has no `ASOF JOIN`,
   so these render as an indexed nearest-row lookup per left row (`JOIN LATERAL … ORDER BY ts DESC
-  LIMIT 1`). Results are the same; on very large sessions these reads are slower than the
+LIMIT 1`). Results are the same; on very large sessions these reads are slower than the
   columnar engines' single merge pass.
 - **Daily rollups are recomputed at query time.** `perf_daily` / `events_daily` are plain views —
   fine at single-tenant scale; the incremental rollups remain the ClickHouse scale tier.
@@ -161,6 +162,46 @@ Choose Postgres when you need:
 
 Choose [ClickHouse](#scale-path-clickhouse) instead for high-volume ingestion and large historical
 ranges. Postgres 14 or newer is supported; the monorepo's `infra/docker` ships a `postgres:16`
+service (`pnpm stack:up`).
+
+## Relational path: SQL Server
+
+If your team is standardized on **Microsoft SQL Server** or **Azure SQL**, the same multi-writer
+relational path is available without operating a second database engine:
+
+```bash
+export COLLECTOR_STORE=mssql
+export MSSQL_URL="Server=localhost,1433;Database=uptimizr;User Id=sa;Password=Uptimizr!Local1;Encrypt=true;TrustServerCertificate=true"
+npx -p @uptimizr/collector-server uptimizr serve
+```
+
+`MSSQL_URL` is an ADO.NET-style connection string (Azure SQL's works as-is); alternatively set the
+discrete `MSSQL_SERVER` / `MSSQL_PORT` / `MSSQL_DATABASE` / `MSSQL_USER` / `MSSQL_PASSWORD` fields
+(with `MSSQL_ENCRYPT`, on by default, and `MSSQL_TRUST_SERVER_CERTIFICATE` for a self-signed local
+container). This is a **single-tenant SQL Server store**: events **and** metadata live in one
+database. The collector creates the database on first boot when the login may (`CREATE ANY
+DATABASE`; otherwise create it up front), then creates the tables, indexes, views and one helper
+function; several instances may boot concurrently (migrations are serialized behind an application
+lock). SQL Server 2022 (16.x) or Azure SQL is required.
+
+The full analytics surface returns **identical results** to DuckDB (verified by the cross-engine
+parity suite against a live SQL Server). It is the heaviest relational port, and three T-SQL
+trade-offs are worth knowing:
+
+- **No array type.** Vector columns (camera position/direction, hit points, rays, screen
+  coordinates) are stored as JSON arrays and read through `JSON_VALUE`. Correct, but the spatial
+  heatmaps parse JSON per row — expect them to be slower than on DuckDB, ClickHouse or Postgres on
+  large ranges.
+- **ASOF joins are emulated** with `CROSS APPLY` / `OUTER APPLY (SELECT TOP 1 … ORDER BY ts DESC)`
+  — an indexed nearest-row lookup per left row, like the Postgres `LATERAL` form.
+- **Percentiles are computed by a helper function.** T-SQL has no aggregate `PERCENTILE_CONT`,
+  so `p50`/`p95` reads pack each group's values and interpolate them in `dbo.uptimizr_quantile`
+  (exact, but O(n log n) per group). Daily rollups are recomputed at query time.
+
+Choose SQL Server when it is the database your team already operates (on-premises SQL Server,
+Azure SQL Database / Managed Instance) and you want multiple collector instances behind a load
+balancer. Choose [Postgres](#relational-path-postgres) or [ClickHouse](#scale-path-clickhouse)
+otherwise; the monorepo's `infra/docker` ships a `mcr.microsoft.com/mssql/server:2022-latest`
 service (`pnpm stack:up`).
 
 ## Scale path: ClickHouse
@@ -220,20 +261,26 @@ currently exposed through env vars.
 Key environment variables (the CLI writes a starter `.env`; see the repo's `.env.example` for the
 full list):
 
-| Variable                                  | Purpose                                                                                       |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `COLLECTOR_STORE`                         | `duckdb` (default), `postgres`, `clickhouse` (scale tier), or `memory` (dev/E2E).             |
-| `DUCKDB_PATH`                             | Path to the DuckDB file (default `./data/uptimizr.duckdb`).                                   |
-| `POSTGRES_URL` (or `DATABASE_URL`)        | Postgres connection string when `COLLECTOR_STORE=postgres` (`postgresql://user:pw@host/db`).  |
-| `POSTGRES_SCHEMA`                         | Schema for the store's tables (default `public`; created on first boot).                      |
-| `POSTGRES_POOL_MAX`                       | Max pooled connections per collector process (default `10`).                                  |
-| `CLICKHOUSE_URL`                          | ClickHouse HTTP endpoint when `COLLECTOR_STORE=clickhouse` (default `http://localhost:8123`). |
-| `CLICKHOUSE_DATABASE`                     | ClickHouse database name (default `uptimizr`; created on first boot).                         |
-| `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD` | ClickHouse credentials (default `default` / empty).                                           |
-| `COLLECTOR_PORT`                          | Port the collector listens on (default `4318`).                                               |
-| `VISITOR_HASH_SECRET`                     | Secret for the daily-rotating, server-side visitor hash.                                      |
-| `COLLECTOR_CORS_ORIGINS`                  | Allowed browser origins for ingestion/query (comma-separated).                                |
-| `COLLECTOR_TRUST_PROXY`                   | Trust `X-Forwarded-*` behind a reverse proxy: `true`, or a trusted IP/CIDR list.              |
-| `ENABLE_RAW_SESSION_RETENTION`            | Opt-in raw per-session event retention, required for replay.                                  |
+| Variable                                           | Purpose                                                                                         |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `COLLECTOR_STORE`                                  | `duckdb` (default), `postgres`, `mssql`, `clickhouse` (scale tier), or `memory` (dev/E2E).      |
+| `DUCKDB_PATH`                                      | Path to the DuckDB file (default `./data/uptimizr.duckdb`).                                     |
+| `POSTGRES_URL` (or `DATABASE_URL`)                 | Postgres connection string when `COLLECTOR_STORE=postgres` (`postgresql://user:pw@host/db`).    |
+| `POSTGRES_SCHEMA`                                  | Schema for the store's tables (default `public`; created on first boot).                        |
+| `POSTGRES_POOL_MAX`                                | Max pooled connections per collector process (default `10`).                                    |
+| `MSSQL_URL`                                        | SQL Server ADO.NET connection string when `COLLECTOR_STORE=mssql` (wins over the fields below). |
+| `MSSQL_SERVER` / `MSSQL_PORT`                      | SQL Server host / port (default `localhost` / `1433`).                                          |
+| `MSSQL_DATABASE`                                   | Database name (default `uptimizr`; created on first boot when the login may).                   |
+| `MSSQL_USER` / `MSSQL_PASSWORD`                    | SQL login (default `sa`; `MSSQL_SA_PASSWORD` is accepted as the password fallback).             |
+| `MSSQL_ENCRYPT` / `MSSQL_TRUST_SERVER_CERTIFICATE` | TLS on (default `true`) / trust a self-signed certificate (default `false`).                    |
+| `MSSQL_POOL_MAX`                                   | Max pooled connections per collector process (default `10`).                                    |
+| `CLICKHOUSE_URL`                                   | ClickHouse HTTP endpoint when `COLLECTOR_STORE=clickhouse` (default `http://localhost:8123`).   |
+| `CLICKHOUSE_DATABASE`                              | ClickHouse database name (default `uptimizr`; created on first boot).                           |
+| `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD`          | ClickHouse credentials (default `default` / empty).                                             |
+| `COLLECTOR_PORT`                                   | Port the collector listens on (default `4318`).                                                 |
+| `VISITOR_HASH_SECRET`                              | Secret for the daily-rotating, server-side visitor hash.                                        |
+| `COLLECTOR_CORS_ORIGINS`                           | Allowed browser origins for ingestion/query (comma-separated).                                  |
+| `COLLECTOR_TRUST_PROXY`                            | Trust `X-Forwarded-*` behind a reverse proxy: `true`, or a trusted IP/CIDR list.                |
+| `ENABLE_RAW_SESSION_RETENTION`                     | Opt-in raw per-session event retention, required for replay.                                    |
 
 See [Privacy & configuration](/docs/deploy/privacy/) for the privacy-relevant settings.

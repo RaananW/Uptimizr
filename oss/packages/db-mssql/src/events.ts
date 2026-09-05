@@ -130,7 +130,10 @@ async function insertRows(
  * `node_samples` table rather than the wide `events` table. Both inserts run in
  * one transaction, so a batch is never partially applied.
  */
-export async function insertEvents(client: MssqlClient, events: readonly AnyEvent[]): Promise<void> {
+export async function insertEvents(
+  client: MssqlClient,
+  events: readonly AnyEvent[],
+): Promise<void> {
   if (events.length === 0) return;
 
   const wideRows: Record<string, unknown>[] = [];

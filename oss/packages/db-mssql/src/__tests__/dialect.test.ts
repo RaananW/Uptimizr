@@ -105,7 +105,9 @@ describe("mssqlDialect", () => {
       rightTs: "ts",
     });
     expect(preceding).toContain("CROSS APPLY (");
-    expect(preceding).toContain("SELECT TOP 1 * FROM (SELECT session_id, ts, px FROM samples) AS m");
+    expect(preceding).toContain(
+      "SELECT TOP 1 * FROM (SELECT session_id, ts, px FROM samples) AS m",
+    );
     expect(preceding).toContain("WHERE m.session_id = c.session_id AND m.ts <= c.ts");
     expect(preceding).toMatch(/ORDER BY m\.ts DESC\s*\) AS m\s*$/);
 

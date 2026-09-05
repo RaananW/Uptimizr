@@ -227,7 +227,10 @@ export function createMssqlClient(
  * failure (no permission, `master` unreachable) is swallowed: the subsequent
  * real connection reports the actionable error.
  */
-export async function ensureMssqlDatabase(settings: MssqlSettings, database: string): Promise<void> {
+export async function ensureMssqlDatabase(
+  settings: MssqlSettings,
+  database: string,
+): Promise<void> {
   const name = assertSafeIdentifier(database);
   const master = createMssqlClient(settings, { database: "master" });
   try {

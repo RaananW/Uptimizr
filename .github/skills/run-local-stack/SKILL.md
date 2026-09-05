@@ -60,7 +60,8 @@ automatically (no `source .env`). The playground reads `VITE_*` from the same ro
 The ClickHouse (events) + Postgres (metadata) engines back the optional scale tier behind the
 `@uptimizr/db` store contracts. Only needed for multi-writer / horizontal scale.
 
-1. `pnpm stack:up` — ClickHouse (`:8123`), Postgres (`:5432`), and Adminer for inspection.
+1. `pnpm stack:up` — ClickHouse (`:8123`), Postgres (`:5432`), SQL Server (`:1433`), and Adminer for
+   inspection.
 2. Run the scale-tier migrations/seed against those engines, then point the collector at them via
    the relevant `COLLECTOR_STORE` / connection env vars.
 3. Tear down: `pnpm stack:down` (or `docker compose -f infra/docker/docker-compose.yml down -v` to

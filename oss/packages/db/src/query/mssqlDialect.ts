@@ -281,7 +281,7 @@ const GROUP_TERMINATORS = /^(HAVING|ORDER\s+BY|LIMIT|OFFSET|UNION|EXCEPT|INTERSE
 function scanClauses(sql: string): Clause[] {
   const clauses: Clause[] = [];
   let depth = 0;
-  for (let i = 0; i < sql.length; ) {
+  for (let i = 0; i < sql.length;) {
     const ch = sql[i]!;
     if (ch === "'") {
       // Skip a string literal ('' is an escaped quote).
