@@ -198,9 +198,15 @@ The suite covers the stack, including:
   dashboard pointed at the same collector and asserts the panels render the
   captured analytics (top meshes, input-source breakdown, perf) and that the
   session appears in the sessions table and opens its drill-down.
+- **`r3f.spec.ts` / `aframe.spec.ts`** — the two connectors that own their DOM
+  (no shared canvas, no scene switcher/replay) get dedicated capture round-trips:
+  pointer move/down/up/click, a centre mesh pick (asserted against the playground's
+  own `box_picked` event for r3f), a look-controls drag for A-Frame, connector
+  provenance (`connector.name`), the A-Frame `sceneId` attribute, and the dashboard's
+  aggregation endpoints. A-Frame is loaded from its CDN, fetched once per run and
+  served from memory via `page.route` so the browser never waits on the CDN mid-test.
 - **`playground.spec.ts`** — the original capture → collector → replay round-trip
-  per WebGL engine, plus a boot smoke test for `r3f` and a first-person walkable
-  session (ADR 0026): it walks a Babylon free camera with WASD and asserts the
+  per WebGL engine, plus a first-person walkable session (ADR 0026): it walks a Babylon free camera with WASD and asserts the
   `cameraType: "free"` label, the floor-plan position heatmap, the session's
   walked-path trajectory, and that the camera-mode filter lists it under
   first-person but not viewer.
@@ -235,5 +241,5 @@ The suite covers the stack, including:
   locomotion analytics.
 
 Real immersive-browser automation is intentionally out of scope; XR analytics are
-covered with seeded XR-input events, and A-Frame is excluded from the E2E matrix
-because it loads from a CDN.
+covered with seeded XR-input events (A-Frame's desktop capture is covered by
+`aframe.spec.ts`, which serves the CDN build from memory).
