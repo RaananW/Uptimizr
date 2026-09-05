@@ -110,7 +110,11 @@ The assistant is tuned for that reality:
 - **Current-time grounding.** The system prompt is stamped with the current time (ISO 8601 + epoch
   ms) at send time, so relative ranges like _"today"_, _"this week"_, or _"the last 24 hours"_
   resolve to concrete `since`/`until` epoch-millisecond arguments instead of being dropped or
-  guessed. The clock is injectable via `useAssistant({ now })` for deterministic tests.
+  guessed. The stamp is refreshed on **every** send — the conversation's single system message is
+  updated in place, never duplicated — so a long-lived conversation that crosses midnight keeps
+  resolving _"today"_ against the real current day. The clock is injectable via
+  `useAssistant({ now })` for deterministic tests, and the pure `refreshSystemPrompt()` helper
+  (`messages, basePrompt, nowMs`) is exported for custom loops.
 - **A focused core tool set.** The full catalog has 20 read tools; sending them all overwhelms a
   4-bit 7–8B model's function-calling prompt. For the **local** backend the assistant exposes a
   focused **core subset** of the most common single-step tools — `list_sessions`, `list_scenes`,

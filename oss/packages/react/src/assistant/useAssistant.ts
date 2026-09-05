@@ -32,7 +32,7 @@ import {
 } from "@uptimizr/agent-core/providers";
 import { CollectorApi } from "../api";
 import { useOptionalUptimizr } from "../provider";
-import { composeSystemPrompt, DEFAULT_SYSTEM_PROMPT } from "./prompt";
+import { DEFAULT_SYSTEM_PROMPT, refreshSystemPrompt } from "./prompt";
 
 /** Coarse per-turn state for the assistant. */
 export type AssistantStatus = "idle" | "initializing" | "thinking" | "error";
@@ -96,8 +96,9 @@ export interface UseAssistantOptions {
   /**
    * Clock used to stamp the current time into the system prompt at send time so
    * the model can resolve relative ranges ("today", "this week") into concrete
-   * `since`/`until` epoch-ms. Defaults to `() => Date.now()`; injectable so tests
-   * can pin it.
+   * `since`/`until` epoch-ms. Read on **every** send (the single system message
+   * is refreshed in place, so a long conversation never goes stale across a day
+   * boundary). Defaults to `() => Date.now()`; injectable so tests can pin it.
    */
   now?: () => number;
 }
@@ -276,15 +277,15 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
 
       const userMessage: AgentMessage = { role: "user", content };
       const history = messagesRef.current;
-      // Stamp the current time into the system message so the model can resolve
-      // relative ranges ("today", "this week") into concrete since/until args.
-      const outgoing: AgentMessage[] =
-        history.length === 0
-          ? [
-              { role: "system", content: composeSystemPrompt(systemPrompt, nowRef.current()) },
-              userMessage,
-            ]
-          : [...history, userMessage];
+      // Re-stamp the current time into the (single) system message on EVERY
+      // send — not just the first — so a conversation continued across a
+      // calendar boundary still resolves "today" / "this week" against the real
+      // current time (#220). The existing system message is updated in place;
+      // a second system turn is never appended.
+      const outgoing: AgentMessage[] = [
+        ...refreshSystemPrompt(history, systemPrompt, nowRef.current()),
+        userMessage,
+      ];
       setMessages(outgoing);
       setToolActivity([]);
       setError(null);

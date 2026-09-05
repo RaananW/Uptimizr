@@ -147,6 +147,52 @@ describe("useAssistant", () => {
     expect(system!.content).toContain(new Date(nowMs).toISOString());
   });
 
+  it("refreshes the time stamp on every send across a day boundary, with one system message", async () => {
+    // Issue #220: a conversation continued past midnight must resolve "today"
+    // against the NEW day. The single system message is updated in place — a
+    // second system turn is never appended.
+    const requests: Array<{ messages: { role: string; content: string }[] }> = [];
+    nextProvider = {
+      complete: vi.fn(async (req: { messages: { role: string; content: string }[] }) => {
+        requests.push(req);
+        return { kind: "final", content: "ok" } as ProviderResponse;
+      }),
+    };
+    const beforeMidnight = Date.UTC(2023, 10, 14, 23, 59, 30); // 2023-11-14T23:59:30Z
+    const afterMidnight = Date.UTC(2023, 10, 15, 0, 0, 30); // 2023-11-15T00:00:30Z
+    let nowMs = beforeMidnight;
+    const { result } = renderHook(() =>
+      useAssistant({ api: fakeApi(), backend: HOSTED, now: () => nowMs }),
+    );
+
+    await act(async () => {
+      await result.current.send("which scenes had activity today?");
+    });
+    nowMs = afterMidnight;
+    await act(async () => {
+      await result.current.send("and today now?");
+    });
+
+    expect(requests).toHaveLength(2);
+    const systems1 = requests[0]!.messages.filter((m) => m.role === "system");
+    const systems2 = requests[1]!.messages.filter((m) => m.role === "system");
+    expect(systems1).toHaveLength(1);
+    expect(systems2).toHaveLength(1);
+    // Each send carries the correct date for ITS moment.
+    expect(systems1[0]!.content).toContain("2023-11-14T23:59:30.000Z");
+    expect(systems2[0]!.content).toContain("2023-11-15T00:00:30.000Z");
+    expect(systems2[0]!.content).not.toContain("2023-11-14T23:59:30.000Z");
+    // The system message stays first, and the transcript keeps exactly one.
+    expect(requests[1]!.messages[0]!.role).toBe("system");
+    expect(result.current.messages.filter((m) => m.role === "system")).toHaveLength(1);
+    expect(result.current.messages[0]!.content).toContain(`epoch milliseconds: ${afterMidnight}`);
+    // Both user turns are retained, in order, after the refresh.
+    expect(result.current.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+      "which scenes had activity today?",
+      "and today now?",
+    ]);
+  });
+
   it("sends the focused core tool set for local and the full catalog for hosted", async () => {
     const capture = (): { provider: LlmProvider; lastToolCount: () => number } => {
       let count = -1;

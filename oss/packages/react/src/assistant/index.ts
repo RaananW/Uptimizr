@@ -21,7 +21,7 @@ export type {
 } from "./useAssistant";
 export { AssistantPanel } from "./AssistantPanel";
 export type { AssistantPanelProps } from "./AssistantPanel";
-export { DEFAULT_SYSTEM_PROMPT, composeSystemPrompt } from "./prompt";
+export { DEFAULT_SYSTEM_PROMPT, composeSystemPrompt, refreshSystemPrompt } from "./prompt";
 
 // Re-export the agent-core backend types a consumer needs to build/inspect a
 // backend config, so they don't have to also import `@uptimizr/agent-core`.
