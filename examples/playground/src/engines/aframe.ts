@@ -2,8 +2,12 @@
 // loaded from its official CDN (avoids pulling its git-resolved `three-bmfont-text`
 // subdependency through the workspace lockfile), so this module injects the CDN
 // script, registers the `@uptimizr/aframe` component, and builds the `<a-scene>` into
-// the engine container. There is no imperative client — the `uptimizr` component owns
-// its own transport — so `client` is `null` and only the connection/status UI applies.
+// the engine container. The `uptimizr` component owns its own client + transport;
+// once the scene has loaded and the component has started, that client is surfaced
+// as the instance `client` so the shell can stamp the session id (the e2e harness
+// reads it back) — every other client-driven section stays hidden via capabilities.
+
+import type { UptimizrClient } from "@uptimizr/sdk-core";
 
 import { type EngineInstance, type EngineModule, type EngineMountContext } from "../engine.js";
 
@@ -11,6 +15,33 @@ const AFRAME_CDN = "https://aframe.io/releases/1.7.1/aframe.min.js";
 
 interface AFrameGlobal {
   registerComponent(name: string, def: unknown): void;
+}
+
+/** The slice of an A-Frame entity we read to reach the `uptimizr` component's client. */
+interface UptimizrSceneElement extends Element {
+  components?: { uptimizr?: { _uptimizrClient?: UptimizrClient | null } };
+}
+
+/**
+ * Resolve the client the `uptimizr` component created. The component starts on the
+ * scene's `loaded` / `camera-set-active` event, so poll briefly after mount rather
+ * than racing its listener; resolves `null` if it never starts (the shell then
+ * falls back to the connection/status-only UI).
+ */
+function waitForComponentClient(
+  sceneEl: UptimizrSceneElement,
+  timeoutMs = 10_000,
+): Promise<UptimizrClient | null> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const tick = (): void => {
+      const client = sceneEl.components?.uptimizr?._uptimizrClient ?? null;
+      if (client) return resolve(client);
+      if (Date.now() > deadline) return resolve(null);
+      setTimeout(tick, 100);
+    };
+    tick();
+  });
 }
 
 function loadAframe(): Promise<void> {
@@ -92,8 +123,10 @@ async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
   );
   sceneEl.addEventListener("exit-vr", () => ctx.onStatus(capturing));
 
+  const client = await waitForComponentClient(sceneEl as UptimizrSceneElement);
+
   return {
-    client: null,
+    client,
     flashMesh() {
       // Declarative scene; no imperative flash.
     },
