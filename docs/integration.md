@@ -38,6 +38,14 @@ arguments (`camera`, `renderer`).
 > by an automated headless Godot 4 Web export driven by Playwright in CI; the reference
 > integration is [`examples/godot-web-export`](../examples/godot-web-export/README.md)
 > (`pnpm godot:fetch && pnpm godot:export && pnpm test:e2e:godot`).
+>
+> **Unreal is alpha / best-effort** (ADR 0045 / #112): Epic has no official UE5 HTML5/WASM target
+> (deprecated after UE 4.24) and Pixel Streaming is server-side, so the bridged tier targets
+> the Emscripten-based, client-side web exports that do exist — the community UE4.24–4.27
+> HTML5 forks and the experimental UE5.1–5.4 WASM+WebGPU toolchain (Wonder Interactive /
+> SimplyStream). Its `EM_JS` / `cwrap` shim ships in
+> [`@uptimizr/unreal`'s `bridge/`](../oss/packages/unreal/bridge/README.md) **unverified** (no
+> buildable target to test against); the JS-only tier works on any web export regardless.
 
 ---
 
