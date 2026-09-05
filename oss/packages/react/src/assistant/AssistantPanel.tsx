@@ -145,6 +145,7 @@ export function AssistantPanel({
     error,
     toolActivity,
     initProgress,
+    partialText,
     notice,
     backend,
     webGpuAvailable,
@@ -188,22 +189,27 @@ export function AssistantPanel({
     if (node && typeof node.scrollIntoView === "function") {
       node.scrollIntoView({ block: "end" });
     }
-  }, [messages, status, toolActivity, notice]);
+  }, [messages, status, toolActivity, notice, partialText]);
 
   // An always-present busy indicator so the user can see the assistant is
   // working even when it is only generating an answer (no tool calls, model
-  // already loaded) — WebLLM generation is non-streaming and can take a while.
-  // The detailed tool-activity list is kept below; the initProgress bar already
-  // covers the download phase, so the label defers to it when present.
+  // already loaded). Once the answer starts streaming the same indicator turns
+  // into the "Streaming…" affordance while the live text renders in the
+  // conversation. The detailed tool-activity list is kept below; the
+  // initProgress bar already covers the download phase, so the label defers to
+  // it when present.
   const hasRunningTool = toolActivity.some((t) => t.status === "running");
+  const streaming = isBusy && partialText !== null;
   const busyLabel =
     !isBusy || initProgress
       ? null
       : hasRunningTool
         ? "Running analytics…"
-        : status === "initializing"
-          ? "Loading model…"
-          : "Thinking…";
+        : streaming
+          ? "Streaming…"
+          : status === "initializing"
+            ? "Loading model…"
+            : "Thinking…";
   // The full selection stage is reachable at any time: on first run, or when the
   // user clicks "Change backend" (ADR 0050). Committing returns them to chat.
   const showSelection = firstRun || reconfiguring;
@@ -318,6 +324,17 @@ export function AssistantPanel({
                   <div className="whitespace-pre-wrap">{m.content}</div>
                 </li>
               ))}
+              {/* The answer as it streams in. Kept OUT of the aria-live status
+                  region so screen readers are not read every token; the region
+                  announces "Streaming…" instead and the finished answer lands in
+                  the transcript. Replaced — never duplicated — by the final
+                  assistant turn in the same render when the turn completes. */}
+              {streaming && (
+                <li className="text-fg" data-role="assistant" data-streaming="true">
+                  <span className="mr-1 text-xs uppercase text-fg-muted">Assistant</span>
+                  <div className="whitespace-pre-wrap">{partialText}</div>
+                </li>
+              )}
             </ol>
 
             {/* Live region: announced by screen readers and always in the DOM so

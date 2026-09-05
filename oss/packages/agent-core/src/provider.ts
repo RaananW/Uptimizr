@@ -50,12 +50,29 @@ export interface ProviderRequest {
   tools: AgentToolSchema[];
   /** Optional cancellation signal, forwarded by the loop. */
   signal?: AbortSignal;
+  /**
+   * Optional streaming channel. When present, a provider that can stream calls
+   * it with each **assistant text delta** as the model produces it, in order,
+   * so a UI can render the reply incrementally. The returned
+   * {@link ProviderResponse} is still the complete, authoritative result: its
+   * `content` is the full assembled text (the concatenation of every delta) and
+   * any tool calls are reported there only, never through this callback — tool
+   * call JSON is not user-visible text.
+   *
+   * The channel is strictly additive: a provider that does not stream simply
+   * never calls it and returns its `Promise<ProviderResponse>` exactly as
+   * before, and a caller that omits it gets the non-streaming behaviour.
+   * Providers SHOULD avoid requesting a streamed wire response when no callback
+   * is supplied (nobody is listening).
+   */
+  onToken?: (delta: string) => void;
 }
 
 /**
  * A pluggable LLM backend. Implementations translate {@link ProviderRequest}
  * into their own wire format and normalise the reply into a
- * {@link ProviderResponse}.
+ * {@link ProviderResponse}. Streaming is opt-in per call via
+ * {@link ProviderRequest.onToken}; the promise-based shape never changes.
  */
 export interface LlmProvider {
   complete(request: ProviderRequest): Promise<ProviderResponse>;

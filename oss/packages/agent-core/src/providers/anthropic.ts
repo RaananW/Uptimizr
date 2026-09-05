@@ -124,3 +124,104 @@ export function parseAnthropicCompletion(completion: AnthropicCompletion): Provi
   }
   return { kind: "final", content: text };
 }
+
+/**
+ * One Anthropic Messages streaming event (the subset this module reads). Text
+ * arrives as `text_delta`s and tool inputs as `input_json_delta` fragments,
+ * both addressed by content-block `index`; `content_block_start` announces the
+ * block's type (and a tool block's `id` + `name`).
+ */
+export interface AnthropicStreamEvent {
+  type: string;
+  index?: number;
+  content_block?: { type: string; id?: string; name?: string; text?: string };
+  delta?: { type?: string; text?: string; partial_json?: string };
+}
+
+/**
+ * Accumulates {@link AnthropicStreamEvent}s into a complete
+ * {@link AnthropicCompletion}. `push` returns the event's text delta (empty
+ * when it carried none); `finish` yields the assembled content blocks for
+ * {@link parseAnthropicCompletion}.
+ */
+export interface AnthropicStreamAssembler {
+  push(event: AnthropicStreamEvent): string;
+  finish(): AnthropicCompletion;
+}
+
+/** Parse a tool block's accumulated JSON input; malformed/empty → `{}`. */
+function parseToolInput(raw: string): Record<string, unknown> {
+  if (raw.length === 0) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Create a fresh {@link AnthropicStreamAssembler}. Pure: no I/O, no regex. */
+export function createAnthropicStreamAssembler(): AnthropicStreamAssembler {
+  type Pending =
+    | { type: "text"; text: string }
+    | { type: "tool_use"; id: string; name: string; json: string }
+    | { type: "other" };
+  const blocks = new Map<number, Pending>();
+
+  return {
+    push(event) {
+      const index = typeof event.index === "number" ? event.index : 0;
+      if (event.type === "content_block_start" && event.content_block) {
+        const start = event.content_block;
+        if (start.type === "text") {
+          blocks.set(index, { type: "text", text: start.text ?? "" });
+          return start.text ?? "";
+        }
+        if (start.type === "tool_use") {
+          blocks.set(index, {
+            type: "tool_use",
+            id: start.id ?? String(index),
+            name: start.name ?? "",
+            json: "",
+          });
+          return "";
+        }
+        blocks.set(index, { type: "other" });
+        return "";
+      }
+      if (event.type === "content_block_delta" && event.delta) {
+        const delta = event.delta;
+        let block = blocks.get(index);
+        if (delta.type === "text_delta" && typeof delta.text === "string") {
+          if (!block) {
+            block = { type: "text", text: "" };
+            blocks.set(index, block);
+          }
+          if (block.type === "text") block.text += delta.text;
+          return delta.text;
+        }
+        if (delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
+          if (block?.type === "tool_use") block.json += delta.partial_json;
+        }
+      }
+      // message_start / content_block_stop / message_delta / message_stop /
+      // ping carry nothing this assembler needs.
+      return "";
+    },
+    finish() {
+      const content: AnthropicContentBlock[] = [];
+      for (const [, block] of [...blocks.entries()].sort((a, b) => a[0] - b[0])) {
+        if (block.type === "text") content.push({ type: "text", text: block.text });
+        else if (block.type === "tool_use") {
+          content.push({
+            type: "tool_use",
+            id: block.id,
+            name: block.name,
+            input: parseToolInput(block.json),
+          });
+        }
+      }
+      return { content };
+    },
+  };
+}

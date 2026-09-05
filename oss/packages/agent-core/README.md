@@ -114,6 +114,40 @@ import {
   stored only in the browser; the browser calls your provider directly. Only the prompt and
   aggregated results leave, to **your own** provider (ADR 0050 §4/§5).
 
+### Streaming (for provider authors)
+
+Streaming is an **optional, additive** channel on the provider contract — `complete()` still
+returns a `Promise<ProviderResponse>`, so every existing provider keeps working unchanged. A caller
+that wants tokens incrementally passes `onToken` on the request; a provider that can stream calls
+it with each assistant **text** delta, in order, and still resolves with the complete, assembled
+response (tool calls included — those are never sent through `onToken`, they aren't user-visible
+text):
+
+```ts
+const provider: LlmProvider = {
+  async complete({ messages, tools, signal, onToken }) {
+    // Only ask your backend for a streamed reply when someone is listening.
+    if (!onToken) return callBackendOnce(messages, tools, signal);
+    let content = "";
+    for await (const delta of streamFromBackend(messages, tools, signal)) {
+      content += delta; // assemble the full answer…
+      onToken(delta); // …and forward each fragment as it arrives
+    }
+    return { kind: "final", content };
+  },
+};
+```
+
+`runAgent` exposes the same thing one level up as `onStream`: it hands every provider turn an
+`onToken` listener and re-emits `{ type: "delta", step, delta, text }` (with `text` the turn's
+accumulated text) and `{ type: "turn_end", step, outcome: "final" | "tool_calls" }`. A UI shows
+`text` live and discards it when a turn ends as `tool_calls` (that text was pre-tool commentary,
+not the answer); the loop's own result is identical whether or not anything streamed. Both bundled
+adapters stream: the hosted adapter parses the OpenAI-compatible and Anthropic SSE formats (string
+scans only — no regex over model output), and the WebLLM adapter streams the tools-less answer turn
+(with tools present WebLLM's Hermes grammar forces a JSON tool-call array as the output, so there is
+no user text to stream there).
+
 Install the WebLLM runtime alongside the assistant if you use the local backend:
 
 ```bash

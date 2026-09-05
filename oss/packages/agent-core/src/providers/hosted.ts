@@ -13,21 +13,34 @@
  *  - Anthropic: pass the `anthropic-dangerous-direct-browser-access` header
  *    (added below) which enables their browser CORS path.
  * See the docs (guides/assistant) for the exact requirements.
+ *
+ * **Streaming.** When the caller supplies `ProviderRequest.onToken`, the adapter
+ * asks the provider for a streamed (`text/event-stream`) response, forwards each
+ * text delta as it arrives, and still resolves with the complete, assembled
+ * `ProviderResponse` (tool calls included). Without a listener it makes the
+ * same single non-streamed POST as before. The SSE payload is model output, so
+ * it is parsed with string membership and linear scans only (no regex — CodeQL
+ * ReDoS), see `./sse.ts`.
  */
 
 import type { LlmProvider, ProviderRequest, ProviderResponse } from "../provider.js";
 import type { HostedApi } from "./config.js";
 import {
+  createOpenAiStreamAssembler,
   parseOpenAiCompletion,
   toOpenAiMessages,
   toOpenAiTools,
   type OpenAiCompletion,
+  type OpenAiStreamChunk,
 } from "./openai.js";
 import {
+  createAnthropicStreamAssembler,
   parseAnthropicCompletion,
   toAnthropicRequest,
   type AnthropicCompletion,
+  type AnthropicStreamEvent,
 } from "./anthropic.js";
+import { readSseStream } from "./sse.js";
 
 /** Configuration for a bring-your-own hosted provider. */
 export interface HostedProviderConfig {
@@ -64,6 +77,9 @@ export class HostedProviderError extends Error {
 const DEFAULT_MAX_TOKENS = 1024;
 const DEFAULT_ANTHROPIC_VERSION = "2023-06-01";
 
+/** The OpenAI-compatible end-of-stream sentinel (`data: [DONE]`). */
+const OPENAI_DONE_SENTINEL = "[DONE]";
+
 function joinUrl(base: string, suffix: string): string {
   let end = base.length;
   while (end > 0 && base[end - 1] === "/") end--;
@@ -74,7 +90,8 @@ function joinUrl(base: string, suffix: string): string {
 /**
  * Create a hosted provider bound to one `(api, endpoint, apiKey, model)`. The
  * returned {@link LlmProvider} issues one direct request per turn to the user's
- * provider and normalises the reply.
+ * provider and normalises the reply. Pass `onToken` on a request to receive the
+ * answer incrementally (see the module docs).
  */
 export function createHostedProvider(config: HostedProviderConfig): LlmProvider {
   const fetchImpl = config.fetchImpl ?? fetch;
@@ -93,6 +110,7 @@ async function completeOpenAi(
   request: ProviderRequest,
 ): Promise<ProviderResponse> {
   const url = joinUrl(config.endpoint, "/chat/completions");
+  const onToken = request.onToken;
   // No tools this turn (e.g. the loop's forced synthesis pass) → omit `tools`
   // and `tool_choice` entirely so the model answers in plain text rather than
   // being nudged to keep calling functions.
@@ -102,6 +120,8 @@ async function completeOpenAi(
     ...(request.tools.length > 0
       ? { tools: toOpenAiTools(request.tools), tool_choice: "auto" as const }
       : {}),
+    // Only ask for a streamed reply when someone is listening.
+    ...(onToken ? { stream: true } : {}),
   };
   const res = await fetchImpl(url, {
     method: "POST",
@@ -112,8 +132,29 @@ async function completeOpenAi(
     body: JSON.stringify(body),
     signal: request.signal,
   });
-  const completion = (await readJson(res)) as OpenAiCompletion;
-  return parseOpenAiCompletion(completion);
+  await assertOk(res);
+  if (onToken && isEventStream(res)) {
+    const assembler = createOpenAiStreamAssembler();
+    await readSseStream(
+      res.body ?? new ReadableStream<Uint8Array>(),
+      (event) => {
+        // `data: [DONE]` closes an OpenAI stream; anything else is a JSON chunk.
+        if (event.data === OPENAI_DONE_SENTINEL) return;
+        const chunk = parseJsonEvent<OpenAiStreamChunk>(event.data);
+        if (!chunk) return;
+        const delta = assembler.push(chunk);
+        if (delta) onToken(delta);
+      },
+      request.signal,
+    );
+    return parseOpenAiCompletion(assembler.finish());
+  }
+  // A provider that ignores `stream` (or no listener) → one JSON body. Forward
+  // the whole answer as a single delta so a listener still sees it.
+  const completion = (await res.json()) as OpenAiCompletion;
+  const parsed = parseOpenAiCompletion(completion);
+  if (onToken && parsed.content) onToken(parsed.content);
+  return parsed;
 }
 
 async function completeAnthropic(
@@ -122,11 +163,13 @@ async function completeAnthropic(
   request: ProviderRequest,
 ): Promise<ProviderResponse> {
   const url = joinUrl(config.endpoint, "/messages");
+  const onToken = request.onToken;
   const shaped = toAnthropicRequest(request.messages, request.tools);
   const body = {
     model: config.model,
     max_tokens: config.maxTokens ?? DEFAULT_MAX_TOKENS,
     ...shaped,
+    ...(onToken ? { stream: true } : {}),
   };
   const res = await fetchImpl(url, {
     method: "POST",
@@ -140,14 +183,56 @@ async function completeAnthropic(
     body: JSON.stringify(body),
     signal: request.signal,
   });
-  const completion = (await readJson(res)) as AnthropicCompletion;
-  return parseAnthropicCompletion(completion);
+  await assertOk(res);
+  if (onToken && isEventStream(res)) {
+    const assembler = createAnthropicStreamAssembler();
+    let streamError: Error | undefined;
+    await readSseStream(
+      res.body ?? new ReadableStream<Uint8Array>(),
+      (event) => {
+        const parsed = parseJsonEvent<AnthropicStreamEvent & { error?: { message?: string } }>(
+          event.data,
+        );
+        if (!parsed) return;
+        // Anthropic reports mid-stream failures as an `error` event.
+        if (parsed.type === "error") {
+          streamError = new HostedProviderError(parsed.error?.message ?? "stream error", 200);
+          return;
+        }
+        const delta = assembler.push(parsed);
+        if (delta) onToken(delta);
+      },
+      request.signal,
+    );
+    if (streamError) throw streamError;
+    return parseAnthropicCompletion(assembler.finish());
+  }
+  const completion = (await res.json()) as AnthropicCompletion;
+  const parsed = parseAnthropicCompletion(completion);
+  if (onToken && parsed.content) onToken(parsed.content);
+  return parsed;
 }
 
-async function readJson(res: Response): Promise<unknown> {
+/** Reject a non-2xx response with the provider's own error text. */
+async function assertOk(res: Response): Promise<void> {
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new HostedProviderError(detail || res.statusText, res.status);
   }
-  return res.json();
+}
+
+/** Whether the response is an SSE stream (plain substring check on the header). */
+function isEventStream(res: Response): boolean {
+  const type = res.headers.get("content-type") ?? "";
+  return type.includes("text/event-stream");
+}
+
+/** Parse one SSE `data:` payload as JSON; malformed payloads are skipped. */
+function parseJsonEvent<T extends object>(data: string): T | undefined {
+  try {
+    const parsed = JSON.parse(data) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as T) : undefined;
+  } catch {
+    return undefined;
+  }
 }
