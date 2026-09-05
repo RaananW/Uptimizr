@@ -230,9 +230,23 @@ export async function waitForEventTypes(
     if (required.every((t) => seen.has(t))) return seen;
     if (Date.now() > deadline) {
       const missing = required.filter((t) => !seen.has(t));
+      // Diagnostics for #263: per-type counts plus the ordered tail of the stored
+      // timeline, so a missing type can be placed against what did arrive.
+      const counts = new Map<string, number>();
+      for (const e of events) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
+      const countText = [...counts.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([t, n]) => `${t}×${n}`)
+        .join(", ");
+      const first = events[0]?.ts ?? 0;
+      const tail = events
+        .slice(-40)
+        .map((e) => `${e.type}@+${e.ts - first}ms${e.sceneId ? `[${e.sceneId}]` : ""}`)
+        .join(" ");
       throw new Error(
         `timed out waiting for event types [${missing.join(", ")}] in session ${sessionId}; ` +
-          `saw [${[...seen].sort().join(", ")}]`,
+          `saw [${[...seen].sort().join(", ")}]\n  counts: ${countText}\n  ` +
+          `timeline tail (${events.length} events): ${tail}`,
       );
     }
     await new Promise((r) => setTimeout(r, 750));
