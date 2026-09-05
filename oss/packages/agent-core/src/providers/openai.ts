@@ -120,3 +120,83 @@ export function parseOpenAiCompletion(completion: OpenAiCompletion): ProviderRes
 
   return { kind: "final", content };
 }
+
+/**
+ * One streamed chat-completion chunk (`object: "chat.completion.chunk"`), the
+ * subset this module reads. Tool calls arrive as partial deltas keyed by
+ * `index`: the first delta for an index carries `id` + `function.name`, later
+ * ones append to `function.arguments`. WebLLM's streamed tool calls omit `id`.
+ */
+export interface OpenAiStreamChunk {
+  choices?: Array<{
+    delta?: {
+      content?: string | null;
+      tool_calls?: Array<{
+        index?: number;
+        id?: string;
+        type?: "function";
+        function?: { name?: string; arguments?: string };
+      }> | null;
+    };
+    finish_reason?: string | null;
+  }>;
+}
+
+/**
+ * Accumulates streamed {@link OpenAiStreamChunk}s into a complete
+ * {@link OpenAiCompletion}. `push` returns the chunk's text delta (empty when
+ * the chunk carried none) so the caller can forward it to a token callback;
+ * `finish` yields the assembled completion for {@link parseOpenAiCompletion}.
+ */
+export interface OpenAiStreamAssembler {
+  push(chunk: OpenAiStreamChunk): string;
+  finish(): OpenAiCompletion;
+}
+
+/** Create a fresh {@link OpenAiStreamAssembler}. Pure: no I/O, no regex. */
+export function createOpenAiStreamAssembler(): OpenAiStreamAssembler {
+  let content = "";
+  // Keyed by `index` so gapped or out-of-order indices still assemble.
+  const calls = new Map<number, OpenAiToolCall>();
+
+  return {
+    push(chunk) {
+      const delta = chunk.choices?.[0]?.delta;
+      if (!delta) return "";
+      const text = typeof delta.content === "string" ? delta.content : "";
+      content += text;
+      (delta.tool_calls ?? []).forEach((partial, position) => {
+        const index = typeof partial.index === "number" ? partial.index : position;
+        let call = calls.get(index);
+        if (!call) {
+          // WebLLM omits `id` on streamed tool calls; mirror its non-streaming
+          // ids (the zero-based index as a string) so results echo back cleanly.
+          call = {
+            id: partial.id ?? String(index),
+            type: "function",
+            function: { name: "", arguments: "" },
+          };
+          calls.set(index, call);
+        } else if (partial.id) {
+          call.id = partial.id;
+        }
+        if (partial.function?.name) call.function.name += partial.function.name;
+        if (partial.function?.arguments) call.function.arguments += partial.function.arguments;
+      });
+      return text;
+    },
+    finish() {
+      const tool_calls = [...calls.entries()].sort((a, b) => a[0] - b[0]).map(([, call]) => call);
+      return {
+        choices: [
+          {
+            message: {
+              content,
+              ...(tool_calls.length > 0 ? { tool_calls } : {}),
+            },
+          },
+        ],
+      };
+    },
+  };
+}
