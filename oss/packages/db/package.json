@@ -39,11 +39,12 @@
     }
   },
   "bin": {
-    "uptimizr-db-migrate": "./dist/cli/migrate.js",
-    "uptimizr-db-new-project": "./dist/cli/createProject.js"
+    "uptimizr-db-migrate": "./bin/uptimizr-db-migrate.js",
+    "uptimizr-db-new-project": "./bin/uptimizr-db-new-project.js"
   },
   "files": [
     "dist",
+    "bin",
     "README.md",
     "LICENSE",
     "AGENTS.md",

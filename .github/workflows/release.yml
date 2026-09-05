@@ -120,7 +120,6 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -140,6 +139,15 @@ jobs:
       - name: Scrub gate
         run: bash scripts/scrub-gate.sh
 
+      # Point npm at the registry only now: setup-node writes an `_authToken=${NODE_AUTH_TOKEN}`
+      # line into .npmrc, and every pnpm invocation before this step would warn
+      # "Failed to replace env in config" (there is no token — auth is OIDC).
+      - name: Configure npm registry for publishing
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+
       - name: Publish to npm
         env:
           # No NPM_TOKEN: publishing authenticates via npm Trusted Publishing
@@ -157,11 +165,11 @@ jobs:
         run: pnpm --recursive --filter='!create-uptimizr' publish --no-git-checks
 
       - name: Tag the release
-        # `changeset tag` creates the annotated `pkg@version` git tags. We push
+        # `changeset git-tag` creates the annotated `pkg@version` git tags. We push
         # only tags (not main) to stay clear of branch protection and the Actions
         # token's workflow-ref push restriction.
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          pnpm changeset tag
+          pnpm changeset git-tag
           git push origin --tags

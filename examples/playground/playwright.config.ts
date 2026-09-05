@@ -55,14 +55,16 @@ export default defineConfig({
     {
       // Seed the DuckDB store first (single-writer: it must close before the
       // collector opens the file), then boot the collector against it.
-      command: `pnpm --filter @uptimizr/example-playground exec tsx e2e/seed.ts && pnpm --filter @uptimizr/collector-server exec tsx src/server.ts`,
+      // In CI the collector's request log goes to `e2e/.tmp/collector.log` (uploaded
+      // with the Playwright artifacts) instead of the console, so a "timed out waiting
+      // for event types" failure stays diagnosable without flooding the job output.
+      command:
+        `pnpm --filter @uptimizr/example-playground exec tsx e2e/seed.ts && ` +
+        `pnpm --filter @uptimizr/collector-server exec tsx src/server.ts` +
+        (process.env.CI ? " > e2e/.tmp/collector.log 2>&1" : ""),
       port: COLLECTOR_PORT,
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
-      // In CI, forward the collector's request log into the job output so a
-      // "timed out waiting for event types" failure can be traced to what the
-      // collector actually received (#263). Locally it stays quiet.
-      stdout: process.env.CI ? "pipe" : "ignore",
       env: {
         VISITOR_HASH_SECRET: "e2e-secret",
         COLLECTOR_STORE: "duckdb",

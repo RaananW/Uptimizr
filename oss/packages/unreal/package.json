@@ -43,7 +43,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run bundle && pnpm run bundle:global",
     "bundle": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --minify --legal-comments=none --banner:js=\"/* @uptimizr/unreal standalone bundle — Apache-2.0. Async-import into an Unreal web export's host page. Best-effort, pending a viable WASM target. */\" --outfile=dist/uptimizr-unreal.js",
-    "bundle:global": "esbuild src/index.ts --bundle --format=iife --global-name=UptimizrUnreal --platform=browser --target=es2022 --minify --legal-comments=none --banner:js=\"/* @uptimizr/unreal standalone bundle (global) — Apache-2.0. Inject via a <script> tag into an Unreal web export host page; exposes window.UptimizrUnreal. */\" --outfile=dist/uptimizr-unreal.global.js",
+    "bundle:global": "esbuild src/index.ts --bundle --format=iife --log-override:empty-import-meta=silent --global-name=UptimizrUnreal --platform=browser --target=es2022 --minify --legal-comments=none --banner:js=\"/* @uptimizr/unreal standalone bundle (global) — Apache-2.0. Inject via a <script> tag into an Unreal web export host page; exposes window.UptimizrUnreal. */\" --outfile=dist/uptimizr-unreal.global.js",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
