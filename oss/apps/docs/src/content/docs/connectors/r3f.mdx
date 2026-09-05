@@ -43,7 +43,10 @@ For access to the `UptimizrClient` (read `sessionId`, emit custom events, stop e
 import { useUptimizr } from "@uptimizr/r3f";
 
 function Telemetry() {
-  const client = useUptimizr({ projectId: "your-project", endpoint: "https://collect.example.com" });
+  const client = useUptimizr({
+    projectId: "your-project",
+    endpoint: "https://collect.example.com",
+  });
   // client.track("add_to_cart", { sku: "ABC-123" });
   return null;
 }
@@ -52,3 +55,25 @@ function Telemetry() {
 Capture starts when the hook/component mounts and stops on unmount, tearing down every listener,
 timer, and animation-frame callback — no cookies, no persistent IDs. World-space data is normalized
 to the canonical wire frame by `@uptimizr/three`; the session is attributed to the `r3f` connector.
+
+## WebXR and hit resolution
+
+Both `<Uptimizr />` and `useUptimizr()` accept the three connector's full option set, including the
+`xr` option: WebXR controller/gaze capture is on by default and idles until an immersive session
+starts. To resolve XR rays to in-scene hits, build a probe over the R3F scene and pass it through —
+see [three.js → WebXR](/docs/connectors/three/#webxr) for the event mapping:
+
+```tsx
+import { useThree } from "@react-three/fiber";
+import { createXrRaycaster, useUptimizr } from "@uptimizr/r3f";
+
+function Telemetry() {
+  const scene = useThree((s) => s.scene);
+  useUptimizr({
+    projectId: "your-project",
+    endpoint: "https://collect.example.com",
+    xr: { raycast: createXrRaycaster(scene) },
+  });
+  return null;
+}
+```

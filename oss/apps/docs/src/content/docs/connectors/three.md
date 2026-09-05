@@ -55,6 +55,37 @@ pointer/click events from screen centre (`screen = [0.5, 0.5]`), raycasting from
 floor-plan heatmaps instead; cursor (orbit/viewer) scenes are unaffected.
 See [Concepts → pointer lock](/docs/concepts/) (ADR 0034).
 
+## WebXR
+
+`trackScene` registers the WebXR collector **by default**. It costs two event listeners while idle
+and attaches when `renderer.xr` enters an immersive session, mapping XR input onto the existing
+source-neutral events (ADR 0011): controller/gaze **pose** → `pointer_move` with a world-space `ray`
+and `source` (`xr-controller`, `hand`, `gaze`, `transient`), **select** → `pointer_click` (+
+`mesh_interaction` `kind: select`), **squeeze** → `mesh_interaction` `kind: squeeze`. The headset
+pose keeps flowing as `camera_sample`.
+
+To resolve those rays to **in-scene hits** (`hitPoint`/`hitMesh` on the ray samples, and the object
+a select/squeeze attaches to), pass a raycast probe. `createXrRaycaster` builds one over the live
+scene graph with a single reused `THREE.Raycaster`:
+
+```ts
+import { trackScene, createXrRaycaster } from "@uptimizr/three";
+
+const client = trackScene(scene, camera, renderer, {
+  projectId: "your-project",
+  endpoint: "https://collect.example.com",
+  xr: {
+    sampleMs: 250, // controller/gaze pose cadence
+    raycast: createXrRaycaster(scene, { maxDistance: 50 }), // optional: hit resolution
+  },
+});
+```
+
+Without a probe, rays and clicks are still captured; only the hit fields need one. Pass `xr: false`
+to disable XR capture entirely. Name the objects you care about (`object3D.name`) so `hitMesh` is
+meaningful. Set `cameraType` if the structural guess is wrong: every `PerspectiveCamera` classifies
+as `free` (first-person), so pass `cameraType: "arc-rotate"` for orbit-style scenes.
+
 ## Advanced
 
 For a custom transport, a `beforeSend` hook, or registering multiple collectors, compose the pieces

@@ -83,6 +83,11 @@ adds sourcing the `scene` / `camera` / `gl` from `useThree()`, so those are neve
 The `connector` provenance defaults to `{ name: "r3f" }`; pass `connector` to override
 the reported `version` or `name`.
 
+The raycast probe factories (`createSceneRaycaster`, `createGazeRaycaster`, `createXrRaycaster`)
+are re-exported from this package, so an R3F host can build pointer / gaze / WebXR hit-resolution
+probes — e.g. `xr: { raycast: createXrRaycaster(scene) }` with `scene` from `useThree()` — without
+a direct `@uptimizr/three` dependency.
+
 ## Replay
 
 R3F sessions replay through the existing
