@@ -18,6 +18,19 @@ export interface UptimizrComponentData {
   pointerMoveThrottleMs: number;
   /** Free-text label for the scene/experience, merged into scene metadata. */
   sceneDescription: string;
+  /**
+   * Scene/area id every event is tagged with (ADR 0010). Empty ⇒ the connector's
+   * default scene. Programmatic hosts can still switch at runtime via
+   * `client.setScene()` on the re-exported `trackScene` client.
+   */
+  sceneId: string;
+  /**
+   * Override the camera classification recorded on `session_start`
+   * (`"arc-rotate"` | `"free"` | `"follow"` | `"static"` | `"other"`). Empty ⇒ the
+   * three connector's structural guess (every `PerspectiveCamera` ⇒ `"free"`).
+   * Set `arc-rotate` for orbit-style scenes so they are not treated as walkable.
+   */
+  cameraType: string;
   /** Opt-in per-object dwell capture (`mesh_visibility`). */
   meshVisibility: boolean;
   /** Opt-in hover-hesitation capture (`hover_dwell`). */

@@ -114,7 +114,10 @@ async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
   if (!sceneEl) throw new Error("Failed to build A-Frame scene.");
 
   // Capture starts when A-Frame initializes the component (XR is on by default).
-  sceneEl.setAttribute("uptimizr", `projectId: ${ctx.projectId}; collector: ${ctx.collectorUrl}`);
+  sceneEl.setAttribute(
+    "uptimizr",
+    `projectId: ${ctx.projectId}; collector: ${ctx.collectorUrl}; sceneId: ${ctx.sceneId}`,
+  );
 
   const capturing = `capturing → ${ctx.collectorUrl} (project: ${ctx.projectId})`;
   sceneEl.addEventListener("loaded", () => ctx.onStatus(capturing));

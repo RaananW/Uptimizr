@@ -185,6 +185,10 @@ client.setScene("level-2");
   100%) so replay records the transition, and
 - **stamps the new `sceneId` on every subsequent event** until the next call.
 
+The declarative `@uptimizr/aframe` component takes the initial id as the `sceneId`
+attribute (`<a-scene uptimizr="…; sceneId: level-1">`); switching at runtime is a
+programmatic host's job via the re-exported `trackScene` client.
+
 It is a no-op when the id is unchanged, and invalid ids are ignored (logged when
 `debug` is on). You may call it **before** the session starts — the id is then
 applied to `session_start` instead of emitting a marker. The same call works in
