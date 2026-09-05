@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/db-postgres",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Optional single-tenant PostgreSQL store for Uptimizr — composes the @uptimizr/db dialect-agnostic query layer and CollectorStore contract for self-hosters who already run Postgres and want a multi-writer relational backend.",
   "keywords": [
     "uptimizr",

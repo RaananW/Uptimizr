@@ -1,5 +1,16 @@
 # @uptimizr/agent-core
 
+## 1.0.0
+
+### Major Changes
+
+- 9dd78e8: Uptimizr 1.0.0 — first stable release. Every package moves to 1.0.0 together; from here on the public API, the versioned event schema, and the collector's HTTP API follow semantic versioning (a breaking change is a major). Highlights since the public beta: six stable live-JS connectors (Babylon.js, Babylon Lite, three.js, react-three-fiber, PlayCanvas, A-Frame/WebXR) with per-engine capture parity and end-to-end coverage; WebXR in-scene hit resolution; three optional multi-writer stores (ClickHouse, PostgreSQL, SQL Server) behind the same `CollectorStore` contract with cross-engine parity tests; the in-browser analytics assistant with a local (WebLLM) or hosted model, tool-calling over the read-only analytics catalog, and streamed replies; and the MCP server for desktop AI clients. No wire-format or API changes are bundled with this bump — it marks the point where they become breaking.
+
+### Minor Changes
+
+- 8194192: Token streaming across the provider seam. `ProviderRequest` gains an optional `onToken(delta)` listener — additive, so `LlmProvider.complete()` still returns `Promise<ProviderResponse>` and every existing provider keeps working unchanged. The hosted adapter now requests a streamed reply whenever a listener is present and parses both the OpenAI-compatible and Anthropic Server-Sent Events formats (partial chunks across reads, `[DONE]`, tool-call deltas) using string membership and linear scans only — no regex over model output — while still returning the complete assembled response; a gateway that ignores `stream` falls back to the JSON body. The WebLLM adapter streams the tools-less answer turn straight from the GPU (tool-calling turns stay non-streaming because WebLLM's Hermes grammar emits a JSON tool-call array there) and honours the abort signal mid-stream. `runAgent` gains `onStream`, re-emitting per-turn `delta` / `turn_end` events (`AgentStreamEvent`) so a UI can render the answer as it is generated and tell an answer turn apart from a tool-call turn; the tool-calling loop is unchanged.
+- 6b6a2fe: WebLLM adapter: reclaim previous local-model weights when switching models. Loading a model now evicts the other curated models' cached weights from the browser's Cache Storage first (via WebLLM's `hasModelInCache` / `deleteModelAllInfoInCache`), so switching among the ~4 GB Hermes models no longer stacks caches until the origin's storage quota is exceeded. New `cachePolicy` option on `createWebLlmProvider` (`"active-only"`, the default, or `"keep-all"` to opt out), an `onCacheEvicted(ids)` callback, a `provider.clearCachedModels()` method, and a standalone `clearCachedModels()` helper that deletes every cached curated model and returns the ids reclaimed. Eviction is scoped to the known curated model ids only.
+
 ## 0.3.1
 
 ### Patch Changes

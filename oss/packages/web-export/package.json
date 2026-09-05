@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/web-export",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared foundation for Uptimizr web-export engine connectors (Unity, Godot, Unreal): the versioned JS bridge contract, a zero-engine-code JS-only capture tier, and native-frame normalization.",
   "keywords": [
     "uptimizr",

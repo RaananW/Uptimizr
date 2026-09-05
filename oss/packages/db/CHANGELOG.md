@@ -1,5 +1,35 @@
 # @uptimizr/db
 
+## 1.0.0
+
+### Major Changes
+
+- 9dd78e8: Uptimizr 1.0.0 — first stable release. Every package moves to 1.0.0 together; from here on the public API, the versioned event schema, and the collector's HTTP API follow semantic versioning (a breaking change is a major). Highlights since the public beta: six stable live-JS connectors (Babylon.js, Babylon Lite, three.js, react-three-fiber, PlayCanvas, A-Frame/WebXR) with per-engine capture parity and end-to-end coverage; WebXR in-scene hit resolution; three optional multi-writer stores (ClickHouse, PostgreSQL, SQL Server) behind the same `CollectorStore` contract with cross-engine parity tests; the in-browser analytics assistant with a local (WebLLM) or hosted model, tool-calling over the read-only analytics catalog, and streamed replies; and the MCP server for desktop AI clients. No wire-format or API changes are bundled with this bump — it marks the point where they become breaking.
+
+### Minor Changes
+
+- fceff6c: Add `postgresDialect` (+ `PostgresSettings` via `readDbSettings().postgres`, read from
+  `POSTGRES_URL` / `DATABASE_URL`, `POSTGRES_SCHEMA`, `POSTGRES_POOL_MAX`) and the engine-neutral
+  relational helpers (`renderNearestRowJoin`, `renderNativeAsofJoin`, `toPositionalParams`) that
+  row-store dialects share (#84; the SQL Server port reuses them).
+
+  `Dialect` gains `arrayLength(expr)` and a structured `asofJoin(spec)`, which **replaces** the
+  `asofInnerJoin` / `asofLeftJoin` string introducers so engines without a native `ASOF JOIN` can
+  emulate it. The shared aggregations now emit portable `count(*)` / `arrayLength` — DuckDB and
+  ClickHouse output is unchanged (parity suites pass as before).
+
+### Patch Changes
+
+- 29c167d: Add `mssqlDialect` for the SQL Server store (#85) plus `MssqlSettings` via `readDbSettings().mssql`
+  (`MSSQL_URL`, or `MSSQL_SERVER` / `MSSQL_PORT` / `MSSQL_DATABASE` / `MSSQL_USER` / `MSSQL_PASSWORD`,
+  `MSSQL_ENCRYPT`, `MSSQL_TRUST_SERVER_CERTIFICATE`, `MSSQL_POOL_MAX`), and `toTsql` — the
+  execution-time adaptation of the shared SQL for the constructs T-SQL cannot parse (inline vector
+  indexing over JSON arrays, `LIMIT`, `GROUP BY <alias>`, `atan2`). The three boolean-valued flag
+  columns in the shared aggregations became portable 0/1 flags; DuckDB, ClickHouse and Postgres
+  output is unchanged (parity suites pass as before). No `Dialect` interface change.
+- Updated dependencies [9dd78e8]
+  - @uptimizr/schema@1.0.0
+
 ## 0.8.2
 
 ### Patch Changes
