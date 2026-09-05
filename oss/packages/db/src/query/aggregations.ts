@@ -81,7 +81,7 @@ export function buildListSessions(
       SELECT
         session_id,
         ${d.anyValue("visitor_id")} AS visitor_id,
-        count() AS events,
+        count(*) AS events,
         min(ts) AS started_at,
         max(ts) AS ended_at
       FROM events
@@ -120,11 +120,11 @@ export function buildPointerHeatmap(
       SELECT
         floor(screen[1] * ${bins}) AS gx,
         floor(screen[2] * ${bins}) AS gy,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid}
         AND event_type IN ('pointer_move', 'pointer_click')
-        AND length(screen) = 2${range}${scene}${source}${session}${cameraMode}
+        AND ${d.arrayLength("screen")} = 2${range}${scene}${source}${session}${cameraMode}
       GROUP BY gx, gy
       ORDER BY count DESC
     `,
@@ -165,7 +165,7 @@ export function buildMeshUvHeatmap(
   const v = d.jsonFloat("payload", "uv", "1");
   return {
     query: `
-      SELECT gx, gy, count() AS count
+      SELECT gx, gy, count(*) AS count
       FROM (
         SELECT
           floor(${u} * ${bins}) AS gx,
@@ -212,11 +212,11 @@ export function buildWorldHeatmap(
         floor(hit_point[1] / ${cellSize}) AS vx,
         floor(hit_point[2] / ${cellSize}) AS vy,
         floor(hit_point[3] / ${cellSize}) AS vz,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid}
         AND event_type IN ('pointer_move', 'pointer_click')
-        AND length(hit_point) = 3${range}${scene}${source}${cameraMode}${region}
+        AND ${d.arrayLength("hit_point")} = 3${range}${scene}${source}${cameraMode}${region}
       GROUP BY vx, vy, vz
       ORDER BY count DESC
       LIMIT ${limit}
@@ -251,17 +251,17 @@ export function buildWorldHeatmapStats(
   const region = regionClause(bag, opts, HIT_POINT_COLS);
   return {
     query: `
-      SELECT count() AS cells, coalesce(sum(c), 0) AS hits
+      SELECT count(*) AS cells, coalesce(sum(c), 0) AS hits
       FROM (
         SELECT
           floor(hit_point[1] / ${cellSize}) AS vx,
           floor(hit_point[2] / ${cellSize}) AS vy,
           floor(hit_point[3] / ${cellSize}) AS vz,
-          count() AS c
+          count(*) AS c
         FROM events
         WHERE project_id = ${pid}
           AND event_type IN ('pointer_move', 'pointer_click')
-          AND length(hit_point) = 3${range}${scene}${source}${cameraMode}${region}
+          AND ${d.arrayLength("hit_point")} = 3${range}${scene}${source}${cameraMode}${region}
         GROUP BY vx, vy, vz
       ) t
     `,
@@ -303,11 +303,11 @@ export function buildGazeHeatmap(
         floor(hit_point[1] / ${cellSize}) AS vx,
         floor(hit_point[2] / ${cellSize}) AS vy,
         floor(hit_point[3] / ${cellSize}) AS vz,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid}
         AND event_type = 'camera_sample'
-        AND length(hit_point) = 3${range}${scene}${session}${cameraMode}${region}
+        AND ${d.arrayLength("hit_point")} = 3${range}${scene}${session}${cameraMode}${region}
       GROUP BY vx, vy, vz
       ORDER BY count DESC
       LIMIT ${limit}
@@ -340,17 +340,17 @@ export function buildGazeHeatmapStats(
   const region = regionClause(bag, opts, HIT_POINT_COLS);
   return {
     query: `
-      SELECT count() AS cells, coalesce(sum(c), 0) AS hits
+      SELECT count(*) AS cells, coalesce(sum(c), 0) AS hits
       FROM (
         SELECT
           floor(hit_point[1] / ${cellSize}) AS vx,
           floor(hit_point[2] / ${cellSize}) AS vy,
           floor(hit_point[3] / ${cellSize}) AS vz,
-          count() AS c
+          count(*) AS c
         FROM events
         WHERE project_id = ${pid}
           AND event_type = 'camera_sample'
-          AND length(hit_point) = 3${range}${scene}${session}${cameraMode}${region}
+          AND ${d.arrayLength("hit_point")} = 3${range}${scene}${session}${cameraMode}${region}
         GROUP BY vx, vy, vz
       ) t
     `,
@@ -379,11 +379,11 @@ export function buildCameraDirectionHeatmap(
       SELECT
         floor((atan2(direction[3], direction[1]) + pi()) / (2 * pi()) * ${bins}) AS azimuth_bin,
         floor((asin(direction[2] / greatest(${d.vectorNorm("direction")}, 1e-6)) + pi() / 2) / pi() * ${bins}) AS elevation_bin,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid}
         AND event_type = 'camera_sample'
-        AND length(direction) = 3${range}${scene}${session}${cameraMode}
+        AND ${d.arrayLength("direction")} = 3${range}${scene}${session}${cameraMode}
       GROUP BY azimuth_bin, elevation_bin
       ORDER BY count DESC
     `,
@@ -421,7 +421,7 @@ export function buildViewCoverageHistogram(
     query: `
       SELECT
         least(floor(coverage_pct / 25), 3) * 25 AS bucket,
-        count() AS sessions
+        count(*) AS sessions
       FROM (
         SELECT
           session_id,
@@ -434,7 +434,7 @@ export function buildViewCoverageHistogram(
           FROM events
           WHERE project_id = ${pid}
             AND event_type = 'camera_sample'
-            AND length(direction) = 3${range}${scene}${session}${cameraMode}
+            AND ${d.arrayLength("direction")} = 3${range}${scene}${session}${cameraMode}
         ) binned
         GROUP BY session_id
       ) per_session
@@ -475,11 +475,11 @@ export function buildCameraPositionHeatmap(
         floor(position[1] / ${cellSize}) AS gx,
         floor(position[3] / ${cellSize}) AS gz,
         avg(position[2]) AS avg_y,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid}
         AND event_type = 'camera_sample'
-        AND length(position) = 3${range}${scene}${session}${cameraMode}${region}
+        AND ${d.arrayLength("position")} = 3${range}${scene}${session}${cameraMode}${region}
       GROUP BY gx, gz
       ORDER BY count DESC
       LIMIT ${limit}
@@ -515,7 +515,7 @@ export function buildSessionTrajectory(
       WHERE project_id = ${pid}
         AND session_id = ${session}
         AND event_type = 'camera_sample'
-        AND length(position) = 3${range}${scene}
+        AND ${d.arrayLength("position")} = 3${range}${scene}
       ORDER BY ts ASC
       LIMIT ${limit}
     `,
@@ -557,7 +557,7 @@ export function buildAggregateTrajectories(
       FROM events
       WHERE project_id = ${pid}
         AND event_type = 'camera_sample'
-        AND length(position) = 3${range}${scene}${cameraMode}
+        AND ${d.arrayLength("position")} = 3${range}${scene}${cameraMode}
       ORDER BY session_id ASC, ts ASC
       LIMIT ${limit}
     `,
@@ -621,7 +621,7 @@ export function buildClickGazeRay(
         avg(j.hy) AS hit_y,
         avg(j.hz) AS hit_z,
         j.mesh AS mesh,
-        count() AS count
+        count(*) AS count
       FROM (
         SELECT
           ja.hx AS hx, ja.hy AS hy, ja.hz AS hz, ja.mesh AS mesh,
@@ -663,16 +663,18 @@ export function buildClickGazeRay(
           FROM (
             SELECT session_id, ts,
               hit_point[1] AS hx, hit_point[2] AS hy, hit_point[3] AS hz, mesh,
-              length(ray_origin) = 3 AS has_ray,
+              ${d.arrayLength("ray_origin")} = 3 AS has_ray,
               ray_origin[1] AS rox, ray_origin[2] AS roy, ray_origin[3] AS roz,
-              length(screen) = 2 AS has_screen,
+              ${d.arrayLength("screen")} = 2 AS has_screen,
               screen[1] AS sx, screen[2] AS sy
             FROM events
             WHERE project_id = ${pid}
               AND event_type = 'pointer_click'
-              AND length(hit_point) = 3${range}${scene}${source}${session}
+              AND ${d.arrayLength("hit_point")} = 3${range}${scene}${source}${session}
           ) AS c
-          ${d.asofLeftJoin} (
+          ${d.asofJoin({
+            kind: "left",
+            right: `(
             SELECT session_id, ts, 1 AS cam_present,
               position[1] AS px, position[2] AS py, position[3] AS pz,
               direction[1] AS dx, direction[2] AS dy, direction[3] AS dz,
@@ -680,9 +682,14 @@ export function buildClickGazeRay(
             FROM events
             WHERE project_id = ${pid}
               AND event_type = 'camera_sample'
-              AND length(position) = 3${range}${scene}${session}
-          ) AS m
-          ON c.session_id = m.session_id AND c.ts >= m.ts
+              AND ${d.arrayLength("position")} = 3${range}${scene}${session}
+          )`,
+            alias: "m",
+            keys: [["c.session_id", "session_id"]],
+            leftTs: "c.ts",
+            op: ">=",
+            rightTs: "ts",
+          })}
         ) AS ja
       ) AS j
       WHERE j.ox IS NOT NULL
@@ -744,7 +751,7 @@ export function buildFlowHeatmap(
         floor((atan2(m.dz, m.dx) + pi()) / (2 * pi()) * ${bins}) AS azimuth_bin,
         floor((asin(m.dy / greatest(sqrt(m.dx * m.dx + m.dy * m.dy + m.dz * m.dz), 1e-6)) + pi() / 2) / pi() * ${bins}) AS elevation_bin,
         c.mesh AS mesh,
-        count() AS count
+        count(*) AS count
       FROM (
         SELECT session_id, ts, mesh
         FROM events
@@ -752,14 +759,21 @@ export function buildFlowHeatmap(
           AND event_type = 'pointer_click'
           AND mesh != ''${range}${scene}${session}${cameraMode}
       ) AS c
-      ${d.asofInnerJoin} (
+      ${d.asofJoin({
+        kind: "inner",
+        right: `(
         SELECT session_id, ts, direction[1] AS dx, direction[2] AS dy, direction[3] AS dz
         FROM events
         WHERE project_id = ${pid}
           AND event_type = 'camera_sample'
-          AND length(direction) = 3${range}${scene}${session}${cameraMode}
-      ) AS m
-      ON c.session_id = m.session_id AND c.ts >= m.ts
+          AND ${d.arrayLength("direction")} = 3${range}${scene}${session}${cameraMode}
+      )`,
+        alias: "m",
+        keys: [["c.session_id", "session_id"]],
+        leftTs: "c.ts",
+        op: ">=",
+        rightTs: "ts",
+      })}
       GROUP BY azimuth_bin, elevation_bin, mesh
       ORDER BY count DESC
       LIMIT ${limit}
@@ -791,7 +805,7 @@ export function buildFlowHeatmap(
         avg(j.oy) AS origin_y,
         avg(j.oz) AS origin_z,
         j.mesh AS mesh,
-        count() AS count
+        count(*) AS count
       FROM (
         SELECT
           c.mesh AS mesh,
@@ -801,24 +815,31 @@ export function buildFlowHeatmap(
           CASE WHEN c.has_ray THEN c.roz ELSE m.pz END AS oz
         FROM (
           SELECT session_id, ts, mesh,
-            length(ray_origin) = 3 AS has_ray,
+            ${d.arrayLength("ray_origin")} = 3 AS has_ray,
             ray_origin[1] AS rox, ray_origin[2] AS roy, ray_origin[3] AS roz
           FROM events
           WHERE project_id = ${pid}
             AND event_type = 'pointer_click'
             AND mesh != ''${range}${scene}${session}${cameraMode}
         ) AS c
-        ${d.asofInnerJoin} (
+        ${d.asofJoin({
+          kind: "inner",
+          right: `(
           SELECT session_id, ts,
             position[1] AS px, position[2] AS py, position[3] AS pz,
             direction[1] AS dx, direction[2] AS dy, direction[3] AS dz
           FROM events
           WHERE project_id = ${pid}
             AND event_type = 'camera_sample'
-            AND length(direction) = 3
-            AND length(position) = 3${range}${scene}${session}${cameraMode}
-        ) AS m
-        ON c.session_id = m.session_id AND c.ts >= m.ts
+            AND ${d.arrayLength("direction")} = 3
+            AND ${d.arrayLength("position")} = 3${range}${scene}${session}${cameraMode}
+        )`,
+          alias: "m",
+          keys: [["c.session_id", "session_id"]],
+          leftTs: "c.ts",
+          op: ">=",
+          rightTs: "ts",
+        })}
       ) AS j${originFilter}
       GROUP BY azimuth_bin, elevation_bin, origin_vx, origin_vy, origin_vz, mesh
       ORDER BY count DESC
@@ -841,7 +862,7 @@ export function buildTopMeshes(
   const limit = bag.add("limit", "u32", opts.limit ?? 25);
   return {
     query: `
-      SELECT mesh, count() AS count
+      SELECT mesh, count(*) AS count
       FROM events
       WHERE project_id = ${pid} AND mesh != ''${range}${session}
       GROUP BY mesh
@@ -875,7 +896,7 @@ export function buildTopMeshesBySource(
   const limit = bag.add("limit", "u32", opts.limit ?? 200);
   return {
     query: `
-      SELECT mesh, source, count() AS count
+      SELECT mesh, source, count(*) AS count
       FROM events
       WHERE project_id = ${pid}
         AND event_type IN ('mesh_interaction', 'pointer_click')
@@ -918,7 +939,7 @@ export function buildTopMeshesTrend(
       SELECT
         mesh,
         ${d.timeBucketMs("ts", interval)} AS bucket,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid}
         AND event_type IN ('mesh_interaction', 'pointer_click')
@@ -954,7 +975,7 @@ export function buildMeshDwell(
         sum(visible_ms) AS visible_ms,
         sum(centered_ms) AS centered_ms,
         max(screen_fraction) AS max_screen_fraction,
-        count() AS samples
+        count(*) AS samples
       FROM events
       WHERE project_id = ${pid} AND event_type = 'mesh_visibility' AND mesh != ''${range}${scene}${session}
       GROUP BY mesh
@@ -1049,7 +1070,7 @@ export function buildMeshInteractionKinds(
       SELECT
         mesh,
         name AS kind,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid} AND event_type = 'mesh_interaction' AND mesh != ''${range}${scene}${source}${session}
       GROUP BY mesh, name
@@ -1098,7 +1119,7 @@ export function buildReachability(
       SELECT
         seg.mesh AS mesh,
         floor(seg.dist / ${bucketSize}) AS bucket,
-        count() AS count,
+        count(*) AS count,
         avg(seg.dist) AS avg_distance
       FROM (
         SELECT
@@ -1115,17 +1136,24 @@ export function buildReachability(
           WHERE project_id = ${pid}
             AND event_type = 'mesh_interaction'
             AND mesh != ''
-            AND length(hit_point) = 3${range}${scene}${source}${session}
+            AND ${d.arrayLength("hit_point")} = 3${range}${scene}${source}${session}
         ) AS i
-        ${d.asofInnerJoin} (
+        ${d.asofJoin({
+          kind: "inner",
+          right: `(
           SELECT session_id, ts,
             position[1] AS px, position[2] AS py, position[3] AS pz
           FROM events
           WHERE project_id = ${pid}
             AND event_type = 'camera_sample'
-            AND length(position) = 3${range}${scene}${session}
-        ) AS m
-        ON i.session_id = m.session_id AND i.ts >= m.ts
+            AND ${d.arrayLength("position")} = 3${range}${scene}${session}
+        )`,
+          alias: "m",
+          keys: [["i.session_id", "session_id"]],
+          leftTs: "i.ts",
+          op: ">=",
+          rightTs: "ts",
+        })}
       ) AS seg
       GROUP BY mesh, bucket
       ORDER BY count DESC
@@ -1155,7 +1183,7 @@ export function buildDeadClicks(
   return {
     query: `
       SELECT
-        count() AS total_clicks,
+        count(*) AS total_clicks,
         sum(CASE WHEN mesh = '' THEN 1 ELSE 0 END) AS dead_clicks
       FROM events
       WHERE project_id = ${pid} AND event_type = 'pointer_click'${range}${scene}${source}${session}
@@ -1196,11 +1224,11 @@ export function buildRageClicks(
         session_id,
         mesh,
         ${d.timeBucketMs("ts", interval)} AS bucket,
-        count() AS clicks
+        count(*) AS clicks
       FROM events
       WHERE project_id = ${pid} AND event_type = 'pointer_click' AND mesh != ''${range}${scene}${source}${session}
       GROUP BY session_id, mesh, bucket
-      HAVING count() >= ${minRepeats}
+      HAVING count(*) >= ${minRepeats}
       ORDER BY clicks DESC
       LIMIT ${limit}
     `,
@@ -1234,7 +1262,7 @@ export function buildHoverDwell(
         mesh,
         sum(visible_ms) AS dwell_ms,
         max(visible_ms) AS max_dwell_ms,
-        count() AS episodes
+        count(*) AS episodes
       FROM events
       WHERE project_id = ${pid} AND event_type = 'hover_dwell' AND mesh != ''${range}${scene}${source}${session}
       GROUP BY mesh
@@ -1268,7 +1296,7 @@ export function buildCompileStalls(
     query: `
       SELECT
         name AS phase,
-        count() AS stalls,
+        count(*) AS stalls,
         sum(visible_ms) AS total_ms,
         avg(visible_ms) AS avg_ms,
         max(visible_ms) AS max_ms
@@ -1301,7 +1329,7 @@ export function buildResourceSummary(
   return {
     query: `
       SELECT
-        count() AS samples,
+        count(*) AS samples,
         avg(NULLIF(js_heap_bytes, 0)) AS avg_js_heap_bytes,
         max(js_heap_bytes) AS max_js_heap_bytes,
         avg(NULLIF(triangles, 0)) AS avg_triangles,
@@ -1341,7 +1369,7 @@ export function buildResourcePercentiles(
   return {
     query: `
       SELECT
-        count() AS sessions,
+        count(*) AS sessions,
         sum(s_samples) AS samples,
         ${d.quantile("s_heap_p50", 0.5)} AS p50_js_heap_bytes,
         ${d.quantile("s_heap_p95", 0.5)} AS p95_js_heap_bytes,
@@ -1352,7 +1380,7 @@ export function buildResourcePercentiles(
       FROM (
         SELECT
           session_id,
-          count() AS s_samples,
+          count(*) AS s_samples,
           ${d.quantile("nullIf(js_heap_bytes, 0)", 0.5)} AS s_heap_p50,
           ${d.quantile("nullIf(js_heap_bytes, 0)", 0.95)} AS s_heap_p95,
           ${d.quantile("nullIf(texture_bytes, 0)", 0.5)} AS s_tex_p50,
@@ -1390,7 +1418,7 @@ export function buildStabilityCounts(
       SELECT
         coalesce(sum(CASE WHEN event_type = 'context_lost' THEN 1 ELSE 0 END), 0) AS context_losses,
         coalesce(sum(CASE WHEN event_type = 'compile_stall' THEN 1 ELSE 0 END), 0) AS compile_stalls,
-        count() AS incidents
+        count(*) AS incidents
       FROM events
       WHERE project_id = ${pid} AND event_type IN ('context_lost', 'compile_stall')${range}${scene}${session}
     `,
@@ -1454,7 +1482,7 @@ export function buildGraphicsDiagnosticCounts(
  *
  * `position` is best-effort connector-side (the camera pose at the moment the
  * error/diagnostic fired), so only rows that carry a full 3-vector participate
- * (`length(position) = 3`); errors from pages with no 3D connector are naturally
+ * (`arrayLength(position) = 3`); errors from pages with no 3D connector are naturally
  * excluded. Reuses the already-promoted `position` column — no migration.
  *
  * Optional {@link ErrorHeatmapOptions} filters (severity/category/errorKind) read
@@ -1503,11 +1531,11 @@ export function buildErrorHeatmap(
         floor(position[1] / ${cellSize}) AS vx,
         floor(position[2] / ${cellSize}) AS vy,
         floor(position[3] / ${cellSize}) AS vz,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid}
         AND event_type IN ('runtime_error', 'graphics_diagnostic')
-        AND length(position) = 3${range}${scene}${session}${region}${filter}
+        AND ${d.arrayLength("position")} = 3${range}${scene}${session}${region}${filter}
       GROUP BY vx, vy, vz
       ORDER BY count DESC
       LIMIT ${limit}
@@ -1528,7 +1556,7 @@ export function buildErrorHeatmap(
  * in the already-promoted `position` column (no migration), and the WebXR
  * bounds-check that produced it ran entirely on-device — the boundary polygon and
  * room geometry are never captured or stored (ADR 0003 / ADR 0048). Only rows
- * with a full 3-vector participate (`length(position) = 3`). `region` drill-down
+ * with a full 3-vector participate (`arrayLength(position) = 3`). `region` drill-down
  * and `scene`/`session` scoping compose like the other spatial heatmaps.
  */
 export function buildBoundaryHeatmap(
@@ -1553,11 +1581,11 @@ export function buildBoundaryHeatmap(
         floor(position[1] / ${cellSize}) AS vx,
         floor(position[2] / ${cellSize}) AS vy,
         floor(position[3] / ${cellSize}) AS vz,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid}
         AND event_type = 'xr_boundary_proximity'
-        AND length(position) = 3${range}${scene}${session}${region}
+        AND ${d.arrayLength("position")} = 3${range}${scene}${session}${region}
       GROUP BY vx, vy, vz
       ORDER BY count DESC
       LIMIT ${limit}
@@ -1587,17 +1615,17 @@ export function buildBoundaryHeatmapStats(
   const region = regionClause(bag, opts, POSITION_COLS);
   return {
     query: `
-      SELECT count() AS cells, coalesce(sum(c), 0) AS hits
+      SELECT count(*) AS cells, coalesce(sum(c), 0) AS hits
       FROM (
         SELECT
           floor(position[1] / ${cellSize}) AS vx,
           floor(position[2] / ${cellSize}) AS vy,
           floor(position[3] / ${cellSize}) AS vz,
-          count() AS c
+          count(*) AS c
         FROM events
         WHERE project_id = ${pid}
           AND event_type = 'xr_boundary_proximity'
-          AND length(position) = 3${range}${scene}${session}${region}
+          AND ${d.arrayLength("position")} = 3${range}${scene}${session}${region}
         GROUP BY vx, vy, vz
       ) t
     `,
@@ -1613,7 +1641,7 @@ export function buildBoundaryHeatmapStats(
  * space didn't fit the experience.
  *
  * Each `xr_boundary_proximity` event is one approach (ADR 0048), so `contacts` is
- * a plain `count()` and `near_ms` sums the per-approach `durationMs` (stored in
+ * a plain `count(*)` and `near_ms` sums the per-approach `durationMs` (stored in
  * the shared `visible_ms` column, reused by `mesh_visibility`/`hover_dwell`/
  * `compile_stall`). No boundary geometry participates — only the promoted position
  * + duration each event already carries.
@@ -1633,7 +1661,7 @@ export function buildBoundaryContacts(
     query: `
       SELECT
         session_id,
-        count() AS contacts,
+        count(*) AS contacts,
         coalesce(sum(visible_ms), 0) AS near_ms
       FROM events
       WHERE project_id = ${pid}
@@ -1679,7 +1707,7 @@ export function buildRenderingTechnology(
         coalesce(${backend}, '') AS backend,
         coalesce(${apiVersion}, '') AS api_version,
         coalesce(${shadingLanguage}, '') AS shading_language,
-        count() AS sessions
+        count(*) AS sessions
       FROM events
       WHERE project_id = ${pid} AND event_type = 'session_start'${range}${scene}${session}
       GROUP BY api, backend, api_version, shading_language
@@ -1713,7 +1741,7 @@ export function buildCapabilityChanges(
         name AS kind,
         cap_from AS "from",
         cap_to AS "to",
-        count() AS changes
+        count(*) AS changes
       FROM events
       WHERE project_id = ${pid} AND event_type = 'capability_change'${range}${scene}${session}
       GROUP BY name, cap_from, cap_to
@@ -1749,7 +1777,7 @@ export function buildCameraGestures(
     query: `
       SELECT
         name AS kind,
-        count() AS gestures,
+        count(*) AS gestures,
         sum(visible_ms) AS total_ms,
         avg(visible_ms) AS avg_ms,
         max(visible_ms) AS max_ms
@@ -1776,7 +1804,7 @@ export function buildPerfSummary(
   return {
     query: `
       SELECT
-        count() AS samples,
+        count(*) AS samples,
         avg(fps) AS avg_fps,
         min(fps) AS min_fps,
         ${d.quantile("fps", 0.5)} AS p50_fps
@@ -1812,7 +1840,7 @@ export function buildRenderScaleTruth(
   return {
     query: `
       SELECT
-        count() AS samples,
+        count(*) AS samples,
         avg(fps) AS avg_fps,
         ${d.quantile("fps", 0.5)} AS p50_fps,
         avg(NULLIF(render_scale, 0)) AS avg_render_scale,
@@ -1847,7 +1875,7 @@ export function buildPerfDistribution(
   return {
     query: `
       SELECT
-        count() AS sessions,
+        count(*) AS sessions,
         sum(s_samples) AS samples,
         ${d.quantile("s_p05", 0.5)} AS p05_fps,
         ${d.quantile("s_p50", 0.5)} AS p50_fps,
@@ -1855,7 +1883,7 @@ export function buildPerfDistribution(
       FROM (
         SELECT
           session_id,
-          count() AS s_samples,
+          count(*) AS s_samples,
           ${d.quantile("fps", 0.05)} AS s_p05,
           ${d.quantile("fps", 0.5)} AS s_p50,
           ${d.quantile("fps", 0.95)} AS s_p95
@@ -1891,7 +1919,7 @@ export function buildFpsHistogram(
     query: `
       SELECT
         floor(s_p50 / ${bucket}) * ${bucket} AS bucket,
-        count() AS sessions
+        count(*) AS sessions
       FROM (
         SELECT
           session_id,
@@ -1929,14 +1957,14 @@ export function buildFrameTimePercentiles(
   return {
     query: `
       SELECT
-        count() AS sessions,
+        count(*) AS sessions,
         sum(s_samples) AS samples,
         ${d.quantile("s_p50", 0.5)} AS p50_ms,
         ${d.quantile("s_p95", 0.5)} AS p95_ms
       FROM (
         SELECT
           session_id,
-          count() AS s_samples,
+          count(*) AS s_samples,
           ${d.quantile("nullIf(frame_time_ms, 0)", 0.5)} AS s_p50,
           max(nullIf(frame_time_p95_ms, 0)) AS s_p95
         FROM events
@@ -1969,7 +1997,7 @@ export function buildJankRate(
   return {
     query: `
       SELECT
-        count() AS sessions,
+        count(*) AS sessions,
         sum(s_long) AS total_long_frames,
         ${d.quantile("s_rate", 0.5)} AS median_rate,
         ${d.quantile("s_rate", 0.9)} AS worst_decile_rate
@@ -1977,7 +2005,7 @@ export function buildJankRate(
         SELECT
           session_id,
           sum(long_frames) AS s_long,
-          sum(long_frames) * 1.0 / count() AS s_rate
+          sum(long_frames) * 1.0 / count(*) AS s_rate
         FROM events
         WHERE project_id = ${pid} AND event_type = 'frame_perf'${range}${scene}${session}
         GROUP BY session_id
@@ -2064,8 +2092,8 @@ export function buildPerfChurn(
         GROUP BY ends.session_id
       )
       SELECT
-        (SELECT count() FROM ends) AS sessions,
-        count() AS churn_sessions,
+        (SELECT count(*) FROM ends) AS sessions,
+        count(*) AS churn_sessions,
         sum(had_fps) AS fps_churn_sessions,
         sum(had_stall) AS stall_churn_sessions
       FROM correlated
@@ -2116,7 +2144,7 @@ export function buildPerfByDevice(
       session_perf AS (
         SELECT
           session_id,
-          count() AS s_samples,
+          count(*) AS s_samples,
           ${d.quantile("fps", 0.5)} AS s_p50
         FROM events
         WHERE project_id = ${pid} AND event_type = 'frame_perf'${range}${scene}${session}
@@ -2128,7 +2156,7 @@ export function buildPerfByDevice(
         coalesce(dev.renderer, '') AS renderer,
         coalesce(dev.browser, '') AS browser,
         coalesce(dev.os, '') AS os,
-        count() AS sessions,
+        count(*) AS sessions,
         sum(perf.s_samples) AS samples,
         ${d.quantile("perf.s_p50", 0.5)} AS p50_fps
       FROM session_perf perf
@@ -2161,14 +2189,14 @@ export function buildPerfByScene(
     query: `
       SELECT
         scene_id,
-        count() AS sessions,
+        count(*) AS sessions,
         sum(s_samples) AS samples,
         ${d.quantile("s_p50", 0.5)} AS p50_fps
       FROM (
         SELECT
           session_id,
           ${d.anyValue("scene_id")} AS scene_id,
-          count() AS s_samples,
+          count(*) AS s_samples,
           ${d.quantile("fps", 0.5)} AS s_p50
         FROM events
         WHERE project_id = ${pid} AND event_type = 'frame_perf'${range}${scene}${session}
@@ -2258,7 +2286,7 @@ export function buildDistinctScenes(
     query: `
       SELECT
         scene_id,
-        count() AS events,
+        count(*) AS events,
         max(ts) AS last_seen
       FROM events
       WHERE project_id = ${pid}${range}
@@ -2293,7 +2321,7 @@ export function buildTimeseries(
     query: `
       SELECT
         ${d.timeBucketMs("ts", interval)} AS bucket,
-        count() AS events,
+        count(*) AS events,
         ${d.avgIf("fps", "event_type = 'frame_perf'")} AS avg_fps
       FROM events
       WHERE project_id = ${pid}${range}${scene}${type}
@@ -2319,7 +2347,7 @@ export function buildEventTypeCounts(
   const scene = sceneClause(bag, opts);
   return {
     query: `
-      SELECT event_type, count() AS count
+      SELECT event_type, count(*) AS count
       FROM events
       WHERE project_id = ${pid}${range}${scene}
       GROUP BY event_type
@@ -2355,11 +2383,11 @@ export function buildSceneCoverage(
         floor(position[1] / ${cellSize}) AS vx,
         floor(position[2] / ${cellSize}) AS vy,
         floor(position[3] / ${cellSize}) AS vz,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid}
         AND event_type = 'camera_sample'
-        AND length(position) = 3${range}${scene}${session}
+        AND ${d.arrayLength("position")} = 3${range}${scene}${session}
       GROUP BY vx, vy, vz
       ORDER BY count DESC
       LIMIT ${limit}
@@ -2399,13 +2427,13 @@ export function buildPerfHeatmap(
         floor(position[1] / ${cellSize}) AS vx,
         floor(position[2] / ${cellSize}) AS vy,
         floor(position[3] / ${cellSize}) AS vz,
-        count() AS samples,
+        count(*) AS samples,
         avg(fps) AS avg_fps,
         min(fps) AS min_fps
       FROM events
       WHERE project_id = ${pid}
         AND event_type = 'frame_perf'
-        AND length(position) = 3${range}${scene}${session}
+        AND ${d.arrayLength("position")} = 3${range}${scene}${session}
       GROUP BY vx, vy, vz
       ORDER BY avg_fps ASC
       LIMIT ${limit}
@@ -2451,11 +2479,11 @@ export function buildCameraDistance(
           (position[2] - ${cy}) * (position[2] - ${cy}) +
           (position[3] - ${cz}) * (position[3] - ${cz})
         ) / ${bucketSize}) AS bucket,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid}
         AND event_type = 'camera_sample'
-        AND length(position) = 3${range}${scene}${session}
+        AND ${d.arrayLength("position")} = 3${range}${scene}${session}
       GROUP BY bucket
       ORDER BY bucket ASC
       LIMIT ${limit}
@@ -2489,12 +2517,12 @@ export function buildNavigationStats(
         FROM events
         WHERE project_id = ${pid}
           AND event_type = 'camera_sample'
-          AND length(position) = 3${range}${scene}${session}`;
+          AND ${d.arrayLength("position")} = 3${range}${scene}${session}`;
   return {
     query: `
       SELECT
         session_id,
-        count() AS segments,
+        count(*) AS segments,
         sum(dist) AS total_distance,
         sum(CASE WHEN dist >= ${moveThreshold} THEN 1 ELSE 0 END) AS active_segments,
         sum(CASE WHEN dist >= ${moveThreshold} THEN dist ELSE 0 END) AS active_distance
@@ -2508,9 +2536,16 @@ export function buildNavigationStats(
           ) AS dist
         FROM (${sampleSelect}
         ) AS c
-        ${d.asofInnerJoin} (${sampleSelect}
-        ) AS m
-        ON c.session_id = m.session_id AND c.ts > m.ts
+        ${d.asofJoin({
+          kind: "inner",
+          right: `(${sampleSelect}
+        )`,
+          alias: "m",
+          keys: [["c.session_id", "session_id"]],
+          leftTs: "c.ts",
+          op: ">",
+          rightTs: "ts",
+        })}
       ) AS seg
       GROUP BY session_id
       ORDER BY total_distance DESC
@@ -2540,7 +2575,7 @@ export function buildNavigationStats(
  * Per (session, scene): `revisits = entries − distinct_cells` — every entry into
  * a cell beyond its first is a re-entry. Pooled per scene, the leaderboard
  * reports `backtrack_ratio = Σ revisits / Σ entries` alongside the raw counts.
- * Only plain `count()` and a dedup subquery are used (no multi-column
+ * Only plain `count(*)` and a dedup subquery are used (no multi-column
  * `COUNT(DISTINCT …)`), so DuckDB and ClickHouse agree.
  */
 export function buildBacktrackRatio(
@@ -2562,24 +2597,31 @@ export function buildBacktrackRatio(
         FROM events
         WHERE project_id = ${pid}
           AND event_type = 'camera_sample'
-          AND length(position) = 3${range}${scene}${session}`;
+          AND ${d.arrayLength("position")} = 3${range}${scene}${session}`;
   // Ordered cell entries (consecutive same-cell samples collapsed): a sample is
   // an entry when it has no predecessor or its cell changed vs. the predecessor.
   const entries = `
       SELECT c.session_id AS session_id, c.scene AS scene, c.gx AS gx, c.gz AS gz
       FROM (${sampleSelect}
       ) AS c
-      ${d.asofLeftJoin} (
+      ${d.asofJoin({
+        kind: "left",
+        right: `(
         SELECT session_id, ts, 1 AS present, gx, gz FROM (${sampleSelect}
         ) AS s
-      ) AS m
-      ON c.session_id = m.session_id AND c.ts > m.ts
+      )`,
+        alias: "m",
+        keys: [["c.session_id", "session_id"]],
+        leftTs: "c.ts",
+        op: ">",
+        rightTs: "ts",
+      })}
       WHERE m.present IS NULL OR m.present = 0 OR c.gx <> m.gx OR c.gz <> m.gz`;
   return {
     query: `
       SELECT
         scene,
-        count() AS sessions,
+        count(*) AS sessions,
         sum(total_entries) AS entries,
         sum(revisits) AS revisits,
         CASE WHEN sum(total_entries) > 0
@@ -2588,12 +2630,12 @@ export function buildBacktrackRatio(
         SELECT
           e.session_id AS session_id,
           e.scene AS scene,
-          count() AS total_entries,
-          count() - dc.distinct_cells AS revisits
+          count(*) AS total_entries,
+          count(*) - dc.distinct_cells AS revisits
         FROM (${entries}
         ) AS e
         JOIN (
-          SELECT session_id, scene, count() AS distinct_cells
+          SELECT session_id, scene, count(*) AS distinct_cells
           FROM (
             SELECT DISTINCT session_id, scene, gx, gz FROM (${entries}
             ) AS de
@@ -2648,7 +2690,7 @@ export function buildInteractionsBySource(
       SELECT
         event_type,
         source,
-        count() AS count,
+        count(*) AS count,
         count(DISTINCT session_id) AS sessions
       FROM events
       WHERE project_id = ${pid}
@@ -2687,7 +2729,7 @@ export function buildTopInputActions(
       SELECT
         name AS action,
         source,
-        count() AS count
+        count(*) AS count
       FROM events
       WHERE project_id = ${pid} AND event_type = 'input_action' AND name != ''${range}${scene}${source}${session}
       GROUP BY name, source
@@ -2725,12 +2767,12 @@ export function buildXrRotationRate(
         FROM events
         WHERE project_id = ${pid}
           AND event_type = 'camera_sample'
-          AND length(direction) = 3${range}${scene}${session}`;
+          AND ${d.arrayLength("direction")} = 3${range}${scene}${session}`;
   return {
     query: `
       SELECT
         session_id,
-        count() AS samples,
+        count(*) AS samples,
         avg(turn) AS avg_turn_rad,
         max(turn) AS max_turn_rad,
         sum(turn) AS total_turn_rad,
@@ -2745,9 +2787,16 @@ export function buildXrRotationRate(
           ))) AS turn
         FROM (${sampleSelect}
         ) AS c
-        ${d.asofInnerJoin} (${sampleSelect}
-        ) AS m
-        ON c.session_id = m.session_id AND c.ts > m.ts
+        ${d.asofJoin({
+          kind: "inner",
+          right: `(${sampleSelect}
+        )`,
+          alias: "m",
+          keys: [["c.session_id", "session_id"]],
+          leftTs: "c.ts",
+          op: ">",
+          rightTs: "ts",
+        })}
       ) AS seg
       GROUP BY session_id
       ORDER BY total_turn_rad DESC
@@ -2779,7 +2828,7 @@ export function buildXrSourceUsage(
     query: `
       SELECT
         source,
-        count() AS interactions,
+        count(*) AS interactions,
         count(DISTINCT session_id) AS sessions
       FROM events
       WHERE project_id = ${pid}
@@ -2815,7 +2864,7 @@ export function buildXrAbandonment(
     query: `
       SELECT
         session_id,
-        count() AS events,
+        count(*) AS events,
         sum(CASE WHEN source IN ${XR_SOURCES} THEN 1 ELSE 0 END) AS xr_interactions,
         min(ts) AS started_at,
         max(ts) AS ended_at
@@ -3015,7 +3064,7 @@ export function buildArPlacementTimeToPlace(
     query: `
       SELECT
         floor(coalesce(${timeToPlace}, 0) / ${bucket}) * ${bucket} AS bucket,
-        count() AS placements
+        count(*) AS placements
       FROM events
       WHERE project_id = ${pid} AND event_type = 'ar_placement'${range}${scene}${session}
       GROUP BY bucket
@@ -3050,7 +3099,7 @@ export function buildArPlacementAttempts(
     query: `
       SELECT
         coalesce(${attempts}, 1) AS attempts,
-        count() AS placements
+        count(*) AS placements
       FROM events
       WHERE project_id = ${pid} AND event_type = 'ar_placement'${range}${scene}${session}
       GROUP BY attempts
@@ -3087,7 +3136,7 @@ export function buildArPlacementSurfaces(
     query: `
       SELECT
         coalesce(${surface}, 'unknown') AS surface,
-        count() AS placements,
+        count(*) AS placements,
         avg(${scale}) AS avg_scale
       FROM events
       WHERE project_id = ${pid} AND event_type = 'ar_placement'${range}${scene}${session}
@@ -3131,7 +3180,7 @@ export function buildFunnel(projectId: string, opts: FunnelOptions, d: Dialect):
   });
 
   const counts = steps
-    .map((_step, i) => `SELECT ${i} AS step, count() AS sessions FROM s${i}`)
+    .map((_step, i) => `SELECT ${i} AS step, count(*) AS sessions FROM s${i}`)
     .join("\n      UNION ALL ");
 
   return {
@@ -3190,8 +3239,15 @@ export function buildSceneRetention(
       SELECT a.scene_id AS from_scene, b.scene_id AS to_scene,
              count(DISTINCT a.session_id) AS sessions
       FROM sc AS a
-      ${d.asofInnerJoin} sc AS b
-        ON a.session_id = b.session_id AND a.ts < b.ts
+      ${d.asofJoin({
+        kind: "inner",
+        right: "sc",
+        alias: "b",
+        keys: [["a.session_id", "session_id"]],
+        leftTs: "a.ts",
+        op: "<",
+        rightTs: "ts",
+      })}
       GROUP BY from_scene, to_scene
       ORDER BY sessions DESC, from_scene ASC, to_scene ASC
       LIMIT ${limit}
@@ -3266,7 +3322,7 @@ export function buildLoadBounceFunnel(
         GROUP BY fl.session_id, fl.load_ts
       ),
       engaged AS (
-        SELECT lm.session_id AS session_id, count() AS interactions
+        SELECT lm.session_id AS session_id, count(*) AS interactions
         FROM events AS e JOIN load_ms AS lm
           ON e.session_id = lm.session_id
         WHERE e.project_id = ${pid}
@@ -3276,7 +3332,7 @@ export function buildLoadBounceFunnel(
       )
       SELECT
         ${bandCase} AS band,
-        count() AS sessions,
+        count(*) AS sessions,
         sum(CASE WHEN coalesce(eng.interactions, 0) = 0 THEN 1 ELSE 0 END) AS bounced
       FROM load_ms AS lm LEFT JOIN engaged AS eng ON lm.session_id = eng.session_id
       WHERE lm.load_ms IS NOT NULL
@@ -3369,7 +3425,7 @@ export function buildVariantLeaderboard(
 
   // Per-view aggregates: total views and distinct sessions per variant.
   ctes.push(`view_counts AS (
-        SELECT variant, count() AS views, count(DISTINCT session_id) AS sessions
+        SELECT variant, count(*) AS views, count(DISTINCT session_id) AS sessions
         FROM variant_views
         GROUP BY variant
       )`);
