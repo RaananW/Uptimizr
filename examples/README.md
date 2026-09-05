@@ -11,5 +11,13 @@ Runnable demos used for manual and end-to-end testing of the OSS collector.
   to end. See its `README.md` for the engine capability matrix, env vars, and the
   Playwright e2e harness.
 
-Run it from the repo root with `pnpm dev:playground` (or
+- `godot-web-export` — the **reference integration** for the `@uptimizr/godot` bridged
+  tier (ADR 0045, #252): a minimal Godot 4 project with the `UptimizrGodot.gd` autoload
+  (a checked byte-identical copy of the package shim), a `Camera3D`, and named pickable
+  props. Not a pnpm package — CI exports it headlessly to WebAssembly
+  (`pnpm godot:fetch && pnpm godot:export`) and the playground's
+  `e2e/godot-export.spec.ts` boots the export in-page to prove the shim runs
+  (`pnpm test:e2e:godot`). See its `README.md`.
+
+Run the playground from the repo root with `pnpm dev:playground` (or
 `pnpm --filter @uptimizr/example-playground dev`).

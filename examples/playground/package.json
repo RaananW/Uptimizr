@@ -23,6 +23,7 @@
     "@uptimizr/aframe": "workspace:*",
     "@uptimizr/babylon": "workspace:*",
     "@uptimizr/babylon-lite": "workspace:*",
+    "@uptimizr/godot": "workspace:*",
     "@uptimizr/heatmap": "workspace:*",
     "@uptimizr/playcanvas": "workspace:*",
     "@uptimizr/r3f": "workspace:*",

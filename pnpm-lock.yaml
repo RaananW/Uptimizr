@@ -82,6 +82,9 @@ importers:
       '@uptimizr/babylon-lite':
         specifier: workspace:*
         version: link:../../oss/packages/sdk-babylon-lite
+      '@uptimizr/godot':
+        specifier: workspace:*
+        version: link:../../oss/packages/godot
       '@uptimizr/heatmap':
         specifier: workspace:*
         version: link:../../oss/packages/heatmap
