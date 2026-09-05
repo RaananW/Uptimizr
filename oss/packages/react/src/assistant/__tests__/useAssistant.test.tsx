@@ -11,6 +11,9 @@ import { useAssistant } from "../useAssistant";
 // config/detection barrel runs for real (pure, no network).
 let nextProvider: LlmProvider;
 let lastWebllmOptions: unknown;
+// The cache-clearing helper is mocked too: the real one imports the WebLLM
+// runtime and touches the browser Cache API, neither of which exists here.
+const clearCachedModelsMock = vi.fn(async (): Promise<string[]> => []);
 
 vi.mock("@uptimizr/agent-core/providers/webllm", async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
@@ -18,6 +21,7 @@ vi.mock("@uptimizr/agent-core/providers/webllm", async (importActual) => ({
     lastWebllmOptions = options;
     return nextProvider;
   },
+  clearCachedModels: (...args: unknown[]) => clearCachedModelsMock(...(args as [])),
 }));
 vi.mock("@uptimizr/agent-core/providers/hosted", async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
@@ -44,6 +48,8 @@ const HOSTED = {
 
 beforeEach(() => {
   lastWebllmOptions = undefined;
+  clearCachedModelsMock.mockReset();
+  clearCachedModelsMock.mockResolvedValue([]);
   localStorage.clear();
 });
 afterEach(() => {
@@ -147,6 +153,52 @@ describe("useAssistant", () => {
     expect(system!.content).toContain(new Date(nowMs).toISOString());
   });
 
+  it("refreshes the time stamp on every send across a day boundary, with one system message", async () => {
+    // Issue #220: a conversation continued past midnight must resolve "today"
+    // against the NEW day. The single system message is updated in place — a
+    // second system turn is never appended.
+    const requests: Array<{ messages: { role: string; content: string }[] }> = [];
+    nextProvider = {
+      complete: vi.fn(async (req: { messages: { role: string; content: string }[] }) => {
+        requests.push(req);
+        return { kind: "final", content: "ok" } as ProviderResponse;
+      }),
+    };
+    const beforeMidnight = Date.UTC(2023, 10, 14, 23, 59, 30); // 2023-11-14T23:59:30Z
+    const afterMidnight = Date.UTC(2023, 10, 15, 0, 0, 30); // 2023-11-15T00:00:30Z
+    let nowMs = beforeMidnight;
+    const { result } = renderHook(() =>
+      useAssistant({ api: fakeApi(), backend: HOSTED, now: () => nowMs }),
+    );
+
+    await act(async () => {
+      await result.current.send("which scenes had activity today?");
+    });
+    nowMs = afterMidnight;
+    await act(async () => {
+      await result.current.send("and today now?");
+    });
+
+    expect(requests).toHaveLength(2);
+    const systems1 = requests[0]!.messages.filter((m) => m.role === "system");
+    const systems2 = requests[1]!.messages.filter((m) => m.role === "system");
+    expect(systems1).toHaveLength(1);
+    expect(systems2).toHaveLength(1);
+    // Each send carries the correct date for ITS moment.
+    expect(systems1[0]!.content).toContain("2023-11-14T23:59:30.000Z");
+    expect(systems2[0]!.content).toContain("2023-11-15T00:00:30.000Z");
+    expect(systems2[0]!.content).not.toContain("2023-11-14T23:59:30.000Z");
+    // The system message stays first, and the transcript keeps exactly one.
+    expect(requests[1]!.messages[0]!.role).toBe("system");
+    expect(result.current.messages.filter((m) => m.role === "system")).toHaveLength(1);
+    expect(result.current.messages[0]!.content).toContain(`epoch milliseconds: ${afterMidnight}`);
+    // Both user turns are retained, in order, after the refresh.
+    expect(result.current.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+      "which scenes had activity today?",
+      "and today now?",
+    ]);
+  });
+
   it("sends the focused core tool set for local and the full catalog for hosted", async () => {
     const capture = (): { provider: LlmProvider; lastToolCount: () => number } => {
       let count = -1;
@@ -243,6 +295,62 @@ describe("useAssistant", () => {
     expect((lastWebllmOptions as { onInitProgress?: unknown }).onInitProgress).toBeTypeOf(
       "function",
     );
+  });
+
+  it("forwards the cache policy and eviction callback to the WebLLM factory (#216)", async () => {
+    nextProvider = scriptedProvider([{ kind: "final", content: "ok" }]);
+    const onCacheEvicted = vi.fn();
+    const { result } = renderHook(() =>
+      useAssistant({
+        api: fakeApi(),
+        backend: { backend: "local", webllm: { model: "M" } },
+        cachePolicy: "keep-all",
+        onCacheEvicted,
+      }),
+    );
+    await act(async () => {
+      await result.current.send("hi");
+    });
+    expect(lastWebllmOptions).toMatchObject({ model: "M", cachePolicy: "keep-all" });
+    // The factory's callback is wired through to the host's, with the evicted ids.
+    const opts = lastWebllmOptions as { onCacheEvicted?: (ids: readonly string[]) => void };
+    expect(opts.onCacheEvicted).toBeTypeOf("function");
+    opts.onCacheEvicted!(["Hermes-3-Llama-3.1-8B-q4f16_1-MLC"]);
+    expect(onCacheEvicted).toHaveBeenCalledWith(["Hermes-3-Llama-3.1-8B-q4f16_1-MLC"]);
+  });
+
+  it("leaves the cache policy to the adapter default when not specified", async () => {
+    nextProvider = scriptedProvider([{ kind: "final", content: "ok" }]);
+    const { result } = renderHook(() =>
+      useAssistant({ api: fakeApi(), backend: { backend: "local", webllm: { model: "M" } } }),
+    );
+    await act(async () => {
+      await result.current.send("hi");
+    });
+    expect((lastWebllmOptions as { cachePolicy?: unknown }).cachePolicy).toBeUndefined();
+  });
+
+  it("clearCachedModels delegates to the WebLLM helper and returns the reclaimed ids (#216)", async () => {
+    // Works without a provider having been built (no send yet) — the user may
+    // need to reclaim space BEFORE a download can succeed.
+    clearCachedModelsMock.mockResolvedValue(["Hermes-3-Llama-3.1-8B-q4f16_1-MLC"]);
+    const { result } = renderHook(() => useAssistant({ api: fakeApi() }));
+
+    let cleared: string[] = [];
+    await act(async () => {
+      cleared = await result.current.clearCachedModels();
+    });
+
+    expect(clearCachedModelsMock).toHaveBeenCalledTimes(1);
+    expect(cleared).toEqual(["Hermes-3-Llama-3.1-8B-q4f16_1-MLC"]);
+    expect(lastWebllmOptions).toBeUndefined();
+  });
+
+  it("clearCachedModels propagates a Cache API failure to the caller", async () => {
+    const boom = new Error("cache denied");
+    clearCachedModelsMock.mockRejectedValue(boom);
+    const { result } = renderHook(() => useAssistant({ api: fakeApi() }));
+    await expect(result.current.clearCachedModels()).rejects.toBe(boom);
   });
 
   it("errors when a hosted backend is selected but not configured", async () => {

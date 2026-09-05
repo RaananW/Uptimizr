@@ -4,10 +4,11 @@
  * Each analytics aggregation is authored *once* in `aggregations.ts` against the
  * {@link Dialect} interface, and rendered to a {@link QuerySpec} per SQL engine.
  * Everything that genuinely differs between engines — bound-parameter syntax,
- * `quantile`, vector norm, time bucketing, ASOF joins, and the rollup `-Merge`
- * combinators — is funnelled through this interface so the bulk of each query
- * stays shared. The OSS default engine is DuckDB; a single-tenant ClickHouse
- * dialect serves the optional scale tier (and may be re-homed to OSS later).
+ * `quantile`, vector norm, array length, time bucketing, ASOF joins, and the
+ * rollup `-Merge` combinators — is funnelled through this interface so the bulk
+ * of each query stays shared. The OSS default engine is DuckDB; the single-tenant
+ * ClickHouse and Postgres dialects serve self-hosters who outgrow DuckDB's
+ * single-writer file (`@uptimizr/db-clickhouse`, `@uptimizr/db-postgres`).
  *
  * Invariant: this layer carries **no multi-tenant concepts** (no `org_id`, no
  * tenant isolation). Those live only in the proprietary scale layer, which keeps
@@ -31,6 +32,42 @@ export type { QuerySpec };
 export type ParamType = "string" | "u32" | "f64" | "timestamp" | "date";
 
 /**
+ * Structured description of an ASOF join — "for every left row, the single
+ * right row with the same keys whose timestamp is nearest in the given
+ * direction". Authored once per aggregation; each dialect renders it either as
+ * a native `ASOF JOIN` (DuckDB, ClickHouse) or as a correlated nearest-row
+ * subquery (`LATERAL` + `LIMIT 1` on Postgres, `CROSS/OUTER APPLY` + `TOP 1` on
+ * SQL Server) — see `relational.ts`.
+ *
+ * `leftTs` and the left side of `keys` are expressions qualified with the *left*
+ * alias (the caller owns that alias); `rightTs` and the right side of `keys` are
+ * bare column names of the right relation, which the dialect qualifies with
+ * `alias`.
+ */
+export interface AsofJoinSpec {
+  /** `inner` drops unmatched left rows; `left` keeps them with NULL right columns. */
+  readonly kind: "inner" | "left";
+  /**
+   * The right relation: a parenthesised subquery (`(SELECT …)`) or a bare table
+   * / CTE name. Must not carry its own alias — the dialect applies `alias`.
+   */
+  readonly right: string;
+  /** Alias the right relation's columns are read through in the outer query. */
+  readonly alias: string;
+  /** Equality keys as `[leftExpr, rightColumn]` pairs (at least one). */
+  readonly keys: ReadonlyArray<readonly [left: string, right: string]>;
+  /** Left-side timestamp expression (qualified). */
+  readonly leftTs: string;
+  /**
+   * Comparison `leftTs <op> rightTs`: `>=`/`>` select the nearest *preceding*
+   * right row, `<=`/`<` the nearest *following* one.
+   */
+  readonly op: ">=" | ">" | "<=" | "<";
+  /** Right-side timestamp column (bare name). */
+  readonly rightTs: string;
+}
+
+/**
  * Renders the engine-specific fragments of a query. Implementations must be pure
  * string builders — no I/O, no client coupling — so they stay unit-testable
  * without a live database.
@@ -46,6 +83,13 @@ export interface Dialect {
   quantile(expr: string, q: number): string;
   /** L2 (Euclidean) norm of an array-valued `expr`. */
   vectorNorm(expr: string): string;
+  /**
+   * Number of elements in an array-valued `expr` (0 for an empty array). Used
+   * to guard vector columns (`arrayLength("position") = 3`) before indexing
+   * them; element indexing itself (`position[1]`) is 1-based on every supported
+   * engine and stays inline in the shared SQL.
+   */
+  arrayLength(expr: string): string;
   /** Conditional average: mean of `value` over rows where `cond` holds. */
   avgIf(value: string, cond: string): string;
   /** Aggregate: an arbitrary (any) value of `expr` within the group. */
@@ -89,15 +133,14 @@ export interface Dialect {
   countMerge(stateExpr: string): string;
   avgMerge(stateExpr: string): string;
   quantileMerge(stateExpr: string, q: number): string;
-  /** ASOF inner-join keyword/clause introducer. */
-  readonly asofInnerJoin: string;
   /**
-   * ASOF left-join keyword/clause introducer. Like {@link asofInnerJoin} but
-   * keeps left rows that have no matching right row (their right-side columns
-   * are NULL on DuckDB and engine defaults on ClickHouse), so callers must guard
-   * unmatched rows explicitly.
+   * Render an ASOF join clause (`… JOIN <right> AS <alias> ON …`) from a
+   * structured {@link AsofJoinSpec}, placed directly after the left relation.
+   * A `left` join keeps left rows that have no matching right row (their
+   * right-side columns are NULL on DuckDB/Postgres and engine defaults on
+   * ClickHouse), so callers must guard unmatched rows explicitly.
    */
-  readonly asofLeftJoin: string;
+  asofJoin(spec: AsofJoinSpec): string;
 }
 
 /**

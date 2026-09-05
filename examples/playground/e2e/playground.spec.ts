@@ -86,16 +86,9 @@ for (const engineId of FULL_FLOW_ENGINES) {
   });
 }
 
-// react-three-fiber renders through three but owns its own canvas/DOM and does not
-// expose the scene-switch / replay controls, so it gets a lighter smoke test: the
-// app boots the React root, the connector starts, and a session id is stamped.
-test("[r3f] boots and starts a session", async ({ page }) => {
-  await page.goto("/?engine=r3f");
-  await expect(page.locator("#connDot")).toHaveClass(/ok/);
-  await expect(page.locator("#sessionId")).not.toHaveText("…");
-  const sessionId = (await page.locator("#sessionId").textContent())?.trim();
-  expect(sessionId).toBeTruthy();
-});
+// react-three-fiber and A-Frame own their own canvas/DOM and expose neither the
+// scene switcher nor replay, so they get dedicated capture specs instead of riding
+// this flow: see `r3f.spec.ts` and `aframe.spec.ts`.
 
 /** One ordered point of a session's walked path (ADR 0026). */
 interface TrajectoryPoint {

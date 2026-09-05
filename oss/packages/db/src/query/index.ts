@@ -22,6 +22,11 @@ export * from "./dialect.js";
 // The DuckDB dialect (the OSS default engine).
 export * from "./duckdbDialect.js";
 
+// Relational building blocks (ASOF emulation, named→positional params) and the
+// Postgres dialect — pure string builders, so browser-safe like the DuckDB one.
+export * from "./relational.js";
+export * from "./postgresDialect.js";
+
 // Every `build*` aggregation (renders a QuerySpec for a given Dialect).
 export * from "./aggregations.js";
 

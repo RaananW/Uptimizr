@@ -35,13 +35,15 @@ export const DUCKDB_PATH = resolve(dirname(fileURLToPath(import.meta.url)), ".tm
  * Engines covered by the full capture → collector → replay round-trip. All three
  * are vanilla WebGL connectors that render into the shared canvas and expose scene
  * switching + replay, so the same spec body drives each via `?engine=<id>`. (r3f
- * gets a lighter smoke test; A-Frame is excluded because it loads from a CDN.)
+ * and A-Frame own their DOM and have no scene switcher/replay, so they get
+ * dedicated capture specs: `r3f.spec.ts` and `aframe.spec.ts`.)
  */
 export const FULL_FLOW_ENGINES = ["babylon", "three", "playcanvas"] as const;
 
 /**
  * Engines exercised by the exhaustive event-capture matrix. Babylon is the
  * reference connector (it also captures keyboard `input_action` and compile
- * stalls); three + playcanvas share the common WebGL capture surface.
+ * stalls); three + playcanvas share the common WebGL capture surface. r3f and
+ * A-Frame are covered by their dedicated specs (see above).
  */
 export const CAPTURE_MATRIX_ENGINES = ["babylon", "three", "playcanvas"] as const;

@@ -1,10 +1,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, within } from "@testing-library/react";
 import type { LlmProvider, ProviderResponse } from "@uptimizr/agent-core";
 import type { CollectorApi } from "../../api";
 import { AssistantPanel } from "../AssistantPanel";
 
 let nextProvider: LlmProvider;
+// The cache-clearing helper is mocked: the real one loads the WebLLM runtime
+// and touches the browser Cache API, neither of which exists in happy-dom.
+const clearCachedModelsMock = vi.fn(async (): Promise<string[]> => []);
 
 vi.mock("@uptimizr/agent-core/providers/hosted", async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
@@ -13,6 +16,7 @@ vi.mock("@uptimizr/agent-core/providers/hosted", async (importActual) => ({
 vi.mock("@uptimizr/agent-core/providers/webllm", async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
   createWebLlmProvider: () => nextProvider,
+  clearCachedModels: () => clearCachedModelsMock(),
 }));
 
 function scriptedProvider(steps: ProviderResponse[]): LlmProvider {
@@ -36,6 +40,8 @@ const LOCAL = {
 
 beforeEach(() => {
   localStorage.clear();
+  clearCachedModelsMock.mockReset();
+  clearCachedModelsMock.mockResolvedValue([]);
 });
 afterEach(() => {
   cleanup();
@@ -143,9 +149,53 @@ describe("<AssistantPanel>", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/out of storage for the local model/i);
-    expect(alert.textContent).toMatch(/clear this site's cached data/i);
+    expect(alert.textContent).toMatch(/clear the cached models/i);
     // Offers concrete alternatives (smaller model / hosted backend).
     expect(alert.textContent).toMatch(/hosted backend/i);
+    // And the one-click remedy lives right inside the alert (#216).
+    expect(within(alert).getByRole("button", { name: "Clear cached models" })).toBeTruthy();
+  });
+
+  it("offers Clear cached models for the local backend and reports what was reclaimed (#216)", async () => {
+    clearCachedModelsMock.mockResolvedValue([
+      "Hermes-3-Llama-3.1-8B-q4f16_1-MLC",
+      "Hermes-2-Pro-Mistral-7B-q4f16_1-MLC",
+    ]);
+    render(<AssistantPanel api={fakeApi()} backend={LOCAL} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear cached models" }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Cleared 2 cached models/i).textContent).toMatch(
+        /Hermes 3 \(Llama 3\.1 8B\), Hermes 2 Pro \(Mistral 7B\)/,
+      ),
+    );
+    expect(clearCachedModelsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("says so when there was nothing cached to clear", async () => {
+    clearCachedModelsMock.mockResolvedValue([]);
+    render(<AssistantPanel api={fakeApi()} backend={LOCAL} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear cached models" }));
+
+    await waitFor(() => expect(screen.getByText(/No cached models to clear/i)).toBeTruthy());
+  });
+
+  it("surfaces a Cache API failure from Clear cached models as inline text (not a throw)", async () => {
+    clearCachedModelsMock.mockRejectedValue(new Error("cache denied"));
+    render(<AssistantPanel api={fakeApi()} backend={LOCAL} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear cached models" }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Could not clear cached models: cache denied/i)).toBeTruthy(),
+    );
+  });
+
+  it("does not show the cache controls for a hosted backend", () => {
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
+    expect(screen.queryByRole("button", { name: "Clear cached models" })).toBeNull();
   });
 
   it("renders a generic error's message for non-storage failures", async () => {

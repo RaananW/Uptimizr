@@ -1,4 +1,4 @@
-import { trackScene } from "@uptimizr/three";
+import { createXrRaycaster, trackScene } from "@uptimizr/three";
 import type { Camera, Scene, WebGLRenderer } from "three";
 
 import { buildTrackOptions } from "./options.js";
@@ -34,6 +34,7 @@ export const UPTIMIZR_SCHEMA = {
   cameraGesture: { type: "boolean", default: true },
   xr: { type: "boolean", default: true },
   xrSampleMs: { type: "number", default: 0 },
+  xrRaycast: { type: "boolean", default: true },
   disabled: { type: "boolean", default: false },
   debug: { type: "boolean", default: false },
 } as const;
@@ -43,8 +44,13 @@ export const UPTIMIZR_SCHEMA = {
  * component grabs the scene's live three objects (`object3D` / `camera` /
  * `renderer`) and hands them to `@uptimizr/three`'s {@link trackScene} — no capture
  * logic is re-implemented here. WebXR controller/gaze capture (A-Frame's
- * differentiator) is part of `trackScene` and on by default; the component only
- * forwards the `xr` / `xrSampleMs` schema fields through {@link buildTrackOptions}.
+ * differentiator) is part of `trackScene` and on by default; the component
+ * forwards the `xr` / `xrSampleMs` schema fields through {@link buildTrackOptions}
+ * and, unless `xrRaycast: false`, supplies three's {@link createXrRaycaster} so
+ * controller/gaze rays resolve to in-scene hits (`hitPoint`/`hitMesh` and
+ * `mesh_interaction` on select/squeeze). A-Frame is declarative, so the probe is
+ * built here rather than injected by the host; programmatic hosts can still pass
+ * their own via the re-exported `trackScene`'s `xr.raycast` option.
  *
  * A-Frame may not have an active camera or renderer at `init` time, so when the
  * scene isn't ready the component defers start until `loaded` / `camera-set-active`.
@@ -125,11 +131,14 @@ export function createUptimizrComponent(libraryVersion?: string): AframeComponen
       sceneEl.removeEventListener("loaded", this._uptimizrStart);
       sceneEl.removeEventListener("camera-set-active", this._uptimizrStart);
 
+      // XR in-scene hit resolution rides three's raycaster over the live scene
+      // graph (issue #13). Built lazily here because it needs the scene object.
+      const xrRaycast = this.data.xr && this.data.xrRaycast ? createXrRaycaster(scene) : undefined;
       const client = trackScene(
         scene,
         camera,
         renderer,
-        buildTrackOptions(this.data, libraryVersion),
+        buildTrackOptions(this.data, libraryVersion, xrRaycast),
       );
       this._uptimizrClient = client;
     },

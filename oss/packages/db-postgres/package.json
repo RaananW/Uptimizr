@@ -1,0 +1,60 @@
+{
+  "name": "@uptimizr/db-postgres",
+  "version": "0.0.0",
+  "description": "Optional single-tenant PostgreSQL store for Uptimizr — composes the @uptimizr/db dialect-agnostic query layer and CollectorStore contract for self-hosters who already run Postgres and want a multi-writer relational backend.",
+  "keywords": [
+    "uptimizr",
+    "analytics",
+    "postgres",
+    "postgresql",
+    "storage",
+    "query",
+    "events"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/db-postgres"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://uptimizr.com/docs/deploy/collector/",
+  "author": "Raanan Weber (https://github.com/RaananW)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@uptimizr/db": "workspace:*",
+    "@uptimizr/schema": "workspace:*",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.13",
+    "vitest": "^4.1.11"
+  }
+}

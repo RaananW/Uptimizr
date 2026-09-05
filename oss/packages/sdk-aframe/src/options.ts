@@ -1,4 +1,4 @@
-import type { TrackSceneOptions, ThreeCaptureOptions } from "@uptimizr/three";
+import type { TrackSceneOptions, ThreeCaptureOptions, XrRayProbe } from "@uptimizr/three";
 
 import type { UptimizrComponentData } from "./types.js";
 
@@ -16,10 +16,14 @@ import type { UptimizrComponentData } from "./types.js";
  * The session is attributed to the A-Frame connector (`connector.name ===
  * "aframe"`) while keeping three's native right-handed coordinate frame; the
  * `version` is the A-Frame library version when discoverable (`AFRAME.version`).
+ *
+ * @param xrRaycast optional XR ray probe (built by the component from the live
+ *   scene) for in-scene hit resolution; forwarded as `xr.raycast` when XR is on.
  */
 export function buildTrackOptions(
   data: UptimizrComponentData,
   libraryVersion?: string,
+  xrRaycast?: XrRayProbe,
 ): TrackSceneOptions {
   const capture: ThreeCaptureOptions = {};
   if (data.meshVisibility) capture.meshVisibility = true;
@@ -46,8 +50,15 @@ export function buildTrackOptions(
   if (data.sceneDescription) options.sceneDescription = data.sceneDescription;
   if (Object.keys(capture).length > 0) options.capture = capture;
   // WebXR capture is on by default in three (auto-detects session entry). A-Frame is
-  // WebXR-first, so we only forward an override: disable it, or set the sample rate.
-  if (!data.xr) options.xr = false;
-  else if (data.xrSampleMs > 0) options.xr = { sampleMs: data.xrSampleMs };
+  // WebXR-first, so we only forward an override: disable it, set the sample rate,
+  // or attach the in-scene hit probe (`hitPoint`/`hitMesh`, ADR 0011).
+  if (!data.xr) {
+    options.xr = false;
+  } else if (data.xrSampleMs > 0 || xrRaycast) {
+    options.xr = {
+      ...(data.xrSampleMs > 0 ? { sampleMs: data.xrSampleMs } : {}),
+      ...(xrRaycast ? { raycast: xrRaycast } : {}),
+    };
+  }
   return options;
 }

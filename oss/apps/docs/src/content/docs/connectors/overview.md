@@ -15,9 +15,9 @@ which renderer you use.
 | Babylon.js        | `@uptimizr/babylon`      | Stable      | `trackScene(scene, …)`                   |
 | Babylon Lite      | `@uptimizr/babylon-lite` | Stable      | `trackScene(scene, camera, canvas, …)`   |
 | three.js          | `@uptimizr/three`        | Stable      | `trackScene(scene, camera, renderer, …)` |
-| PlayCanvas        | `@uptimizr/playcanvas`   | Beta        | `trackScene(app, camera, …)`             |
-| react-three-fiber | `@uptimizr/r3f`          | Beta        | `<Uptimizr />` / `useUptimizr()`         |
-| A-Frame           | `@uptimizr/aframe`       | Beta        | `uptimizr` HTML component                |
+| PlayCanvas        | `@uptimizr/playcanvas`   | Stable      | `trackScene(app, camera, …)`             |
+| react-three-fiber | `@uptimizr/r3f`          | Stable      | `<Uptimizr />` / `useUptimizr()`         |
+| A-Frame           | `@uptimizr/aframe`       | Stable      | `uptimizr` HTML component                |
 | Unity (WebGL)     | `@uptimizr/unity`        | Beta        | `trackUnity(…)`                          |
 | Godot (web)       | `@uptimizr/godot`        | Beta        | `trackGodot(…)`                          |
 | Unreal (web)      | `@uptimizr/unreal`       | Best-effort | `trackUnreal(…)`                         |
