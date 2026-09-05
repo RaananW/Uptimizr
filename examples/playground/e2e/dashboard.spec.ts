@@ -174,11 +174,18 @@ test("3D panel controls render and toggle without errors", async ({ page, reques
 
   // The Walk/Orbit/All camera-mode group renders once the self-fetch resolves.
   // Give it a chance, then exercise it if present (an empty flow stays at the
-  // "no links" state with no controls — tolerated rather than failed).
+  // "no links" state with no controls — tolerated rather than failed). The
+  // dashboard boots on "all scenes", so sibling specs' sessions are in scope too:
+  // Orbit is disabled whenever any of them reported first-person samples (a
+  // three-based connector classifies every perspective camera as first-person),
+  // in which case Walk is the mode to toggle. Either way the toggle must rebuild
+  // the scene without tearing down the canvas.
   const allBtn = flow.getByRole("button", { name: "All", exact: true });
   await allBtn.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
   if (await allBtn.isVisible()) {
-    await flow.getByRole("button", { name: "Orbit", exact: true }).click();
+    const orbitBtn = flow.getByRole("button", { name: "Orbit", exact: true });
+    const walkBtn = flow.getByRole("button", { name: "Walk", exact: true });
+    await ((await orbitBtn.isEnabled()) ? orbitBtn : walkBtn).click();
     await expect(flowCanvas).toBeVisible();
     await allBtn.click();
     await expect(flowCanvas).toBeVisible();
