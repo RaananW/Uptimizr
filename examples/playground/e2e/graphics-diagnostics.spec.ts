@@ -57,6 +57,38 @@ async function seedDiagnostics(request: APIRequestContext, sessionId: string): P
   ).toBeTruthy();
 }
 
+/**
+ * Seed one first-person session in its own scene with ordinary analytics and no
+ * `graphics_diagnostic` events, so a scene-scoped dashboard shows the opt-in empty
+ * state even though sibling specs seed diagnostics into the shared store.
+ */
+async function seedSceneWithoutDiagnostics(
+  request: APIRequestContext,
+  sceneId: string,
+  sessionId: string,
+): Promise<void> {
+  const now = Date.now();
+  const base = { projectId: PROJECT_ID, sessionId, sceneId, sdkVersion: "0.0.0-e2e" };
+  const res = await request.post(`${COLLECTOR_URL}/api/v1/collect`, {
+    data: {
+      events: [
+        { ...base, type: "session_start", ts: now, scene: { cameraType: "free" } },
+        {
+          ...base,
+          type: "camera_sample",
+          ts: now + 1,
+          position: [0, 1.6, 0],
+          direction: [0, 0, 1],
+        },
+      ],
+    },
+  });
+  expect(
+    res.ok(),
+    `seeding the diagnostics-free scene should succeed (got ${res.status()}: ${await res.text()})`,
+  ).toBeTruthy();
+}
+
 /** Open the dashboard pointed at the e2e collector and load the data. */
 async function loadDashboard(page: Page): Promise<void> {
   await page.goto(DASHBOARD_URL);
@@ -67,10 +99,18 @@ async function loadDashboard(page: Page): Promise<void> {
 
 test("engine-diagnostics panel shows the opt-in empty state when capture is off", async ({
   page,
+  request,
 }) => {
-  // The seeded store carries rich analytics but no graphics_diagnostic events
-  // (capture is off by default), so the panel must show its opt-in empty state.
+  // Capture is off by default, so a scene captured without it has no
+  // graphics_diagnostic events. Sibling specs seed diagnostics into the shared
+  // store, so scope the dashboard to a scene of our own (rich analytics, no
+  // diagnostics) and require the panel's explicit opt-in empty state there.
+  const sceneId = `diag-off-${Date.now()}`;
+  const sessionId = `${sceneId}-session`;
+  await seedSceneWithoutDiagnostics(request, sceneId, sessionId);
+  await waitForEventTypes(request, sessionId, ["session_start", "camera_sample"]);
   await loadDashboard(page);
+  await page.locator('label:has-text("Scene") select').selectOption(sceneId);
 
   const panel = page
     .locator("section")
