@@ -991,12 +991,21 @@ export class CollectorApi {
     // ClickHouse returns count()/aggregate columns as JSON strings (and NULL for
     // the fps stats when there are no samples). Coerce to numbers so the empty
     // guard (`samples === 0`) and number formatting behave correctly.
-    return this.get<Record<string, unknown>>("api/v1/perf", params).then((raw) => ({
-      samples: Number(raw.samples ?? 0),
-      avg_fps: Number(raw.avg_fps ?? 0),
-      min_fps: Number(raw.min_fps ?? 0),
-      p50_fps: Number(raw.p50_fps ?? 0),
-    }));
+    // Every store returns the summary as a one-row result set (the route hands
+    // the row array through verbatim), so unwrap the first row; a bare object
+    // is accepted too for hosts that already flatten it.
+    return this.get<Record<string, unknown> | Record<string, unknown>[]>(
+      "api/v1/perf",
+      params,
+    ).then((raw) => {
+      const row = (Array.isArray(raw) ? raw[0] : raw) ?? {};
+      return {
+        samples: Number(row.samples ?? 0),
+        avg_fps: Number(row.avg_fps ?? 0),
+        min_fps: Number(row.min_fps ?? 0),
+        p50_fps: Number(row.p50_fps ?? 0),
+      };
+    });
   }
 
   /**
