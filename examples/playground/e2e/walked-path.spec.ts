@@ -17,9 +17,9 @@ import { waitForEventTypes } from "./helpers/capture.js";
  * path the SDK would take.
  */
 
-const STAIRS_SESSION = "walk-stairs";
-const LEVEL_SESSION = "walk-level";
-const ORBIT_SESSION = "orbit-cam";
+const STAIRS_SESSION = "walk-stairs-session-1";
+const LEVEL_SESSION = "walk-level-session-1";
+const ORBIT_SESSION = "orbit-cam-session-1";
 
 /** Seed a first-person stair climb, a first-person level walk, and an orbit session. */
 async function seedSessions(request: APIRequestContext): Promise<void> {
@@ -74,7 +74,11 @@ async function loadDashboard(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Sessions" })).toBeVisible({ timeout: 20_000 });
 }
 
-/** Open one session's drill-down from the sessions table. */
+/**
+ * Open one session's drill-down from the sessions table. The table shows a 12-char
+ * prefix and the drill-down header the full id, so ids longer than 12 chars keep
+ * the two distinguishable (the table is on the session surface too).
+ */
 async function openSession(page: Page, sessionId: string): Promise<void> {
   await page.getByText(sessionId.slice(0, 12), { exact: true }).first().click();
   await expect(page.getByText(sessionId, { exact: true })).toBeVisible();
