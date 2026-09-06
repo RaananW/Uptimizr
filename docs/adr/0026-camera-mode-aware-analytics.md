@@ -97,7 +97,9 @@ ambiguous. Babylon continues to auto-classify and needs no override.
   from polluting the "where visitors stand" map.
 - **Walked path** (session drill-down) — renders `buildSessionTrajectory` as a connected top-down
   polyline with start/end markers. Shown only for first-person sessions (the session's recorded
-  `cameraType` is `free`); a viewer session's "path" is just its orbit and is omitted.
+  `cameraType` is `free`); a viewer session's "path" is just its orbit and is omitted. Since #92 the
+  polyline is color-coded by camera height (world Y) on the shared heat ramp, with a low/high
+  legend, so vertical movement (stairs, ramps, lifts, floors) is visible in the plan view.
 
 ### 5. Playground walkable scenes
 

@@ -41,6 +41,9 @@ with `x-api-key`. The key only ever reads its own project's data.
   approach counts + near-zone time — a room-scale comfort signal; #157), and a **tracking quality**
   panel (share of XR session time spent with degraded or lost spatial tracking, split by hand vs.
   controller — from `capability_change` `tracking` transitions).
+- **Walked path** (session drill-down) — a first-person session's camera route in top-down plan
+  view, with the line **color-coded by camera height** so stairs, ramps, lifts, and floor changes
+  are visible in 2D (see below; #92).
 - **Scene retention funnel** — a canned level-retention preset: session counts flowing scene → scene
   in observed order (from `scene_change` markers), with drop-off visible per source scene and **no
   funnel steps to author** (#147).
@@ -163,6 +166,29 @@ and a **registered proxy** (so there's reference geometry to call dead). It rend
 empty-state when no proxy is registered, and a "widen the range" hint when there are no camera
 samples in range. See [Scene proxy](/docs/connectors/babylon/#scene-proxy-3d-heatmap-backdrop) for
 registering a proxy with `scanSceneProxy`.
+
+## Walked path panel
+
+The **Walked path** panel appears in a session's drill-down when the session was recorded with a
+**first-person** (`free`) camera. It reads `GET /api/v1/sessions/:id/trajectory` and draws the
+ordered `camera_sample` positions on the X/Z ground plane as one connected polyline, oldest to
+newest, with a **green start** and **red end** marker.
+
+**Height is encoded as color** (#92). A plan view alone hides vertical movement: two points that
+look adjacent on the floor plan may be a staircase or an elevator ride apart. Each segment is
+therefore tinted on the shared Ember heat ramp by its camera height (world Y) — **rust is the lowest
+point on the route, saffron the highest** — and a legend in the corner of the canvas shows the
+actual low and high heights in scene units. Reading the panel:
+
+- A route that stays one color walked a level floor.
+- A gradual shift along the line is a ramp or a slope.
+- An abrupt change between one color and another is a staircase, lift, or teleport to another floor.
+- Two overlapping stretches in different colors are the same footprint on different floors.
+
+The ramp is normalized to **this session's** lowest and highest point, so the legend labels are the
+only way to compare heights across sessions. Routes whose height varies by less than 0.25 m (head
+bob and sample jitter on a level floor) are drawn in a single color and the panel says so instead of
+stretching the ramp over noise.
 
 ## Backtracking hotspots panel
 
