@@ -1,5 +1,25 @@
 # @uptimizr/dashboard
 
+## 1.1.0
+
+### Minor Changes
+
+- 9330655: Every remaining hand-mounted dashboard panel now lives in the `@uptimizr/react` catalog, completing the ADR 0036 / ADR 0047 migration: event volume over time (with the time-window brush), scene health, engine diagnostics, rendering technology, scene traversal, rendering-performance summary, the six dedicated performance panels (frame time, jank, FPS by device, FPS by scene, stability, resource footprint), input sources, the 2D view-direction heatmap, the 3D gaze heatmap and click rays (code-split like the other Babylon panels), and the sessions table. Each is exported individually, is hideable and, where it has knobs, configurable from the ⚙ menu; the 3D gaze/click-ray panels gain a voxel-size setting. The duplicated FPS-distribution card is gone (the catalog's performance-distribution panel already showed it).
+
+  `PanelDefinition` gains an optional `defaultCollapsed`, and `PanelActions` an optional `clearTimeRange` (undo a brush and restore the previous preset). Both are additive; the panel contract major is unchanged. The dashboard page is now a pure shell — connection form, filters, scene selector, session inspector, replay and live-presence mounts, live wiring — and its per-page aggregate fetch is gone.
+
+- 9330655: Walked path panel: color-code the session trajectory by camera height (world Y) using the shared Ember heat ramp, with a legend showing the lowest and highest points on the route. Ramps, stairs, lifts, and multi-floor routes now read in the top-down plan view instead of looking like adjacent points on one floor (#92). Paths whose height varies by less than 0.25 m stay a single color and say so, and a per-viewer **Color by height** setting turns the encoding off.
+
+  The panel now lives in the portable catalog as `walkedPathPanel` (`WalkedPathView` and the height helpers are exported too) instead of being hand-mounted by the dashboard. To support that, `PanelContext` gains an optional `session` field carrying the inspected session's metadata on the session surface, and `SessionMeta.scene.cameraType` is typed. Both changes are additive; the panel contract major is unchanged.
+
+### Patch Changes
+
+- a2c75cd: Refresh runtime dependencies: Fastify 5.12.3 (collector-server) and Next.js 16.3.4 (dashboard). The workspace lockfile now resolves `qs` 6.16.0, clearing GHSA-x5fp-wj9c-mxmx and GHSA-4mjr-xmp4-gh2g.
+- Updated dependencies [9330655]
+- Updated dependencies [9330655]
+- Updated dependencies [9330655]
+  - @uptimizr/react@1.1.0
+
 ## 1.0.0
 
 ### Major Changes
