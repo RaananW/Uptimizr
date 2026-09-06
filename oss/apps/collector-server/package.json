@@ -56,12 +56,12 @@
     "@uptimizr/db-mssql": "workspace:*",
     "@uptimizr/db-postgres": "workspace:*",
     "@uptimizr/schema": "workspace:*",
-    "fastify": "^5.12.1",
+    "fastify": "^5.12.3",
     "fastify-type-provider-zod": "^7.0.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.4.1",
     "tsx": "^4.23.13",
     "vitest": "^4.1.11"
   }

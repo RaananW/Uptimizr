@@ -14,12 +14,12 @@
     "clean": "rm -rf dist .astro node_modules/.vite"
   },
   "dependencies": {
-    "@astrojs/sitemap": "^3.7.3",
-    "@babylonjs/core": "^9.23.0",
+    "@astrojs/sitemap": "^3.7.4",
+    "@babylonjs/core": "^9.25.0",
     "@fontsource-variable/space-grotesk": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@vercel/analytics": "^2.0.1",
-    "astro": "^7.2.9"
+    "astro": "^7.3.1"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10"

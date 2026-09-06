@@ -18,50 +18,17 @@ minimumReleaseAgeExclude:
   - "@babylonjs/core@9.13.0"
   - "@babylonjs/lite@1.2.0"
 
-# Force patched versions of transitive (build/dev-time) dependencies pulled in by
-# Astro tooling and Next.js that lag behind their security advisories. These are
-# not direct deps, so they can only be bumped via overrides. Revisit/remove each
-# entry once the parent package ships a release that resolves the advisory.
+# Transitive-dependency overrides (`overrides:`) live here when a dependency lags
+# behind a security advisory that only an override can force. None are needed at the
+# moment (last reviewed 2026-09-06, after 1.0.0: every previous entry — yaml, postcss,
+# @hono/node-server, hono, svgo, fast-uri, sharp, find-my-way, brace-expansion,
+# esbuild, js-yaml, read-yaml-file — now resolves to a patched version upstream).
 #
-# REVIEW PERIODICALLY (e.g. each release, or quarterly): every override is tech
-# debt — it pins a version the dependency tree did not choose, so it can silently
-# hold back upstream fixes or, as the read-yaml-file case showed, force an
-# incompatible major into a transitive dep. For each entry below, check whether
-# the parent has since shipped a fix and the override is still needed:
-#   1. Temporarily comment the entry out and run `pnpm install`.
+# When adding one: document the advisory (GHSA id) and the parent that pulls it in,
+# cap it to the current major so it cannot force an incompatible major later (the
+# read-yaml-file/js-yaml case), and REVIEW at each release: every override is tech
+# debt that pins a version the tree did not choose and can silently hold back
+# upstream fixes. To check whether an entry is still needed:
+#   1. Temporarily comment it out and run `pnpm install`.
 #   2. Run `pnpm audit` (advisory cleared upstream?) and `pnpm -r build && pnpm test`.
 #   3. If audit stays clean and nothing breaks, delete the entry for good.
-# Keep this list as small as possible; remove anything no longer required.
-overrides:
-  # GHSA: stack overflow via deeply nested YAML (yaml < 2.8.3), via @astrojs/check.
-  yaml: ">=2.8.3"
-  # GHSA: source-map path traversal (postcss < 8.5.18), via Next.js and Vite.
-  postcss: ">=8.5.18"
-  # GHSA: Windows path traversal in Hono's Node static serving adapter, via MCP SDK.
-  "@hono/node-server": ">=2.0.5 <3"
-  # GHSA-8j4g-w8fx-2239: ReDoS in Hono's CORS middleware via
-  # Access-Control-Request-Headers, via the MCP SDK's HTTP transport.
-  hono: ">=4.12.34 <5"
-  # GHSA: executable scripts survive SVG sanitization, via Astro.
-  svgo: ">=4.0.2 <5"
-  # GHSA: backslash host confusion in URI parsing, via Fastify, Astro, and MCP.
-  fast-uri: ">=3.1.5 <4"
-  # CVEs: inherited libvips vulnerabilities in sharp 0.34.x, via Next.js.
-  sharp: ">=0.35.0 <0.36"
-  # GHSA: HTTP/2 denial of service in find-my-way, via Fastify.
-  find-my-way: ">=9.6.1 <10"
-  # GHSA: unbounded brace expansion denial of service, via ESLint and Fastify.
-  brace-expansion: ">=5.0.9 <6"
-  # GHSA: dev-server arbitrary file read on Windows (esbuild < 0.28.1), via astro.
-  esbuild: ">=0.28.1"
-  # GHSA-h67p-54hq-rp68: quadratic-complexity DoS via merge keys (js-yaml <= 4.1.1),
-  # via @changesets/cli (release tooling, dev-only). Constrained to the 4.x line:
-  # js-yaml 5.x is ESM-only and drops the CJS default export, which breaks Astro's
-  # loader (@uptimizr/docs, @uptimizr/web) and read-yaml-file's `yaml.load` require.
-  js-yaml: ">=4.2.0 <5"
-  # @changesets/cli pulls read-yaml-file@1.1.0, which calls the `yaml.safeLoad` API
-  # that js-yaml 4 removed — so the js-yaml override above breaks `changeset version`.
-  # read-yaml-file@2.1.0 is the fix: still CJS (changesets `require()`s it) but built
-  # against js-yaml ^4 (uses `yaml.load`). 3.x is ESM-only (Node 22 pure ESM) and would
-  # break changesets' CommonJS require. Keep this pinned to the 2.x line.
-  read-yaml-file: ^2.1.0

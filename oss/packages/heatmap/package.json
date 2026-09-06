@@ -71,8 +71,8 @@
     }
   },
   "devDependencies": {
-    "@babylonjs/core": "^9.23.0",
-    "@babylonjs/lite": "^1.25.0",
+    "@babylonjs/core": "^9.25.0",
+    "@babylonjs/lite": "^1.27.0",
     "esbuild": "^0.28.2",
     "vitest": "^4.1.11"
   }
