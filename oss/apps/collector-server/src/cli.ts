@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { type CliStoreKind, openCliStore, renderEnv, resolveCliStoreKind } from "./cliStore.js";
 
@@ -42,16 +42,20 @@ function nameArg(args: string[]): string {
 
 /** Persist a generated secret so `serve` works on the next run. */
 function ensureSecretPersisted(secret: string, generated: boolean, store: CliStoreKind): void {
-  if (!existsSync(ENV_FILE)) {
-    writeFileSync(ENV_FILE, renderEnv(secret, store));
+  try {
+    // `wx` creates the file only when it does not exist yet, so there is no
+    // exists-then-write window in which another process could create it.
+    writeFileSync(ENV_FILE, renderEnv(secret, store), { flag: "wx" });
     console.error(`✓ wrote ${ENV_FILE}`);
     return;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
   }
   if (!generated) return;
   const content = readFileSync(ENV_FILE, "utf8");
   if (/^VISITOR_HASH_SECRET=/m.test(content)) return;
   const sep = content.length === 0 || content.endsWith("\n") ? "" : "\n";
-  writeFileSync(ENV_FILE, `${content}${sep}VISITOR_HASH_SECRET=${secret}\n`);
+  appendFileSync(ENV_FILE, `${sep}VISITOR_HASH_SECRET=${secret}\n`);
   console.error(`✓ added VISITOR_HASH_SECRET to ${ENV_FILE}`);
 }
 
