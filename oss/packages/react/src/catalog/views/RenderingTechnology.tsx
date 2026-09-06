@@ -1,8 +1,11 @@
 "use client";
 
-import type { RenderingTechnologyCount } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
-import { Panel } from "./Panel";
+import type { RenderingTechnologyCount } from "../../api";
+import { formatNumber } from "../../format";
+
+export const RENDERING_TECH_TITLE = "Rendering technology";
+export const RENDERING_TECH_SUBTITLE =
+  "Sessions by graphics API, backend & shading language in the selected window";
 
 /** A single (label, count) cell in one of the technology breakdowns. */
 export interface TechBucket {
@@ -83,25 +86,19 @@ function Group({ title, buckets }: { title: string; buckets: TechBucket[] }) {
 /**
  * Always-on rendering-technology mix (#120, ADR 0021 part 1): session counts by
  * graphics API, backend, and shading language. Always-on, so a populated panel is
- * the common case; the empty state only appears before any sessions land.
+ * the common case; the empty state only appears before any sessions land. Panel
+ * BODY only (no chrome); the host supplies title/subtitle via the ADR 0036 contract.
  */
-export function RenderingTechnology({ rows }: { rows: RenderingTechnologyCount[] }) {
+export function RenderingTechnologyView({ rows }: { rows: RenderingTechnologyCount[] }) {
   const { byApi, byBackend, byShadingLanguage, total } = foldRenderingTechnology(rows);
 
+  if (total === 0) return <p className="text-sm text-fg-muted">No sessions in range.</p>;
+
   return (
-    <Panel
-      title="Rendering technology"
-      subtitle="Sessions by graphics API, backend & shading language in the selected window"
-    >
-      {total === 0 ? (
-        <p className="text-sm text-fg-muted">No sessions in range.</p>
-      ) : (
-        <div className="space-y-4">
-          <Group title="By API" buckets={byApi} />
-          <Group title="By backend" buckets={byBackend} />
-          <Group title="By shading language" buckets={byShadingLanguage} />
-        </div>
-      )}
-    </Panel>
+    <div className="space-y-4">
+      <Group title="By API" buckets={byApi} />
+      <Group title="By backend" buckets={byBackend} />
+      <Group title="By shading language" buckets={byShadingLanguage} />
+    </div>
   );
 }

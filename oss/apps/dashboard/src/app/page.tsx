@@ -9,34 +9,16 @@ import {
   DEFAULT_API_KEY,
   DEFAULT_COLLECTOR_URL,
   DEFAULT_PLAYGROUND_URL,
-  type CameraDistanceBucket,
-  type ClickRay,
-  type CoverageVoxel,
-  type DirectionBin,
-  type EventTypeCount,
-  type GraphicsDiagnosticCount,
-  type RenderingTechnologyCount,
-  type InteractionSource,
-  type NavigationStat,
-  type PerfSummary,
-  type PositionBin,
   type SceneInfo,
-  type SceneProxyMesh,
   type SessionMeta,
-  type SessionSummary,
-  type TimeseriesBucket,
-  type WorldHeatmapBin,
 } from "@/lib/api";
 import {
   DEFAULT_FILTERS,
-  pickInterval,
   resolveRange,
   toQueryParams,
   type FilterState,
   type TimeWindow,
 } from "@/lib/filters";
-import { parseTimestamp } from "@/lib/format";
-import { mergeSceneProxies } from "@uptimizr/react";
 import {
   LivePresenceView,
   LIVE_PRESENCE_TITLE,
@@ -52,103 +34,33 @@ import { builtinPanels } from "@/panels/registry";
 import { useRemotePanels } from "@/panels/useRemotePanels";
 import { RemotePanelErrors } from "@/panels/RemotePanelErrors";
 import { AssistantDrawer } from "@/components/AssistantDrawer";
-import { CameraDirectionHeatmap } from "@/components/CameraDirectionHeatmap";
 import { GlobalFilters } from "@/components/GlobalFilters";
-import { InputSourceBreakdown } from "@/components/InputSourceBreakdown";
-import { PerfSummaryPanel } from "@/components/PerfSummaryPanel";
-import { PerformanceSection, type PerformanceData } from "@/components/PerformanceSection";
-import { SceneHealth } from "@/components/SceneHealth";
-import { GraphicsDiagnostics } from "@/components/GraphicsDiagnostics";
-import { RenderingTechnology } from "@/components/RenderingTechnology";
-import { SceneMetrics } from "@/components/SceneMetrics";
 import { SceneSelector, type SceneMeta } from "@/components/SceneSelector";
-import { SessionsTable } from "@/components/SessionsTable";
-import { VolumeTimeseries } from "@/components/VolumeTimeseries";
 import { SessionInspector } from "@/components/SessionInspector";
 
-// Babylon-backed panels load only in the browser (no SSR, lazy chunk).
+// The session replay is Babylon-backed and loads only in the browser (no SSR,
+// lazy chunk). Every other analytics panel comes from the `@uptimizr/react`
+// catalog through `PanelHost` (ADR 0036 / ADR 0047); the page owns only the
+// shell — connection form, filters, scene selector, session inspector, replay
+// and live-presence mounts, and the live SSE wiring.
 const SessionReplayView = dynamic(
   () => import("@uptimizr/react/panels-3d").then((m) => m.SessionReplayView),
   { ssr: false },
 );
-const WorldHeatmap3DView = dynamic(
-  () => import("@uptimizr/react/panels-3d").then((m) => m.WorldHeatmap3DView),
-  { ssr: false },
-);
-const ClickRays3DView = dynamic(
-  () => import("@uptimizr/react/panels-3d").then((m) => m.ClickRays3DView),
-  { ssr: false },
-);
 
-const CAMERA_BINS = 36;
-const WORLD_CELL_SIZE = 0.5;
-const COVERAGE_CELL_SIZE = 1;
-const DISTANCE_BUCKET_SIZE = 1;
 const FLOOR_CELL_SIZE = 1;
 /** Maximum rows kept in the in-memory live event feed (ADR 0032 §3). */
 const LIVE_FEED_MAX = 30;
 /** Minimum gap between live-triggered aggregate refetches (ms). */
 const LIVE_REFETCH_THROTTLE_MS = 5_000;
-interface Dashboard {
-  sessions: SessionSummary[];
-  camera: DirectionBin[];
-  perf: PerfSummary | null;
-  gaze: WorldHeatmapBin[];
-  clickRays: ClickRay[];
-  /** Whether the active range has first-person camera-position samples. */
-  hasFirstPerson: boolean;
-  proxyMeshes: SceneProxyMesh[];
-  timeseries: TimeseriesBucket[];
-  counts: EventTypeCount[];
-  diagnostics: GraphicsDiagnosticCount[];
-  renderingTech: RenderingTechnologyCount[];
-  coverage: CoverageVoxel[];
-  distance: CameraDistanceBucket[];
-  navigation: NavigationStat[];
-  sources: InteractionSource[];
-  floorPlan: PositionBin[];
-  performance: PerformanceData;
-  intervalMs: number;
-}
-
-const EMPTY_PERFORMANCE: PerformanceData = {
-  distribution: null,
-  histogram: [],
-  frameTime: null,
-  jank: null,
-  byDevice: [],
-  byScene: [],
-  resources: null,
-  stability: null,
-};
-
-const EMPTY: Dashboard = {
-  sessions: [],
-  camera: [],
-  perf: null,
-  gaze: [],
-  clickRays: [],
-  hasFirstPerson: false,
-  proxyMeshes: [],
-  timeseries: [],
-  counts: [],
-  diagnostics: [],
-  renderingTech: [],
-  coverage: [],
-  distance: [],
-  navigation: [],
-  sources: [],
-  floorPlan: [],
-  performance: EMPTY_PERFORMANCE,
-  intervalMs: 3_600_000,
-};
-
-/** Per-session drill-down: the same analytics scoped to one session id. */
+/**
+ * Per-session drill-down. The shell keeps only the session's identity and
+ * metadata; every analytics panel scopes itself to the session through the
+ * panel context (`sessionId` / `session`).
+ */
 interface SessionDetail {
   id: string;
   meta: SessionMeta | null;
-  camera: DirectionBin[];
-  perf: PerfSummary | null;
 }
 
 interface ProjectOption {
@@ -165,7 +77,9 @@ export default function Page() {
   const [selectedId, setSelectedId] = useState("");
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [scenes, setScenes] = useState<SceneInfo[]>([]);
-  const [data, setData] = useState<Dashboard>(EMPTY);
+  // Whether the active range has first-person camera-position samples — the
+  // panel capability that lets walk-only panels default sensibly (ADR 0026).
+  const [hasFirstPerson, setHasFirstPerson] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
@@ -292,129 +206,27 @@ export default function Page() {
       const range = resolveRange(active);
       const api = new CollectorApi(baseUrl, key);
       try {
-        // Sessions first so an "all time" window can bound the time-series span.
-        const sessions = await api.sessions({ ...params, source: undefined, limit: 100 });
-        const until = range.until ?? Date.now();
-        let since = range.since;
-        if (since == null) {
-          const earliest = sessions.reduce((min, s) => {
-            const t = parseTimestamp(s.started_at);
-            return Number.isFinite(t) ? Math.min(min, t) : min;
-          }, Date.now());
-          since = Number.isFinite(earliest) ? earliest : until - 86_400_000;
-        }
-        const intervalSec = pickInterval(Math.max(60_000, until - since));
-        const intervalMs = intervalSec * 1000;
-
-        const [
-          camera,
-          perf,
-          gaze,
-          clickRays,
-          sceneList,
-          timeseries,
-          counts,
-          diagnostics,
-          renderingTech,
-          coverage,
-          distance,
-          navigation,
-          sources,
-          floorPlan,
-          performance,
-        ] = await Promise.all([
-          api.cameraHeatmap({ ...params, source: undefined, bins: CAMERA_BINS }),
-          api.perf({ ...params, source: undefined }),
-          api.gazeHeatmap({ ...params, source: undefined, cellSize: WORLD_CELL_SIZE }),
-          api.clickRays({ ...params, cellSize: WORLD_CELL_SIZE }),
+        // The analytics panels self-fetch through the catalog (ADR 0036); the
+        // shell only needs the scene list for the filter bar and a data-driven
+        // first-person signal for the panel capability. The floor-plan ("where
+        // visitors stand") having any bins means walkable samples exist. It is
+        // always scoped to first-person, independent of the global camera-mode
+        // toggle, because an arc-rotate camera's position orbits the model
+        // (ADR 0026).
+        const [sceneList, floorPlan] = await Promise.all([
           api.scenes({ since: range.since, until: range.until, limit: 200 }),
-          api.timeseries({
-            since: range.since,
-            until: range.until,
-            scene: params.scene,
-            interval: intervalSec,
-          }),
-          api.eventCounts({ since: range.since, until: range.until, scene: params.scene }),
-          api.graphicsDiagnosticCounts({ ...params, source: undefined }),
-          api.renderingTechnology({ ...params, source: undefined }),
-          api.coverage({ ...params, source: undefined, cellSize: COVERAGE_CELL_SIZE }),
-          api.cameraDistance({ ...params, source: undefined, bucketSize: DISTANCE_BUCKET_SIZE }),
-          api.navigation({ ...params, source: undefined }),
-          api.interactionsBySource(params),
-          // The floor-plan ("where visitors stand") is only meaningful for free /
-          // first-person cameras: an arc-rotate camera's position orbits the model,
-          // so blending it in would pollute the map. Always scope to first-person,
-          // independent of the global camera-mode toggle (ADR 0026).
           api.cameraPositionHeatmap({
             ...params,
             source: undefined,
             cameraMode: "first-person",
             cellSize: FLOOR_CELL_SIZE,
           }),
-          // Dedicated performance section (ADR 0028): per-session, device-aware
-          // aggregates fetched as one wave and grouped into a single object.
-          (async (): Promise<PerformanceData> => {
-            const [
-              distribution,
-              histogram,
-              frameTime,
-              jank,
-              byDevice,
-              byScene,
-              resources,
-              stability,
-            ] = await Promise.all([
-              api.perfDistribution({ ...params, source: undefined }),
-              api.fpsHistogram({ ...params, source: undefined }),
-              api.frameTimePercentiles({ ...params, source: undefined }),
-              api.jankRate({ ...params, source: undefined }),
-              api.perfByDevice({ ...params, source: undefined }),
-              // Always compare every scene, independent of the scene filter.
-              api.perfByScene({ ...params, source: undefined, scene: undefined }),
-              api.resourcePercentiles({ ...params, source: undefined }),
-              api.stabilityCounts({ ...params, source: undefined }),
-            ]);
-            return {
-              distribution,
-              histogram,
-              frameTime,
-              jank,
-              byDevice,
-              byScene,
-              resources,
-              stability,
-            };
-          })(),
         ]);
         setScenes(sceneList);
-        setData((prev) => ({
-          sessions,
-          camera,
-          perf,
-          gaze,
-          clickRays,
-          // A data-driven first-person signal (the first-person floor-plan having
-          // any bins means walkable samples exist) drives the panel capability so
-          // walk-only panels (floor-plan, flow) can default sensibly (ADR 0026).
-          hasFirstPerson: floorPlan.length > 0,
-          // The proxy backdrop is owned by a dedicated effect (it follows the live
-          // section in live mode, ADR 0040); preserve it across data refetches.
-          proxyMeshes: prev.proxyMeshes,
-          timeseries,
-          counts,
-          diagnostics,
-          renderingTech,
-          coverage,
-          distance,
-          navigation,
-          sources,
-          floorPlan,
-          performance,
-          intervalMs,
-        }));
+        setHasFirstPerson(floorPlan.length > 0);
         setStatus("ready");
       } catch (err) {
-        setData(EMPTY);
+        setHasFirstPerson(false);
         setStatus("error");
         setError(
           err instanceof ApiError
@@ -527,40 +339,14 @@ export default function Page() {
     };
   }, [liveEnabled, baseUrl, apiKey]);
 
-  // The 3D panels (world/gaze heatmaps, click rays) anchor their proxy geometry
-  // to the scene backdrop, resolved independently of the query data (ADR 0040):
-  // a pinned Scene filter shows just that area; otherwise show the WHOLE building —
-  // every active area's proxy merged — so elevated levels and far areas are always
-  // present and deterministic, instead of one section appearing at a time as the
-  // live avatar crosses boundaries. The heatmap *data* still honours the filter.
-  const manualScene = filters.scene && filters.scene.length > 0 ? filters.scene : undefined;
-  useEffect(() => {
-    if (status === "idle") return;
-    let cancelled = false;
-    void (async () => {
-      const api = new CollectorApi(baseUrl, apiKey);
-      const meshes = manualScene
-        ? ((await api.sceneRepresentation(manualScene).catch(() => null))?.proxy?.meshes ?? [])
-        : await mergeSceneProxies(api, toQueryParams(filtersRef.current));
-      if (!cancelled) setData((prev) => ({ ...prev, proxyMeshes: meshes }));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [manualScene, baseUrl, apiKey, status, liveRevision]);
-
-  // Fetch the aggregate panels (heatmaps, top meshes, perf, meta) for one
-  // session. Shared by the initial open and the live → ended refresh below.
-  const fetchSessionPanels = useCallback(
+  // Fetch one session's metadata (scene, camera type, device). The session's
+  // analytics panels self-fetch off the session context; the shell only needs
+  // the metadata for the header and to hand to panels via `ctx.session`.
+  const fetchSessionMeta = useCallback(
     async (id: string): Promise<SessionDetail> => {
-      const params = toQueryParams(filtersRef.current);
       const api = new CollectorApi(baseUrl, apiKey);
-      const [camera, perf, meta] = await Promise.all([
-        api.cameraHeatmap({ ...params, source: undefined, bins: CAMERA_BINS, session: id }),
-        api.perf({ ...params, source: undefined, session: id }),
-        api.sessionMeta(id).catch(() => null),
-      ]);
-      return { id, meta, camera, perf };
+      const meta = await api.sessionMeta(id).catch(() => null);
+      return { id, meta };
     },
     [baseUrl, apiKey],
   );
@@ -570,11 +356,11 @@ export default function Page() {
       const pid = selectedIdRef.current;
       if (pid) pushPath(projectPath(pid, id));
       if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
-      setDetail({ id, meta: null, camera: [], perf: null });
+      setDetail({ id, meta: null });
       setDetailStatus("loading");
       setHiddenTypes(new Set());
       try {
-        setDetail(await fetchSessionPanels(id));
+        setDetail(await fetchSessionMeta(id));
         setDetailStatus("ready");
       } catch (err) {
         setDetailStatus("error");
@@ -587,7 +373,7 @@ export default function Page() {
         );
       }
     },
-    [fetchSessionPanels, projectPath, pushPath],
+    [fetchSessionMeta, projectPath, pushPath],
   );
 
   const closeSession = useCallback(() => {
@@ -606,7 +392,7 @@ export default function Page() {
       const next = projects.find((p) => p.id === id);
       setSelectedId(id);
       if (next) setApiKey(next.apiKey);
-      setData(EMPTY);
+      setHasFirstPerson(false);
       setScenes([]);
       setStatus("idle");
       setError(null);
@@ -697,9 +483,10 @@ export default function Page() {
     () => ({
       selectSession: (id: string) => void openSession(id),
       setTimeRange: (since: number, until: number) => brushRange(since, until),
+      clearTimeRange: () => clearBrush(),
       setFilters: (patch: Partial<FilterState>) => setFilters((f) => ({ ...f, ...patch })),
     }),
-    [openSession, brushRange],
+    [openSession, brushRange, clearBrush],
   );
   const panelBase = {
     api: panelApi,
@@ -707,7 +494,7 @@ export default function Page() {
     apiKey,
     params: panelParams,
     filters,
-    capabilities: { hasFirstPerson: data.hasFirstPerson },
+    capabilities: { hasFirstPerson },
     actions: panelActions,
     live: {
       presence: livePresence,
@@ -748,60 +535,29 @@ export default function Page() {
     detail && livePresence?.sessions.some((s) => s.sessionId === detail.id),
   );
 
-  // The aggregate panels (heatmaps, top meshes, perf) are fetched once when a
-  // session opens. While the session is live they keep streaming events the
-  // dashboard never re-queries, so those panels go stale. When the open session
-  // stops being live, re-fetch them once so every panel reflects the final data.
+  // The session-surface panels fetch once when a session opens. While the
+  // session is live they keep streaming events the dashboard never re-queries,
+  // so those panels go stale. When the open session stops being live, bump the
+  // session revision once so every panel refetches and reflects the final data.
   const wasLiveRef = useRef(detailIsLive);
   useEffect(() => {
     const wasLive = wasLiveRef.current;
     wasLiveRef.current = detailIsLive;
     if (!wasLive || detailIsLive) return; // only on the live → ended transition
-    const open = detailRef.current;
-    if (!open || detailStatus !== "ready") return;
-    const id = open.id;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const next = await fetchSessionPanels(id);
-        if (!cancelled && detailRef.current?.id === id) setDetail(next);
-      } catch {
-        // Keep the existing panels if the refresh fails; they're only stale.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [detailIsLive, detailStatus, fetchSessionPanels]);
+    if (!detailRef.current || detailStatus !== "ready") return;
+    setSessionRevision((r) => r + 1);
+  }, [detailIsLive, detailStatus]);
 
-  // While the open session is live, its aggregate panels (heatmaps, top meshes,
-  // perf) would otherwise stay frozen at the values fetched when it opened. Poll
-  // them once a second so the panels visibly update as events stream in. The
-  // live replay tails over its own SSE channel and is unaffected (its props —
-  // sessionId / isLive — don't change here).
+  // While the open session is live, its panels would otherwise stay frozen at
+  // the values fetched when it opened. Bump the session revision once a second
+  // so they refetch and visibly update as events stream in. The live replay
+  // tails over its own SSE channel and is unaffected (its props — sessionId /
+  // isLive — don't change here).
   useEffect(() => {
     if (!detailIsLive || detailStatus !== "ready") return;
-    const id = detailRef.current?.id;
-    if (!id) return;
-    let cancelled = false;
-    const timer = setInterval(() => {
-      void (async () => {
-        try {
-          const next = await fetchSessionPanels(id);
-          if (!cancelled && detailRef.current?.id === id) setDetail(next);
-        } catch {
-          // Keep the existing panels if a refresh fails; they're only stale.
-        }
-      })();
-      // Also refresh the session-surface registry panels (heatmaps etc.), whose
-      // data the poll above doesn't own — they self-fetch off this revision.
-      if (!cancelled) setSessionRevision((r) => r + 1);
-    }, 1_000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [detailIsLive, detailStatus, fetchSessionPanels]);
+    const timer = setInterval(() => setSessionRevision((r) => r + 1), 1_000);
+    return () => clearInterval(timer);
+  }, [detailIsLive, detailStatus]);
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
@@ -951,7 +707,6 @@ export default function Page() {
               onSetAllHidden={setAllHidden}
             />
           </div>
-          <PerfSummaryPanel perf={detail.perf} />
           {sessionCtx ? (
             <PanelHost
               panels={allPanels}
@@ -961,10 +716,6 @@ export default function Page() {
               exclude={["session-replay"]}
             />
           ) : null}
-          <CameraDirectionHeatmap bins={detail.camera} gridSize={CAMERA_BINS} />
-          <div className="lg:col-span-2">
-            <SessionsTable sessions={data.sessions} selectedId={detail.id} onSelect={openSession} />
-          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -991,34 +742,6 @@ export default function Page() {
               />
             </Panel>
           </div>
-          <div className="lg:col-span-2">
-            <VolumeTimeseries
-              buckets={data.timeseries}
-              intervalMs={data.intervalMs}
-              onBrush={brushRange}
-              brushed={filters.window === "custom"}
-              onClear={clearBrush}
-            />
-          </div>
-          <div className="lg:col-span-2">
-            <SceneHealth counts={data.counts} perf={data.perf} />
-          </div>
-          <div className="lg:col-span-2">
-            <GraphicsDiagnostics rows={data.diagnostics} />
-          </div>
-          <div className="lg:col-span-2">
-            <RenderingTechnology rows={data.renderingTech} />
-          </div>
-          <div className="lg:col-span-2">
-            <SceneMetrics
-              coverage={data.coverage}
-              cellSize={COVERAGE_CELL_SIZE}
-              distance={data.distance}
-              bucketSize={DISTANCE_BUCKET_SIZE}
-              navigation={data.navigation}
-            />
-          </div>
-          <PerfSummaryPanel perf={data.perf} />
           <PanelHost
             panels={allPanels}
             ctx={overviewCtx}
@@ -1026,43 +749,6 @@ export default function Page() {
             revision={liveRevision}
             exclude={["live-presence"]}
           />
-          <div className="lg:col-span-2">
-            <PerformanceSection data={data.performance} />
-          </div>
-          <InputSourceBreakdown rows={data.sources} />
-          <CameraDirectionHeatmap bins={data.camera} gridSize={CAMERA_BINS} />
-          <div className="lg:col-span-2">
-            <Panel
-              title="Gaze heatmap (3D)"
-              subtitle="Camera-pose gaze hit-points voxel-binned in world space — what viewers actually look at"
-            >
-              <WorldHeatmap3DView
-                voxels={data.gaze}
-                cellSize={WORLD_CELL_SIZE}
-                proxyMeshes={data.proxyMeshes}
-                legendTitle="Gaze density"
-                legendLow="few looks"
-                legendHigh="most looks"
-                legendNote="Each marker is a voxel where the camera-forward (gaze) ray hit your scene. Enable gaze capture in the SDK to populate this."
-                emptyLabel="No gaze hit-points in range. Enable gaze capture in the SDK."
-              />
-            </Panel>
-          </div>
-          <div className="lg:col-span-2">
-            <Panel
-              title="Click rays (3D)"
-              subtitle="Each click joined to the view it was made from — gate by viewpoint or focus a mesh; double-click to recenter"
-            >
-              <ClickRays3DView
-                rays={data.clickRays}
-                cellSize={WORLD_CELL_SIZE}
-                proxyMeshes={data.proxyMeshes}
-              />
-            </Panel>
-          </div>
-          <div className="lg:col-span-2">
-            <SessionsTable sessions={data.sessions} onSelect={openSession} />
-          </div>
         </div>
       )}
     </main>

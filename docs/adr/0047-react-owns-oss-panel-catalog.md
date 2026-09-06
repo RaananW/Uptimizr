@@ -1,7 +1,13 @@
 # ADR 0047: `@uptimizr/react` owns the portable OSS panel catalog
 
 - **Status:** Accepted (partially revised by ADR 0049 — Session Replay and Live
-  Presence moved into the catalog)
+  Presence moved into the catalog). _2026-09: fully realized — the last
+  hand-mounted dashboard panels (event volume, scene health, engine diagnostics,
+  rendering technology, scene traversal, perf summary + the ADR 0028 detail
+  panels, input sources, the 2D view-direction disc, the 3D gaze heatmap and
+  click rays, the sessions table, and the walked path) moved into the catalog.
+  The dashboard mounts nothing analytics-shaped outside `PanelHost` except the
+  session inspector and the bespoke Session Replay / Live Presence positions._
 - **Date:** 2025-02-14
 - **Deciders:** Dashboard / SDK maintainers
 
@@ -69,7 +75,9 @@ panel contract version (`PANEL_CONTRACT_VERSION`) is unchanged.
   out and panels render unstyled. Documented in the package README; the dashboard
   adds an `@source` directive.
 - Two ways to reach a 3D view (lazy via the catalog, or the `panels-3d` subpath).
-  The subpath is documented as opt-in for direct composition only.
+  The subpath is documented as opt-in for direct composition only. (Since the
+  gaze heatmap and click rays joined the catalog, the dashboard itself uses the
+  subpath only for Session Replay.)
 
 ## Alternatives considered
 

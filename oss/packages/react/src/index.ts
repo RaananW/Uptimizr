@@ -132,6 +132,23 @@ export {
   loadBounceFunnelPanel,
   livePresencePanel,
   sessionReplayPanel,
+  eventVolumePanel,
+  sceneHealthPanel,
+  engineDiagnosticsPanel,
+  renderingTechnologyPanel,
+  sceneTraversalPanel,
+  perfSummaryPanel,
+  frameTimePanel,
+  jankPanel,
+  perfByDevicePanel,
+  perfByScenePanel,
+  stabilityPanel,
+  resourceFootprintPanel,
+  inputSourcesPanel,
+  viewDirectionPanel,
+  gazeHeatmapPanel,
+  clickRaysPanel,
+  sessionsPanel,
 } from "./catalog/ossPanelCatalog";
 
 // --- Panel view components (2D / HTML / canvas — Babylon-free). --------------
@@ -142,6 +159,29 @@ export { ZoomButtons } from "./catalog/views/ZoomButtons";
 export { FloorPlanHeatmapView } from "./catalog/views/FloorPlanHeatmap";
 export { DesireLinesView } from "./catalog/views/DesireLines";
 export { WalkedPathView } from "./catalog/views/WalkedPath";
+export { VolumeTimeseriesView, formatBucket } from "./catalog/views/VolumeTimeseries";
+export { SceneHealthView } from "./catalog/views/SceneHealth";
+export {
+  GraphicsDiagnosticsView,
+  foldGraphicsDiagnostics,
+} from "./catalog/views/GraphicsDiagnostics";
+export type { DiagnosticBucket, DiagnosticBreakdown } from "./catalog/views/GraphicsDiagnostics";
+export {
+  RenderingTechnologyView,
+  foldRenderingTechnology,
+} from "./catalog/views/RenderingTechnology";
+export type { TechBucket, TechBreakdown } from "./catalog/views/RenderingTechnology";
+export { SceneTraversalView } from "./catalog/views/SceneTraversal";
+export { InputSourcesView } from "./catalog/views/InputSources";
+export {
+  FrameTimeView,
+  JankView,
+  PerfByDeviceView,
+  PerfBySceneView,
+  StabilityView,
+  ResourceFootprintView,
+} from "./catalog/views/PerformanceDetail";
+export { ViewDirectionHeatmapView } from "./catalog/views/ViewDirectionHeatmap";
 export {
   HEIGHT_FLAT_THRESHOLD,
   heightRange,

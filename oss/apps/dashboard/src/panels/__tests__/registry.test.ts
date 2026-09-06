@@ -260,6 +260,113 @@ describe("builtinPanels — walked-path panel (#92)", () => {
   });
 });
 
+describe("builtinPanels — shell panels ported to the catalog (ADR 0036 completion)", () => {
+  const ids = [
+    "event-volume",
+    "scene-health",
+    "engine-diagnostics",
+    "rendering-technology",
+    "scene-traversal",
+    "perf-summary",
+    "frame-time",
+    "jank",
+    "perf-by-device",
+    "perf-by-scene",
+    "stability",
+    "resource-footprint",
+    "input-sources",
+    "view-direction-heatmap",
+    "gaze-heatmap-3d",
+    "click-rays-3d",
+    "sessions",
+  ];
+
+  it("registers every formerly hand-mounted dashboard panel", () => {
+    for (const id of ids) {
+      expect(
+        builtinPanels.find((p) => p.id === id),
+        id,
+      ).toBeDefined();
+    }
+  });
+
+  it("keeps the shell-order: health & volume first, sessions last", () => {
+    const order = builtinPanels.map((p) => p.id);
+    expect(order.indexOf("event-volume")).toBeLessThan(order.indexOf("top-meshes"));
+    expect(order.indexOf("perf-summary")).toBeLessThan(order.indexOf("top-meshes"));
+    expect(order[order.length - 1]).toBe("sessions");
+  });
+
+  it("the event-volume panel bounds an all-time window by the earliest session", async () => {
+    const panel = builtinPanels.find((p) => p.id === "event-volume");
+    const sessions = vi
+      .fn()
+      .mockResolvedValue([
+        { started_at: "2026-01-01T00:00:00Z" },
+        { started_at: "2026-02-01T00:00:00Z" },
+      ]);
+    const timeseries = vi.fn().mockResolvedValue([{ bucket: 0, events: 1, avg_fps: 60 }]);
+    const ctx = {
+      surface: "overview",
+      params: { scene: "lobby" },
+      filters: { window: "all" },
+      api: { sessions, timeseries },
+    } as unknown as PanelDataContext;
+    const data = (await panel?.load?.(ctx)) as { buckets: unknown[]; intervalMs: number };
+    expect(sessions).toHaveBeenCalledWith(expect.objectContaining({ limit: 100 }));
+    expect(timeseries).toHaveBeenCalledWith(
+      expect.objectContaining({ scene: "lobby", interval: expect.any(Number) }),
+    );
+    expect(data.buckets).toHaveLength(1);
+    expect(data.intervalMs).toBeGreaterThan(0);
+  });
+
+  it("the sessions panel lists sessions unscoped on both surfaces and highlights the open one", async () => {
+    const panel = builtinPanels.find((p) => p.id === "sessions");
+    expect(panel?.span).toBe(2);
+    expect(panel?.surfaces).toEqual(["overview", "session"]);
+    const sessionsFn = vi.fn().mockResolvedValue([]);
+    const ctx = {
+      surface: "session",
+      sessionId: "s1",
+      params: { scene: "lobby", source: "mouse" },
+      api: { sessions: sessionsFn },
+    } as unknown as PanelDataContext;
+    await panel?.load?.(ctx);
+    // Not scoped to the open session (it's the list to pick another from) and
+    // never filtered by input source.
+    expect(sessionsFn).toHaveBeenCalledWith({ scene: "lobby", source: undefined, limit: 100 });
+  });
+
+  it("the perf summary scopes to the open session on the session surface", async () => {
+    const panel = builtinPanels.find((p) => p.id === "perf-summary");
+    const perf = vi.fn().mockResolvedValue(null);
+    const ctx = {
+      surface: "session",
+      sessionId: "s1",
+      params: { scene: "lobby", source: "touch" },
+      api: { perf },
+    } as unknown as PanelDataContext;
+    await panel?.load?.(ctx);
+    expect(perf).toHaveBeenCalledWith({ scene: "lobby", source: undefined, session: "s1" });
+  });
+
+  it("the 3D gaze and click-ray panels are client-only, overview-only, with a voxel-size setting", () => {
+    for (const id of ["gaze-heatmap-3d", "click-rays-3d"]) {
+      const panel = builtinPanels.find((p) => p.id === id);
+      expect(panel?.clientOnly, id).toBe(true);
+      expect(panel?.surfaces, id).toEqual(["overview"]);
+      expect(panel?.settings?.cellSize, id).toMatchObject({ type: "number", default: 0.5 });
+    }
+  });
+
+  it("scene traversal starts collapsed", () => {
+    const panel = builtinPanels.find((p) => p.id === "scene-traversal");
+    expect(panel?.collapsible).toBe(true);
+    expect(panel?.defaultCollapsed).toBe(true);
+  });
+});
+
 describe("builtinPanels — navigation-mix panel", () => {
   const panel = builtinPanels.find((p) => p.id === "navigation-mix");
 

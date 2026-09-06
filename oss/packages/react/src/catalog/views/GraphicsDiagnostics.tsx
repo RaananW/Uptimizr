@@ -1,8 +1,11 @@
 "use client";
 
-import type { GraphicsDiagnosticCount } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
-import { Panel } from "./Panel";
+import type { GraphicsDiagnosticCount } from "../../api";
+import { formatNumber } from "../../format";
+
+export const ENGINE_DIAGNOSTICS_TITLE = "Engine diagnostics";
+export const ENGINE_DIAGNOSTICS_SUBTITLE =
+  "GPU-health incidents by severity, category & backend in the selected window";
 
 /** A single (label, count) cell in one of the diagnostic breakdowns. */
 export interface DiagnosticBucket {
@@ -126,33 +129,31 @@ function Group({
  * Opt-in engine-diagnostics overview (#16, ADR 0021 part 2): `graphics_diagnostic`
  * incident counts broken down by severity, category, and backend. Capture is
  * **off by default**, so the common case is zero rows — the empty state says so
- * explicitly rather than reading as a broken/empty panel.
+ * explicitly rather than reading as a broken/empty panel. Panel BODY only (no
+ * chrome); the host supplies title/subtitle via the ADR 0036 panel contract.
  */
-export function GraphicsDiagnostics({ rows }: { rows: GraphicsDiagnosticCount[] }) {
+export function GraphicsDiagnosticsView({ rows }: { rows: GraphicsDiagnosticCount[] }) {
   const { bySeverity, byCategory, byBackend, total } = foldGraphicsDiagnostics(rows);
 
+  if (total === 0) {
+    return (
+      <div className="space-y-1.5">
+        <p className="text-sm text-fg-muted">No engine diagnostics in range.</p>
+        <p className="text-xs text-fg-muted">
+          Engine diagnostics (<code className="text-fg-hi">graphics_diagnostic</code>) are{" "}
+          <span className="text-fg-hi">opt-in and off by default</span>. Enable{" "}
+          <code className="text-fg-hi">captureGraphicsDiagnostics</code> in the SDK to surface GPU
+          errors, device losses, and shader-compile failures here.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <Panel
-      title="Engine diagnostics"
-      subtitle="GPU-health incidents by severity, category & backend in the selected window"
-    >
-      {total === 0 ? (
-        <div className="space-y-1.5">
-          <p className="text-sm text-fg-muted">No engine diagnostics in range.</p>
-          <p className="text-xs text-fg-muted">
-            Engine diagnostics (<code className="text-fg-hi">graphics_diagnostic</code>) are{" "}
-            <span className="text-fg-hi">opt-in and off by default</span>. Enable{" "}
-            <code className="text-fg-hi">captureGraphicsDiagnostics</code> in the SDK to surface GPU
-            errors, device losses, and shader-compile failures here.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <Group title="By severity" buckets={bySeverity} tones={(b) => severityTone(b.key)} />
-          <Group title="By category" buckets={byCategory} />
-          <Group title="By backend" buckets={byBackend} />
-        </div>
-      )}
-    </Panel>
+    <div className="space-y-4">
+      <Group title="By severity" buckets={bySeverity} tones={(b) => severityTone(b.key)} />
+      <Group title="By category" buckets={byCategory} />
+      <Group title="By backend" buckets={byBackend} />
+    </div>
   );
 }

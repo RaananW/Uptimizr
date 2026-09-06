@@ -117,6 +117,12 @@ export interface PanelActions {
   setTimeRange(since: number, until: number): void;
   /** Patch the global filter state. */
   setFilters(patch: Partial<FilterState>): void;
+  /**
+   * Undo `setTimeRange`: restore the time preset that was active before the
+   * brush. Optional — a host that doesn't track the previous preset may omit it,
+   * and panels fall back to `setFilters` with the default window.
+   */
+  clearTimeRange?(): void;
 }
 
 /** Live-layer access for SSE-driven panels (ADR 0032). */
@@ -203,6 +209,8 @@ export interface PanelDefinition<TData = void, TSettings extends PanelSettings =
   readonly surfaces?: PanelSurface[];
   /** Whether the panel chrome can collapse. */
   readonly collapsible?: boolean;
+  /** Start collapsed when `collapsible` (defaults to expanded). */
+  readonly defaultCollapsed?: boolean;
   /** Render client-only (no SSR) — for canvas / Babylon panels. */
   readonly clientOnly?: boolean;
   /**

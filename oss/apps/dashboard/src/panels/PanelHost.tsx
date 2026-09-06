@@ -185,6 +185,7 @@ function PanelCell({
       subtitle={subtitle}
       help={panel.help}
       collapsible={panel.collapsible}
+      defaultCollapsed={panel.defaultCollapsed}
       onHide={onHide}
       settings={settingsForm}
     >

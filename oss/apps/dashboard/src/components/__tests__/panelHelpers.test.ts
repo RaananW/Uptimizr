@@ -8,9 +8,13 @@ import type {
   MeshTrendPoint,
   SceneProxyMesh,
 } from "@/lib/api";
-import { buildLeaderboard, buildModalitySplit, buildDeadZones } from "@uptimizr/react";
-import { foldGraphicsDiagnostics } from "@/components/GraphicsDiagnostics";
-import { foldRenderingTechnology } from "@/components/RenderingTechnology";
+import {
+  buildLeaderboard,
+  buildModalitySplit,
+  buildDeadZones,
+  foldGraphicsDiagnostics,
+  foldRenderingTechnology,
+} from "@uptimizr/react";
 
 describe("buildLeaderboard (#74)", () => {
   const sources: MeshSourceCount[] = [
