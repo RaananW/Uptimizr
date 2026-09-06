@@ -43,11 +43,18 @@ suite** and test everything in one go:
 - **Demo** — writes a self-contained Babylon scene + tiny static server and an `npm run demo`
   script (`http://localhost:5173`) that generates events end-to-end.
 
+The prompts also ask which **store** to use. `duckdb` (the default) needs nothing else; `postgres`,
+`clickhouse` and `mssql` point the scaffold at a database you already run — `.env` gets the matching
+`COLLECTOR_STORE` and connection variables (`POSTGRES_URL`, `CLICKHOUSE_*`, `MSSQL_URL`) with
+local-server placeholders to edit, and `package.json` gains the store package. `npm run setup` then
+creates the schema and mints the first project in that database.
+
 Skip the prompts with flags — `--full` (collector + dashboard + demo), `--dashboard`, `--demo`,
-or `--minimal` (collector only):
+`--minimal` (collector only), or `--store <duckdb|postgres|clickhouse|mssql>`:
 
 ```bash
 npm create uptimizr@latest my-analytics -- --full
+npm create uptimizr@latest my-analytics -- --store postgres
 ```
 
 With the full suite, run the three processes together and watch events flow from the demo through
@@ -66,7 +73,8 @@ Use the `uptimizr` CLI shipped with `@uptimizr/collector-server` directly:
 
 <Steps>
 
-1. **Initialise.** Generates a `VISITOR_HASH_SECRET`, creates the DuckDB store, mints a first
+1. **Initialise.** Generates a `VISITOR_HASH_SECRET`, creates and migrates the store (DuckDB
+   unless `COLLECTOR_STORE` selects another — see the store sections below), mints a first
    project + API key, and writes a local `.env`. The project id, endpoint, and key are printed
    **once** — copy the key into your app config.
 
@@ -133,8 +141,13 @@ Postgres without changing any application code or queries:
 ```bash
 export COLLECTOR_STORE=postgres
 export POSTGRES_URL=postgresql://uptimizr:uptimizr@localhost:5432/uptimizr
+npx -p @uptimizr/collector-server uptimizr init    # schema + first project + key, in Postgres
 npx -p @uptimizr/collector-server uptimizr serve
 ```
+
+Or scaffold it: `npm create uptimizr@latest my-analytics -- --store postgres` writes this `.env`
+for you. `init`, `new-project` and `migrate` all honour `COLLECTOR_STORE`, so the project you mint
+is the one the collector resolves.
 
 This is a **single-tenant Postgres store**: events **and** metadata (projects, API keys, scene
 representations) live in one database. The database itself must exist (your provider or
@@ -172,9 +185,11 @@ relational path is available without operating a second database engine:
 ```bash
 export COLLECTOR_STORE=mssql
 export MSSQL_URL="Server=localhost,1433;Database=uptimizr;User Id=sa;Password=Uptimizr!Local1;Encrypt=true;TrustServerCertificate=true"
+npx -p @uptimizr/collector-server uptimizr init    # database + schema + first project + key
 npx -p @uptimizr/collector-server uptimizr serve
 ```
 
+Or scaffold it: `npm create uptimizr@latest my-analytics -- --store mssql`.
 `MSSQL_URL` is an ADO.NET-style connection string (Azure SQL's works as-is); alternatively set the
 discrete `MSSQL_SERVER` / `MSSQL_PORT` / `MSSQL_DATABASE` / `MSSQL_USER` / `MSSQL_PASSWORD` fields
 (with `MSSQL_ENCRYPT`, on by default, and `MSSQL_TRUST_SERVER_CERTIFICATE` for a self-signed local
@@ -216,8 +231,11 @@ export CLICKHOUSE_URL=http://localhost:8123
 export CLICKHOUSE_DATABASE=uptimizr
 export CLICKHOUSE_USER=default
 export CLICKHOUSE_PASSWORD=
+npx -p @uptimizr/collector-server uptimizr init    # database + tables + first project + key
 npx -p @uptimizr/collector-server uptimizr serve
 ```
+
+Or scaffold it: `npm create uptimizr@latest my-analytics -- --store clickhouse`.
 
 This is a **single-tenant ClickHouse store**: events **and** metadata (projects, API keys, scene
 representations) live in one ClickHouse database, so there is no separate metadata service to run.

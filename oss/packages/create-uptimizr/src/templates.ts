@@ -16,6 +16,46 @@ export const ENGINE_PACKAGE: Record<Engine, string> = {
   aframe: "@uptimizr/aframe",
 };
 
+/**
+ * Collector stores the scaffolder can configure (`COLLECTOR_STORE`). DuckDB is
+ * the zero-dependency default; the others are the optional single-tenant
+ * multi-writer stores and need a reachable database server.
+ */
+export const STORES = ["duckdb", "postgres", "clickhouse", "mssql"] as const;
+
+export type Store = (typeof STORES)[number];
+
+export const DEFAULT_STORE: Store = "duckdb";
+
+/** Human-readable store names used in the generated README / package.json. */
+export const STORE_LABEL: Record<Store, string> = {
+  duckdb: "DuckDB",
+  postgres: "PostgreSQL",
+  clickhouse: "ClickHouse",
+  mssql: "SQL Server",
+};
+
+/**
+ * The optional store package added to the generated `package.json`. DuckDB
+ * ships inside `@uptimizr/db` (a collector-server dependency), so it needs no
+ * extra package.
+ */
+export const STORE_PACKAGE: Record<Store, string | undefined> = {
+  duckdb: undefined,
+  postgres: "@uptimizr/db-postgres",
+  clickhouse: "@uptimizr/db-clickhouse",
+  mssql: "@uptimizr/db-mssql",
+};
+
+/**
+ * `@uptimizr/collector-server` range the scaffold depends on. The store-aware
+ * `uptimizr` CLI (`init` / `new-project` / `migrate` honouring `COLLECTOR_STORE`)
+ * shipped in 1.1.0, which a non-DuckDB scaffold relies on for `npm run setup`.
+ */
+const COLLECTOR_SERVER_RANGE = "^1.1.0";
+/** Range for the optional `@uptimizr/db-*` store package. */
+const STORE_PACKAGE_RANGE = "^1.0.0";
+
 const DEFAULT_PORT = 4318;
 
 /** Port the optional analytics dashboard (`@uptimizr/dashboard`) serves on. */
@@ -30,10 +70,17 @@ const UPTIMIZR_BABYLON_VERSION = "1.0.0";
 
 /** Optional extras a developer can fold into the scaffold. */
 export interface ScaffoldExtras {
+  /** Collector store to configure (`COLLECTOR_STORE`). Default `duckdb`. */
+  store?: Store;
   /** Include the analytics dashboard (`@uptimizr/dashboard`) for the full suite. */
   withDashboard?: boolean;
   /** Include a runnable Babylon demo scene that generates events end-to-end. */
   withDemo?: boolean;
+}
+
+/** The chosen store, defaulting to DuckDB. */
+function storeOf(extras: ScaffoldExtras): Store {
+  return extras.store ?? DEFAULT_STORE;
 }
 
 /** The collector endpoint a freshly-scaffolded local self-host listens on. */
@@ -64,9 +111,16 @@ export function renderPackageJson(
     "new-project": "uptimizr new-project",
     migrate: "uptimizr migrate",
   };
+  const store = storeOf(extras);
   const dependencies: Record<string, string> = {
-    "@uptimizr/collector-server": "^1.0.0",
+    "@uptimizr/collector-server": COLLECTOR_SERVER_RANGE,
   };
+  const storePackage = STORE_PACKAGE[store];
+  if (storePackage) {
+    // The collector already depends on every store package; declaring the
+    // chosen one here makes the choice explicit and pinnable in the scaffold.
+    dependencies[storePackage] = STORE_PACKAGE_RANGE;
+  }
   if (extras.withDashboard) {
     // The dashboard ships its own zero-dep static server (`uptimizr-dashboard`).
     dependencies["@uptimizr/dashboard"] = "^1.0.0";
@@ -81,11 +135,61 @@ export function renderPackageJson(
     version: "0.0.0",
     private: true,
     type: "module",
-    description: `Uptimizr self-host for "${projectName}" (DuckDB, no Docker).`,
+    description:
+      store === "duckdb"
+        ? `Uptimizr self-host for "${projectName}" (DuckDB, no Docker).`
+        : `Uptimizr self-host for "${projectName}" (${STORE_LABEL[store]} store).`,
     scripts,
     dependencies,
   };
   return `${JSON.stringify(pkg, null, 2)}\n`;
+}
+
+/**
+ * The `COLLECTOR_STORE` selector plus the connection settings the collector
+ * reads for that store (names mirror the monorepo's `.env.example`). The
+ * non-DuckDB defaults point at a local server with the stock dev credentials —
+ * the user edits them to match their own database.
+ */
+function storeEnvLines(store: Store): string[] {
+  switch (store) {
+    case "duckdb":
+      return [
+        "# OSS default store is DuckDB — no Docker, no external database.",
+        "COLLECTOR_STORE=duckdb",
+        "DUCKDB_PATH=./data/uptimizr.duckdb",
+      ];
+    case "postgres":
+      return [
+        "# Single-tenant PostgreSQL store (@uptimizr/db-postgres). The database must",
+        "# already exist; the schema is created by `npm run setup`. DATABASE_URL is",
+        "# accepted as a fallback, and libpq URI options (?sslmode=require) apply.",
+        "COLLECTOR_STORE=postgres",
+        "POSTGRES_URL=postgresql://uptimizr:uptimizr@localhost:5432/uptimizr",
+        "# POSTGRES_SCHEMA=public",
+        "# POSTGRES_POOL_MAX=10",
+      ];
+    case "clickhouse":
+      return [
+        "# Single-tenant ClickHouse store (@uptimizr/db-clickhouse). The database is",
+        "# created by `npm run setup` (the user needs CREATE DATABASE, or pre-create",
+        "# it). For a managed instance use the https:// endpoint — TLS is inferred.",
+        "COLLECTOR_STORE=clickhouse",
+        "CLICKHOUSE_URL=http://localhost:8123",
+        "CLICKHOUSE_DATABASE=uptimizr",
+        "CLICKHOUSE_USER=default",
+        "CLICKHOUSE_PASSWORD=",
+      ];
+    case "mssql":
+      return [
+        "# Single-tenant SQL Server / Azure SQL store (@uptimizr/db-mssql). The",
+        "# database is created by `npm run setup` when the login may (CREATE ANY",
+        "# DATABASE); SQL Server 2022+ or Azure SQL. Replace the credentials below.",
+        "COLLECTOR_STORE=mssql",
+        "MSSQL_URL=Server=localhost,1433;Database=uptimizr;User Id=sa;Password=Uptimizr!Local1;Encrypt=true;TrustServerCertificate=true",
+        "# MSSQL_POOL_MAX=10",
+      ];
+  }
 }
 
 export function renderEnv(
@@ -95,13 +199,12 @@ export function renderEnv(
 ): string {
   return `${[
     "# Uptimizr collector configuration (generated by create-uptimizr).",
-    "# OSS default store is DuckDB — no Docker, no external database.",
     "# Keep this file private; it holds your visitor-hash secret.",
     "",
     `VISITOR_HASH_SECRET=${secret}`,
-    "COLLECTOR_STORE=duckdb",
-    "DUCKDB_PATH=./data/uptimizr.duckdb",
     `COLLECTOR_PORT=${port}`,
+    "",
+    ...storeEnvLines(storeOf(extras)),
     "",
     "# Browser origins allowed to send analytics / read the query API",
     "# (comma-separated). Add your app's dev + production origins here.",
@@ -396,13 +499,28 @@ In the dashboard's connection bar, enter the **endpoint** (\`${endpoint}\`) and 
 `
       : "";
 
+  const store = storeOf(extras);
+  const intro =
+    store === "duckdb"
+      ? `A Docker-free, single-file (DuckDB) self-host of the Uptimizr OSS 3D-analytics
+collector, scaffolded for **${projectName}**.`
+      : `A self-host of the Uptimizr OSS 3D-analytics collector backed by
+**${STORE_LABEL[store]}**, scaffolded for **${projectName}**.`;
+  const storeNotes = storeReadmeNotes(store);
+
   return `# ${folderName}
 
-A Docker-free, single-file (DuckDB) self-host of the Uptimizr OSS 3D-analytics
-collector, scaffolded for **${projectName}**.
+${intro}
 
 ## Quick start
-
+${
+  store === "duckdb"
+    ? ""
+    : `
+Point \`.env\` at your ${STORE_LABEL[store]} server (see [Notes](#notes)) and make sure it is
+running, then:
+`
+}
 \`\`\`bash
 npm install      # install the collector
 npm run setup    # mint your first project + API key (printed once)
@@ -425,10 +543,40 @@ key (\`x-api-key\`) for the query routes / dashboard.
 ${suiteSection}
 ## Notes
 
-- The collector stores events **and** metadata in one DuckDB file
-  (\`./data/uptimizr.duckdb\`) — no external database, no Docker.
-- \`.env\` holds your visitor-hash secret and is git-ignored. Keep it private and
-  back up the DuckDB file by copying it.
+${storeNotes}
 - Add your app's origins to \`COLLECTOR_CORS_ORIGINS\` in \`.env\`.
 `;
+}
+
+/** README bullets describing where the data lives and what to keep private. */
+function storeReadmeNotes(store: Store): string {
+  switch (store) {
+    case "duckdb":
+      return `- The collector stores events **and** metadata in one DuckDB file
+  (\`./data/uptimizr.duckdb\`) — no external database, no Docker.
+- \`.env\` holds your visitor-hash secret and is git-ignored. Keep it private and
+  back up the DuckDB file by copying it.`;
+    case "postgres":
+      return `- The collector stores events **and** metadata in one PostgreSQL database
+  (\`POSTGRES_URL\` in \`.env\`; \`DATABASE_URL\` is accepted as a fallback). The
+  database itself must already exist — \`npm run setup\` creates the schema.
+  Several collector instances may share it (migrations are serialized).
+- \`.env\` holds your visitor-hash secret and database credentials and is
+  git-ignored. Keep it private; back up with your usual Postgres tooling.`;
+    case "clickhouse":
+      return `- The collector stores events **and** metadata in one ClickHouse database
+  (\`CLICKHOUSE_*\` in \`.env\`), created by \`npm run setup\` — the connecting user
+  needs \`CREATE DATABASE\`, or pre-create it. For a managed instance point
+  \`CLICKHOUSE_URL\` at the \`https://\` endpoint. Several collector instances may
+  share it.
+- \`.env\` holds your visitor-hash secret and database credentials and is
+  git-ignored. Keep it private; back up with your usual ClickHouse tooling.`;
+    case "mssql":
+      return `- The collector stores events **and** metadata in one SQL Server / Azure SQL
+  database (\`MSSQL_URL\` in \`.env\`), created by \`npm run setup\` when the login
+  may (\`CREATE ANY DATABASE\`) — otherwise create it up front. SQL Server 2022+
+  or Azure SQL is required. Several collector instances may share it.
+- \`.env\` holds your visitor-hash secret and database credentials and is
+  git-ignored. Keep it private; back up with your usual SQL Server tooling.`;
+  }
 }

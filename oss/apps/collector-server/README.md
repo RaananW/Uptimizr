@@ -12,8 +12,9 @@ database (the OSS default store is a single DuckDB file). The store is
 created and migrated automatically.
 
 ```bash
-# 1. One-time setup: generates a visitor-hash secret, creates the DuckDB store,
-#    mints a first project + API key, and writes a local .env.
+# 1. One-time setup: generates a visitor-hash secret, creates + migrates the
+#    store (DuckDB by default), mints a first project + API key, and writes a
+#    local .env.
 npx -p @uptimizr/collector-server uptimizr init "My Project"
 
 # 2. Start the ingestion + query API (reads the generated .env; 0.0.0.0:4318).
@@ -25,6 +26,20 @@ and this server's URL (the **`endpoint`**) to your client SDK (e.g.
 `@uptimizr/babylon`); use the **API key** (`x-api-key`) for the query routes /
 dashboard. Mint more projects later with
 `npx -p @uptimizr/collector-server uptimizr new-project "<name>"`.
+
+`init`, `new-project` and `migrate` target the store selected by
+`COLLECTOR_STORE`, read through the same connection variables `serve` uses — so
+to self-host on Postgres, SQL Server or ClickHouse instead of DuckDB, export the
+store and its connection settings before running them (see
+[Configuration](#configuration)), or let `npm create uptimizr@latest -- --store <s>`
+generate the `.env` for you:
+
+```bash
+export COLLECTOR_STORE=postgres
+export POSTGRES_URL=postgresql://uptimizr:uptimizr@localhost:5432/uptimizr
+npx -p @uptimizr/collector-server uptimizr init "My Project"   # schema + first project live in Postgres
+npx -p @uptimizr/collector-server uptimizr serve
+```
 
 ### All-in-one: serve the dashboard too
 
@@ -72,7 +87,7 @@ file; back up by copying the file).
 
 > Installing as a dependency instead of via `npx`? `npm install @uptimizr/collector-server`
 > exposes the `uptimizr` CLI (`init` / `serve` / `new-project` / `migrate`) plus
-> the legacy `uptimizr-collector` bin; `@uptimizr/db` exposes
+> the legacy `uptimizr-collector` bin; `@uptimizr/db` exposes the DuckDB-only
 > `uptimizr-db-new-project` / `uptimizr-db-migrate`.
 
 ## Endpoints

@@ -1,16 +1,17 @@
 #!/usr/bin/env node
-// `create-uptimizr` — `npm create uptimizr@latest` scaffolds a Docker-free,
-// single-file (DuckDB) self-host of the OSS collector. It writes files and
-// operates the project via the `uptimizr` CLI; it never reimplements collector
-// logic.
+// `create-uptimizr` — `npm create uptimizr@latest` scaffolds a self-host of the
+// OSS collector: Docker-free and single-file (DuckDB) by default, or backed by
+// Postgres / ClickHouse / SQL Server. It writes files and operates the project
+// via the `uptimizr` CLI; it never reimplements collector logic.
 import { createInterface } from "node:readline/promises";
 import { scaffold } from "./scaffold.js";
-import { ENGINES, type Engine } from "./templates.js";
+import { DEFAULT_STORE, ENGINES, STORES, type Engine, type Store } from "./templates.js";
 
 interface CliArgs {
   targetDir?: string;
   projectName?: string;
   engine?: Engine;
+  store?: Store;
   port?: number;
   withDashboard?: boolean;
   withDemo?: boolean;
@@ -24,6 +25,7 @@ function parseArgs(argv: string[]): CliArgs {
     if (a === undefined) continue;
     if (a === "--help" || a === "-h") args.help = true;
     else if (a === "--engine") args.engine = argv[++i] as Engine;
+    else if (a === "--store") args.store = argv[++i] as Store;
     else if (a === "--name") args.projectName = argv[++i];
     else if (a === "--port") args.port = Number(argv[++i]);
     else if (a === "--dashboard") args.withDashboard = true;
@@ -43,13 +45,14 @@ function parseArgs(argv: string[]): CliArgs {
 
 function usage(): string {
   return [
-    "create-uptimizr — scaffold a Docker-free self-host of the Uptimizr collector.",
+    "create-uptimizr — scaffold a self-host of the Uptimizr collector.",
     "",
     "Usage:",
     "  npm create uptimizr@latest [dir] -- [options]",
     "",
     "Options:",
     "  --engine <e>     Client connector to emit a snippet for.",
+    "  --store <s>      Collector store (default duckdb — no Docker, no database server).",
     "  --name <name>    Human-readable project name.",
     "  --port <n>       Collector port (default 4318).",
     "  --dashboard      Include the analytics dashboard (@uptimizr/dashboard).",
@@ -58,16 +61,22 @@ function usage(): string {
     "  --minimal        Collector only (skip the prompts).",
     "",
     `Engines: ${ENGINES.join(", ")}`,
+    `Stores:  ${STORES.join(", ")}`,
     "",
     "Examples:",
     "  npm create uptimizr@latest my-analytics",
     '  npm create uptimizr@latest my-analytics -- --engine three --name "My Game"',
     "  npm create uptimizr@latest my-analytics -- --full",
+    "  npm create uptimizr@latest my-analytics -- --store postgres",
   ].join("\n");
 }
 
 function isEngine(value: string | undefined): value is Engine {
   return value !== undefined && (ENGINES as readonly string[]).includes(value);
+}
+
+function isStore(value: string | undefined): value is Store {
+  return value !== undefined && (STORES as readonly string[]).includes(value);
 }
 
 async function main(): Promise<void> {
@@ -79,12 +88,17 @@ async function main(): Promise<void> {
 
   let targetDir = args.targetDir;
   let engine = args.engine;
+  let store = args.store;
   let withDashboard = args.withDashboard;
   let withDemo = args.withDemo;
   const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
 
   if (
-    (!targetDir || !isEngine(engine) || withDashboard === undefined || withDemo === undefined) &&
+    (!targetDir ||
+      !isEngine(engine) ||
+      !isStore(store) ||
+      withDashboard === undefined ||
+      withDemo === undefined) &&
     interactive
   ) {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -96,6 +110,14 @@ async function main(): Promise<void> {
       if (!isEngine(engine)) {
         const answer = (await rl.question(`Engine (${ENGINES.join(" / ")}) [babylon]: `)).trim();
         engine = isEngine(answer) ? answer : "babylon";
+      }
+      if (!isStore(store)) {
+        const answer = (
+          await rl.question(
+            `Collector store (${STORES.join(" / ")}) [${DEFAULT_STORE}] — duckdb needs no database server: `,
+          )
+        ).trim();
+        store = isStore(answer) ? answer : DEFAULT_STORE;
       }
       if (withDashboard === undefined) {
         const answer = (
@@ -122,12 +144,20 @@ async function main(): Promise<void> {
     }
     engine = "babylon";
   }
+  if (!isStore(store)) {
+    if (store !== undefined) {
+      console.error(`Unknown store "${store}". Expected one of: ${STORES.join(", ")}`);
+      process.exit(1);
+    }
+    store = DEFAULT_STORE;
+  }
 
   let result;
   try {
     result = scaffold({
       targetDir,
       engine,
+      store,
       ...(args.projectName ? { projectName: args.projectName } : {}),
       ...(args.port ? { port: args.port } : {}),
       ...(withDashboard ? { withDashboard: true } : {}),
@@ -142,9 +172,14 @@ async function main(): Promise<void> {
     Boolean,
   );
   const suffix = extras.length > 0 ? ` + ${extras.join(" + ")}` : "";
-  console.log(`\n✓ Scaffolded ${result.folderName} (${engine}${suffix}) in ${result.dir}`);
+  console.log(
+    `\n✓ Scaffolded ${result.folderName} (${engine}, ${result.store}${suffix}) in ${result.dir}`,
+  );
   console.log("\nNext steps:");
   console.log(`  cd ${targetDir}`);
+  if (result.store !== "duckdb") {
+    console.log(`  # edit .env so the ${result.store} connection settings point at your server`);
+  }
   console.log("  npm install");
   console.log("  npm run setup     # mints your first project + API key");
   console.log("  npm start         # ingestion + query API");

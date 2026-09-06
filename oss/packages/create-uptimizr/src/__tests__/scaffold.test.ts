@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../scaffold.js";
-import { ENGINES } from "../templates.js";
+import { ENGINES, STORES } from "../templates.js";
 
 let root: string;
 
@@ -80,6 +80,68 @@ describe("scaffold", () => {
     expect(readFileSync(join(dir, "client-snippet.babylon.ts"), "utf8")).toContain(
       "http://localhost:5000",
     );
+  });
+
+  it("configures the zero-dependency DuckDB store by default", () => {
+    const { dir, store } = scaffold({ targetDir: join(root, "duck"), engine: "babylon" });
+    expect(store).toBe("duckdb");
+    const env = readFileSync(join(dir, ".env"), "utf8");
+    expect(env).toContain("COLLECTOR_STORE=duckdb");
+    expect(env).toContain("DUCKDB_PATH=./data/uptimizr.duckdb");
+    expect(env).not.toMatch(/POSTGRES_|CLICKHOUSE_|MSSQL_/);
+    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+    expect(Object.keys(pkg.dependencies)).toEqual(["@uptimizr/collector-server"]);
+    expect(readdirSync(join(dir, "data"))).toEqual([".gitkeep"]);
+    expect(readFileSync(join(dir, "README.md"), "utf8")).toContain("single-file (DuckDB)");
+  });
+
+  it("writes the matching env, store package, and README for each external store", () => {
+    const expectations = {
+      postgres: {
+        pkg: "@uptimizr/db-postgres",
+        env: ["COLLECTOR_STORE=postgres", "POSTGRES_URL=postgresql://"],
+        label: "PostgreSQL",
+      },
+      clickhouse: {
+        pkg: "@uptimizr/db-clickhouse",
+        env: [
+          "COLLECTOR_STORE=clickhouse",
+          "CLICKHOUSE_URL=http://",
+          "CLICKHOUSE_DATABASE=uptimizr",
+          "CLICKHOUSE_USER=",
+          "CLICKHOUSE_PASSWORD=",
+        ],
+        label: "ClickHouse",
+      },
+      mssql: {
+        pkg: "@uptimizr/db-mssql",
+        env: ["COLLECTOR_STORE=mssql", "MSSQL_URL=Server="],
+        label: "SQL Server",
+      },
+    } as const;
+    for (const store of STORES) {
+      if (store === "duckdb") continue;
+      const expected = expectations[store];
+      const dir = join(root, store);
+      const res = scaffold({ targetDir: dir, engine: "three", store });
+      expect(res.store).toBe(store);
+
+      const env = readFileSync(join(dir, ".env"), "utf8");
+      for (const line of expected.env) expect(env, store).toContain(line);
+      expect(env, store).not.toContain("COLLECTOR_STORE=duckdb");
+      expect(env, store).not.toContain("DUCKDB_PATH");
+
+      const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+      expect(pkg.dependencies["@uptimizr/collector-server"], store).toBeDefined();
+      expect(pkg.dependencies[expected.pkg], store).toBeDefined();
+      expect(pkg.description, store).toContain(expected.label);
+
+      const readme = readFileSync(join(dir, "README.md"), "utf8");
+      expect(readme, store).toContain(expected.label);
+      expect(readme, store).not.toContain("single-file (DuckDB)");
+      // The store lives in an external server: no local data dir.
+      expect(readdirSync(dir), store).not.toContain("data");
+    }
   });
 
   it("refuses to scaffold into a non-empty directory", () => {

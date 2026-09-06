@@ -2,8 +2,10 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
+  DEFAULT_STORE,
   type Engine,
   type ScaffoldExtras,
+  type Store,
   renderClientSnippet,
   renderDemoHtml,
   renderDemoServer,
@@ -20,6 +22,8 @@ export interface ScaffoldOptions {
   projectName?: string;
   /** Engine to emit a client snippet for. */
   engine: Engine;
+  /** Collector store to configure (`COLLECTOR_STORE`). Default `duckdb`. */
+  store?: Store;
   /** Collector port baked into config/snippets. Default 4318. */
   port?: number;
   /** Pre-supplied secret (tests); a strong one is generated when omitted. */
@@ -35,6 +39,7 @@ export interface ScaffoldResult {
   folderName: string;
   projectName: string;
   files: string[];
+  store: Store;
   withDashboard: boolean;
   withDemo: boolean;
 }
@@ -65,12 +70,12 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
   const projectName = options.projectName?.trim() || folderName;
   const port = options.port ?? 4318;
   const secret = options.secret ?? randomBytes(32).toString("hex");
+  const store = options.store ?? DEFAULT_STORE;
   const extras: ScaffoldExtras = {
+    store,
     ...(options.withDashboard ? { withDashboard: true } : {}),
     ...(options.withDemo ? { withDemo: true } : {}),
   };
-
-  mkdirSync(join(dir, "data"), { recursive: true });
 
   const files: Array<[string, string]> = [
     ["package.json", renderPackageJson(folderName, projectName, extras)],
@@ -78,9 +83,13 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
     [".gitignore", renderGitignore()],
     ["README.md", renderReadme(folderName, projectName, options.engine, port, extras)],
     [`client-snippet.${options.engine}.ts`, renderClientSnippet(options.engine, port)],
-    // Keep the (git-ignored) data dir in the tree so the store path exists.
-    ["data/.gitkeep", ""],
   ];
+
+  if (store === "duckdb") {
+    // Keep the (git-ignored) data dir in the tree so the DuckDB file's folder
+    // exists. The other stores live in an external database server.
+    files.push(["data/.gitkeep", ""]);
+  }
 
   if (options.withDemo) {
     files.push(["demo/index.html", renderDemoHtml(port)]);
@@ -98,6 +107,7 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
     folderName,
     projectName,
     files: files.map(([rel]) => rel),
+    store,
     withDashboard: Boolean(options.withDashboard),
     withDemo: Boolean(options.withDemo),
   };
