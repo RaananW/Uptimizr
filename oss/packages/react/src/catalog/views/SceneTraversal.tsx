@@ -1,8 +1,11 @@
 "use client";
 
-import type { CameraDistanceBucket, CoverageVoxel, NavigationStat } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
-import { Panel } from "./Panel";
+import type { CameraDistanceBucket, CoverageVoxel, NavigationStat } from "../../api";
+import { formatNumber } from "../../format";
+
+export const SCENE_TRAVERSAL_TITLE = "Scene traversal";
+export const SCENE_TRAVERSAL_SUBTITLE =
+  "Coverage, camera distance & navigation effort — derived from camera_sample";
 
 /** A single labelled metric tile. */
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -59,9 +62,10 @@ function DistanceHistogram({
  * visitors actually move through (coverage / dead zones), how far the camera
  * sits from a focus point (distance / zoom), and how much effort navigation
  * costs (active travel vs idle). All three are computed server-side from
- * `camera_sample` events — no extra client capture.
+ * `camera_sample` events — no extra client capture. Panel BODY only (no
+ * chrome); the host supplies title/subtitle via the ADR 0036 panel contract.
  */
-export function SceneMetrics({
+export function SceneTraversalView({
   coverage,
   cellSize,
   distance,
@@ -86,44 +90,35 @@ export function SceneMetrics({
 
   const hasData = occupiedCells > 0 || navigation.length > 0;
 
-  return (
-    <Panel
-      title="Scene traversal"
-      subtitle="Coverage, camera distance & navigation effort — derived from camera_sample"
-      collapsible
-      defaultCollapsed
-    >
-      {!hasData ? (
-        <p className="text-sm text-fg-muted">No camera samples in range.</p>
-      ) : (
-        <div className="flex flex-col gap-5">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Stat
-              label="Visited cells"
-              value={formatNumber(occupiedCells)}
-              hint={`${formatNumber(cellSize, 2)} u voxels`}
-            />
-            <Stat label="Camera samples" value={formatNumber(cameraSamples)} />
-            <Stat
-              label="Avg travel"
-              value={formatNumber(avgTravel, 1)}
-              hint={sessionsMoved > 0 ? `over ${formatNumber(sessionsMoved)} sessions` : undefined}
-            />
-            <Stat
-              label="Active movement"
-              value={`${formatNumber(activeShare * 100, 0)}%`}
-              hint="of camera segments"
-            />
-          </div>
+  if (!hasData) return <p className="text-sm text-fg-muted">No camera samples in range.</p>;
 
-          <div>
-            <p className="mb-1.5 text-xs uppercase tracking-wide text-fg-muted">
-              Camera distance distribution
-            </p>
-            <DistanceHistogram buckets={distance} bucketSize={bucketSize} />
-          </div>
-        </div>
-      )}
-    </Panel>
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Stat
+          label="Visited cells"
+          value={formatNumber(occupiedCells)}
+          hint={`${formatNumber(cellSize, 2)} u voxels`}
+        />
+        <Stat label="Camera samples" value={formatNumber(cameraSamples)} />
+        <Stat
+          label="Avg travel"
+          value={formatNumber(avgTravel, 1)}
+          hint={sessionsMoved > 0 ? `over ${formatNumber(sessionsMoved)} sessions` : undefined}
+        />
+        <Stat
+          label="Active movement"
+          value={`${formatNumber(activeShare * 100, 0)}%`}
+          hint="of camera segments"
+        />
+      </div>
+
+      <div>
+        <p className="mb-1.5 text-xs uppercase tracking-wide text-fg-muted">
+          Camera distance distribution
+        </p>
+        <DistanceHistogram buckets={distance} bucketSize={bucketSize} />
+      </div>
+    </div>
   );
 }

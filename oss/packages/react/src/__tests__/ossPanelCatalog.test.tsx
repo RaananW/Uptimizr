@@ -12,6 +12,7 @@ import {
   viewCoveragePanel,
   floorPlanPanel,
   desireLinesPanel,
+  walkedPathPanel,
   meshKindsPanel,
   reachabilityPanel,
   inputModalityPanel,
@@ -35,6 +36,23 @@ import {
   loadBounceFunnelPanel,
   livePresencePanel,
   sessionReplayPanel,
+  eventVolumePanel,
+  sceneHealthPanel,
+  engineDiagnosticsPanel,
+  renderingTechnologyPanel,
+  sceneTraversalPanel,
+  perfSummaryPanel,
+  frameTimePanel,
+  jankPanel,
+  perfByDevicePanel,
+  perfByScenePanel,
+  stabilityPanel,
+  resourceFootprintPanel,
+  inputSourcesPanel,
+  viewDirectionPanel,
+  gazeHeatmapPanel,
+  clickRaysPanel,
+  sessionsPanel,
 } from "../index";
 import type { PanelContext, PanelDataContext, PanelDefinition } from "../index";
 
@@ -48,6 +66,8 @@ const PANEL_3D_IDS = new Set([
   "flow-sankey-3d", // gitleaks:allow — panel id, not a secret
   "gaze-click-divergence-3d",
   "session-replay",
+  "gaze-heatmap-3d",
+  "click-rays-3d",
 ]);
 
 /** React tags a `React.lazy(...)` component with this internal symbol. */
@@ -63,6 +83,7 @@ const ctx = {
   baseUrl: "http://localhost:4318",
   apiKey: "k",
   sessionId: "session-1",
+  filters: { window: "1h" },
   capabilities: { hasFirstPerson: false },
   live: {
     presence: null,
@@ -98,7 +119,7 @@ function renderPanel(panel: PanelDefinition<unknown>): ReactElement {
 
 describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
   it("exposes the complete OSS panel set", () => {
-    expect(ossPanelCatalog).toHaveLength(33);
+    expect(ossPanelCatalog).toHaveLength(51);
   });
 
   it("every entry is a valid PanelDefinition with a unique id", () => {
@@ -130,6 +151,7 @@ describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
       viewCoveragePanel,
       floorPlanPanel,
       desireLinesPanel,
+      walkedPathPanel,
       meshKindsPanel,
       reachabilityPanel,
       inputModalityPanel,
@@ -153,6 +175,23 @@ describe("ossPanelCatalog (ADR 0036 / ADR 0047)", () => {
       loadBounceFunnelPanel,
       livePresencePanel,
       sessionReplayPanel,
+      eventVolumePanel,
+      sceneHealthPanel,
+      engineDiagnosticsPanel,
+      renderingTechnologyPanel,
+      sceneTraversalPanel,
+      perfSummaryPanel,
+      frameTimePanel,
+      jankPanel,
+      perfByDevicePanel,
+      perfByScenePanel,
+      stabilityPanel,
+      resourceFootprintPanel,
+      inputSourcesPanel,
+      viewDirectionPanel,
+      gazeHeatmapPanel,
+      clickRaysPanel,
+      sessionsPanel,
     ];
     for (const panel of individual) {
       expect(ossPanelCatalog).toContain(panel);

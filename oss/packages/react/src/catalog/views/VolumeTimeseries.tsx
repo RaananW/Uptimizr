@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { TimeseriesBucket } from "@/lib/api";
-import { Panel } from "./Panel";
+import type { TimeseriesBucket } from "../../api";
 
 const HEIGHT = 150;
 const PAD = { top: 14, right: 36, bottom: 22, left: 40 };
 
+export const EVENT_VOLUME_TITLE = "Event volume over time";
+export const EVENT_VOLUME_SUBTITLE = "Bars: events per bucket · drag to zoom the time window";
+
 /** Human-friendly label for a bucket interval (e.g. 60000 → "1m", 3600000 → "1h"). */
-function formatBucket(ms: number): string {
+export function formatBucket(ms: number): string {
   if (ms >= 3_600_000) return `${Math.round(ms / 3_600_000)}h`;
   if (ms >= 60_000) return `${Math.round(ms / 60_000)}m`;
   if (ms >= 1_000) return `${Math.round(ms / 1_000)}s`;
@@ -22,8 +24,11 @@ function formatBucket(ms: number): string {
  * a trustworthy, time-aware view. (FPS is intentionally not plotted here — a
  * wall-clock mean across mixed devices/sessions is misleading; see the
  * dedicated performance panels for per-session, device-aware FPS.)
+ *
+ * Panel BODY only (no chrome); the host supplies title/subtitle via the
+ * ADR 0036 panel contract and the brush/clear callbacks via `ctx.actions`.
  */
-export function VolumeTimeseries({
+export function VolumeTimeseriesView({
   buckets,
   intervalMs,
   onBrush,
@@ -158,32 +163,27 @@ export function VolumeTimeseries({
   };
 
   return (
-    <Panel
-      title="Event volume over time"
-      subtitle={`Bars: events per ${formatBucket(intervalMs)} · drag to zoom the time window`}
-    >
-      <div ref={wrapRef} className="relative">
-        <canvas
-          ref={canvasRef}
-          width={width}
-          height={HEIGHT}
-          className="w-full cursor-crosshair rounded-lg border border-edge"
-          onMouseDown={onDown}
-          onMouseMove={onMove}
-          onMouseUp={onUp}
-          onMouseLeave={onUp}
-          aria-label="Event volume time series"
-        />
-        {brushed && onClear ? (
-          <button
-            type="button"
-            onClick={onClear}
-            className="absolute right-2 top-2 rounded-md border border-edge bg-ink/80 px-2 py-1 text-xs text-fg transition hover:border-amber hover:text-fg-hi"
-          >
-            Clear zoom
-          </button>
-        ) : null}
-      </div>
-    </Panel>
+    <div ref={wrapRef} className="relative">
+      <canvas
+        ref={canvasRef}
+        width={width}
+        height={HEIGHT}
+        className="w-full cursor-crosshair rounded-lg border border-edge"
+        onMouseDown={onDown}
+        onMouseMove={onMove}
+        onMouseUp={onUp}
+        onMouseLeave={onUp}
+        aria-label="Event volume time series"
+      />
+      {brushed && onClear ? (
+        <button
+          type="button"
+          onClick={onClear}
+          className="absolute right-2 top-2 rounded-md border border-edge bg-ink/80 px-2 py-1 text-xs text-fg transition hover:border-amber hover:text-fg-hi"
+        >
+          Clear zoom
+        </button>
+      ) : null}
+    </div>
   );
 }

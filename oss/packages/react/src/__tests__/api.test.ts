@@ -38,6 +38,28 @@ describe("CollectorApi", () => {
     expect(rows[0]?.events).toBe(42);
   });
 
+  it("unwraps the one-row perf summary the stores return and coerces it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch([{ samples: "330", avg_fps: "42.17", min_fps: 26.1, p50_fps: "40.8" }]),
+    );
+    const api = new CollectorApi("http://localhost:4318", "k");
+    expect(await api.perf()).toEqual({
+      samples: 330,
+      avg_fps: 42.17,
+      min_fps: 26.1,
+      p50_fps: 40.8,
+    });
+  });
+
+  it("accepts an already-flattened perf summary object and treats an empty result as no samples", async () => {
+    vi.stubGlobal("fetch", mockFetch({ samples: 3, avg_fps: 60, min_fps: 55, p50_fps: 59 }));
+    const api = new CollectorApi("http://localhost:4318", "k");
+    expect((await api.perf()).samples).toBe(3);
+    vi.stubGlobal("fetch", mockFetch([]));
+    expect((await api.perf()).samples).toBe(0);
+  });
+
   it("throws an ApiError carrying the HTTP status on failure", async () => {
     vi.stubGlobal("fetch", mockFetch({ error: "nope" }, false, 401));
     const api = new CollectorApi("http://localhost:4318", "bad");

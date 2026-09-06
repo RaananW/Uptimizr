@@ -16,34 +16,52 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 
 import { definePanel } from "../panels/contract";
 import type { PanelContext, PanelDefinition, PanelSettings } from "../panels/contract";
-import { pickInterval } from "../filters";
+import { DEFAULT_FILTERS, pickInterval, resolveRange } from "../filters";
+import { parseTimestamp } from "../format";
+import { PerfSummaryStats, SessionsTableView } from "../panels/views";
 import type { LiveEvent } from "../live";
 import type {
   AggregateTrajectoryPoint,
   BacktrackRatioStat,
+  CameraDistanceBucket,
   CameraGestureStat,
+  ClickRay,
   CoverageVoxel,
   DirectionBin,
+  EventTypeCount,
   FlowLink,
   FpsHistogramBin,
+  FrameTimePercentiles,
+  GraphicsDiagnosticCount,
   HeatmapBin,
   InputActionCount,
   InteractionSource,
+  JankRate,
   LoadBounceBand,
   MeshCount,
   MeshBlindSpot,
   MeshInteractionKind,
   MeshSourceCount,
   MeshTrendPoint,
+  NavigationStat,
+  PerfByDevice,
+  PerfByScene,
   PerfChurn,
   PerfDistribution,
   PerfHeatmapVoxel,
+  PerfSummary,
   PositionBin,
   QueryParams,
   ReachabilityBin,
   RenderScaleTruth as RenderScaleTruthData,
+  RenderingTechnologyCount,
+  ResourcePercentiles,
   SceneProxyMesh,
   SceneRetentionLink,
+  SessionSummary,
+  StabilityCounts,
+  TimeseriesBucket,
+  TrajectoryPoint,
   VariantLeaderboardRow,
   ViewCoverageBin,
   WorldHeatmapBin,
@@ -54,6 +72,64 @@ import type {
 import { mergeSceneProxies } from "./lib/sceneProxies";
 
 // --- 2D / HTML / canvas views (Babylon-free — imported eagerly). ------------
+import {
+  VolumeTimeseriesView,
+  EVENT_VOLUME_TITLE,
+  EVENT_VOLUME_SUBTITLE,
+} from "./views/VolumeTimeseries";
+import { SceneHealthView, SCENE_HEALTH_TITLE, SCENE_HEALTH_SUBTITLE } from "./views/SceneHealth";
+import {
+  GraphicsDiagnosticsView,
+  ENGINE_DIAGNOSTICS_TITLE,
+  ENGINE_DIAGNOSTICS_SUBTITLE,
+} from "./views/GraphicsDiagnostics";
+import {
+  RenderingTechnologyView,
+  RENDERING_TECH_TITLE,
+  RENDERING_TECH_SUBTITLE,
+} from "./views/RenderingTechnology";
+import {
+  SceneTraversalView,
+  SCENE_TRAVERSAL_TITLE,
+  SCENE_TRAVERSAL_SUBTITLE,
+} from "./views/SceneTraversal";
+import {
+  InputSourcesView,
+  INPUT_SOURCES_TITLE,
+  INPUT_SOURCES_SUBTITLE,
+} from "./views/InputSources";
+import {
+  FrameTimeView,
+  JankView,
+  PerfByDeviceView,
+  PerfBySceneView,
+  StabilityView,
+  ResourceFootprintView,
+  FRAME_TIME_TITLE,
+  FRAME_TIME_SUBTITLE,
+  JANK_TITLE,
+  JANK_SUBTITLE,
+  PERF_BY_DEVICE_TITLE,
+  PERF_BY_DEVICE_SUBTITLE,
+  PERF_BY_SCENE_TITLE,
+  PERF_BY_SCENE_SUBTITLE,
+  STABILITY_TITLE,
+  STABILITY_SUBTITLE,
+  RESOURCE_FOOTPRINT_TITLE,
+  RESOURCE_FOOTPRINT_SUBTITLE,
+} from "./views/PerformanceDetail";
+import {
+  ViewDirectionHeatmapView,
+  VIEW_DIRECTION_TITLE,
+  VIEW_DIRECTION_SUBTITLE,
+  VIEW_DIRECTION_HELP,
+} from "./views/ViewDirectionHeatmap";
+import {
+  WalkedPathView,
+  WALKED_PATH_TITLE,
+  WALKED_PATH_SUBTITLE,
+  WALKED_PATH_HELP,
+} from "./views/WalkedPath";
 import {
   FloorPlanHeatmapView,
   FLOOR_PLAN_TITLE,
@@ -217,6 +293,10 @@ import {
   FLOW_SANKEY_HELP,
   SESSION_REPLAY_TITLE,
   sessionReplaySubtitle,
+  GAZE_HEATMAP_TITLE,
+  GAZE_HEATMAP_SUBTITLE,
+  CLICK_RAYS_TITLE,
+  CLICK_RAYS_SUBTITLE,
 } from "./views3d/labels";
 
 /**
@@ -239,6 +319,9 @@ const GazeClickDivergence3DLazy = lazy(() =>
   import("./views3d/GazeClickDivergence3D").then((m) => ({
     default: m.GazeClickDivergence3DView,
   })),
+);
+const ClickRays3DLazy = lazy(() =>
+  import("./views3d/ClickRays3D").then((m) => ({ default: m.ClickRays3DView })),
 );
 const SessionReplayLazy = lazy(() =>
   import("./views3d/SessionReplay").then((m) => ({ default: m.SessionReplayView })),
@@ -482,6 +565,188 @@ async function resolveProxyMeshes(ctx: PanelContext): Promise<SceneProxyMesh[]> 
   return mergeSceneProxies(ctx.api, ctx.params);
 }
 
+// --- Shell-first panels: the overview's opening row of health & volume. --------
+// These were the last hand-mounted dashboard components (ADR 0036 noted the host
+// and legacy panels would coexist during the migration); they now live in the
+// catalog so any host gets the complete dashboard from the package alone.
+
+/** Event-volume data: the bucketed series plus its resolved bucket width. */
+interface EventVolumeData {
+  buckets: TimeseriesBucket[];
+  intervalMs: number;
+}
+
+/**
+ * Event volume over time — 2D canvas strip, full width, overview only. Bars of
+ * events per bucket; dragging brushes a custom time window through
+ * `ctx.actions.setTimeRange`, and the "Clear zoom" affordance restores the
+ * previous preset via `ctx.actions.clearTimeRange` (falling back to the default
+ * window for hosts that don't track it).
+ */
+export const eventVolumePanel = definePanel<EventVolumeData>({
+  id: "event-volume",
+  title: EVENT_VOLUME_TITLE,
+  subtitle: EVENT_VOLUME_SUBTITLE,
+  span: 2,
+  surfaces: ["overview"],
+  load: async (ctx) => {
+    const range = resolveRange(ctx.filters);
+    const until = range.until ?? Date.now();
+    let since = range.since;
+    if (since == null) {
+      // An "all time" window has no lower bound: bound the series by the
+      // earliest session in range so the bucket width stays sensible.
+      const sessions = await ctx.api.sessions({ ...ctx.params, source: undefined, limit: 100 });
+      const earliest = sessions.reduce((min, s) => {
+        const t = parseTimestamp(s.started_at);
+        return Number.isFinite(t) ? Math.min(min, t) : min;
+      }, Date.now());
+      since = Number.isFinite(earliest) ? earliest : until - 86_400_000;
+    }
+    const intervalSec = pickInterval(Math.max(60_000, until - since));
+    const buckets = await ctx.api.timeseries({
+      since: range.since,
+      until: range.until,
+      scene: ctx.params.scene,
+      interval: intervalSec,
+    });
+    return { buckets, intervalMs: intervalSec * 1000 };
+  },
+  render: ({ data, ctx }) => (
+    <VolumeTimeseriesView
+      buckets={data?.buckets ?? []}
+      intervalMs={data?.intervalMs ?? 3_600_000}
+      onBrush={ctx.actions.setTimeRange}
+      onClear={
+        ctx.actions.clearTimeRange ??
+        (() => ctx.actions.setFilters({ window: DEFAULT_FILTERS.window }))
+      }
+      brushed={ctx.filters.window === "custom"}
+    />
+  ),
+});
+
+/** Scene-health data: per-event-type counts plus the perf summary. */
+interface SceneHealthData {
+  counts: EventTypeCount[];
+  perf: PerfSummary | null;
+}
+
+/**
+ * Scene health — React/HTML stat tiles, full width, overview only. Error rate,
+ * GPU context loss, attention gaps, and resize churn from the per-event-type
+ * counts, with the average FPS from the perf summary.
+ */
+export const sceneHealthPanel = definePanel<SceneHealthData>({
+  id: "scene-health",
+  title: SCENE_HEALTH_TITLE,
+  subtitle: SCENE_HEALTH_SUBTITLE,
+  span: 2,
+  surfaces: ["overview"],
+  load: async (ctx) => {
+    const [counts, perf] = await Promise.all([
+      ctx.api.eventCounts({
+        since: ctx.params.since,
+        until: ctx.params.until,
+        scene: ctx.params.scene,
+      }),
+      ctx.api.perf({ ...ctx.params, source: undefined }),
+    ]);
+    return { counts, perf };
+  },
+  render: ({ data }) => <SceneHealthView counts={data?.counts ?? []} perf={data?.perf ?? null} />,
+});
+
+/**
+ * Engine diagnostics (#16, ADR 0021 part 2) — React/HTML breakdowns, full
+ * width, overview only. Opt-in `graphics_diagnostic` incidents by severity,
+ * category, and backend; the empty state explains the opt-in.
+ */
+export const engineDiagnosticsPanel = definePanel<GraphicsDiagnosticCount[]>({
+  id: "engine-diagnostics",
+  title: ENGINE_DIAGNOSTICS_TITLE,
+  subtitle: ENGINE_DIAGNOSTICS_SUBTITLE,
+  span: 2,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.graphicsDiagnosticCounts({ ...ctx.params, source: undefined }),
+  render: ({ data }) => <GraphicsDiagnosticsView rows={data ?? []} />,
+});
+
+/**
+ * Rendering technology (#120, ADR 0021 part 1) — React/HTML breakdowns, full
+ * width, overview only. Session counts by graphics API, backend, and shading
+ * language.
+ */
+export const renderingTechnologyPanel = definePanel<RenderingTechnologyCount[]>({
+  id: "rendering-technology",
+  title: RENDERING_TECH_TITLE,
+  subtitle: RENDERING_TECH_SUBTITLE,
+  span: 2,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.renderingTechnology({ ...ctx.params, source: undefined }),
+  render: ({ data }) => <RenderingTechnologyView rows={data ?? []} />,
+});
+
+/** Scene-traversal data: coverage voxels, camera-distance buckets, per-session navigation. */
+interface SceneTraversalData {
+  coverage: CoverageVoxel[];
+  distance: CameraDistanceBucket[];
+  navigation: NavigationStat[];
+}
+
+/** Voxel size for the traversal coverage query (world units). */
+const COVERAGE_CELL_SIZE = 1;
+/** Bucket width for the camera-distance histogram (world units). */
+const DISTANCE_BUCKET_SIZE = 1;
+
+/**
+ * Scene traversal (#38/#39/#40) — React/HTML stats + histogram, full width,
+ * overview only, collapsed by default. Coverage, camera distance, and
+ * navigation effort derived server-side from `camera_sample`.
+ */
+export const sceneTraversalPanel = definePanel<SceneTraversalData>({
+  id: "scene-traversal",
+  title: SCENE_TRAVERSAL_TITLE,
+  subtitle: SCENE_TRAVERSAL_SUBTITLE,
+  span: 2,
+  surfaces: ["overview"],
+  collapsible: true,
+  defaultCollapsed: true,
+  load: async (ctx) => {
+    const base = { ...ctx.params, source: undefined };
+    const [coverage, distance, navigation] = await Promise.all([
+      ctx.api.coverage({ ...base, cellSize: COVERAGE_CELL_SIZE }),
+      ctx.api.cameraDistance({ ...base, bucketSize: DISTANCE_BUCKET_SIZE }),
+      ctx.api.navigation(base),
+    ]);
+    return { coverage, distance, navigation };
+  },
+  render: ({ data }) => (
+    <SceneTraversalView
+      coverage={data?.coverage ?? []}
+      cellSize={COVERAGE_CELL_SIZE}
+      distance={data?.distance ?? []}
+      bucketSize={DISTANCE_BUCKET_SIZE}
+      navigation={data?.navigation ?? []}
+    />
+  ),
+});
+
+/**
+ * Rendering performance summary — React/HTML stat grid, half width, both
+ * surfaces. The `frame_perf` headline (samples, average / min / p50 FPS); the
+ * distribution panel below it shows the shape behind the average.
+ */
+export const perfSummaryPanel = definePanel<PerfSummary | null>({
+  id: "perf-summary",
+  title: "Rendering performance",
+  subtitle: "frame_perf samples",
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.perf({ ...scoped(ctx), source: undefined }),
+  render: ({ data }) => <PerfSummaryStats perf={data ?? null} />,
+});
+
 /** Top meshes — React/HTML list, half width. */
 export const topMeshesPanel = definePanel<MeshCount[], typeof TOP_MESHES_SETTINGS>({
   id: "top-meshes",
@@ -619,6 +884,44 @@ export const desireLinesPanel = definePanel<AggregateTrajectoryPoint[]>({
   enabled: (ctx) => ctx.filters.cameraMode !== "viewer",
   load: (ctx) => ctx.api.aggregatePaths({ ...scoped(ctx), cellSize: FLOOR_CELL_SIZE }),
   render: ({ data }) => <DesireLinesView points={data ?? []} />,
+});
+
+const WALKED_PATH_SETTINGS = {
+  colorByHeight: {
+    type: "boolean",
+    label: "Color by height",
+    help: "Tint the route by camera height (world Y) so stairs, ramps, and floor changes show in plan view.",
+    default: true,
+  },
+} as const satisfies PanelSettings;
+
+/**
+ * Walked path (ADR 0026, #92) — 2D canvas, half width, session surface only.
+ * One session's ordered camera positions on the X/Z ground plane, oldest to
+ * newest, color-coded by camera height. Shown only when the session was
+ * recorded with a first-person (`free`) camera — an orbit camera's "path" is
+ * just its orbit — which the host reports through `ctx.session`.
+ */
+export const walkedPathPanel = definePanel<TrajectoryPoint[], typeof WALKED_PATH_SETTINGS>({
+  id: "walked-path",
+  title: WALKED_PATH_TITLE,
+  subtitle: WALKED_PATH_SUBTITLE,
+  help: WALKED_PATH_HELP,
+  span: 1,
+  surfaces: ["session"],
+  clientOnly: true,
+  settings: WALKED_PATH_SETTINGS,
+  enabled: (ctx) => ctx.surface === "session" && ctx.session?.scene?.cameraType === "free",
+  load: (ctx) =>
+    ctx.sessionId
+      ? ctx.api.sessionTrajectory(ctx.sessionId, {
+          scene: ctx.session?.scene?.sceneId ?? ctx.filters.scene,
+          limit: 5000,
+        })
+      : Promise.resolve([]),
+  render: ({ data, ctx }) => (
+    <WalkedPathView points={data ?? []} colorByHeight={ctx.settings.colorByHeight} />
+  ),
 });
 
 /**
@@ -1407,9 +1710,217 @@ export const sessionReplayPanel = definePanel({
     ) : null,
 });
 
+// --- Trailing panels: the dedicated performance detail (ADR 0028), input mix,
+// the 2D view-direction disc, the bespoke 3D mounts, and the sessions table. ---
+
+/** Frame time (ADR 0028) — React/HTML stats, half width, overview only. */
+export const frameTimePanel = definePanel<FrameTimePercentiles | null>({
+  id: "frame-time",
+  title: FRAME_TIME_TITLE,
+  subtitle: FRAME_TIME_SUBTITLE,
+  span: 1,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.frameTimePercentiles({ ...ctx.params, source: undefined }),
+  render: ({ data }) => <FrameTimeView frameTime={data ?? null} />,
+});
+
+/** Jank (ADR 0028) — React/HTML stats, half width, overview only. */
+export const jankPanel = definePanel<JankRate | null>({
+  id: "jank",
+  title: JANK_TITLE,
+  subtitle: JANK_SUBTITLE,
+  span: 1,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.jankRate({ ...ctx.params, source: undefined }),
+  render: ({ data }) => <JankView jank={data ?? null} />,
+});
+
+/** FPS by device (ADR 0028) — React/HTML table, full width, overview only. */
+export const perfByDevicePanel = definePanel<PerfByDevice[]>({
+  id: "perf-by-device",
+  title: PERF_BY_DEVICE_TITLE,
+  subtitle: PERF_BY_DEVICE_SUBTITLE,
+  span: 2,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.perfByDevice({ ...ctx.params, source: undefined }),
+  render: ({ data }) => <PerfByDeviceView rows={data ?? []} />,
+});
+
+/**
+ * FPS by scene (ADR 0028) — React/HTML table, half width, overview only. Always
+ * compares every scene, independent of the scene filter.
+ */
+export const perfByScenePanel = definePanel<PerfByScene[]>({
+  id: "perf-by-scene",
+  title: PERF_BY_SCENE_TITLE,
+  subtitle: PERF_BY_SCENE_SUBTITLE,
+  span: 1,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.perfByScene({ ...ctx.params, source: undefined, scene: undefined }),
+  render: ({ data }) => <PerfBySceneView rows={data ?? []} />,
+});
+
+/** Stability (ADR 0028) — React/HTML stats, half width, overview only. */
+export const stabilityPanel = definePanel<StabilityCounts | null>({
+  id: "stability",
+  title: STABILITY_TITLE,
+  subtitle: STABILITY_SUBTITLE,
+  span: 1,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.stabilityCounts({ ...ctx.params, source: undefined }),
+  render: ({ data }) => <StabilityView stability={data ?? null} />,
+});
+
+/** Resource footprint (ADR 0028) — React/HTML stats, full width, overview only. */
+export const resourceFootprintPanel = definePanel<ResourcePercentiles | null>({
+  id: "resource-footprint",
+  title: RESOURCE_FOOTPRINT_TITLE,
+  subtitle: RESOURCE_FOOTPRINT_SUBTITLE,
+  span: 2,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.resourcePercentiles({ ...ctx.params, source: undefined }),
+  render: ({ data }) => <ResourceFootprintView resources={data ?? null} />,
+});
+
+/**
+ * Input sources (ADR 0011) — React/HTML list, half width, overview only. Which
+ * input sources drive the scene's interactions, with the per-event-type split.
+ * Honours the input-source filter (unlike the modality split, which always shows
+ * every source).
+ */
+export const inputSourcesPanel = definePanel<InteractionSource[]>({
+  id: "input-sources",
+  title: INPUT_SOURCES_TITLE,
+  subtitle: INPUT_SOURCES_SUBTITLE,
+  span: 1,
+  surfaces: ["overview"],
+  load: (ctx) => ctx.api.interactionsBySource(ctx.params),
+  render: ({ data }) => <InputSourcesView rows={data ?? []} />,
+});
+
+/**
+ * View-direction heatmap (2D polar disc) — canvas, half width, both surfaces.
+ * The flat companion of the 3D dome: azimuth around the disc, tilt as radius.
+ */
+export const viewDirectionPanel = definePanel<DirectionBin[]>({
+  id: "view-direction-heatmap",
+  title: VIEW_DIRECTION_TITLE,
+  subtitle: VIEW_DIRECTION_SUBTITLE,
+  help: VIEW_DIRECTION_HELP,
+  span: 1,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.cameraHeatmap({ ...scoped(ctx), source: undefined, bins: CAMERA_BINS }),
+  render: ({ data }) => <ViewDirectionHeatmapView bins={data ?? []} gridSize={CAMERA_BINS} />,
+});
+
+/** Gaze heatmap data: gaze hit-point voxels + the scene-proxy backdrop. */
+interface GazeHeatmapData {
+  voxels: WorldHeatmapBin[];
+  proxyMeshes: SceneProxyMesh[];
+}
+
+/**
+ * Gaze heatmap (3D) — Babylon scene, full width, overview only. Camera-forward
+ * gaze hit-points voxel-binned in world space against the scene proxy backdrop;
+ * reuses the world-heatmap 3D view with gaze-specific legend copy.
+ */
+export const gazeHeatmapPanel = definePanel<GazeHeatmapData, typeof WORLD_HEATMAP_SETTINGS>({
+  id: "gaze-heatmap-3d",
+  title: GAZE_HEATMAP_TITLE,
+  subtitle: GAZE_HEATMAP_SUBTITLE,
+  span: 2,
+  surfaces: ["overview"],
+  clientOnly: true,
+  settings: WORLD_HEATMAP_SETTINGS,
+  load: async (ctx) => {
+    const [voxels, proxyMeshes] = await Promise.all([
+      ctx.api.gazeHeatmap({ ...ctx.params, source: undefined, cellSize: ctx.settings.cellSize }),
+      resolveProxyMeshes(ctx),
+    ]);
+    return { voxels, proxyMeshes };
+  },
+  render: ({ data, ctx }) => (
+    <Lazy3D>
+      <WorldHeatmap3DLazy
+        voxels={data?.voxels ?? []}
+        cellSize={ctx.settings.cellSize}
+        proxyMeshes={data?.proxyMeshes ?? []}
+        legendTitle="Gaze density"
+        legendLow="few looks"
+        legendHigh="most looks"
+        legendNote="Each marker is a voxel where the camera-forward (gaze) ray hit your scene. Enable gaze capture in the SDK to populate this."
+        emptyLabel="No gaze hit-points in range. Enable gaze capture in the SDK."
+      />
+    </Lazy3D>
+  ),
+});
+
+/** Click-rays data: the joined click/view rays + the scene-proxy backdrop. */
+interface ClickRaysData {
+  rays: ClickRay[];
+  proxyMeshes: SceneProxyMesh[];
+}
+
+/**
+ * Click rays (3D) — Babylon scene, full width, overview only. Each click joined
+ * to the viewpoint it was made from, against the scene proxy backdrop.
+ */
+export const clickRaysPanel = definePanel<ClickRaysData, typeof WORLD_HEATMAP_SETTINGS>({
+  id: "click-rays-3d",
+  title: CLICK_RAYS_TITLE,
+  subtitle: CLICK_RAYS_SUBTITLE,
+  span: 2,
+  surfaces: ["overview"],
+  clientOnly: true,
+  settings: WORLD_HEATMAP_SETTINGS,
+  load: async (ctx) => {
+    const [rays, proxyMeshes] = await Promise.all([
+      ctx.api.clickRays({ ...ctx.params, cellSize: ctx.settings.cellSize }),
+      resolveProxyMeshes(ctx),
+    ]);
+    return { rays, proxyMeshes };
+  },
+  render: ({ data, ctx }) => (
+    <Lazy3D>
+      <ClickRays3DLazy
+        rays={data?.rays ?? []}
+        cellSize={ctx.settings.cellSize}
+        proxyMeshes={data?.proxyMeshes ?? []}
+      />
+    </Lazy3D>
+  ),
+});
+
+/**
+ * Sessions — React/HTML table, full width, both surfaces. The most recent
+ * sessions in range; a row click opens the drill-down through
+ * `ctx.actions.selectSession`, and the open session is highlighted.
+ */
+export const sessionsPanel = definePanel<SessionSummary[]>({
+  id: "sessions",
+  title: "Sessions",
+  subtitle: "Most recent sessions · select to drill in",
+  span: 2,
+  surfaces: ["overview", "session"],
+  load: (ctx) => ctx.api.sessions({ ...ctx.params, source: undefined, limit: 100 }),
+  render: ({ data, ctx }) => (
+    <SessionsTableView
+      sessions={data ?? []}
+      onSelect={ctx.actions.selectSession}
+      selectedId={ctx.sessionId}
+    />
+  ),
+});
+
 export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   sessionReplayPanel,
   livePresencePanel,
+  eventVolumePanel,
+  sceneHealthPanel,
+  engineDiagnosticsPanel,
+  renderingTechnologyPanel,
+  sceneTraversalPanel,
+  perfSummaryPanel,
   topMeshesPanel,
   meshLeaderboardPanel,
   blindSpotsPanel,
@@ -1420,6 +1931,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   viewCoveragePanel,
   floorPlanPanel,
   desireLinesPanel,
+  walkedPathPanel,
   meshKindsPanel,
   reachabilityPanel,
   inputModalityPanel,
@@ -1441,4 +1953,15 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   deadZonePanel,
   flowPanel,
   divergencePanel,
+  frameTimePanel,
+  jankPanel,
+  perfByDevicePanel,
+  perfByScenePanel,
+  stabilityPanel,
+  resourceFootprintPanel,
+  inputSourcesPanel,
+  viewDirectionPanel,
+  gazeHeatmapPanel,
+  clickRaysPanel,
+  sessionsPanel,
 ] as PanelDefinition<unknown>[];

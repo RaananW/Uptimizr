@@ -110,7 +110,11 @@ the result in `Panel` chrome with uniform loading/error states, and places it in
   shared per-query request cache on the context is a noted future optimization.
 - Migrating all 24 built-ins to the contract is incremental: the host and legacy panels coexist
   during the transition (this iteration ports three representative panels — React/HTML, 2D canvas,
-  and 3D Babylon — as proof).
+  and 3D Babylon — as proof). _Update (2026-09): the migration is complete — every analytics panel
+  is a catalog entry, and the page keeps only the shell (see ADR 0047 status). Two additive contract
+  fields landed on the way: `PanelContext.session` (the inspected session's metadata, so a panel can
+  gate on its camera type) and `PanelActions.clearTimeRange` (undo a brush), plus
+  `PanelDefinition.defaultCollapsed`._
 - Build-time registration means a self-hoster rebuilds to add a panel; true drop-in panels wait for
   the runtime-loading follow-up.
 
