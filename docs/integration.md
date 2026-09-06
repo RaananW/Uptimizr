@@ -1599,10 +1599,13 @@ cancels superseded requests via `ctx.signal` and tracks `loading` / `error`. Omi
 only** — the host wraps it in the card and grid cell.
 
 The `PanelContext` carries everything a panel needs: `api` (a shared `CollectorApi`),
-`baseUrl` / `apiKey`, the resolved `params`, raw `filters`, `surface` / `sessionId`,
-range-derived `capabilities`, host `actions` (`selectSession`, `setTimeRange`,
-`setFilters`), the realtime `live` layer (`presence`, `enabled`, `status`, `sceneId`,
-`subscribe(handler)`), and the resolved per-panel `settings` (see below).
+`baseUrl` / `apiKey`, the resolved `params`, raw `filters`, `surface` / `sessionId` (plus the
+optional `session` metadata of the inspected session — its recorded scene and camera type — so a
+panel such as the walked path can gate on how the session was captured), range-derived
+`capabilities`, host `actions` (`selectSession`, `setTimeRange`, `setFilters`, and the optional
+`clearTimeRange` that undoes a brush), the realtime `live` layer (`presence`, `enabled`, `status`,
+`sceneId`, `subscribe(handler)`), and the resolved per-panel `settings` (see below). A definition
+may also set `collapsible` / `defaultCollapsed` for the host chrome.
 
 **Portable panels consume the data seam, not the transport.** All data must flow through
 `ctx.api` / `ctx.live` so a host that backs `ctx.api` (e.g. a hosted product that reads
@@ -1649,7 +1652,9 @@ where `event.sessionId === ctx.sessionId`.
 Panels are registered at **build time** by appending to the `builtinPanels` array in
 the dashboard's `src/panels/registry.tsx`; the `PanelHost` filters by surface and each
 panel's `enabled` gate and renders the bodies into the grid — no manual placement in
-`page.tsx`.
+`page.tsx`. Every analytics panel the dashboard shows is a catalog entry; the page itself
+mounts only the shell (connection form, filters, scene selector, session inspector, and the
+bespoke Session Replay / Live Presence positions).
 
 The portable `ossPanelCatalog` includes the two live surfaces (ADR 0049):
 `livePresencePanel` (overview "Live now" roster + event feed) and `sessionReplayPanel`
