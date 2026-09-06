@@ -1,5 +1,21 @@
 # @uptimizr/collector-server
 
+## 1.1.0
+
+### Minor Changes
+
+- f44c175: `uptimizr init`, `uptimizr new-project` and `uptimizr migrate` now honour `COLLECTOR_STORE`
+  (`duckdb` | `postgres` | `mssql` | `clickhouse`), bootstrapping the selected store through the same
+  connection variables `serve` reads (`DUCKDB_PATH`, `POSTGRES_URL`, `MSSQL_URL`, `CLICKHOUSE_*`, …)
+  instead of always targeting DuckDB. The project and key minted by `init` are therefore the ones the
+  running collector resolves, and `init` records the selected store (plus any connection variables
+  that were set) in the `.env` it writes. `COLLECTOR_STORE=memory` and unknown values now fail with an
+  actionable error. Pairs with `create-uptimizr --store <s>` (#267).
+
+### Patch Changes
+
+- a2c75cd: Refresh runtime dependencies: Fastify 5.12.3 (collector-server) and Next.js 16.3.4 (dashboard). The workspace lockfile now resolves `qs` 6.16.0, clearing GHSA-x5fp-wj9c-mxmx and GHSA-4mjr-xmp4-gh2g.
+
 ## 1.0.1
 
 ### Patch Changes
