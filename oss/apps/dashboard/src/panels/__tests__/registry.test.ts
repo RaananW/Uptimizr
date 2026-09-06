@@ -219,6 +219,47 @@ describe("builtinPanels — desire-lines panel (#73)", () => {
   });
 });
 
+describe("builtinPanels — walked-path panel (#92)", () => {
+  const panel = builtinPanels.find((p) => p.id === "walked-path");
+
+  function sessionCtx(cameraType: string | undefined, surface = "session"): PanelContext {
+    return {
+      surface,
+      sessionId: "s1",
+      filters: { window: "24h", scene: "from-filters" },
+      session: cameraType ? { sessionId: "s1", scene: { sceneId: "lobby", cameraType } } : null,
+      settings: { colorByHeight: true },
+    } as unknown as PanelContext;
+  }
+
+  it("is a client-only, session-only panel with a color-by-height toggle", () => {
+    expect(panel).toBeDefined();
+    expect(panel?.span).toBe(1);
+    expect(panel?.clientOnly).toBe(true);
+    expect(panel?.surfaces).toEqual(["session"]);
+    expect(panel?.settings?.colorByHeight).toMatchObject({ type: "boolean", default: true });
+  });
+
+  it("shows only for sessions recorded with a first-person camera", () => {
+    expect(panel?.enabled?.(sessionCtx("free"))).toBe(true);
+    expect(panel?.enabled?.(sessionCtx("arc-rotate"))).toBe(false);
+    expect(panel?.enabled?.(sessionCtx(undefined))).toBe(false);
+    expect(panel?.enabled?.(sessionCtx("free", "overview"))).toBe(false);
+  });
+
+  it("loads the session trajectory scoped to the session's recorded scene", async () => {
+    const rows = [{ ts: 1, x: 0, y: 1.6, z: 0 }];
+    const sessionTrajectory = vi.fn().mockResolvedValue(rows);
+    const ctx = {
+      ...sessionCtx("free"),
+      api: { sessionTrajectory },
+    } as unknown as PanelDataContext;
+    const data = await panel?.load?.(ctx);
+    expect(sessionTrajectory).toHaveBeenCalledWith("s1", { scene: "lobby", limit: 5000 });
+    expect(data).toEqual(rows);
+  });
+});
+
 describe("builtinPanels — navigation-mix panel", () => {
   const panel = builtinPanels.find((p) => p.id === "navigation-mix");
 

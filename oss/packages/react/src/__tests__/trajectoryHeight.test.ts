@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { TrajectoryPoint } from "@/lib/api";
+import type { TrajectoryPoint } from "../api";
 import {
   HEIGHT_FLAT_THRESHOLD,
   formatHeight,
   heightEncodingActive,
   heightRange,
   heightT,
-} from "../trajectoryHeight";
+} from "../catalog/lib/trajectoryHeight";
 
 const pt = (y: number): TrajectoryPoint => ({ ts: 0, x: 0, y, z: 0 });
 

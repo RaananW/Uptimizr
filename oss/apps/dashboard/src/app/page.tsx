@@ -63,7 +63,6 @@ import { RenderingTechnology } from "@/components/RenderingTechnology";
 import { SceneMetrics } from "@/components/SceneMetrics";
 import { SceneSelector, type SceneMeta } from "@/components/SceneSelector";
 import { SessionsTable } from "@/components/SessionsTable";
-import { TrajectoryView } from "@/components/TrajectoryView";
 import { VolumeTimeseries } from "@/components/VolumeTimeseries";
 import { SessionInspector } from "@/components/SessionInspector";
 
@@ -723,7 +722,7 @@ export default function Page() {
   };
   const overviewCtx: PanelContext = { ...panelBase, surface: "overview" };
   const sessionCtx: PanelContext | null = detail
-    ? { ...panelBase, surface: "session", sessionId: detail.id }
+    ? { ...panelBase, surface: "session", sessionId: detail.id, session: detail.meta }
     : null;
 
   // Runtime / remote panels (ADR 0041): discover and load panels from a
@@ -963,14 +962,6 @@ export default function Page() {
             />
           ) : null}
           <CameraDirectionHeatmap bins={detail.camera} gridSize={CAMERA_BINS} />
-          {detail.meta?.scene?.cameraType === "free" ? (
-            <TrajectoryView
-              baseUrl={baseUrl}
-              apiKey={apiKey}
-              sessionId={detail.id}
-              scene={detail.meta?.scene?.sceneId ?? filters.scene}
-            />
-          ) : null}
           <div className="lg:col-span-2">
             <SessionsTable sessions={data.sessions} selectedId={detail.id} onSelect={openSession} />
           </div>

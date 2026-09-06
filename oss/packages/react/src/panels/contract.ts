@@ -13,7 +13,7 @@
 // through the same context.
 
 import type { ReactNode } from "react";
-import type { CollectorApi, PresenceSnapshot, QueryParams } from "../api";
+import type { CollectorApi, PresenceSnapshot, QueryParams, SessionMeta } from "../api";
 import type { FilterState } from "../filters";
 import type { LiveEvent, LiveStatus } from "../live";
 
@@ -152,6 +152,15 @@ export interface PanelContext<TSettings extends PanelSettings = PanelSettings> {
   /** Current surface + optional session scope. */
   readonly surface: PanelSurface;
   readonly sessionId?: string;
+  /**
+   * Metadata of the inspected session on the session surface (its recorded
+   * `cameraType`, scene id, device), when the host has it. Lets a panel gate or
+   * scope itself on how the session was captured — e.g. the walked path shows
+   * only for first-person sessions. Optional and additive: hosts that don't
+   * fetch session metadata leave it unset, and `null` means it was looked up
+   * and not found.
+   */
+  readonly session?: SessionMeta | null;
   /** Capability flags derived from the active range. */
   readonly capabilities: PanelCapabilities;
   /** Host actions a panel can invoke. */

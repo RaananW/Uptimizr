@@ -1,4 +1,4 @@
-import type { TrajectoryPoint } from "@/lib/api";
+import type { TrajectoryPoint } from "../../api";
 
 /**
  * Height (world Y) span, in scene units, below which a walked path is drawn

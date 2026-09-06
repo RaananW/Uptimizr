@@ -108,6 +108,7 @@ export {
   viewCoveragePanel,
   floorPlanPanel,
   desireLinesPanel,
+  walkedPathPanel,
   meshKindsPanel,
   reachabilityPanel,
   inputModalityPanel,
@@ -140,6 +141,15 @@ export { HeatLegend } from "./catalog/views/HeatLegend";
 export { ZoomButtons } from "./catalog/views/ZoomButtons";
 export { FloorPlanHeatmapView } from "./catalog/views/FloorPlanHeatmap";
 export { DesireLinesView } from "./catalog/views/DesireLines";
+export { WalkedPathView } from "./catalog/views/WalkedPath";
+export {
+  HEIGHT_FLAT_THRESHOLD,
+  heightRange,
+  heightEncodingActive,
+  heightT,
+  formatHeight,
+} from "./catalog/lib/trajectoryHeight";
+export type { HeightRange } from "./catalog/lib/trajectoryHeight";
 export { MeshInteractionKindsView } from "./catalog/views/MeshInteractionKinds";
 export { ReachabilityView, summarizeReachability } from "./catalog/views/Reachability";
 export { MeshLeaderboardView, buildLeaderboard } from "./catalog/views/MeshLeaderboard";

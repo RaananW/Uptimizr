@@ -188,7 +188,13 @@ actual low and high heights in scene units. Reading the panel:
 The ramp is normalized to **this session's** lowest and highest point, so the legend labels are the
 only way to compare heights across sessions. Routes whose height varies by less than 0.25 m (head
 bob and sample jitter on a level floor) are drawn in a single color and the panel says so instead of
-stretching the ramp over noise.
+stretching the ramp over noise. The encoding can be switched off per viewer from the panel's ⚙
+settings menu (**Color by height**), like any other panel setting.
+
+Like every other analytics panel, it ships in the `@uptimizr/react` catalog as `walkedPathPanel`.
+It reads the inspected session's recorded camera type from the host's panel context
+(`ctx.session`), so an embedding host that wants the panel supplies the session's metadata alongside
+its id.
 
 ## Backtracking hotspots panel
 

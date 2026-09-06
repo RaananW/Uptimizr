@@ -44,6 +44,7 @@ import type {
   RenderScaleTruth as RenderScaleTruthData,
   SceneProxyMesh,
   SceneRetentionLink,
+  TrajectoryPoint,
   VariantLeaderboardRow,
   ViewCoverageBin,
   WorldHeatmapBin,
@@ -54,6 +55,12 @@ import type {
 import { mergeSceneProxies } from "./lib/sceneProxies";
 
 // --- 2D / HTML / canvas views (Babylon-free — imported eagerly). ------------
+import {
+  WalkedPathView,
+  WALKED_PATH_TITLE,
+  WALKED_PATH_SUBTITLE,
+  WALKED_PATH_HELP,
+} from "./views/WalkedPath";
 import {
   FloorPlanHeatmapView,
   FLOOR_PLAN_TITLE,
@@ -619,6 +626,44 @@ export const desireLinesPanel = definePanel<AggregateTrajectoryPoint[]>({
   enabled: (ctx) => ctx.filters.cameraMode !== "viewer",
   load: (ctx) => ctx.api.aggregatePaths({ ...scoped(ctx), cellSize: FLOOR_CELL_SIZE }),
   render: ({ data }) => <DesireLinesView points={data ?? []} />,
+});
+
+const WALKED_PATH_SETTINGS = {
+  colorByHeight: {
+    type: "boolean",
+    label: "Color by height",
+    help: "Tint the route by camera height (world Y) so stairs, ramps, and floor changes show in plan view.",
+    default: true,
+  },
+} as const satisfies PanelSettings;
+
+/**
+ * Walked path (ADR 0026, #92) — 2D canvas, half width, session surface only.
+ * One session's ordered camera positions on the X/Z ground plane, oldest to
+ * newest, color-coded by camera height. Shown only when the session was
+ * recorded with a first-person (`free`) camera — an orbit camera's "path" is
+ * just its orbit — which the host reports through `ctx.session`.
+ */
+export const walkedPathPanel = definePanel<TrajectoryPoint[], typeof WALKED_PATH_SETTINGS>({
+  id: "walked-path",
+  title: WALKED_PATH_TITLE,
+  subtitle: WALKED_PATH_SUBTITLE,
+  help: WALKED_PATH_HELP,
+  span: 1,
+  surfaces: ["session"],
+  clientOnly: true,
+  settings: WALKED_PATH_SETTINGS,
+  enabled: (ctx) => ctx.surface === "session" && ctx.session?.scene?.cameraType === "free",
+  load: (ctx) =>
+    ctx.sessionId
+      ? ctx.api.sessionTrajectory(ctx.sessionId, {
+          scene: ctx.session?.scene?.sceneId ?? ctx.filters.scene,
+          limit: 5000,
+        })
+      : Promise.resolve([]),
+  render: ({ data, ctx }) => (
+    <WalkedPathView points={data ?? []} colorByHeight={ctx.settings.colorByHeight} />
+  ),
 });
 
 /**
@@ -1420,6 +1465,7 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   viewCoveragePanel,
   floorPlanPanel,
   desireLinesPanel,
+  walkedPathPanel,
   meshKindsPanel,
   reachabilityPanel,
   inputModalityPanel,

@@ -654,7 +654,12 @@ export interface SessionMeta {
     screen?: { width: number; height: number; dpr?: number };
     [key: string]: unknown;
   };
-  scene?: { sceneId?: string; [key: string]: unknown };
+  scene?: {
+    sceneId?: string;
+    /** Coarse camera kind recorded at session start (mirrors the schema's `cameraKind`). */
+    cameraType?: "arc-rotate" | "free" | "follow" | "static" | "other";
+    [key: string]: unknown;
+  };
   user?: Record<string, unknown>;
 }
 

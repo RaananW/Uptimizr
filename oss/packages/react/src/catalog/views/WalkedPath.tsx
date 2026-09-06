@@ -1,34 +1,39 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { HeatLegend, heatColor } from "@uptimizr/react";
-import { CollectorApi, type TrajectoryPoint } from "@/lib/api";
+import { useEffect, useMemo, useRef } from "react";
+import type { TrajectoryPoint } from "../../api";
+import { heatColor } from "../../format";
 import {
   HEIGHT_FLAT_THRESHOLD,
   formatHeight,
   heightEncodingActive,
   heightRange,
   heightT,
-} from "@/lib/trajectoryHeight";
-import { Panel } from "./Panel";
+} from "../lib/trajectoryHeight";
+import { HeatLegend } from "./HeatLegend";
 
 const SIZE = 360;
 const PAD = 16;
 
-// Canvas can't read the Tailwind theme, so these mirror `globals.css` tokens.
+// Canvas can't read the host theme, so these mirror the dashboard tokens.
 const CANVAS_BG = "#0b0e14";
 const MARKER_START = "#9bb23e"; // --color-success
 const MARKER_END = "#d64533"; // --color-error
 const MARKER_RING = "#f4eadf"; // --color-fg-hi
-/** Flat routes use the middle of the ramp so they don't read as "lowest". */
+/** Routes drawn without height use the middle of the ramp so they don't read as "lowest". */
 const FLAT_STROKE = heatColor(0.5);
+
+export const WALKED_PATH_TITLE = "Walked path";
+export const WALKED_PATH_SUBTITLE = "Camera trajectory (top-down)";
+export const WALKED_PATH_HELP =
+  "The ordered route this session's camera took across the X/Z ground plane — green is the start, red is the end. The line color follows camera height: rust is the lowest point on the route, saffron the highest, so stairs, ramps, lifts, and floor changes stand out. Meaningful for first-person (walkable) sessions.";
 
 /**
  * Top-down walked-path view for a single session (ADR 0026): the ordered
  * `camera_sample` positions projected onto the X/Z ground plane and connected
  * oldest→newest, with start (green) and end (red) markers. The first-person
  * analog of the session pointer heatmap — it shows the route a visitor took
- * through a walkable scene. Self-fetches so the parent only passes identifiers.
+ * through a walkable scene.
  *
  * Height (world Y) is encoded as the path color (#92): each segment is tinted
  * on the shared Ember heat ramp from the lowest point on the route (rust) to
@@ -36,46 +41,24 @@ const FLAT_STROKE = heatColor(0.5);
  * in plan view instead of looking like adjacent points on one floor. A legend
  * shows the actual low/high heights. Routes whose height barely varies (below
  * {@link HEIGHT_FLAT_THRESHOLD}) are drawn in a single color and say so.
+ * `colorByHeight={false}` turns the encoding off (a viewer setting).
+ *
+ * Panel BODY only (no chrome); the host supplies title/subtitle/help via the
+ * ADR 0036 panel contract.
  */
-export function TrajectoryView({
-  baseUrl,
-  apiKey,
-  sessionId,
-  scene,
+export function WalkedPathView({
+  points,
+  colorByHeight = true,
 }: {
-  baseUrl: string;
-  apiKey: string;
-  sessionId: string;
-  scene?: string;
+  points: TrajectoryPoint[];
+  /** Encode camera height as the line color (default on). */
+  colorByHeight?: boolean;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const [points, setPoints] = useState<TrajectoryPoint[]>([]);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
   const range = useMemo(() => heightRange(points), [points]);
-  /** The height range to encode, or `null` when the route is (near-)level. */
-  const encoded = heightEncodingActive(range) ? range : null;
-
-  useEffect(() => {
-    let cancelled = false;
-    setStatus("loading");
-    const api = new CollectorApi(baseUrl, apiKey);
-    api
-      .sessionTrajectory(sessionId, { scene, limit: 5000 })
-      .then((rows) => {
-        if (cancelled) return;
-        setPoints(rows);
-        setStatus("ready");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setPoints([]);
-        setStatus("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [baseUrl, apiKey, sessionId, scene]);
+  /** The height range to encode, or `null` when off or the route is (near-)level. */
+  const encoded = colorByHeight && heightEncodingActive(range) ? range : null;
 
   useEffect(() => {
     const canvas = ref.current;
@@ -154,11 +137,7 @@ export function TrajectoryView({
   }, [points, encoded]);
 
   return (
-    <Panel
-      title="Walked path"
-      subtitle="Camera trajectory (top-down)"
-      help="The ordered route this session's camera took across the X/Z ground plane — green is the start, red is the end. The line color follows camera height: rust is the lowest point on the route, saffron the highest, so stairs, ramps, lifts, and floor changes stand out. Meaningful for first-person (walkable) sessions."
-    >
+    <>
       <div className="flex justify-center">
         <div className="relative inline-block">
           <canvas
@@ -178,20 +157,16 @@ export function TrajectoryView({
           ) : null}
         </div>
       </div>
-      {status === "loading" ? (
-        <p className="mt-2 text-center text-xs text-fg-muted">Loading trajectory…</p>
-      ) : status === "error" ? (
-        <p className="mt-2 text-center text-xs text-red-400">Failed to load trajectory.</p>
-      ) : points.length === 0 ? (
+      {points.length === 0 ? (
         <p className="mt-2 text-center text-xs text-fg-muted">
           No camera movement recorded for this session.
         </p>
-      ) : !encoded ? (
+      ) : colorByHeight && !encoded ? (
         <p className="mt-2 text-center text-xs text-fg-muted">
           Level route — camera height varied by less than {formatHeight(HEIGHT_FLAT_THRESHOLD)}
           {range ? ` (around ${formatHeight(range.min)})` : ""}.
         </p>
       ) : null}
-    </Panel>
+    </>
   );
 }
