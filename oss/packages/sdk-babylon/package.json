@@ -64,6 +64,6 @@
   "devDependencies": {
     "@babylonjs/core": "^9.25.0",
     "esbuild": "^0.28.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   }
 }
