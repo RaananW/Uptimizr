@@ -2,7 +2,7 @@
   "name": "@uptimizr/example-unity-web-export",
   "version": "0.0.1",
   "private": true,
-  "description": "Minimal Unity 2022.3 LTS WebGL project wired to the @uptimizr/unity engine-side bridge. Build it once (WebGL → dist/) to drive the Playwright round-trip spec.",
+  "description": "Minimal Unity 6 Web project wired to the @uptimizr/unity engine-side bridge. Build it once (Web → dist/) to drive the Playwright round-trip spec.",
   "type": "module",
   "scripts": {
     "lint": "node scripts/check-bridge-sync.mjs",

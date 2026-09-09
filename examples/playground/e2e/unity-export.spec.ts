@@ -84,11 +84,33 @@ test("Unity WebGL export drives the bridged tier through the real .jslib shim", 
   const box = (await canvas.boundingBox())!;
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
-  await page.mouse.move(cx, cy);
-  await page.waitForTimeout(250); // let Unity see the pointer position for a frame
-  await page.mouse.down();
-  await page.waitForTimeout(100);
-  await page.mouse.up();
+  //
+  // Click until the pick lands rather than once. Unity's Input System backend does
+  // not deliver pointer input on a just-booted WebGL canvas: measured against a real
+  // 6000.6 build, a click fired the moment `createUnityInstance` resolves is dropped,
+  // while the same click ~3s later lands every time. Neither `canvas.focus()` nor a
+  // priming click helps — only elapsed time does — and the legacy Input Manager never
+  // needed it. How long that takes is machine-dependent, so poll instead of sleeping
+  // on a magic number. Repeat clicks are harmless: each is the same ray at the same
+  // target, so extra picks are duplicates of the one asserted below.
+  const clickCentre = async () => {
+    await page.mouse.move(cx, cy);
+    await page.waitForTimeout(150);
+    await page.mouse.down();
+    await page.waitForTimeout(120);
+    await page.mouse.up();
+  };
+
+  const pickDeadline = Date.now() + 30_000;
+  let picked = false;
+  while (!picked && Date.now() < pickDeadline) {
+    await clickCentre();
+    await page.waitForTimeout(1000);
+    picked = (await readSessionEvents(request, sessionId)).some(
+      (e) => e.type === "mesh_interaction",
+    );
+  }
+  expect(picked, "a canvas click should raise a pick through the bridge").toBe(true);
 
   const seen = await waitForEventTypes(request, sessionId, REQUIRED, 30_000);
   for (const type of REQUIRED) {

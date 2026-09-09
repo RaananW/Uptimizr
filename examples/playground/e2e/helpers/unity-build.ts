@@ -9,7 +9,7 @@
  */
 import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The sample Unity project and its git-ignored WebGL build output. */
@@ -118,10 +118,13 @@ export function serveUnityBuild(distDir: string = UNITY_DIST_DIR) {
       return;
     }
 
-    // Resolve inside distDir only (reject traversal).
+    // Resolve inside distDir only (reject traversal). Compare via `relative` rather
+    // than a "/"-joined prefix: `resolve` yields backslash-separated paths on Windows,
+    // so a `distDir + "/"` prefix never matches there and every asset 403s.
     const rel = decodeURIComponent(url.pathname.slice(UNITY_BUILD_ROUTE.length + 1));
     const file = resolve(distDir, rel);
-    if (!file.startsWith(distDir + "/") && file !== distDir) {
+    const within = relative(distDir, file);
+    if (within.startsWith("..") || isAbsolute(within)) {
       res.statusCode = 403;
       res.end();
       return;

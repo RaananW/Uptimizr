@@ -88,10 +88,10 @@ Unity is not part of the JS toolchain, so verification is split in two:
   forwards to `window.__uptimizr_unity__` — plus that each export declares its `__deps`
   (a missing dep is a silent link-time drop) and that the export set matches the
   `[DllImport]`s in `UptimizrUnityBridge.cs`.
-- **One manual step (maintainer):** the sample Unity 2022.3 LTS project in
+- **One manual step (maintainer):** the sample Unity 6 project in
   [`examples/unity-web-export/`](../../../examples/unity-web-export) carries copies of
   both bridge files (a lint script fails if they drift), a camera, and three named
-  cubes with colliders. Open it in Unity Hub and **File → Build Settings → WebGL →
+  cubes with colliders. Open it in Unity Hub and **File → Build Profiles → Web →
   Build** into `examples/unity-web-export/dist/` with **Compression Format: Disabled**.
   Then `examples/playground/e2e/unity-export.spec.ts` serves the build, starts
   `trackUnity` **before** `createUnityInstance`, clicks the centre cube, and asserts

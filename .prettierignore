@@ -10,3 +10,11 @@ LICENSE
 
 # Pre-built dashboard + playground bundled as static assets for the in-browser demo (generated output).
 oss/apps/demo/public/
+
+# Unity-generated project state (see examples/unity-web-export/.gitignore). A local
+# WebGL build fills these with vendored package sources and cache JSON/YAML, which
+# would otherwise fail `format:check` for anyone who has built the sample project.
+Library/
+Temp/
+Obj/
+Logs/

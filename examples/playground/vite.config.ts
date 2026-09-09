@@ -114,7 +114,16 @@ export default defineConfig({
   // A-Frame, react-three-fiber and the three connector all bundle three.js; dedupe
   // so a single copy is shared (mismatched copies break instanceof checks).
   resolve: { dedupe: ["three"] },
-  server: { port: 5173, strictPort: true },
+  server: {
+    port: 5173,
+    strictPort: true,
+    // The e2e harness parks its DuckDB store under `e2e/.tmp/`, inside this root.
+    // DuckDB is single-writer and holds an exclusive OS lock on that file while the
+    // collector runs; on Windows a `fs.watch` against a locked file raises EBUSY and
+    // takes the dev server down with it. Nothing under `.tmp/` is a source input, so
+    // exclude it from the watcher entirely.
+    watch: { ignored: ["**/e2e/.tmp/**"] },
+  },
   build: {
     target: "es2022",
     // Each engine is its own lazily-loaded chunk (PlayCanvas ≈ 1.9 MB, Babylon ≈ 1 MB
