@@ -12,6 +12,12 @@ read the [architecture overview](./docs/architecture/overview.md) and the
   needs **no Docker**. Docker is only required for the optional scale path (ClickHouse + Postgres).
   See [ADR 0020](./docs/adr/0020-open-core-storage-boundary.md).
 
+Windows, macOS and Linux are all supported for development — the package scripts are
+cross-platform, so `cmd.exe` and PowerShell work with no extra setup. Two things still assume a
+POSIX shell: the `bash` snippets below (`cp` is `copy` in `cmd.exe`), and `pnpm scrub-gate`, a
+maintainer-side leak check that shells out to `bash` — Git for Windows provides one, and CI runs
+that gate on Linux either way.
+
 ## Setup
 
 ```bash
@@ -72,6 +78,8 @@ pnpm format      # prettier --write
 - **Privacy first** — never introduce client-side persistent identifiers or collect PII by
   default (see [ADR 0003](./docs/adr/0003-privacy-model.md)).
 - **Conventional Commits** for messages (e.g. `feat(schema): add camera_sample event`).
+- **Cross-platform `package.json` scripts** — no `rm -rf`, `cp -r` or `VAR=value` prefixes, which
+  break under `cmd.exe`. Use `rimraf`, `cross-env`, or a small Node script under `scripts/`.
 - **Document decisions** — significant choices get a new ADR (copy `docs/adr/template.md`).
 
 ## Dependencies & licenses

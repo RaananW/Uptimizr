@@ -59,7 +59,7 @@
     "migrate": "tsx src/cli/migrate.ts",
     "seed": "tsx src/cli/seed.ts",
     "new-project": "tsx src/cli/createProject.ts",
-    "clean": "rm -rf dist"
+    "clean": "rimraf dist"
   },
   "dependencies": {
     "@duckdb/node-api": "^1.5.5-r.4",

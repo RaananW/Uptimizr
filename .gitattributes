@@ -1,0 +1,28 @@
+# Normalize every text file to LF in the repository *and* in the working tree on all
+# platforms (issue #284).
+#
+# Without this, a Windows clone with the default `core.autocrlf=true` checks files out
+# with CRLF while Prettier is configured with `endOfLine: "lf"` — so `pnpm format:check`
+# fails on every file in the repo and `pnpm format` produces an 800-file phantom diff.
+# Pinning `eol=lf` keeps the working tree byte-identical to what the linters expect.
+#
+# Existing Windows clones pick this up on the next checkout; to renormalize one in place:
+#   git add --renormalize . && git status
+
+* text=auto eol=lf
+
+# Binary assets: never touched by line-ending conversion or textual diffs.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.glb binary
+*.gltf binary
+*.wasm binary
+*.duckdb binary

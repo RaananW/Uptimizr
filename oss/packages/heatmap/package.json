@@ -56,7 +56,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint .",
-    "clean": "rm -rf dist"
+    "clean": "rimraf dist"
   },
   "peerDependencies": {
     "@babylonjs/core": "^7.0.0 || ^8.0.0 || ^9.0.0",
