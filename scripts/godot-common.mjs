@@ -60,13 +60,22 @@ export const BRIDGE_SOURCE = join(
 export const BRIDGE_COPY = join(SAMPLE_PROJECT_DIR, "uptimizr", "UptimizrGodot.gd");
 
 /**
- * Godot's per-user data directory (`~/.local/share/godot` on Linux, honouring
- * `XDG_DATA_HOME`). Override with `GODOT_DATA_DIR`. Export templates go under
- * `export_templates/`, exactly where the editor expects them; the downloaded
- * headless editor lives under `bin/` next to it so one cache path covers both.
+ * Godot's per-user data directory — the same path the editor itself uses, so
+ * templates we install are the ones it finds: `%APPDATA%\Godot` on Windows,
+ * `~/Library/Application Support/Godot` on macOS, and `~/.local/share/godot` on
+ * Linux (honouring `XDG_DATA_HOME`). Override with `GODOT_DATA_DIR`. Export
+ * templates go under `export_templates/`, exactly where the editor expects them;
+ * the downloaded headless editor lives under `bin/` next to it so one cache path
+ * covers both.
  */
 export function godotDataDir() {
   if (process.env.GODOT_DATA_DIR) return resolve(process.env.GODOT_DATA_DIR);
+  if (process.platform === "win32") {
+    return join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Godot");
+  }
+  if (process.platform === "darwin") {
+    return join(homedir(), "Library", "Application Support", "Godot");
+  }
   const xdg = process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share");
   return join(xdg, "godot");
 }
@@ -75,16 +84,24 @@ export function godotTemplatesDir() {
   return join(godotDataDir(), "export_templates", GODOT_TEMPLATE_VERSION_DIR);
 }
 
-/** Linux release asset suffix for this machine. Only Linux builds are supported. */
+/**
+ * Release asset name of the editor build for this machine — also the name of the
+ * single binary inside `<asset>.zip`. Linux and Windows publish a bare executable
+ * we can drop straight into `bin/`; macOS ships a `.app` bundle instead, so there
+ * `GODOT_BIN` is the supported route.
+ */
 export function godotEditorAssetName() {
-  if (process.platform !== "linux") {
-    throw new Error(
-      `godot tooling: only Linux is supported (platform=${process.platform}); ` +
-        `set GODOT_BIN to a local Godot ${GODOT_VERSION} editor binary instead.`,
-    );
+  const arm = process.arch === "arm64";
+  if (process.platform === "linux") {
+    return `Godot_v${GODOT_VERSION}_${arm ? "linux.arm64" : "linux.x86_64"}`;
   }
-  const arch = process.arch === "arm64" ? "linux.arm64" : "linux.x86_64";
-  return `Godot_v${GODOT_VERSION}_${arch}`;
+  if (process.platform === "win32") {
+    return `Godot_v${GODOT_VERSION}_${arm ? "windows_arm64" : "win64"}.exe`;
+  }
+  throw new Error(
+    `godot tooling cannot download an editor for platform=${process.platform}; ` +
+      `set GODOT_BIN to a local Godot ${GODOT_VERSION} editor binary instead.`,
+  );
 }
 
 /** Absolute path of the headless editor binary `godot-fetch.mjs` installs. */

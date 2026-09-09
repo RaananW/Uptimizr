@@ -78,6 +78,29 @@ missing or a different version. The shim's JS API:
 See [`bridge/README.md`](https://github.com/RaananW/Uptimizr/blob/main/oss/packages/unity/bridge/README.md)
 for the full contract.
 
+### Input backends and picks
+
+Pick capture reads the primary pointer, so it depends on which input backend the
+project enables under **Edit → Project Settings → Player → Configuration → Active
+Input Handling**. The `MonoBehaviour` compiles a path for each — `Mouse` /
+`Touchscreen` under `ENABLE_INPUT_SYSTEM`, the legacy `Input` API under
+`ENABLE_LEGACY_INPUT_MANAGER` — and prefers the Input System when both are on, so a
+click always yields exactly one pick. With **neither** backend enabled, picks are
+silently unavailable; pose and FPS still flow.
+
+Two things to know when running on the **Input System** backend:
+
+- **Picks are dropped for the first few seconds after the export boots.** Measured on
+  Unity 6000.6, a click fired the moment `createUnityInstance` resolves never reaches
+  the bridge, while the same click roughly three seconds later always does — the
+  backend has not begun delivering pointer input yet. Nothing on the page fixes it
+  (focusing the canvas does not help); it clears on its own. The legacy Input Manager
+  has no such delay. Expect a small gap in pick data at the very start of a session.
+- **Leave Active Input Handling explicitly set.** An unset value resolves to the Input
+  System on Unity 6, and any build carrying a pre-1.x-patch copy of the shim — which
+  read `UnityEngine.Input` unconditionally — throws `InvalidOperationException` every
+  frame and captures no picks at all. Re-copy the shim from `bridge/` if you see that.
+
 ## Verifying against a real export
 
 Unity is not part of the JS toolchain, so verification is split in two:
@@ -87,10 +110,10 @@ Unity is not part of the JS toolchain, so verification is split in two:
   declares its `__deps`, and matches the `[DllImport]`s in `UptimizrUnityBridge.cs`.
 - **One manual step.** The sample project
   [`examples/unity-web-export/`](https://github.com/RaananW/Uptimizr/tree/main/examples/unity-web-export)
-  (Unity 2022.3 LTS) ships a scene with a camera and three named cubes, the bridge
+  (Unity 6) ships a scene with a camera and three named cubes, the bridge
   files already in place, and player settings pre-set to **Compression Format:
   Disabled** so the output serves from a plain static server. Open it in Unity Hub,
-  **File → Build Settings → WebGL → Build** into `examples/unity-web-export/dist/`, then
+  **File → Build Profiles → Web → Build** into `examples/unity-web-export/dist/`, then
   run the Playwright spec:
 
   ```bash

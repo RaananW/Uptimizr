@@ -19,12 +19,16 @@
 //   3. On the host page, register the connector: `trackUnity({ ... })` (or
 //      `client.use(unityCollector())`) so `window.__uptimizr_unity__` exists.
 //
-// Uses the legacy `UnityEngine.Input` API for broad compatibility; adapt to the new
-// Input System if your project has disabled the legacy one.
+// Pick capture supports both input backends: Unity defines ENABLE_LEGACY_INPUT_MANAGER
+// and/or ENABLE_INPUT_SYSTEM from Player Settings -> Active Input Handling ("Both"
+// defines both), and `TryGetPrimaryPointerDown` compiles against whichever is on.
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 [DisallowMultipleComponent]
 public class UptimizrUnityBridge : MonoBehaviour
@@ -155,15 +159,58 @@ public class UptimizrUnityBridge : MonoBehaviour
         }
 
         // Picks: on primary pointer-down, raycast and push the named object + hit point.
-        if (capturePicks && Input.GetMouseButtonDown(0))
+        if (capturePicks && TryGetPrimaryPointerDown(out Vector3 pickScreenPos))
         {
-            Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+            Ray ray = cam.ScreenPointToRay(pickScreenPos);
             if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, pickMask))
             {
                 Vector3 hp = hit.point;
                 UptimizrUnityPushPick(hit.collider.gameObject.name, hp.x, hp.y, hp.z);
             }
         }
+    }
+
+    /// <summary>
+    /// Primary-pointer-down this frame, in screen coordinates, for whichever input
+    /// backend the project enabled.
+    /// </summary>
+    /// <remarks>
+    /// Reading <c>UnityEngine.Input</c> while the legacy manager is disabled throws
+    /// <c>InvalidOperationException</c> every frame, so the legacy path must be
+    /// compiled out rather than branched around — Unity 6 projects on the Input
+    /// System package would otherwise spam exceptions and capture no picks at all.
+    /// Under "Both" the Input System is preferred; either way exactly one push is
+    /// emitted per click.
+    /// </remarks>
+    static bool TryGetPrimaryPointerDown(out Vector3 screenPosition)
+    {
+#if ENABLE_INPUT_SYSTEM
+        Mouse mouse = Mouse.current;
+        if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+        {
+            Vector2 m = mouse.position.ReadValue();
+            screenPosition = new Vector3(m.x, m.y, 0f);
+            return true;
+        }
+
+        Touchscreen touchscreen = Touchscreen.current;
+        if (touchscreen != null && touchscreen.primaryTouch.press.wasPressedThisFrame)
+        {
+            Vector2 t = touchscreen.primaryTouch.position.ReadValue();
+            screenPosition = new Vector3(t.x, t.y, 0f);
+            return true;
+        }
+#endif
+#if ENABLE_LEGACY_INPUT_MANAGER
+        if (Input.GetMouseButtonDown(0))
+        {
+            screenPosition = Input.mousePosition;
+            return true;
+        }
+#endif
+        // Neither backend enabled: no picks, but nothing throws either.
+        screenPosition = default;
+        return false;
     }
 
     /// <summary>

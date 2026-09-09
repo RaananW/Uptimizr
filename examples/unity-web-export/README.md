@@ -1,6 +1,6 @@
 # `examples/unity-web-export` — sample Unity WebGL project
 
-A minimal **Unity 2022.3 LTS** project wired to the
+A minimal **Unity 6** project wired to the
 [`@uptimizr/unity`](../../oss/packages/unity) engine-side bridge (ADR 0045). It exists so
 verifying the **bridged capture tier** against a real WebGL export is **one manual
 step** (a Unity build) instead of a hand-driven session — the Playwright spec
@@ -12,15 +12,15 @@ and only runs for a maintainer who has built the project locally (#253).
 
 ## What's in the project
 
-| Path                                        | What it is                                                                                                 |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `Assets/Scenes/Sample.unity`                | One scene: a `Main Camera` at `(0, 1, -6)` looking down +Z, a directional light, and three named cubes.    |
-| `Assets/Uptimizr/UptimizrUnityBridge.cs`    | **Copy** of the package's `MonoBehaviour`, attached to the `Uptimizr` GameObject with `Main Camera` bound. |
-| `Assets/Plugins/WebGL/Uptimizr.jslib`       | **Copy** of the package's Emscripten plugin (Unity compiles `Plugins/WebGL/*.jslib` into the export).      |
-| `Packages/manifest.json`                    | Built-in modules only (physics, UI, …) — no store packages, nothing to download.                           |
-| `ProjectSettings/ProjectVersion.txt`        | Pins the editor line (`2022.3.x`); any 2022.3 LTS works, Unity Hub offers to switch.                       |
-| `ProjectSettings/EditorBuildSettings.asset` | Puts `Sample.unity` in the build so **Build** needs no scene wrangling.                                    |
-| `ProjectSettings/ProjectSettings.asset`     | Player settings: **Compression Format: Disabled**, run in background, 960×600 default canvas.              |
+| Path                                        | What it is                                                                                                                             |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `Assets/Scenes/Sample.unity`                | One scene: a `Main Camera` at `(0, 1, -6)` looking down +Z, a directional light, and three named cubes.                                |
+| `Assets/Uptimizr/UptimizrUnityBridge.cs`    | **Copy** of the package's `MonoBehaviour`, attached to the `Uptimizr` GameObject with `Main Camera` bound.                             |
+| `Assets/Plugins/WebGL/Uptimizr.jslib`       | **Copy** of the package's Emscripten plugin (Unity compiles `Plugins/WebGL/*.jslib` into the export).                                  |
+| `Packages/manifest.json`                    | Built-in modules plus `com.unity.inputsystem` (the backend the scene's picks are captured through).                                    |
+| `ProjectSettings/ProjectVersion.txt`        | Pins the editor line (`6000.6.0f1`); any Unity 6 works, Unity Hub offers to switch.                                                    |
+| `ProjectSettings/EditorBuildSettings.asset` | Puts `Sample.unity` in the build so **Build** needs no scene wrangling.                                                                |
+| `ProjectSettings/ProjectSettings.asset`     | Player settings: **Compression Format: Disabled**, run in background, 960×600 canvas, **Active Input Handling: Input System Package**. |
 
 The cubes have `BoxCollider`s so the bridge's pick raycast hits them:
 
@@ -42,9 +42,10 @@ pnpm --filter @uptimizr/example-unity-web-export sync-bridge
 ## The one manual step: build it
 
 1. Open **Unity Hub** → **Add** → pick this folder (`examples/unity-web-export`). Use any
-   **2022.3 LTS** editor with the **WebGL Build Support** module installed.
-2. Open the project, then **File → Build Settings…** → select **WebGL** → **Switch
-   Platform** (first time only) → **Build**.
+   **Unity 6** editor with the **Web Build Support** module installed.
+2. Open the project, then **File → Build Profiles** → select **Web** → **Switch
+   Platform** (first time only) → **Build**. (Unity 6 replaced _Build Settings_ with
+   _Build Profiles_, and renamed the _WebGL_ platform to _Web_.)
 3. Choose **`examples/unity-web-export/dist/`** as the output folder (it is
    git-ignored). Unity writes `dist/Build/dist.loader.js`, `dist.data`,
    `dist.framework.js`, `dist.wasm`, plus `dist/index.html` and `dist/TemplateData/`.
@@ -70,9 +71,16 @@ That's it. The Playwright spec finds `dist/Build/*.loader.js` and stops skipping
 - **Decompression Fallback** stays off (only needed for compressed builds on servers
   that can't set `Content-Encoding`).
 
-If Unity rejects the minimal `ProjectSettings.asset` on an editor line other than
-2022.3, delete it, let Unity regenerate defaults, and set **Compression Format:
-Disabled** + **Run In Background** by hand.
+- **Active Input Handling: Input System Package** (Edit → Project Settings → Player →
+  Configuration). The bridge compiles a pick path for whichever backend is enabled, so
+  _Input Manager (Old)_ and _Both_ work too — but leaving it **unset** does not: Unity 6
+  resolves that to the Input System, and a bridge built before this was guarded would
+  throw `InvalidOperationException` every frame from `UnityEngine.Input` and capture no
+  `mesh_interaction` at all.
+
+If Unity rejects `ProjectSettings.asset` on a different editor line, delete it, let Unity
+regenerate defaults, and set **Compression Format: Disabled**, **Run In Background** and
+**Active Input Handling** by hand.
 
 ## Run the spec
 
