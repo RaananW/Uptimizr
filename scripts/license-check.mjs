@@ -11,7 +11,7 @@
 // Run locally:  node scripts/license-check.mjs
 // CI:           pnpm license-check
 //
-import { execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 
 // SPDX identifiers we accept outright. All are permissive, or weak/file-level
 // copyleft (MPL-2.0) that imposes no obligations on our own source, or
@@ -54,6 +54,20 @@ const EXCEPTIONS = new Map([
   [
     "@img/sharp-libvips-linux-arm64",
     "LGPL-3.0-or-later — sharp's prebuilt libvips native binary (linux arm64), dynamically linked.",
+  ],
+  // Windows has no separate `@img/sharp-libvips-*` package — sharp ships the libvips
+  // DLLs inside the platform package itself, so the exception is keyed on that name.
+  [
+    "@img/sharp-win32-x64",
+    "LGPL-3.0-or-later — sharp's prebuilt libvips DLLs (win32 x64), dynamically linked.",
+  ],
+  [
+    "@img/sharp-win32-arm64",
+    "LGPL-3.0-or-later — sharp's prebuilt libvips DLLs (win32 arm64), dynamically linked.",
+  ],
+  [
+    "@img/sharp-win32-ia32",
+    "LGPL-3.0-or-later — sharp's prebuilt libvips DLLs (win32 ia32), dynamically linked.",
   ],
   [
     "@bruits/satteri-darwin-arm64",
@@ -114,7 +128,10 @@ function isAllowedExpression(license) {
 function loadLicenses() {
   let raw;
   try {
-    raw = execFileSync("pnpm", ["licenses", "list", "--prod", "--json"], {
+    // Routed through a shell so this works on Windows too, where pnpm is a `.cmd`
+    // shim that Node refuses to spawn directly. The command is a fixed literal with
+    // nothing interpolated into it.
+    raw = execSync("pnpm licenses list --prod --json", {
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
     });

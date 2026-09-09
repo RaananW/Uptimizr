@@ -11,7 +11,7 @@
     "preview": "astro preview",
     "lint": "eslint .",
     "typecheck": "astro check --minimumSeverity error",
-    "clean": "rm -rf dist .astro node_modules/.vite"
+    "clean": "rimraf dist .astro node_modules/.vite"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.4",

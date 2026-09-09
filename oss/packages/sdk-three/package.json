@@ -50,7 +50,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint .",
-    "clean": "rm -rf dist"
+    "clean": "rimraf dist"
   },
   "peerDependencies": {
     "three": ">=0.150.0"

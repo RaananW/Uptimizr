@@ -54,7 +54,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint .",
-    "clean": "rm -rf dist *.tsbuildinfo"
+    "clean": "rimraf -g dist *.tsbuildinfo"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

@@ -63,7 +63,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint .",
-    "clean": "rm -rf dist *.tsbuildinfo"
+    "clean": "rimraf -g dist *.tsbuildinfo"
   },
   "dependencies": {
     "zod": "^4.5.4"

@@ -105,6 +105,10 @@ export async function createDuckdbClient(path: string): Promise<DuckdbClient> {
     close() {
       return enqueue(async () => {
         connection.closeSync();
+        // Closing the connection alone leaves the instance holding the database
+        // file. POSIX tolerates reopening it anyway; Windows keeps an exclusive
+        // lock, so the next `createDuckdbClient(path)` on the same file fails.
+        instance.closeSync();
       });
     },
   };
