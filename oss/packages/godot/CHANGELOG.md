@@ -1,5 +1,33 @@
 # @uptimizr/godot
 
+## 0.2.1
+
+### Patch Changes
+
+- 7b1a9dc: Fix the engine round-trip harness on Windows, where it could not start at all. The
+  playground's Vite dev server watched `e2e/.tmp/`, which holds the harness DuckDB store;
+  DuckDB keeps an exclusive lock on that file for the length of a run and Windows raises
+  `EBUSY` when watching a locked file, so the server died on boot and every e2e spec
+  failed. Separately, `serveUnityBuild` rejected path traversal by testing for a
+  `distDir + "/"` prefix, which never matches the backslash paths `resolve` returns on
+  Windows — so every Unity build asset returned 403 — and `.prettierignore` did not cover
+  Unity's generated `Library/`, `Temp/`, `Obj/` and `Logs/`, so building the sample project
+  broke `format:check`. Harness only — no change to either published connector.
+- 7b1a9dc: Let the Godot web-export tooling run off Linux. `pnpm godot:fetch` threw outright on any
+  other platform and looked for Godot's data directory at `~/.local/share/godot`, so the
+  connector's real-engine verification was Linux-only. It now resolves the `win64` /
+  `windows_arm64` release assets and uses each platform's real Godot data directory
+  (`%APPDATA%\Godot` on Windows, `~/Library/Application Support/Godot` on macOS), which is
+  also where the editor looks for the export templates it installs. macOS ships a `.app`
+  bundle rather than a bare binary, so `GODOT_BIN` remains the route there, now with an
+  error message that says so. The template range-fetch was already host-independent.
+  Tooling only — no change to the published connector code.
+- 3c3ee66: Make the package scripts cross-platform so a fresh Windows checkout can build. `clean` now uses `rimraf` instead of `rm -rf`, and the dashboard's `build`/`build:static`/`prepack`/`start` no longer rely on a POSIX `VAR=value` prefix. No runtime or published-output change.
+- Updated dependencies [3c3ee66]
+  - @uptimizr/schema@1.0.1
+  - @uptimizr/sdk-core@1.0.1
+  - @uptimizr/web-export@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes

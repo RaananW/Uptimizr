@@ -1,5 +1,42 @@
 # @uptimizr/unity
 
+## 0.2.1
+
+### Patch Changes
+
+- 7b1a9dc: Fix the engine round-trip harness on Windows, where it could not start at all. The
+  playground's Vite dev server watched `e2e/.tmp/`, which holds the harness DuckDB store;
+  DuckDB keeps an exclusive lock on that file for the length of a run and Windows raises
+  `EBUSY` when watching a locked file, so the server died on boot and every e2e spec
+  failed. Separately, `serveUnityBuild` rejected path traversal by testing for a
+  `distDir + "/"` prefix, which never matches the backslash paths `resolve` returns on
+  Windows — so every Unity build asset returned 403 — and `.prettierignore` did not cover
+  Unity's generated `Library/`, `Temp/`, `Obj/` and `Logs/`, so building the sample project
+  broke `format:check`. Harness only — no change to either published connector.
+- 3c3ee66: Make the package scripts cross-platform so a fresh Windows checkout can build. `clean` now uses `rimraf` instead of `rm -rf`, and the dashboard's `build`/`build:static`/`prepack`/`start` no longer rely on a POSIX `VAR=value` prefix. No runtime or published-output change.
+- 7b1a9dc: Document the connector against Unity 6. The reference project
+  (`examples/unity-web-export`) moves from 2022.3 LTS to 6000.6.0f1, and the setup docs
+  follow Unity 6's renames — **File → Build Profiles** replaces _Build Settings_, and the
+  platform is **Web** rather than _WebGL_. A new "Input backends and picks" section spells
+  out which pointer API the shim compiles against for each Active Input Handling setting,
+  and warns that picks are dropped for the first few seconds of a session on the Input
+  System backend (measured on 6000.6: a click as `createUnityInstance` resolves never
+  reaches the bridge, the same click ~3s later always does). Documentation and sample
+  only — no change to the published connector code.
+- 7b1a9dc: Capture picks under either Unity input backend. `UptimizrUnityBridge.cs` read
+  `UnityEngine.Input` unconditionally, which throws `InvalidOperationException` every
+  frame when a project has Active Input Handling set to the Input System package — the
+  common case on Unity 6 — so those projects saw exception spam and no `mesh_interaction`
+  events at all. Pointer-down is now resolved through `TryGetPrimaryPointerDown`, which
+  compiles a `Mouse`/`Touchscreen` path under `ENABLE_INPUT_SYSTEM` and the legacy path
+  under `ENABLE_LEGACY_INPUT_MANAGER` (preferring the Input System when both are
+  enabled, so a click still yields exactly one push). With neither backend enabled the
+  bridge degrades to no picks instead of throwing.
+- Updated dependencies [3c3ee66]
+  - @uptimizr/schema@1.0.1
+  - @uptimizr/sdk-core@1.0.1
+  - @uptimizr/web-export@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes

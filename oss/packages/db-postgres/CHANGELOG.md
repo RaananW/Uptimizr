@@ -1,5 +1,15 @@
 # @uptimizr/db-postgres
 
+## 1.0.2
+
+### Patch Changes
+
+- 3c3ee66: Make the package scripts cross-platform so a fresh Windows checkout can build. `clean` now uses `rimraf` instead of `rm -rf`, and the dashboard's `build`/`build:static`/`prepack`/`start` no longer rely on a POSIX `VAR=value` prefix. No runtime or published-output change.
+- Updated dependencies [3c3ee66]
+- Updated dependencies [3c3ee66]
+  - @uptimizr/db@1.0.2
+  - @uptimizr/schema@1.0.1
+
 ## 1.0.1
 
 ### Patch Changes
