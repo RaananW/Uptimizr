@@ -42,7 +42,9 @@ COLLECTOR_STORE=clickhouse pnpm dev:collector
 
 The store creates its database and tables on first boot. A live ClickHouse also unlocks the
 cross-engine parity tests in `@uptimizr/db-clickhouse` (they skip gracefully when it is unreachable,
-so the default `pnpm test` stays Docker-free).
+so the default `pnpm test` stays Docker-free). In CI the opt-in **Store parity (ClickHouse)** job
+runs them against a ClickHouse 24.8 service container with `CLICKHOUSE_PARITY_REQUIRED=1`, so an
+unreachable server fails instead of skipping.
 
 The same applies to the **Postgres store** (`COLLECTOR_STORE=postgres`): `pnpm stack:up` also
 starts a `postgres:16` service, and the parity + store suites in `@uptimizr/db-postgres` run
