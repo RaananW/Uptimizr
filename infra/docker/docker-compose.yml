@@ -6,23 +6,32 @@
 # `COLLECTOR_STORE=clickhouse` / `postgres` / `mssql` stores behind the `@uptimizr/db`
 # contracts and the cross-engine parity suites.
 #
-#   docker compose up -d        # start ClickHouse + Postgres + SQL Server (+ Adminer)
-#   # run the scale migrations/seed against these engines
-#   docker compose down [-v]    # stop (-v also drops data volumes)
+#   pnpm stack:up               # start ClickHouse + Postgres + SQL Server (+ Adminer)
+#   pnpm stack:down             # stop, keep data (`docker compose down -v` also drops volumes)
 #
-# Settings mirror `.env.example`; override via a sibling `.env` if needed.
+# Settings mirror `.env.example`; `pnpm stack:up` reads the repo-root `.env`, where
+# every host port can be overridden (see the `*_HOST_PORT` variables below).
+
+# Pin the Compose project name. Without it Compose derives the name from this
+# folder (`docker`), so any other checkout, fork or repository with the same
+# `infra/docker` layout becomes the *same* project: `stack:up` there replaces
+# these containers and silently reuses the same `docker_*` volumes, so unrelated
+# databases share data.
+name: uptimizr-oss
 
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
-    container_name: uptimizr-clickhouse
+    container_name: uptimizr-oss-clickhouse
     environment:
       CLICKHOUSE_DB: uptimizr
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: ""
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     ports:
-      - "8123:8123" # HTTP interface (used by @clickhouse/client)
+      # HTTP interface (used by @clickhouse/client). Host port is configurable
+      # (set CLICKHOUSE_HTTP_HOST_PORT in your .env; CLICKHOUSE_URL follows it).
+      - "${CLICKHOUSE_HTTP_HOST_PORT:-8123}:8123"
       # Native protocol — not used by the app (HTTP 8123 is). Host port is
       # configurable to avoid clashes with other local services that default to
       # 9000 (e.g. MinIO): set CLICKHOUSE_NATIVE_HOST_PORT in your .env.
@@ -41,7 +50,7 @@ services:
 
   postgres:
     image: postgres:16
-    container_name: uptimizr-postgres
+    container_name: uptimizr-oss-postgres
     environment:
       POSTGRES_USER: uptimizr
       POSTGRES_PASSWORD: uptimizr
@@ -63,7 +72,7 @@ services:
   # first boot (the `sa` login may), and the parity suites use throwaway ones.
   mssql:
     image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: uptimizr-mssql
+    container_name: uptimizr-oss-mssql
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-Uptimizr!Local1}"
@@ -86,9 +95,10 @@ services:
 
   adminer:
     image: adminer:4
-    container_name: uptimizr-adminer
+    container_name: uptimizr-oss-adminer
     ports:
-      - "8080:8080"
+      # Host port is configurable (set ADMINER_HOST_PORT in your .env).
+      - "${ADMINER_HOST_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy

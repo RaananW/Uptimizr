@@ -36,8 +36,9 @@ To work on the **ClickHouse scale store** (`COLLECTOR_STORE=clickhouse`), start 
 and point the collector at it:
 
 ```bash
-pnpm stack:up        # ClickHouse on :8123 (infra/docker)
+pnpm stack:up        # ClickHouse on :8123 (infra/docker, containers uptimizr-oss-*)
 COLLECTOR_STORE=clickhouse pnpm dev:collector
+pnpm test:parity:clickhouse
 ```
 
 The store creates its database and tables on first boot. A live ClickHouse also unlocks the
@@ -53,8 +54,8 @@ aggregation against both the golden output and DuckDB directly, and skip otherwi
 
 ```bash
 pnpm stack:up
-COLLECTOR_STORE=postgres POSTGRES_URL=postgresql://uptimizr:uptimizr@localhost:5432/uptimizr pnpm dev:collector
-POSTGRES_URL=postgresql://uptimizr:uptimizr@localhost:5432/uptimizr pnpm --filter @uptimizr/db-postgres test
+COLLECTOR_STORE=postgres pnpm dev:collector
+pnpm test:parity:postgres
 ```
 
 In CI the opt-in **Store parity (Postgres)** job runs the same suite against a service container.
@@ -66,8 +67,16 @@ Likewise for the **SQL Server store** (`COLLECTOR_STORE=mssql`): `pnpm stack:up`
 
 ```bash
 pnpm stack:up
-MSSQL_URL="Server=localhost,1433;Database=master;User Id=sa;Password=Uptimizr!Local1;Encrypt=false;TrustServerCertificate=true" pnpm --filter @uptimizr/db-mssql test
+pnpm test:parity:mssql
 ```
+
+The stack's host ports are defaults (`8123`, `9000`, `5432`, `1433`, Adminer `8080`). If one is
+taken, override it in your `.env` with `CLICKHOUSE_HTTP_HOST_PORT`, `CLICKHOUSE_NATIVE_HOST_PORT`,
+`POSTGRES_HOST_PORT`, `MSSQL_HOST_PORT` or `ADMINER_HOST_PORT`. The connection URLs in `.env`
+reference those variables, so the `dev:*` and `test:parity:*` scripts follow them. The
+Compose project is pinned to `uptimizr-oss` (containers `uptimizr-oss-*`, volumes `uptimizr-oss_*`),
+so it cannot collide with another repository's `infra/docker` stack, which Compose would otherwise
+also name `docker`.
 
 In CI the opt-in **Store parity (MSSQL)** job runs it against a SQL Server 2022 service container
 with `MSSQL_PARITY_REQUIRED=1`, so an unreachable server fails instead of skipping.
