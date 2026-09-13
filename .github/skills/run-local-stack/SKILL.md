@@ -69,8 +69,8 @@ The ClickHouse (events) + Postgres (metadata) engines back the optional scale ti
    connection URLs in `.env` reference those variables, so they follow.
 2. Run the scale-tier migrations/seed against those engines, then point the collector at them via
    the relevant `COLLECTOR_STORE` / connection env vars.
-3. Run the store parity suites through the same `.env` so they hit the overridden ports, e.g.
-   `pnpm exec dotenv -- pnpm --filter @uptimizr/db-postgres test`.
+3. Run the store parity suites through the same `.env` so they hit the overridden ports:
+   `pnpm test:parity:postgres`, `pnpm test:parity:mssql` or `pnpm test:parity:clickhouse`.
 4. Tear down: `pnpm stack:down` (or `docker compose -f infra/docker/docker-compose.yml down -v` to
    drop data volumes).
 

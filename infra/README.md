@@ -41,7 +41,7 @@ with the same `infra/docker` layout would replace these containers and reuse the
 The host ports above are defaults. Override them in the repo-root `.env` with
 `CLICKHOUSE_HTTP_HOST_PORT`, `CLICKHOUSE_NATIVE_HOST_PORT`, `POSTGRES_HOST_PORT`,
 `MSSQL_HOST_PORT` and `ADMINER_HOST_PORT`; the connection URLs in `.env` reference those
-variables, so `pnpm db:*`, `pnpm dev:*` and `pnpm exec dotenv -- …` follow them.
+variables, so `pnpm db:*`, `pnpm dev:*` and `pnpm test:parity:*` follow them.
 
 - **Adminer** (`http://localhost:8080`) inspects Postgres (projects, api_keys).
 - **ClickHouse** events are queryable over the HTTP interface (`http://localhost:8123`).
