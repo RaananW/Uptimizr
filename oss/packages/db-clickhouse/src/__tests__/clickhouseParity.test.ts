@@ -69,7 +69,7 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
     }
   });
 
-  it("covers all 65 aggregations", () => {
+  it("covers all 68 aggregations", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
@@ -107,6 +107,9 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "stabilityCounts",
       "graphicsDiagnosticCounts",
       "errorHeatmap",
+      "boundaryHeatmap",
+      "boundaryHeatmapStats",
+      "boundaryContacts",
       "renderingTechnology",
       "deadClicks",
       "rageClicks",
