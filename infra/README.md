@@ -2,7 +2,7 @@
 
 Local and deployment infrastructure for Uptimizr.
 
-- `docker/` — `docker compose` bringing up ClickHouse + Postgres (+ Adminer) for the
+- `docker/` — `docker compose` bringing up ClickHouse + Postgres + SQL Server (+ Adminer) for the
   optional **scale** tier. The current ClickHouse store keeps events and metadata in
   ClickHouse behind the `@uptimizr/db` contracts (ADR 0020); the default OSS collector
   does **not** need these services.
@@ -25,16 +25,23 @@ Back up = copy the `.duckdb` file. DuckDB is single-writer: run one collector pe
 
 ## Scale stack (Docker)
 
-ClickHouse + Postgres are only needed when exercising the optional scale-tier services:
+ClickHouse, Postgres and SQL Server are only needed when exercising the optional stores:
 
 ```bash
-cd infra/docker
-docker compose up -d                       # ClickHouse :8123, Postgres :5432, Adminer :8080
-# apply the scale migrations against these engines
-
-# tear down (add -v to drop data volumes)
-docker compose down
+pnpm stack:up     # from repo root: ClickHouse :8123, Postgres :5432, SQL Server :1433, Adminer :8080
+pnpm stack:down   # stop, keep data
+docker compose -f infra/docker/docker-compose.yml down -v   # stop and drop the data volumes
 ```
+
+The Compose project name is pinned to `uptimizr-oss`, so the containers are `uptimizr-oss-*` and
+the volumes `uptimizr-oss_*` regardless of the checkout, fork or worktree they are started from.
+Without the pin, Compose would name the project after the `docker` folder, so any other repository
+with the same `infra/docker` layout would replace these containers and reuse their volumes.
+
+The host ports above are defaults. Override them in the repo-root `.env` with
+`CLICKHOUSE_HTTP_HOST_PORT`, `CLICKHOUSE_NATIVE_HOST_PORT`, `POSTGRES_HOST_PORT`,
+`MSSQL_HOST_PORT` and `ADMINER_HOST_PORT`; the connection URLs in `.env` reference those
+variables, so `pnpm db:*`, `pnpm dev:*` and `pnpm test:parity:*` follow them.
 
 - **Adminer** (`http://localhost:8080`) inspects Postgres (projects, api_keys).
 - **ClickHouse** events are queryable over the HTTP interface (`http://localhost:8123`).

@@ -310,7 +310,10 @@ async function main() {
   }
   const env = parseEnvFile(envPath);
   const collectorPort = Number(env.COLLECTOR_PORT ?? 4318);
-  const clickhouseUrl = env.CLICKHOUSE_URL ?? "http://localhost:8123";
+  // Probe the containers `stack:up` publishes. Read the host-port variables, not
+  // the connection URLs: those reference the ports as `${VAR}`, which this
+  // minimal parser does not expand.
+  const clickhouseUrl = `http://localhost:${env.CLICKHOUSE_HTTP_HOST_PORT ?? 8123}`;
   const postgresPort = Number(env.POSTGRES_HOST_PORT ?? 5432);
 
   // 1. Databases.

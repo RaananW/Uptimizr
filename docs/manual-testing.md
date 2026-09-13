@@ -23,7 +23,10 @@ playground, and replay a session. The OSS path needs **no external database serv
 - Node 22, pnpm. **No Docker** for the OSS path; Docker is only needed
   for the optional scale tier (ClickHouse + Postgres scale engines).
 - OSS ports free: `4318` (collector), `3000` (dashboard), `5173` (playground).
-- Scale-tier-only ports: `8123`/`9000` (ClickHouse), `5432` (Postgres), `8080` (Adminer).
+- Scale-tier-only ports: `8123`/`9000` (ClickHouse), `5432` (Postgres), `1433` (SQL Server),
+  `8080` (Adminer). Each is overridable in `.env` via its `*_HOST_PORT` variable
+  (`CLICKHOUSE_HTTP_HOST_PORT`, `CLICKHOUSE_NATIVE_HOST_PORT`, `POSTGRES_HOST_PORT`,
+  `MSSQL_HOST_PORT`, `ADMINER_HOST_PORT`); the connection URLs follow it.
 
 ## Ports & services at a glance
 
@@ -226,4 +229,4 @@ docker compose -f infra/docker/docker-compose.yml down -v
 | No rows in the store                            | Confirm `pnpm db:setup` ran and the collector flushed (batch interval ~3s).                                                                                |
 | `IO Error: Could not set lock on file` (DuckDB) | Another process holds the single-writer lock. Stop the other collector/CLI (or use `duckdb -readonly`) and retry.                                          |
 | Next build/prerender crash about `useContext`   | The `build`/`start` scripts pin `NODE_ENV=production`, so this shouldn't recur. If you invoke `next build` directly, prefix it with `NODE_ENV=production`. |
-| Port already in use                             | Change the port in `.env` / `infra/docker/docker-compose.yml`.                                                                                             |
+| Port already in use                             | Set the matching `*_HOST_PORT` variable in `.env` and re-run `pnpm stack:up`; the connection URLs in `.env` follow it.                                     |
