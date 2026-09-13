@@ -199,6 +199,63 @@ jobs:
       - name: Parity + store suites against SQL Server
         run: pnpm --filter @uptimizr/db-mssql test
 
+  store-parity-clickhouse:
+    name: Store parity (ClickHouse)
+    runs-on: ubuntu-latest
+    # Opt-in cross-engine parity for the optional ClickHouse store. The suite in
+    # @uptimizr/db-clickhouse skips when no server is reachable, which keeps the
+    # default `build` job Docker-free; here a ClickHouse service container (the
+    # same image as infra/docker) is provided and CLICKHOUSE_PARITY_REQUIRED turns
+    # a missing server into a failure so an outage can never masquerade as a
+    # green skip.
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server:24.8
+        env:
+          CLICKHOUSE_DB: uptimizr
+          CLICKHOUSE_USER: default
+          CLICKHOUSE_PASSWORD: ""
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+        ports:
+          - 8123:8123
+        options: >-
+          --ulimit nofile=262144:262144
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      CLICKHOUSE_URL: http://localhost:8123
+      CLICKHOUSE_PARITY_REQUIRED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
+      - name: Build the store and its dependencies
+        run: pnpm --filter @uptimizr/db-clickhouse... build
+
+      - name: Parity suite against ClickHouse
+        run: pnpm --filter @uptimizr/db-clickhouse test
+
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest

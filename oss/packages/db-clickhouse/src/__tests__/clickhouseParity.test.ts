@@ -7,8 +7,9 @@
  * (see `@uptimizr/db`'s `duckdbParity.test.ts`), a passing run here proves
  * DuckDB↔ClickHouse parity by transitivity.
  *
- * The suite is **skipped gracefully** when no ClickHouse server is reachable, so
- * it never fails a CI/dev run without the optional scale engine. Point it at a
+ * The suite is **skipped gracefully** when no ClickHouse server is reachable
+ * (unless `CLICKHOUSE_PARITY_REQUIRED` is set), so it never fails a dev run or
+ * the default `build` job without the optional scale engine. Point it at a
  * server with the `CLICKHOUSE_*` env vars (defaults to the local docker-compose
  * instance). It uses a throwaway database that it drops on teardown.
  */
@@ -25,16 +26,31 @@ const CH_USER = process.env.CLICKHOUSE_USER ?? "default";
 const CH_PASSWORD = process.env.CLICKHOUSE_PASSWORD ?? "";
 const TEST_DB = "uptimizr_ch_parity_test";
 
-/** Probe the server's `/ping` so the suite can skip when it is unreachable. */
+/**
+ * Probe the server's `/ping` so the suite can skip when it is unreachable.
+ *
+ * Set `CLICKHOUSE_PARITY_REQUIRED=1` (the "Store parity (ClickHouse)" CI job
+ * does) to turn an unreachable server into a hard failure instead of a skip, so
+ * an outage of the service container can never pass as a green run.
+ */
 async function clickhouseReachable(): Promise<boolean> {
+  let reason: unknown;
   try {
     const res = await fetch(`${CH_URL.replace(/\/$/, "")}/ping`, {
       signal: AbortSignal.timeout(2000),
     });
-    return res.ok;
-  } catch {
-    return false;
+    if (res.ok) return true;
+    reason = new Error(`HTTP ${res.status}`);
+  } catch (error) {
+    reason = error;
   }
+  if (process.env.CLICKHOUSE_PARITY_REQUIRED) {
+    throw new Error(
+      `CLICKHOUSE_PARITY_REQUIRED is set but ClickHouse is unreachable at ${CH_URL}`,
+      { cause: reason },
+    );
+  }
+  return false;
 }
 
 const available = await clickhouseReachable();
@@ -69,7 +85,7 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
     }
   });
 
-  it("covers all 65 aggregations", () => {
+  it("covers all 68 aggregations", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
@@ -107,6 +123,9 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "stabilityCounts",
       "graphicsDiagnosticCounts",
       "errorHeatmap",
+      "boundaryHeatmap",
+      "boundaryHeatmapStats",
+      "boundaryContacts",
       "renderingTechnology",
       "deadClicks",
       "rageClicks",
