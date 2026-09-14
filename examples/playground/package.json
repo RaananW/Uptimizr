@@ -16,9 +16,9 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@babylonjs/core": "^9.25.0",
-    "@babylonjs/lite": "^1.27.0",
-    "@babylonjs/loaders": "^9.25.0",
+    "@babylonjs/core": "^9.26.0",
+    "@babylonjs/lite": "^1.28.0",
+    "@babylonjs/loaders": "^9.26.0",
     "@react-three/fiber": "9.7.0",
     "@uptimizr/aframe": "workspace:*",
     "@uptimizr/babylon": "workspace:*",
@@ -31,21 +31,21 @@
     "@uptimizr/sdk-core": "workspace:*",
     "@uptimizr/three": "workspace:*",
     "@uptimizr/unity": "workspace:*",
-    "playcanvas": "2.21.4",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "three": "^0.185.1"
+    "playcanvas": "2.22.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "three": "^0.186.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@types/node": "^26.4.1",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.7",
+    "@types/node": "^26.5.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@types/three": "^0.185.4",
     "@uptimizr/db": "workspace:*",
     "@vitejs/plugin-react": "^6.1.1",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",
-    "vite": "^8.2.2"
+    "vite": "^8.3.0"
   }
 }

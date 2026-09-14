@@ -66,7 +66,7 @@
     "clean": "rimraf -g dist *.tsbuildinfo"
   },
   "dependencies": {
-    "zod": "^4.5.4"
+    "zod": "^4.6.2"
   },
   "peerDependencies": {
     "@mlc-ai/web-llm": "^0.2.0"
@@ -77,7 +77,7 @@
     }
   },
   "devDependencies": {
-    "@mlc-ai/web-llm": "^0.2.84",
+    "@mlc-ai/web-llm": "^0.2.85",
     "vitest": "^4.1.11"
   },
   "engines": {

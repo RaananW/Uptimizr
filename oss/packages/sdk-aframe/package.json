@@ -63,7 +63,7 @@
   "devDependencies": {
     "@types/three": "^0.185.4",
     "esbuild": "^0.28.2",
-    "three": "^0.185.1",
+    "three": "^0.186.0",
     "vitest": "^4.1.11"
   }
 }

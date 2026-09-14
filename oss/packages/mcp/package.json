@@ -60,10 +60,10 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@uptimizr/agent-core": "workspace:*",
     "@uptimizr/schema": "workspace:*",
-    "zod": "^4.5.4"
+    "zod": "^4.6.2"
   },
   "devDependencies": {
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.5.1",
     "tsx": "^4.23.13",
     "vitest": "^4.1.11"
   },
