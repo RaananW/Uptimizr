@@ -384,8 +384,15 @@ jobs:
     # Every PR must declare its release impact with a changeset. Contributors run
     # `pnpm changeset` (or `pnpm changeset --empty` for changes that need no
     # release note). Skipped for the bot's Version Packages PR, which has no
-    # changesets by design.
-    if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
+    # changesets by design, and for Renovate dependency PRs (renovate/* branches
+    # in this repo, not forks): those mostly move the lockfile, which is not
+    # published, and a reviewer adds a changeset by hand when one changes a
+    # published package's dependency range.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref != 'changeset-release/main' &&
+      !(startsWith(github.head_ref, 'renovate/') &&
+        github.event.pull_request.head.repo.full_name == github.repository)
     steps:
       - name: Checkout (full history)
         uses: actions/checkout@v7
