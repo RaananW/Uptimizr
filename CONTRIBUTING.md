@@ -96,7 +96,9 @@ redistribution-compatible.
 - **Security:** keep `pnpm audit` free of **high/critical** advisories in production dependencies
   before a release. Patch advisories in transitive (build/dev) deps via `overrides` in
   `pnpm-workspace.yaml`, with a comment linking the advisory; revisit when the parent ships a fix.
-  CI runs `pnpm audit --prod --audit-level=high`, and Dependabot opens grouped weekly update PRs.
+  CI runs `pnpm audit --prod --audit-level=high`, and a self-hosted Renovate opens a grouped update PR
+  on Mondays and Thursdays (security fixes on its next run). Its PRs skip the changeset
+  check; add one by hand if an update changes a published package's dependency range.
 
 ## Pull requests
 
