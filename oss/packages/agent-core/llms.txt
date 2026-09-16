@@ -36,7 +36,7 @@
 ## Key exports
 
 - `readTools` — the read-only tool catalog (one entry per query endpoint), generated from the
-  `@uptimizr/db` metric registry: 69 tools, each with an input schema, an output schema and the
+  `@uptimizr/metrics` metric registry: 69 tools, each with an input schema, an output schema and the
   metric's interpretation notes and caveats in its description (ADR 0051).
 - `coreReadTools` / `selectReadTools(kind)` / `filterReadTools(names)` — narrowed views of the
   catalog for models that cannot carry every tool schema.

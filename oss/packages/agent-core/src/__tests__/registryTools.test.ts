@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { allMetrics, getMetric, type MetricDefinition } from "@uptimizr/db/registry";
+import { allMetrics, getMetric, type MetricDefinition } from "@uptimizr/metrics";
 import { describeMetric, metricToTool, registryToTools } from "../registryTools.js";
 
 const tools = registryToTools();

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 //
 // Render every hand-maintained metric table from the semantic metric registry
-// (ADR 0051 §1, design sketch §A.2). The registry in `@uptimizr/db/registry` is
+// (ADR 0051 §1, design sketch §A.2). The registry in `@uptimizr/metrics` is
 // the single source of truth for what the collector can compute; this script
 // projects it into the places that used to restate it by hand:
 //
@@ -23,9 +23,9 @@
 // Run locally:   pnpm gen:docs
 // Staleness gate: pnpm gen:docs:check   (exits non-zero when committed output drifted)
 //
-// The registry is imported from `@uptimizr/db`'s **built** output, so run
-// `pnpm build` (or `pnpm --filter @uptimizr/db... build`) first; CI runs this
-// after its build step.
+// The registry is imported from `@uptimizr/metrics`' **built** output, so run
+// `pnpm build` (or `pnpm --filter @uptimizr/metrics... build`) first; CI runs
+// this after its build step.
 
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -33,9 +33,9 @@ import path from "node:path";
 import process from "node:process";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const REGISTRY_ENTRY = "oss/packages/db/dist/query/registry.js";
+const REGISTRY_ENTRY = "oss/packages/metrics/dist/index.js";
 
-/** Import the registry from the built `@uptimizr/db` output. */
+/** Import the registry from the built `@uptimizr/metrics` output. */
 async function loadRegistry() {
   const entry = new URL(`file://${path.resolve(ROOT, REGISTRY_ENTRY).split(path.sep).join("/")}`);
   try {
@@ -43,7 +43,7 @@ async function loadRegistry() {
   } catch (error) {
     throw new Error(
       `Could not load the metric registry from ${REGISTRY_ENTRY}.\n` +
-        `Build @uptimizr/db first:  pnpm --filter @uptimizr/db... build\n\n` +
+        `Build @uptimizr/metrics first:  pnpm --filter @uptimizr/metrics... build\n\n` +
         `Original error: ${error instanceof Error ? error.message : String(error)}`,
     );
   }

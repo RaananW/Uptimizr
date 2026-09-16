@@ -1,21 +1,23 @@
 /**
  * The semantic **metric registry** (ADR 0051 §1, design sketch §A).
  *
- * One {@link MetricDefinition} per `build*` aggregation in `aggregations.ts`,
- * declaring what the metric measures, what one row *is*, the unit and semantics
- * of every column, the filters it accepts, the collector endpoint it is served
- * on, the capture channels that must be enabled for it to have data, and how to
- * read the result. Downstream consumers (the agent tool catalog, OpenAPI, the
- * MCP capabilities resource, the docs tables) are meant to be **derived** from
- * this file rather than hand-maintained, so coverage cannot drift.
+ * One {@link MetricDefinition} per `build*` aggregation in `@uptimizr/db`'s
+ * `query/aggregations.ts`, declaring what the metric measures, what one row *is*,
+ * the unit and semantics of every column, the filters it accepts, the collector
+ * endpoint it is served on, the capture channels that must be enabled for it to
+ * have data, and how to read the result. Downstream consumers (the agent tool
+ * catalog, OpenAPI, the MCP capabilities resource, the docs tables) are meant to
+ * be **derived** from this file rather than hand-maintained, so coverage cannot
+ * drift.
  *
- * **This module is pure data.** It imports `zod` and *type-only* declarations
- * from `./aggregations.js` and `@uptimizr/schema`; it performs no I/O, touches
- * no `node:` built-in and holds no reference to a store or a dialect. That is
- * deliberate: `@uptimizr/db`'s root barrel is Node-only, so the registry is
- * published on its own `@uptimizr/db/registry` subpath and can be imported from
- * a browser bundle (e.g. `@uptimizr/agent-core`) without dragging the DuckDB
- * driver in.
+ * **This module is pure data.** It imports `zod` and a *type-only* declaration
+ * from `@uptimizr/schema`; it performs no I/O, touches no `node:` built-in and
+ * holds no reference to a store, a dialect or a database driver. That is the
+ * whole reason this package exists: `@uptimizr/db` depends on `@duckdb/node-api`
+ * (a ~37 MB native binding), and the browser/CLI consumers of the registry
+ * (`@uptimizr/agent-core`, `@uptimizr/mcp`, `@uptimizr/react`) can never use a
+ * DuckDB driver — so the registry lives here, in a package whose only runtime
+ * dependencies are `zod` and `@uptimizr/schema`.
  *
  * **Numbers are coerced.** Every numeric column is `z.coerce.number()`: DuckDB,
  * Postgres and SQL Server return JS numbers, but ClickHouse renders 64-bit
@@ -24,21 +26,104 @@
  * is tracked separately (ADR 0051 §2 "numbers are numbers").
  *
  * The invariant this file exists to enforce: **a new aggregation is not done
- * until it has a registry entry.** `src/__tests__/registry.test.ts` fails the
- * build when a `build*` export has no entry, and the collector's
+ * until it has a registry entry.** This package's `src/__tests__/registry.test.ts`
+ * fails the build when a name in {@link AGGREGATION_BUILDER_NAMES} has no entry;
+ * `@uptimizr/db`'s own `src/__tests__/registry.test.ts` fails when that list and
+ * the `build*` exports of `aggregations.ts` disagree; and the collector's
  * `registryRoutes.test.ts` fails when an entry's endpoint or filters drift from
  * the Zod querystring that actually serves it.
  */
 
 import { z } from "zod";
 import type { EventType } from "@uptimizr/schema";
-// Type-only namespace import: erased at compile time (`verbatimModuleSyntax`),
-// so the registry keeps no runtime dependency on the (much larger) SQL builders
-// while still deriving the closed set of builder names from them.
-import type * as aggregations from "./aggregations.js";
+
+/**
+ * Every exported `build*` aggregation name in `@uptimizr/db`'s
+ * `query/aggregations.ts`. The registry must cover them all.
+ *
+ * Declared here as literal data rather than derived with
+ * `keyof typeof aggregations`, because deriving it would make this package
+ * depend on `@uptimizr/db` — exactly the edge (and the ~37 MB native DuckDB
+ * binding behind it) that this package exists to break. The link is not lost,
+ * only moved from the compiler to CI: `@uptimizr/db`'s `registry.test.ts`
+ * asserts at runtime that the set of its `build*` exports is exactly this list,
+ * so adding, renaming or deleting an aggregation without updating this list
+ * fails the build and names the offender.
+ */
+export const AGGREGATION_BUILDER_NAMES = [
+  "buildAggregateTrajectories",
+  "buildArPlacementAttempts",
+  "buildArPlacementSurfaces",
+  "buildArPlacementTimeToPlace",
+  "buildBacktrackRatio",
+  "buildBoundaryContacts",
+  "buildBoundaryHeatmap",
+  "buildBoundaryHeatmapStats",
+  "buildCameraDirectionHeatmap",
+  "buildCameraDistance",
+  "buildCameraGestures",
+  "buildCameraPositionHeatmap",
+  "buildCapabilityChanges",
+  "buildClickGazeRay",
+  "buildCompileStalls",
+  "buildDeadClicks",
+  "buildDistinctScenes",
+  "buildErrorHeatmap",
+  "buildEventTypeCounts",
+  "buildEventsDaily",
+  "buildFlowHeatmap",
+  "buildFpsHistogram",
+  "buildFrameTimePercentiles",
+  "buildFunnel",
+  "buildGazeHeatmap",
+  "buildGazeHeatmapStats",
+  "buildGraphicsDiagnosticCounts",
+  "buildHoverDwell",
+  "buildInteractionsBySource",
+  "buildJankRate",
+  "buildListSessions",
+  "buildLoadBounceFunnel",
+  "buildMeshBlindSpots",
+  "buildMeshDwell",
+  "buildMeshInteractionKinds",
+  "buildMeshUvHeatmap",
+  "buildNavigationStats",
+  "buildPerfByDevice",
+  "buildPerfByScene",
+  "buildPerfChurn",
+  "buildPerfDaily",
+  "buildPerfDistribution",
+  "buildPerfHeatmap",
+  "buildPerfSummary",
+  "buildPointerHeatmap",
+  "buildRageClicks",
+  "buildReachability",
+  "buildRenderScaleTruth",
+  "buildRenderingTechnology",
+  "buildResourcePercentiles",
+  "buildResourceSummary",
+  "buildSceneCoverage",
+  "buildSceneRetention",
+  "buildSessionTrajectory",
+  "buildStabilityCounts",
+  "buildTimeseries",
+  "buildTopInputActions",
+  "buildTopMeshes",
+  "buildTopMeshesBySource",
+  "buildTopMeshesTrend",
+  "buildTrackingQuality",
+  "buildVariantLeaderboard",
+  "buildViewCoverageHistogram",
+  "buildWorldHeatmap",
+  "buildWorldHeatmapStats",
+  "buildXrAbandonment",
+  "buildXrLocomotionComfort",
+  "buildXrRotationRate",
+  "buildXrSourceUsage",
+] as const;
 
 /** Every exported `build*` aggregation name. The registry must cover them all. */
-export type AggregationBuilderName = Extract<keyof typeof aggregations, `build${string}`>;
+export type AggregationBuilderName = (typeof AGGREGATION_BUILDER_NAMES)[number];
 
 /**
  * Group-by dimensions a metric's rows can be keyed by. Closed union, declared
@@ -3666,7 +3751,9 @@ type RegisteredBuilderName = {
   [K in MetricId]: MetricRegistry[K] extends { builder: infer B extends string } ? B : never;
 }[MetricId];
 
-/** Aggregations exported by `aggregations.ts` that no registry entry claims. */
+/**
+ * Names in {@link AGGREGATION_BUILDER_NAMES} that no registry entry claims.
+ */
 export type UnregisteredAggregation = Exclude<AggregationBuilderName, RegisteredBuilderName>;
 
 /** Fails to compile unless `T` is `never`; the error names the offending member. */
@@ -3674,9 +3761,11 @@ type AssertNever<T extends never> = T;
 
 /**
  * **Compile-time coverage guard (design sketch §A.3).** If you add a `build*`
- * aggregation without a registry entry, this line fails to typecheck and names
- * the missing builder. Add the entry — a new aggregation is not done until it
- * has one. The runtime companion lives in `src/__tests__/registry.test.ts`.
+ * aggregation to {@link AGGREGATION_BUILDER_NAMES} without a registry entry,
+ * this line fails to typecheck and names the missing builder. Add the entry — a
+ * new aggregation is not done until it has one. The runtime companions are this
+ * package's `src/__tests__/registry.test.ts` (entry ↔ list) and `@uptimizr/db`'s
+ * `src/__tests__/registry.test.ts` (list ↔ the real `build*` exports).
  */
 export type NoUnregisteredAggregations = AssertNever<UnregisteredAggregation>;
 

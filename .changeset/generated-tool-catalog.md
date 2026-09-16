@@ -16,8 +16,9 @@ variant leaderboard and the load→bounce funnel included.
 
 The 20 tool names that shipped before the registry, and their argument schemas, are unchanged; a
 frozen-fixture test pins them, and the only widening is optional parameters the endpoints already
-accepted. `@uptimizr/agent-core` stays browser-safe: it reads the registry's dependency-free
-`@uptimizr/db/registry` subpath, proven by a browser bundle test.
+accepted. `@uptimizr/agent-core` stays browser-safe: it reads the registry from the
+dependency-free `@uptimizr/metrics` package and never depends on `@uptimizr/db`, proven by a
+browser bundle test and a manifest test.
 
 New: `registryToTools()` and `filterReadTools(names)` in `@uptimizr/agent-core`, and a `tools`
 option on `@uptimizr/react`'s `useAssistant()` to pin which read tools an assistant may call

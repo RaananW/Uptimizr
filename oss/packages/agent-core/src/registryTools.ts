@@ -1,8 +1,8 @@
 /**
  * **Generated tool catalog** (ADR 0051 §1, design sketch §A.2).
  *
- * `registryToTools()` turns the semantic metric registry in `@uptimizr/db` into
- * the read-only {@link ReadTool} catalog this package exports. One registry
+ * `registryToTools()` turns the semantic metric registry in `@uptimizr/metrics`
+ * into the read-only {@link ReadTool} catalog this package exports. One registry
  * entry with an `endpoint` becomes exactly one tool, so agent coverage of the
  * collector's read surface is mechanical rather than hand-maintained: adding an
  * aggregation + a registry entry adds the tool, and there is no second list to
@@ -19,15 +19,18 @@
  * | `buildRequest` | `endpoint.path` (with `:param` substitution) + `filters`    |
  * | `outputSchema` | `row`, wrapped as `{ rows: Row[] }`                         |
  *
- * **Browser safety (ADR 0050).** This module imports `@uptimizr/db/registry` —
- * the registry's own, dependency-free subpath — and never the `@uptimizr/db`
- * root barrel, which is Node-only (DuckDB). `src/__tests__/browserSafety.test.ts`
- * bundles this package for the browser and fails if any `node:` built-in or the
- * DuckDB driver reaches the bundle.
+ * **Browser safety (ADR 0050).** This module imports `@uptimizr/metrics` — the
+ * registry's own dependency-free package, whose only runtime dependencies are
+ * `zod` and `@uptimizr/schema`. This package does not depend on `@uptimizr/db`
+ * at all: that package owns the DuckDB store and pulls in a ~37 MB native
+ * binding a browser can never use. `src/__tests__/browserSafety.test.ts` bundles
+ * this package for the browser and fails if any `node:` built-in or the DuckDB
+ * driver reaches the bundle, and `src/__tests__/dependencies.test.ts` fails if
+ * `@uptimizr/db` ever reappears in the manifest.
  */
 
 import { z } from "zod";
-import { allMetrics, type FilterId, type MetricDefinition } from "@uptimizr/db/registry";
+import { allMetrics, type FilterId, type MetricDefinition } from "@uptimizr/metrics";
 import type { QueryParams } from "./client.js";
 import type { ReadTool, ReadToolRequest } from "./tools.js";
 

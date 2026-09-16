@@ -81,7 +81,7 @@ console.log(result.content); // the model's final answer
 
 <!-- generated:registry-tool-names:end -->
 
-`readTools` is **generated** from the semantic metric registry in `@uptimizr/db`
+`readTools` is **generated** from the semantic metric registry in `@uptimizr/metrics`
 ([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md) §1):
 one tool per metric the collector serves on a read endpoint — **69** today, covering sessions and
 scenes, pointer/world/gaze/camera heatmaps, mesh attention and blind spots, dead and rage clicks,
@@ -103,9 +103,11 @@ Each tool carries:
 - an **output schema** (`{ rows: Row[] }`) derived from the metric's row schema, which
   `@uptimizr/mcp` registers as the MCP `outputSchema`.
 
-The registry is imported through its dependency-free `@uptimizr/db/registry` subpath, so this
-package stays browser-safe — a bundle test asserts no `node:` built-in or DuckDB driver can reach a
-browser build.
+The registry lives in `@uptimizr/metrics`, a dependency-free package (`zod` +
+`@uptimizr/schema`), so installing this one never downloads a database driver: `@uptimizr/db` and
+its ~37 MB native DuckDB binding are **not** a dependency. Two tests keep that true — a bundle test
+asserts no `node:` built-in or DuckDB driver can reach a browser build, and a manifest test fails
+if any package with a native or optional binary dependency reappears.
 
 ## API
 

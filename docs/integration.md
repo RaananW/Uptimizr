@@ -1258,7 +1258,7 @@ full walkthrough of each store.
 > endpoint below, plus a headless provider-adapter interface and tool-calling loop), so the same
 > contract drives MCP and any in-browser or headless agent without duplication (ADR 0050). That
 > catalog is **generated** from the semantic metric registry in
-> [`@uptimizr/db`](../oss/packages/db/README.md) (ADR 0051 §1): every read endpoint with a registry
+> [`@uptimizr/metrics`](../oss/packages/metrics/README.md) (ADR 0051 §1): every read endpoint with a registry
 > entry is a tool (69 today), each carrying the metric's interpretation notes and caveats and an
 > output schema for its rows. Adding an endpoint without a registry entry fails the build, so the
 > agent surface cannot fall behind this table.

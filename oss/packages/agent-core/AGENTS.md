@@ -10,7 +10,7 @@ the agent tool surface **once** (ADR 0050 §1) so `@uptimizr/mcp`, the dashboard
 demo assistant never drift apart. It owns:
 
 - the **read-only tool catalog** (`readTools`) — one entry per documented collector query endpoint,
-  **generated** from the `@uptimizr/db` semantic metric registry (ADR 0051 §1), so coverage of the
+  **generated** from the `@uptimizr/metrics` semantic metric registry (ADR 0051 §1), so coverage of the
   collector's read surface cannot drift;
 - a headless **LLM provider-adapter interface** (`LlmProvider`) — messages + tool schemas in, tool
   calls or final text out;
@@ -48,14 +48,16 @@ a documented query endpoint. Most accept `since`/`until` (epoch ms) plus endpoin
 
 - **Read-only and privacy-preserving.** Never add ingestion, mutation, or raw per-session event
   tools. The surface is aggregate-only; no data leaves the consumer's infrastructure (ADR 0003 /
-  ADR 0017). A new tool = a new **metric registry entry** in `@uptimizr/db` for a documented query
+  ADR 0017). A new tool = a new **metric registry entry** in `@uptimizr/metrics` for a documented query
   endpoint — never a hand-written catalog entry here — and no aggregation/business logic (that lives
   in the collector, ADR 0005).
 - **Browser-safe.** No Node dependencies, no `types: ["node"]`. At runtime this package uses `zod`
-  plus the pure, data-only `@uptimizr/db/registry` subpath — never the `@uptimizr/db` root barrel,
-  which owns the DuckDB store. `src/__tests__/browserSafety.test.ts` bundles the package for the
-  browser and fails if that changes. Anything that needs `process.env`, stdio, or the filesystem
-  belongs in a consumer package (e.g. `@uptimizr/mcp`), not here.
+  plus the pure, data-only `@uptimizr/metrics` package — **never** `@uptimizr/db`, which owns the
+  DuckDB store and its ~37 MB native binding. `src/__tests__/browserSafety.test.ts` bundles the
+  package for the browser and fails if that changes, and `src/__tests__/dependencies.test.ts` fails
+  if `@uptimizr/db` (or anything else with a native/optional binary dependency) reappears in the
+  manifest. Anything that needs `process.env`, stdio, or the filesystem belongs in a consumer
+  package (e.g. `@uptimizr/mcp`), not here.
 - Tool definitions are pure (`buildRequest`) and must stay unit-testable without a live collector.
 - The 20 tool names (and argument schemas) that shipped before the registry are a public contract:
   `src/__tests__/shippedToolCompat.test.ts` pins them against a frozen fixture. Widening a tool with

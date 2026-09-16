@@ -11,13 +11,13 @@ import {
   type MetricComparison,
   type MetricDefinition,
   type MetricGrain,
-} from "@uptimizr/db/registry";
+} from "@uptimizr/metrics";
 
 /**
  * One tool the server exposes, described for self-discovery: its name, a human
  * title, what it returns, and the parameter names it accepts.
  *
- * Derived from the **semantic metric registry** (`@uptimizr/db/registry`, ADR
+ * Derived from the **semantic metric registry** (`@uptimizr/metrics`, ADR
  * 0051 §1) rather than restated here, so the catalog cannot drift from the
  * metrics the collector can actually compute. `params` are the request
  * parameters of the underlying query endpoint — the definitive *input schema*

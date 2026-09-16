@@ -64,7 +64,7 @@ pnpm gen:docs    # re-render the generated metric tables (see below)
 ### Generated metric tables — don't edit them by hand
 
 The collector's read endpoints and the agent tool catalog are declared once, in the **semantic
-metric registry** (`oss/packages/db/src/query/registry.ts`, ADR 0051). Several docs are rendered
+metric registry** (`oss/packages/metrics/src/registry.ts`, ADR 0051). Several docs are rendered
 from it by `scripts/gen-registry-docs.mjs`:
 
 - the §"Query (read)" endpoint table in `docs/integration.md`;
