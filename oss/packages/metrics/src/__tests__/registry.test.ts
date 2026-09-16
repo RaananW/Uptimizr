@@ -145,6 +145,50 @@ describe("metric registry — internal consistency", () => {
     }
   });
 
+  it("marks exactly one ordered axis column on every bucket-grain metric", () => {
+    for (const metric of metrics) {
+      const axes = Object.entries(metric.columns).filter(([, column]) => column.axis === true);
+      if (metric.grain === "bucket") {
+        // Without an axis a time series cannot be walked in order, and `label`
+        // cannot stand in for it (`mesh_trend` labels its rows by mesh).
+        expect(
+          axes.map(([name]) => name),
+          `${metric.id}: bucket grain needs one axis`,
+        ).toHaveLength(1);
+      } else {
+        expect(
+          axes.map(([name]) => name),
+          `${metric.id}: axis on a ${metric.grain} grain`,
+        ).toEqual([]);
+      }
+    }
+  });
+
+  it("offers every aggregate endpoint the shared `format` filter", () => {
+    for (const metric of metrics) {
+      // The two resource reads take no querystring at all; the daily rollups are
+      // not served on an endpoint. Everything else must accept an envelope.
+      const servedOnAQuerystring = metric.endpoint != null && metric.builder != null;
+      expect(
+        metric.filters.includes("format"),
+        `${metric.id}: format filter ${servedOnAQuerystring ? "missing" : "should not be declared"}`,
+      ).toBe(servedOnAQuerystring);
+    }
+  });
+
+  it("gives every binned or voxelised metric enough index columns to cluster", () => {
+    for (const metric of metrics) {
+      if (metric.grain !== "bin" && metric.grain !== "voxel") continue;
+      const indexed = Object.entries(metric.columns).filter(
+        ([, column]) => column.unit === "index",
+      );
+      expect(
+        indexed.length,
+        `${metric.id}: a ${metric.grain} grain needs ${metric.grain === "voxel" ? 3 : 2} index columns`,
+      ).toBeGreaterThanOrEqual(metric.grain === "voxel" ? 3 : 2);
+    }
+  });
+
   it("points comparable.primary at a real column", () => {
     for (const metric of metrics) {
       if (metric.comparable == null) continue;

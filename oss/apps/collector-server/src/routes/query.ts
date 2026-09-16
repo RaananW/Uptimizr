@@ -3,7 +3,16 @@ import { Readable } from "node:stream";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { sceneProxySchema, funnelStepsSchema, funnelStepSchema } from "@uptimizr/schema";
-import { defaultCellSizeForBounds, type WorldAabb } from "@uptimizr/db";
+import {
+  defaultCellSizeForBounds,
+  resultEnvelopeSchema,
+  resultFormatSchema,
+  summarizeRows,
+  tableResult,
+  type ResultFormat,
+  type SummaryContext,
+  type WorldAabb,
+} from "@uptimizr/db";
 import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
@@ -34,6 +43,20 @@ const sessionFilter = z.string().min(1).max(128).optional();
  * {@link cameraTypeForMode} before it reaches the aggregation layer.
  */
 const cameraModeFilter = z.enum(["viewer", "first-person"]).optional();
+
+/**
+ * Result envelope (ADR 0051 §2, design sketch §B.1). Accepted by every
+ * registry-served aggregate endpoint, and declared as the `format` filter on
+ * each of their registry entries — the registry-route contract test asserts the
+ * two stay in step.
+ *
+ * Omitted or `full` means the response is the bare rows, byte-for-byte what the
+ * endpoint has always returned: the dashboard never sends `format`, so it cannot
+ * be affected by this. `table` and `summary` are shaped by a single
+ * `preSerialization` hook at the bottom of this plugin, so no handler has to
+ * know the envelope exists.
+ */
+const formatFilter = resultFormatSchema.optional();
 
 /** Map the dashboard camera-mode toggle to the stored `cameraType` value. */
 function cameraTypeForMode(mode: "viewer" | "first-person" | undefined): string | undefined {
@@ -91,6 +114,31 @@ async function resolveSpatialCellSize(
   store: CollectorStore,
   projectId: string,
   opts: { cellSize?: number; scene?: string; region?: WorldAabb },
+  request?: FastifyRequest,
+): Promise<number | undefined> {
+  const resolved = await computeSpatialCellSize(store, projectId, opts);
+  if (request != null && resolved != null) resolvedCellSizes.set(request, resolved);
+  return resolved;
+}
+
+/**
+ * Cell sizes a spatial route resolved for the request in flight.
+ *
+ * The `format=summary` hook runs after the handler and needs the **effective**
+ * cell size to turn a cluster's grid extent into a world-space `region` drill
+ * hint (ADR 0040 §1/§4). The handler is the only place that knows it — it may
+ * have been derived from the scene's registered bounds — so it is recorded here
+ * on the way past. A `WeakMap` rather than a request decorator keeps this an
+ * implementation detail of this plugin and cannot leak: the entry dies with the
+ * request object.
+ */
+const resolvedCellSizes = new WeakMap<FastifyRequest, number>();
+
+/** The resolution rule itself; see {@link resolveSpatialCellSize}. */
+async function computeSpatialCellSize(
+  store: CollectorStore,
+  projectId: string,
+  opts: { cellSize?: number; scene?: string; region?: WorldAabb },
 ): Promise<number | undefined> {
   if (opts.cellSize != null) return opts.cellSize;
   if (opts.region != null) return defaultCellSizeForBounds(opts.region) ?? undefined;
@@ -107,6 +155,7 @@ const rangeQuery = z.object({
   until: z.coerce.number().int().optional(),
   bins: z.coerce.number().int().positive().max(500).optional(),
   limit: z.coerce.number().int().positive().max(1000).optional(),
+  format: formatFilter,
 });
 
 /** Sessions-list params: a time range, result cap, and camera-mode filter. */
@@ -189,6 +238,7 @@ const worldHeatmapQueryParams = z.object({
   source: sourceFilter,
   cameraMode: cameraModeFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /** World heatmap totals params (ADR 0040 §3): same filters as the world heatmap, no `limit`. */
@@ -200,6 +250,7 @@ const worldStatsQueryParams = z.object({
   source: sourceFilter,
   cameraMode: cameraModeFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -216,6 +267,7 @@ const boundaryHeatmapQueryParams = z.object({
   scene: sceneFilter,
   session: sessionFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /** Boundary-touch heatmap totals params (ADR 0040 §3): boundary filters, no `limit`. */
@@ -226,6 +278,7 @@ const boundaryStatsQueryParams = z.object({
   scene: sceneFilter,
   session: sessionFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -242,6 +295,7 @@ const gazeHeatmapQueryParams = z.object({
   session: sessionFilter,
   cameraMode: cameraModeFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /** Gaze heatmap totals params (ADR 0040 §3): same filters as the gaze heatmap, no `limit`. */
@@ -253,6 +307,7 @@ const gazeStatsQueryParams = z.object({
   session: sessionFilter,
   cameraMode: cameraModeFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -268,6 +323,7 @@ const cameraPositionQueryParams = z.object({
   session: sessionFilter,
   cameraMode: cameraModeFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -282,6 +338,7 @@ const aggregatePathQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(50000).optional(),
   scene: sceneFilter,
   cameraMode: cameraModeFilter,
+  format: formatFilter,
 });
 
 /** Session-trajectory params: a time range, scene filter, and point cap. */
@@ -290,6 +347,7 @@ const trajectoryQueryParams = z.object({
   until: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().positive().max(10000).optional(),
   scene: sceneFilter,
+  format: formatFilter,
 });
 
 /** Path param for a single session's trajectory. */
@@ -306,6 +364,7 @@ const clickRayQueryParams = z.object({
   scene: sceneFilter,
   source: sourceFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -329,6 +388,7 @@ const scenesQueryParams = z.object({
   since: z.coerce.number().int().optional(),
   until: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().positive().max(1000).optional(),
+  format: formatFilter,
 });
 
 /** Time-series params: range + scene + optional event-type filter + bucket interval (seconds). */
@@ -341,6 +401,7 @@ const timeseriesQueryParams = z.object({
     .string()
     .regex(/^[a-z_]{1,40}$/)
     .optional(),
+  format: formatFilter,
 });
 
 /** Event-type-counts params: range + optional scene filter. */
@@ -348,6 +409,7 @@ const eventCountsQueryParams = z.object({
   since: z.coerce.number().int().optional(),
   until: z.coerce.number().int().optional(),
   scene: sceneFilter,
+  format: formatFilter,
 });
 
 /**
@@ -363,6 +425,7 @@ const funnelQueryParams = z.object({
   scene: sceneFilter,
   cameraMode: cameraModeFilter,
   steps: z.string().min(1).max(8192),
+  format: formatFilter,
 });
 
 /**
@@ -374,6 +437,7 @@ const sceneRetentionQueryParams = z.object({
   since: z.coerce.number().int().optional(),
   until: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().positive().max(10000).optional(),
+  format: formatFilter,
 });
 
 /**
@@ -406,6 +470,7 @@ const loadBounceQueryParams = z.object({
       }
       return parts;
     }),
+  format: formatFilter,
 });
 
 /**
@@ -424,6 +489,7 @@ const variantLeaderboardQueryParams = z.object({
   variant: z.string().min(1).max(2048).optional(),
   conversion: z.string().min(1).max(2048).optional(),
   limit: z.coerce.number().int().positive().max(500).optional(),
+  format: formatFilter,
 });
 
 /** Scene-coverage params: voxel `cellSize` + scene/session filters + result cap. */
@@ -434,6 +500,7 @@ const coverageQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(10000).optional(),
   scene: sceneFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -459,6 +526,7 @@ const errorHeatmapQueryParams = z.object({
   severity: z.string().min(1).max(64).optional(),
   category: z.string().min(1).max(64).optional(),
   errorKind: z.string().min(1).max(64).optional(),
+  format: formatFilter,
 });
 
 /** Camera-distance params: reference `center` (3 coords) + `bucketSize` + filters. */
@@ -472,6 +540,7 @@ const cameraDistanceQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(1000).optional(),
   scene: sceneFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /** Navigation-stats params: idle/active `moveThreshold` + scene/session filters. */
@@ -482,6 +551,7 @@ const navigationQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(1000).optional(),
   scene: sceneFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /** Backtrack-ratio params: coarse-grid `cellSize` + scene/session filters. */
@@ -492,6 +562,7 @@ const backtrackQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(1000).optional(),
   scene: sceneFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /** XR rotation-rate params: `rapidTurn` (rad) threshold + scene/session filters. */
@@ -502,6 +573,7 @@ const xrRotationQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(1000).optional(),
   scene: sceneFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /** Path param for a single scene's representation. */
@@ -535,6 +607,11 @@ const putRepresentationBody = z.object({
 //   non-nullable is a 500. The same test also runs every endpoint against an
 //   **empty** project, which is where SQL's "aggregate over no rows is NULL"
 //   shows up.
+//
+// Since ADR 0051 §2 each schema is the **union** of the three `format` envelopes
+// (`resultEnvelopeSchema`), with the untouched `full` shape first — so a request
+// that does not ask for an envelope is parsed by exactly the schema it was
+// parsed by before, and its bytes cannot drift.
 
 /** Registry metrics indexed by the collector path that serves them. */
 const METRIC_BY_PATH = new Map(
@@ -567,7 +644,8 @@ function rowFor(path: string): z.ZodObject {
  * `__tests__/queryResponseSchemas.test.ts`.
  */
 function rowsFor(path: string): z.ZodType<unknown[]> {
-  return z.array(rowFor(path)) as unknown as z.ZodType<unknown[]>;
+  const row = rowFor(path);
+  return resultEnvelopeSchema(z.array(row), row) as unknown as z.ZodType<unknown[]>;
 }
 
 /**
@@ -577,8 +655,9 @@ function rowsFor(path: string): z.ZodType<unknown[]> {
  * property of the route, not of the aggregation, so it is added here rather than
  * put in the registry row.
  */
-function statsRowFor(path: string): z.ZodObject {
-  return rowFor(path).extend({ cellSize: z.number() });
+function statsRowFor(path: string): z.ZodType<unknown> {
+  const row = rowFor(path).extend({ cellSize: z.number() });
+  return resultEnvelopeSchema(row, row) as unknown as z.ZodType<unknown>;
 }
 
 /**
@@ -589,6 +668,49 @@ function statsRowFor(path: string): z.ZodObject {
  */
 function singleRowFor(path: string): z.ZodType<unknown> {
   return rowFor(path) as unknown as z.ZodType<unknown>;
+}
+
+/**
+ * Filters carried in the path rather than the querystring, keyed by the filter
+ * ids the registry declares for them (`endpoint.pathParams`, in `:` order) — so
+ * a session trajectory's `:sessionId` is echoed back as `session`, the name the
+ * rest of the query surface uses.
+ */
+function pathFilters(metric: MetricDefinition, request: FastifyRequest): Record<string, unknown> {
+  const params = (request.params ?? {}) as Record<string, unknown>;
+  const segments = (metric.endpoint?.path ?? "")
+    .split("/")
+    .filter((segment) => segment.startsWith(":"))
+    .map((segment) => segment.slice(1));
+  const ids = metric.endpoint?.pathParams ?? [];
+  const filters: Record<string, unknown> = {};
+  segments.forEach((segment, index) => {
+    const id = ids[index];
+    const value = params[segment];
+    if (id != null && value != null) filters[id] = value;
+  });
+  return filters;
+}
+
+/**
+ * Everything the summariser needs to know about the request that produced the
+ * rows: the window and filters to echo, the row cap that was in force (so
+ * `truncated` is honest), and the effective spatial `cellSize` — the resolved
+ * one where a handler derived it from the scene bounds, else whatever the caller
+ * pinned.
+ */
+function summaryContextFor(metric: MetricDefinition, request: FastifyRequest): SummaryContext {
+  const query = (request.query ?? {}) as Record<string, unknown>;
+  const cellSize = resolvedCellSizes.get(request) ?? query.cellSize;
+  return {
+    range: {
+      since: typeof query.since === "number" ? query.since : null,
+      until: typeof query.until === "number" ? query.until : null,
+    },
+    filters: { ...query, ...pathFilters(metric, request) },
+    limit: typeof query.limit === "number" ? query.limit : undefined,
+    cellSize: typeof cellSize === "number" ? cellSize : undefined,
+  };
 }
 
 /** `{ error }` body the read routes send for a miss. Declared so `reply.code(404)` stays typed. */
@@ -635,6 +757,48 @@ async function authProject(
  */
 export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, config }) => {
   const r = app.withTypeProvider<ZodTypeProvider>();
+
+  // --- format=table | summary (ADR 0051 §2, design sketch §B.1) ------------
+  //
+  // The whole envelope feature lives in this one hook. It runs after a handler
+  // has produced its rows and before the response schema serialises them, which
+  // is the only place that can see *every* registry endpoint's result without
+  // any of the 67 handlers knowing the feature exists — exactly the "keep the
+  // Fastify layer thin" rule (ADR 0005). The shaping itself is
+  // `@uptimizr/db`'s: `tableResult` / `summarizeRows` are pure, registry-driven
+  // functions with no store or request in sight.
+  //
+  // Four conditions have to hold before anything is touched, and the first of
+  // them is the promise that this feature is invisible by default: no `format`,
+  // or `format=full`, returns the payload untouched, so the dashboard — which
+  // never sends the parameter — cannot be affected.
+  app.addHook("preSerialization", async (request, reply, payload: unknown) => {
+    if (reply.statusCode !== 200) return payload;
+    const format = (request.query as { format?: ResultFormat } | undefined)?.format;
+    if (format == null || format === "full") return payload;
+    const metric = METRIC_BY_PATH.get(request.routeOptions.url ?? "");
+    // Not a registry metric (the raw event stream, which has carried its own
+    // `format=json|ndjson` since long before this), or one of the two **resource**
+    // reads. A resource is a single stored record rather than an aggregation: it
+    // declares no filters, no querystring schema — so a stray `?format=` would
+    // arrive unvalidated — and has nothing to summarise.
+    if (metric == null || metric.builder == null) return payload;
+
+    // A single-row endpoint (the spatial `stats` routes) still summarises as a
+    // one-row result; `null` never happens on a 200 but costs nothing to guard.
+    const rows = (Array.isArray(payload) ? payload : payload == null ? [] : [payload]) as Record<
+      string,
+      unknown
+    >[];
+    const context = summaryContextFor(metric, request);
+    const shaped =
+      format === "table"
+        ? tableResult(metric, rows, context)
+        : summarizeRows(metric, rows, context);
+    // `null` only comes back for an unknown metric, which `METRIC_BY_PATH`
+    // already excluded — fall back to the raw rows rather than fail the request.
+    return shaped ?? payload;
+  });
 
   r.get(
     "/api/v1/sessions",
@@ -690,11 +854,16 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { cameraMode, region, cellSize, ...rest } = req.query;
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       return store.worldHeatmap(projectId, {
         ...rest,
         region,
@@ -720,11 +889,16 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { cameraMode, region, cellSize, ...rest } = req.query;
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       const stats = await store.worldHeatmapStats(projectId, {
         ...rest,
         region,
@@ -749,11 +923,16 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { cameraMode, region, cellSize, ...rest } = req.query;
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       return store.gazeHeatmap(projectId, {
         ...rest,
         region,
@@ -776,11 +955,16 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { cameraMode, region, cellSize, ...rest } = req.query;
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       const stats = await store.gazeHeatmapStats(projectId, {
         ...rest,
         region,
@@ -1417,11 +1601,16 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { region, cellSize, ...rest } = req.query;
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       return store.boundaryHeatmap(projectId, { ...rest, region, cellSize: resolved });
     },
   );
@@ -1440,11 +1629,16 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { region, cellSize, ...rest } = req.query;
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       const stats = await store.boundaryHeatmapStats(projectId, {
         ...rest,
         region,

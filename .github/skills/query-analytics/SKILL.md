@@ -46,6 +46,15 @@ coerced and bounded by Zod at the edge — out-of-range values are rejected with
   `xr-controller`, `hand`, `gaze`, `transient`, `other` (ADR 0011).
 - `session` — scope an aggregate to a single session id.
 - `type` — event-type filter on `timeseries` (lowercase/underscore event name).
+- `format` — `full` (default) | `table` | `summary`. Not a filter: it selects the result
+  **envelope** (ADR 0051 §2). `full` is the bare rows and never changes. `table` adds a `meta`
+  envelope (metric, range, applied filters, sample size, row count, `truncated`, limits). `summary`
+  returns a bounded digest capped at the metric's `maxSummaryRows` — ranked top rows, a
+  first/last/min/max/trend series, or merged spatial clusters, with shares, a sample size, the
+  registry caveats and a templated `reading` sentence. **Reach for `summary` first when you are an
+  agent**: a 500-bin heatmap in `full` is thousands of tokens of nothing. Cluster coordinates are
+  grid indices — multiply by the effective `cellSize`. `total`/`share` are `null` when the measure
+  cannot honestly be summed (FPS, ratios, percentiles).
 
 ## 3. The endpoints (what to call)
 

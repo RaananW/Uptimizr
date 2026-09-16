@@ -24,92 +24,22 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PARITY_EVENTS, PARITY_PROJECT_ID, PARITY_RANGE, numericColumns } from "@uptimizr/db";
+import { PARITY_EVENTS, PARITY_PROJECT_ID, numericColumns } from "@uptimizr/db";
 import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { createDuckdbStore } from "../duckdbStore.js";
 import { createMemoryStore } from "../memoryStore.js";
-import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
+import {
+  requestUrl,
+  RESOURCE_METRICS,
+  TEST_CONFIG as config,
+  TEST_PROXY as PROXY,
+} from "./support/registryRequests.js";
 
 const API_KEY = "response-schema-key";
 const EMPTY_PROJECT_ID = "00000000-0000-4000-8000-000000000000";
-
-const config: CollectorConfig = {
-  host: "127.0.0.1",
-  port: 0,
-  corsOrigins: [],
-  visitorHashSecret: "test-secret",
-  enableRawSessionRetention: false,
-  liveWindowMs: 30_000,
-  liveTokenSecret: "test-live-secret",
-  liveTokenSecretIsDedicated: true,
-  liveTokenTtlMs: 900_000,
-  liveMaxConnections: 200,
-  livePresenceIntervalMs: 2_000,
-  rateLimitMax: 1000,
-  rateLimitWindowMs: 60_000,
-  ingestRateLimitMax: 1000,
-  ingestRateLimitWindowMs: 60_000,
-  trustProxy: false,
-  bodyLimit: 1_048_576,
-  cspMode: "strict",
-};
-
-/** Fixture scene proxy, so the `scene_representation` resource has something to return. */
-const PROXY = {
-  version: 1 as const,
-  sceneId: "lobby",
-  kind: "aabb" as const,
-  bounds: [-2, 0, -2, 2, 3, 2] as [number, number, number, number, number, number],
-  upAxis: "y" as const,
-  unitScale: 1,
-  meshes: [
-    {
-      name: "floor",
-      aabb: [-2, 0, -2, 2, 0.1, 2] as [number, number, number, number, number, number],
-    },
-  ],
-  meshCount: 1,
-  contentHash: "abc123",
-  capturedAt: 1_750_000_000_000,
-};
-
-/** Path params every registry endpoint that declares one can be satisfied with. */
-const PATH_PARAM_VALUES: Readonly<Record<string, string>> = {
-  ":sessionId": "s1",
-  ":id": "s1",
-  ":sceneId": "lobby",
-};
-
-/**
- * Query parameters an endpoint needs beyond the shared range. Only the genuinely
- * required ones: `mesh` for the per-mesh UV heatmap and `steps` for the funnel.
- */
-const REQUIRED_QUERY: Readonly<Record<string, Record<string, string>>> = {
-  "/api/v1/heatmaps/mesh-uv": { mesh: "box" },
-  "/api/v1/funnel": {
-    steps: JSON.stringify([{ type: "session_start" }, { type: "pointer_click" }]),
-  },
-};
-
-/** The two resource reads, which legitimately 404 when nothing is registered. */
-const RESOURCE_METRICS: ReadonlySet<string> = new Set(["session_meta", "scene_representation"]);
-
-/** Fill a registry path's `:params` and append the query string for a request. */
-function requestUrl(metric: MetricDefinition): string {
-  let path = metric.endpoint!.path;
-  for (const [token, value] of Object.entries(PATH_PARAM_VALUES)) {
-    path = path.replace(token, value);
-  }
-  const params = new URLSearchParams({
-    since: String(PARITY_RANGE.since),
-    until: String(PARITY_RANGE.until),
-    ...(REQUIRED_QUERY[metric.endpoint!.path] ?? {}),
-  });
-  return `${path}?${params.toString()}`;
-}
 
 /**
  * Wrap a store so every method's return value is recorded. The recorded value is

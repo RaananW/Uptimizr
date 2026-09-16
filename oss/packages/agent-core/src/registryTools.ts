@@ -228,6 +228,19 @@ const FILTER_FIELDS: Readonly<Record<FilterId, z.ZodType>> = {
     .max(2048)
     .optional()
     .describe("JSON funnel-step predicate for the success event. Omit to report views only."),
+  // The shared result envelope (ADR 0051 §2). Declared literally rather than
+  // imported from `@uptimizr/db/summary`, which would put a database driver back
+  // on this package's dependency graph. `full` stays the default here: switching
+  // the generated tools to `table` is a separate, documented change (#299).
+  format: z
+    .enum(["full", "table", "summary"])
+    .optional()
+    .describe(
+      "Result envelope. `full` (default) returns the bare rows; `table` wraps them with a " +
+        "`meta` block; `summary` returns a bounded digest — top rows, a trend or merged " +
+        "spatial clusters — with shares, caveats and a plain-language reading. Prefer " +
+        "`summary` for a large result such as a heatmap or a long leaderboard.",
+    ),
 };
 
 /**

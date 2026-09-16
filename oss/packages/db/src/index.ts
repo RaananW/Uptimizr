@@ -148,6 +148,13 @@ export {
 export { coerceRows, numericColumns, numericColumnsOfMetric } from "./query/coerce.js";
 export type { CoerceRowsOptions } from "./query/coerce.js";
 
+// --- Agent-shaped result envelopes (ADR 0051 §2, design sketch §B.1) ---
+// `format=table | summary`: pure, registry-driven summarisation of a metric's
+// rows. Re-exported here for the collector's convenience; also published on its
+// own browser-safe `@uptimizr/db/summary` subpath, which — like `/registry` —
+// carries no DuckDB driver and no `node:` import.
+export * from "./query/summary/index.js";
+
 export type {
   QuerySpec,
   RangeOptions,

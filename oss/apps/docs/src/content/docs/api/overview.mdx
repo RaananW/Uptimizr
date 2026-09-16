@@ -34,6 +34,7 @@ values are rejected with `400`, not clamped):
 | `source`   | enum                  | Input-source filter: `mouse`, `touch`, `stylus`, `pen`, `xr-controller`, `hand`, `gaze`, `transient`, `other`. |
 | `session`  | id                    | Scope an aggregate to a single session.                           |
 | `cameraMode` | `viewer` \| `first-person` | Restrict to orbit (`viewer`) or free/walkable (`first-person`) camera sessions. |
+| `format`   | `full` \| `table` \| `summary` | Result envelope, not a filter. `full` (the default) is the bare rows; see [result formats](/docs/api/query/#result-formats). |
 
 :::caution[Common pitfalls]
 - **`since`/`until` are milliseconds; `interval` is seconds.** Mixing units is the most common

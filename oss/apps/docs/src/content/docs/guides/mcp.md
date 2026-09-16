@@ -109,6 +109,15 @@ metric's interpretation notes and caveats (sample-size warnings, which capture c
 enabled), and each declares an MCP **output schema** describing the rows it returns, so a client can
 parse a result without guessing.
 
+A tool returns the endpoint's rows as they are. For a large result — a 500-bin heatmap, a voxel
+cloud, a thousand-row list — that is token-expensive and hard for a model to read, so the collector
+also serves a bounded [`format=summary` envelope](/docs/api/query/#result-formats): top rows, a
+trend, or merged spatial clusters, with shares, a sample size, the metric's caveats and a templated
+`reading` sentence. Today it is reachable over HTTP; the generated tool catalog exposes `format` on
+every aggregate tool (and defaults it to a bounded envelope) as a follow-up — see
+[#299](https://github.com/RaananW/Uptimizr/issues/299). Until then, keep results small with `limit`,
+`scene` and a tight `since`/`until`.
+
 Most tools accept an optional time range (`since` / `until`, epoch ms) plus the filters their
 endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, `cameraMode`,
 `region`, …). `session_meta`, `session_trajectory` and `scene_representation` take a required id.

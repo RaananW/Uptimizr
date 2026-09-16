@@ -153,6 +153,16 @@ Live endpoints:
 Common query params include `since`, `until` (epoch ms), `bins`, `limit`, `scene`,
 `session`, `cameraMode`, `source`, and spatial `cellSize` / `region` where supported.
 
+Every aggregate endpoint also accepts `format=full | table | summary` (ADR 0051 §2).
+It filters nothing — it picks the result envelope. `full` is the default and returns
+the bare rows unchanged (what the dashboard uses); `table` adds a `meta` envelope
+(metric, range, applied filters, sample size, row count, `truncated`, limits); and
+`summary` returns a bounded digest — ranked top rows, a first/last/min/max/trend
+series, or merged spatial clusters, with shares, the metric's caveats and a
+templated `reading` sentence — capped at the registry's `maxSummaryRows`, which is
+what makes a 500-bin heatmap affordable for an LLM. See
+[Result formats](https://uptimizr.com/docs/api/query/#result-formats).
+
 - `GET /health` — liveness probe.
 
 ## Security

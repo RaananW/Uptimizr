@@ -43,28 +43,34 @@ const generated = new Map(
  * hand-written catalog never surfaced; every one of them is optional, so no
  * existing call changes meaning. Pinned so a future widening is a deliberate,
  * reviewed edit rather than a silent one.
+ *
+ * `format` (ADR 0051 §2) is on every aggregate tool, because the registry
+ * declares it on every metric served on a querystring endpoint — the two
+ * resource reads (`session_meta`, `scene_representation`) take no querystring
+ * and so do not gain it. It defaults to `full`, the shape these tools have
+ * always returned, so it too only widens.
  */
 const EXPECTED_ADDED_PARAMS: Readonly<Record<string, readonly string[]>> = {
-  list_sessions: ["bins", "cameraMode"],
-  pointer_heatmap: ["limit", "cameraMode"],
-  world_heatmap: ["cameraMode", "region"],
-  camera_heatmap: ["limit", "cameraMode"],
-  click_rays: [],
-  flow_links: ["cameraMode", "cellSize", "groupByOrigin", "originVoxel"],
-  top_meshes: ["bins"],
-  perf_summary: ["bins", "limit"],
-  list_scenes: [],
-  timeseries: [],
-  event_counts: [],
+  list_sessions: ["bins", "cameraMode", "format"],
+  pointer_heatmap: ["limit", "cameraMode", "format"],
+  world_heatmap: ["cameraMode", "region", "format"],
+  camera_heatmap: ["limit", "cameraMode", "format"],
+  click_rays: ["format"],
+  flow_links: ["cameraMode", "cellSize", "groupByOrigin", "originVoxel", "format"],
+  top_meshes: ["bins", "format"],
+  perf_summary: ["bins", "limit", "format"],
+  list_scenes: ["format"],
+  timeseries: ["format"],
+  event_counts: ["format"],
   session_meta: [],
   scene_representation: [],
-  funnel: [],
-  aggregate_paths: [],
-  rendering_technology: ["bins", "limit"],
-  xr_rotation: [],
-  xr_sources: ["bins"],
-  xr_abandonment: ["bins"],
-  xr_locomotion: ["bins"],
+  funnel: ["format"],
+  aggregate_paths: ["format"],
+  rendering_technology: ["bins", "limit", "format"],
+  xr_rotation: ["format"],
+  xr_sources: ["bins", "format"],
+  xr_abandonment: ["bins", "format"],
+  xr_locomotion: ["bins", "format"],
 };
 
 describe("shipped tool compatibility", () => {

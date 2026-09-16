@@ -78,8 +78,8 @@ every tool (collector + CLIs) shares one canonical file regardless of cwd.
 `MetricDefinition` per exported `build*` (plus two builder-less resource entries — `session_meta`,
 `scene_representation`) declaring id, title, agent-facing description, builder, collector endpoint,
 `grain`, `dimensions`, `filters`, the output `row` Zod schema, per-column semantics (unit /
-measure / label / `rateOf`), row `limits`, `interpretation`, `caveats`, `sourceChannels` (the
-ADR 0012 capture dials that must be on for the metric to have data), `related` metrics,
+measure / label / axis / `rateOf`), row `limits`, `interpretation`, `caveats`, `sourceChannels`
+(the ADR 0012 capture dials that must be on for the metric to have data), `related` metrics,
 `comparable` semantics and a `category`. `DimensionId` / `FilterId` are closed unions declared
 once; `FILTER_TARGETS` maps each filter to the `query/types.ts` option field it drives.
 
@@ -128,6 +128,37 @@ samples", not `0`, which is why nine perf/resource metrics declare nullable colu
   shape through `coerceRows`), the collector's `registryRoutes.test.ts` (endpoint exists;
   querystring keys === `filters`) and its `queryResponseSchemas.test.ts` (every endpoint, against a
   seeded store, an empty one, and the in-memory store).
+
+### Result envelopes (ADR 0051 §2, `@uptimizr/db/summary`)
+
+`summarizeRows(metric, rows, ctx)` and `tableResult(metric, rows, ctx)` build the collector's
+`format=table | summary` envelopes. Pure, registry-driven, browser-safe; the collector calls them
+from one `preSerialization` hook, so no route handler knows they exist.
+
+```ts
+import { summarizeRows, tableResult, clusterCells, wilsonInterval } from "@uptimizr/db/summary";
+```
+
+The `grain` selects the shape — `ranked` (top rows + `rest`), `series` (first/last/min/max/trend/
+slope over the `axis` column), `clusters` (`clusterCells`: deterministic greedy merge of adjacent
+occupied cells above a density threshold, 8-neighbourhood in 2D / 26 in 3D), or `record` (the single
+row plus its `rateOf` rates). Everything is bounded by `limits.maxSummaryRows`.
+
+**Rules for agents:**
+
+- A metric's summary comes from its **column semantics**, never from a per-metric special case. If a
+  metric summarises badly, fix its `unit` / `measure` / `label` / `axis` / `rateOf` declarations.
+- A `bucket`-grain metric must declare exactly one `axis: true` column, and no other grain may
+  declare one (`@uptimizr/metrics`' `registry.test.ts`). `label` cannot stand in — `mesh_trend`
+  labels rows by mesh.
+- **`reading` is templated, never model-written**, and must never contain `undefined` or `NaN`; run
+  every value through `format.ts`'s total formatters.
+- Report `total`/`share` only for an **additive** unit. Summing FPS, a ratio or a percentile across
+  rows is meaningless, and a share derived from it is worse than none.
+- Clustering must stay a pure function of the cell _set_: accumulate in sorted coordinate order so a
+  reordered input is bit-identical (`summary.test.ts` rotates every fixture).
+- Adding `format` to a metric's `filters` and to the collector's querystring is one change — the
+  collector's `registryRoutes.test.ts` fails if they drift.
 
 ## Cross-engine parity (ADR 0020)
 
