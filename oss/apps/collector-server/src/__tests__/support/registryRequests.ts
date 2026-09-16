@@ -11,7 +11,7 @@
  * collect it.
  */
 
-import type { MetricDefinition } from "@uptimizr/db/registry";
+import type { MetricDefinition } from "@uptimizr/metrics";
 import { PARITY_RANGE } from "@uptimizr/db";
 import type { CollectorConfig } from "../../config.js";
 

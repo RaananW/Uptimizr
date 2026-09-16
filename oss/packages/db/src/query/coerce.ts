@@ -50,7 +50,7 @@
  */
 
 import type { z } from "zod";
-import { getMetric, type MetricDefinition, type MetricId } from "./registry.js";
+import { getMetric, type MetricDefinition, type MetricId } from "@uptimizr/metrics";
 
 /** Options for {@link coerceRows}. */
 export interface CoerceRowsOptions {

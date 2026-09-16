@@ -9,7 +9,7 @@
  * or non-finite value renders as `n/a` rather than leaking through.
  */
 
-import type { ColumnUnit } from "../registry.js";
+import type { ColumnUnit } from "@uptimizr/metrics";
 
 /**
  * Units whose values may be summed across rows. Shares, `total` and the cluster

@@ -125,13 +125,19 @@ The assistant is tuned for that reality:
   resolving _"today"_ against the real current day. The clock is injectable via
   `useAssistant({ now })` for deterministic tests, and the pure `refreshSystemPrompt()` helper
   (`messages, basePrompt, nowMs`) is exported for custom loops.
-- **A focused core tool set.** The full catalog has 20 read tools; sending them all overwhelms a
-  4-bit 7–8B model's function-calling prompt. For the **local** backend the assistant exposes a
-  focused **core subset** of the most common single-step tools — `list_sessions`, `list_scenes`,
-  `top_meshes`, `perf_summary`, `event_counts`, `timeseries`, and `camera_heatmap`. The **hosted**
-  backend keeps the full 20 (frontier models handle them). The core set is a **filtered view** of
-  the same tool definitions — nothing is redefined (`selectReadTools("core")` / `coreReadTools` in
-  `@uptimizr/agent-core`).
+- **A focused core tool set.** The full catalog is **69** read tools, generated from the metric
+  registry ([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md));
+  sending them all would overwhelm a 4-bit 7–8B model's function-calling prompt many times over. For
+  the **local** backend the assistant exposes a focused **core subset** of the most common
+  single-step tools — `list_sessions`, `list_scenes`, `top_meshes`, `perf_summary`, `event_counts`,
+  `timeseries`, and `camera_heatmap`. The **hosted** backend gets the full catalog (frontier models
+  handle it). The core set is a **filtered view** of the same tool definitions — nothing is
+  redefined (`selectReadTools("core")` / `coreReadTools` in `@uptimizr/agent-core`).
+- **Pin your own tool list.** Pass `useAssistant({ tools: ["perf_summary", "jank_rate"] })` to
+  override the per-backend default with a deliberate subset — useful for a focused panel, a tight
+  token budget, or a model that chooses better from fewer options. Names that are not in the catalog
+  are ignored, and an empty (or entirely unknown) list falls back to the default selection rather
+  than leaving the model with no tools.
 - **Guided example prompts.** `<AssistantPanel>` shows a few starter questions (e.g. _"What are my
   top meshes this week?"_, _"How's my average FPS?"_) in the empty conversation; each maps to a
   single core tool. Clicking one sends it — a reliable first-run path that also demonstrates the

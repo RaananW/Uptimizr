@@ -4,7 +4,7 @@
  * Zod mirrors the collector serialises through in `schema.ts`.
  */
 
-import type { ColumnUnit, MetricId } from "../registry.js";
+import type { ColumnUnit, MetricId } from "@uptimizr/metrics";
 
 /**
  * The `format` querystring shared by every registry-served aggregate endpoint.
@@ -27,7 +27,7 @@ export interface ResultRange {
 
 /**
  * The filters that were actually applied, keyed by {@link
- * import("../registry.js").FilterId}. `format` itself is never included — it
+ * import("@uptimizr/metrics").FilterId}. `format` itself is never included — it
  * narrows nothing. Values are whatever the route's Zod schema produced (a
  * string, a number, a parsed `region` tuple…), so this is deliberately loose.
  */

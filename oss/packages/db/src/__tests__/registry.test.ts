@@ -1,16 +1,26 @@
 /**
- * Metric-registry coverage checks (ADR 0051 §1, design sketch §A.3).
+ * Metric-registry checks that need a database (ADR 0051 §1, design sketch §A.3).
  *
- * These are the CI gates that keep the registry honest:
+ * The registry itself lives in `@uptimizr/metrics` — a dependency-free package,
+ * so that the browser and `npx` consumers of the metric catalog never pull in
+ * this package's ~37 MB native DuckDB binding. The pure gates (coverage against
+ * `AGGREGATION_BUILDER_NAMES`, internal consistency) run there. Two gates can
+ * only run here, and both are the reason `@uptimizr/db` depends on
+ * `@uptimizr/metrics` rather than the other way round:
  *
- * 1. **Coverage** — every exported `build*` in `aggregations.ts` has exactly one
- *    registry entry (the runtime companion to the `NoUnregisteredAggregations`
- *    compile-time guard in `registry.ts`).
- * 2. **Internal consistency** — ids, column semantics, `related` links and
- *    `comparable` targets all resolve.
- * 3. **Reality** — every `row` schema parses the rows the aggregation actually
+ * 1. **The builder link** — `@uptimizr/metrics` declares
+ *    `AGGREGATION_BUILDER_NAMES` as literal data instead of deriving it with
+ *    `keyof typeof aggregations`, because deriving it would make the registry
+ *    depend on this package. The invariant is not lost, only moved from the
+ *    compiler to CI: this suite asserts at runtime that the set of `build*`
+ *    exports of `aggregations.ts` is **exactly** that list, that every claimed
+ *    builder resolves to a real function, and that every builder tags its
+ *    `QuerySpec` with the metric that claims it (ADR 0051 §2 — the store edge
+ *    coerces by reading that tag, so the two halves of the mapping cannot
+ *    drift).
+ * 2. **Reality** — every `row` schema parses the rows the aggregation actually
  *    produces, run in-process against DuckDB over the shared parity fixtures.
- * 4. **The edge, not the schema, makes numbers numbers** (ADR 0051 §2) — the
+ * 3. **The edge, not the schema, makes numbers numbers** (ADR 0051 §2) — the
  *    same rows with every number string-encoded (the shape ClickHouse returns
  *    64-bit integers and decimals in over HTTP) must **fail** the strict `row`
  *    schema and **pass** it after `coerceRows`. That is what pins the coercion
@@ -23,20 +33,16 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AnyEvent } from "@uptimizr/schema";
-import * as aggregations from "../query/aggregations.js";
 import {
-  FILTER_TARGETS,
+  AGGREGATION_BUILDER_NAMES,
   METRIC_BY_BUILDER,
-  METRIC_IDS,
-  METRIC_REGISTRY,
   allMetrics,
   getMetric,
-  isResourceMetric,
   metricForBuilder,
-  type MetricDefinition,
   type MetricId,
-} from "../query/registry.js";
+} from "@uptimizr/metrics";
 import { coerceRows, numericColumns } from "../query/coerce.js";
+import * as aggregations from "../query/aggregations.js";
 import { duckdbDialect } from "../query/duckdbDialect.js";
 import type { Dialect } from "../query/dialect.js";
 import type { QuerySpec } from "../query/types.js";
@@ -52,37 +58,22 @@ const BUILDER_NAMES = Object.keys(aggregations)
   .filter((name) => name.startsWith("build"))
   .sort();
 
-/**
- * The tool names already shipped by `@uptimizr/agent-core`'s `readTools`
- * (ADR 0017 / ADR 0050). They MUST remain registry ids: when the catalog is
- * generated from the registry (design sketch §A.4) an MCP client that calls
- * `top_meshes` today has to keep working. `@uptimizr/db` cannot depend on
- * `agent-core`, so the list is mirrored here and guarded by this test.
- */
-const SHIPPED_TOOL_NAMES = [
-  "list_sessions",
-  "pointer_heatmap",
-  "world_heatmap",
-  "camera_heatmap",
-  "click_rays",
-  "flow_links",
-  "top_meshes",
-  "perf_summary",
-  "list_scenes",
-  "timeseries",
-  "event_counts",
-  "session_meta",
-  "scene_representation",
-  "funnel",
-  "aggregate_paths",
-  "rendering_technology",
-  "xr_rotation",
-  "xr_sources",
-  "xr_abandonment",
-  "xr_locomotion",
-] as const;
+describe("metric registry — the builder link", () => {
+  it("declares exactly the build* aggregations this package exports", () => {
+    const declared = [...AGGREGATION_BUILDER_NAMES].sort();
+    const missing = BUILDER_NAMES.filter((name) => !declared.includes(name as never));
+    const stale = declared.filter((name) => !BUILDER_NAMES.includes(name));
+    expect(
+      missing,
+      `aggregations missing from @uptimizr/metrics' AGGREGATION_BUILDER_NAMES: ${missing.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      stale,
+      `AGGREGATION_BUILDER_NAMES lists aggregations that no longer exist: ${stale.join(", ")}`,
+    ).toEqual([]);
+    expect(declared).toEqual(BUILDER_NAMES);
+  });
 
-describe("metric registry — coverage", () => {
   it("registers every exported build* aggregation exactly once", () => {
     const claimed = allMetrics()
       .map((metric) => metric.builder)
@@ -102,24 +93,9 @@ describe("metric registry — coverage", () => {
     }
   });
 
-  it("keeps the shipped agent tool names as registry ids", () => {
-    for (const name of SHIPPED_TOOL_NAMES) {
-      expect(METRIC_IDS, `tool name '${name}' must stay a registry id`).toContain(name);
-    }
-  });
-
-  it("marks exactly the two store resources as builder-less", () => {
-    const resources = allMetrics()
-      .filter(isResourceMetric)
-      .map((metric) => metric.id)
-      .sort();
-    expect(resources).toEqual(["scene_representation", "session_meta"]);
-  });
-
   it("resolves a metric from its builder name", () => {
     expect(metricForBuilder("buildTopMeshes")?.id).toBe("top_meshes");
     expect(getMetric("top_meshes")?.builder).toBe("buildTopMeshes");
-    expect(getMetric("not_a_metric")).toBeUndefined();
   });
 
   it("indexes every claimed builder in the reverse lookup", () => {
@@ -176,137 +152,6 @@ function callBuilder(build: (...args: unknown[]) => QuerySpec, name: string): Qu
     throw new Error(`${name} failed to render`, { cause: error });
   }
 }
-
-describe("metric registry — internal consistency", () => {
-  const metrics = allMetrics();
-
-  it("uses snake_case ids that match their registry key", () => {
-    for (const id of METRIC_IDS) {
-      const metric = METRIC_REGISTRY[id] as MetricDefinition;
-      expect(metric.id, `key '${id}' and id '${metric.id}' disagree`).toBe(id);
-      expect(id).toMatch(/^[a-z][a-z0-9_]*$/);
-    }
-  });
-
-  it("describes exactly the columns the row schema declares", () => {
-    for (const metric of metrics) {
-      const rowKeys = Object.keys(metric.row.shape).sort();
-      const columnKeys = Object.keys(metric.columns).sort();
-      expect(columnKeys, `${metric.id}: columns/row mismatch`).toEqual(rowKeys);
-    }
-  });
-
-  it("declares at most one measure and one label column, and resolvable rateOf", () => {
-    for (const metric of metrics) {
-      const entries = Object.entries(metric.columns);
-      expect(
-        entries.filter(([, column]) => column.measure === true).length,
-        `${metric.id}: more than one measure column`,
-      ).toBeLessThanOrEqual(1);
-      expect(
-        entries.filter(([, column]) => column.label === true).length,
-        `${metric.id}: more than one label column`,
-      ).toBeLessThanOrEqual(1);
-      for (const [name, column] of entries) {
-        if (column.rateOf == null) continue;
-        expect(metric.columns[column.rateOf], `${metric.id}.${name}.rateOf`).toBeDefined();
-      }
-    }
-  });
-
-  it("marks exactly one ordered axis column on every bucket-grain metric", () => {
-    for (const metric of metrics) {
-      const axes = Object.entries(metric.columns).filter(([, column]) => column.axis === true);
-      if (metric.grain === "bucket") {
-        // Without an axis a time series cannot be walked in order, and `label`
-        // cannot stand in for it (`mesh_trend` labels its rows by mesh).
-        expect(
-          axes.map(([name]) => name),
-          `${metric.id}: bucket grain needs one axis`,
-        ).toHaveLength(1);
-      } else {
-        expect(
-          axes.map(([name]) => name),
-          `${metric.id}: axis on a ${metric.grain} grain`,
-        ).toEqual([]);
-      }
-    }
-  });
-
-  it("offers every aggregate endpoint the shared `format` filter", () => {
-    for (const metric of metrics) {
-      // The two resource reads take no querystring at all; the daily rollups are
-      // not served on an endpoint. Everything else must accept an envelope.
-      const servedOnAQuerystring = metric.endpoint != null && metric.builder != null;
-      expect(
-        metric.filters.includes("format"),
-        `${metric.id}: format filter ${servedOnAQuerystring ? "missing" : "should not be declared"}`,
-      ).toBe(servedOnAQuerystring);
-    }
-  });
-
-  it("gives every binned or voxelised metric enough index columns to cluster", () => {
-    for (const metric of metrics) {
-      if (metric.grain !== "bin" && metric.grain !== "voxel") continue;
-      const indexed = Object.entries(metric.columns).filter(
-        ([, column]) => column.unit === "index",
-      );
-      expect(
-        indexed.length,
-        `${metric.id}: a ${metric.grain} grain needs ${metric.grain === "voxel" ? 3 : 2} index columns`,
-      ).toBeGreaterThanOrEqual(metric.grain === "voxel" ? 3 : 2);
-    }
-  });
-
-  it("points comparable.primary at a real column", () => {
-    for (const metric of metrics) {
-      if (metric.comparable == null) continue;
-      expect(
-        metric.columns[metric.comparable.primary],
-        `${metric.id}: comparable.primary '${metric.comparable.primary}' is not a column`,
-      ).toBeDefined();
-      expect(metric.comparable.minSample).toBeGreaterThan(0);
-    }
-  });
-
-  it("links only to metrics that exist, never to itself", () => {
-    for (const metric of metrics) {
-      for (const related of metric.related) {
-        expect(METRIC_IDS, `${metric.id} -> ${related}`).toContain(related);
-        expect(related, `${metric.id} relates to itself`).not.toBe(metric.id);
-      }
-    }
-  });
-
-  it("uses unique, documented filters and non-empty prose", () => {
-    for (const metric of metrics) {
-      expect(new Set(metric.filters).size, `${metric.id}: duplicate filters`).toBe(
-        metric.filters.length,
-      );
-      for (const filter of metric.filters) {
-        expect(
-          FILTER_TARGETS[filter],
-          `${metric.id}: undocumented filter '${filter}'`,
-        ).toBeDefined();
-      }
-      expect(metric.title.length, `${metric.id}: empty title`).toBeGreaterThan(0);
-      expect(metric.description.length, `${metric.id}: thin description`).toBeGreaterThan(60);
-      expect(metric.interpretation.length, `${metric.id}: thin interpretation`).toBeGreaterThan(40);
-      expect(metric.caveats.length, `${metric.id}: no caveats`).toBeGreaterThan(0);
-      expect(metric.limits.maxRows).toBeGreaterThan(0);
-      expect(metric.limits.maxSummaryRows).toBeGreaterThan(0);
-      expect(metric.limits.maxSummaryRows).toBeLessThanOrEqual(metric.limits.maxRows);
-    }
-  });
-
-  it("gives every aggregation an endpoint except the two daily rollups", () => {
-    const withoutEndpoint = metrics
-      .filter((metric) => metric.endpoint == null)
-      .map((metric) => metric.id)
-      .sort();
-    expect(withoutEndpoint).toEqual(["events_daily", "perf_daily"]);
-  });
-});
 
 /**
  * Which registry metric each parity case exercises. Several cases are filter

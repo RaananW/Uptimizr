@@ -14,7 +14,7 @@
  */
 
 import { z } from "zod";
-import { METRIC_IDS } from "../registry.js";
+import { METRIC_IDS } from "@uptimizr/metrics";
 import type { ResultFormat } from "./types.js";
 
 /**

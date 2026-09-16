@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { allMetrics, getMetric, type MetricDefinition } from "../query/registry.js";
+import { allMetrics, getMetric, type MetricDefinition } from "@uptimizr/metrics";
 import {
   clusterCells,
   summarizeRows,

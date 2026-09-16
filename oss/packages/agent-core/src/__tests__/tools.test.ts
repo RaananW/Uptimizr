@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { readTools, coreReadTools, selectReadTools, CORE_READ_TOOL_NAMES } from "../tools.js";
+import {
+  readTools,
+  coreReadTools,
+  selectReadTools,
+  filterReadTools,
+  CORE_READ_TOOL_NAMES,
+} from "../tools.js";
+import { registryToTools } from "../registryTools.js";
 
 const byName = (name: string) => {
   const tool = readTools.find((t) => t.name === name);
@@ -8,6 +15,15 @@ const byName = (name: string) => {
 };
 
 describe("read tools catalog", () => {
+  it("is the catalog generated from the metric registry", () => {
+    expect(readTools.map((t) => t.name)).toEqual(registryToTools().map((t) => t.name));
+    expect(readTools.length).toBe(69);
+  });
+
+  it("gives every tool an output schema", () => {
+    for (const tool of readTools) expect(Object.keys(tool.outputSchema ?? {})).toEqual(["rows"]);
+  });
+
   it("exposes uniquely named tools", () => {
     const names = readTools.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length);
@@ -123,5 +139,20 @@ describe("core read-tool subset", () => {
   it("selectReadTools returns the core subset for 'core' and the full catalog for 'full'", () => {
     expect(selectReadTools("core")).toBe(coreReadTools);
     expect(selectReadTools("full")).toBe(readTools);
+  });
+});
+
+describe("filterReadTools", () => {
+  it("narrows the catalog to the named tools, preserving catalog order and identity", () => {
+    const picked = filterReadTools(["perf_summary", "dead_clicks"]);
+    expect(picked.map((t) => t.name)).toEqual(["dead_clicks", "perf_summary"]);
+    for (const tool of picked) expect(readTools).toContain(tool);
+  });
+
+  it("ignores names no longer in the catalog rather than throwing", () => {
+    expect(filterReadTools(["top_meshes", "retired_metric"]).map((t) => t.name)).toEqual([
+      "top_meshes",
+    ]);
+    expect(filterReadTools([])).toHaveLength(0);
   });
 });

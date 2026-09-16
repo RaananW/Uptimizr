@@ -1,6 +1,6 @@
 # ADR 0051: AI-first analytics layer (semantic registry, insight primitives, agent autonomy)
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-09-16 — see [Amendment](#amendment-2026-09-16-the-registry-ships-as-uptimizrmetrics))
 - **Date:** 2026-09-15
 - **Deciders:** RaananW
 - **Extends:** [ADR 0017](./0017-consumer-facing-agents.md) (consumer-facing agent strategy),
@@ -276,3 +276,24 @@ site and `docs/integration.md` (AGENTS.md golden rule 8).
 - **A separate `@uptimizr/insights` service** — cleaner separation, but a second process for
   self-hosters and a second gateway to the data. Rejected; insight primitives are aggregations in
   the collector behind the same auth.
+
+## Amendment (2026-09-16): the registry ships as `@uptimizr/metrics`
+
+§1 places the metric registry "in `@uptimizr/db` (next to the aggregations it describes)", served
+on a dependency-free `@uptimizr/db/registry` subpath. A pure _subpath_ turned out not to be enough:
+a package manager installs a package's **dependencies**, not the subset a subpath reaches, so
+`@uptimizr/agent-core` and `@uptimizr/mcp` — which read the registry — dragged
+`@uptimizr/db` → `@duckdb/node-api` (~37 MB of native binding) into every install of
+`@uptimizr/react` and every `npx @uptimizr/mcp`. Neither can load a DuckDB driver.
+
+The registry therefore moves to its **own published package**, `@uptimizr/metrics`
+(`oss/packages/metrics`, Apache-2.0), whose only runtime dependencies are `zod` and
+`@uptimizr/schema`. `@uptimizr/db` depends on it; `@uptimizr/agent-core` and `@uptimizr/mcp`
+depend on it _instead of_ `@uptimizr/db`. The `@uptimizr/db/registry` subpath is removed (it was
+never released). Every export keeps its name.
+
+One consequence: the registry can no longer derive the builder-name union with
+`keyof typeof aggregations` (that would re-create the cycle). `AGGREGATION_BUILDER_NAMES` is
+declared as literal data in `@uptimizr/metrics`, and `@uptimizr/db`'s `registry.test.ts` asserts
+at runtime that it equals the set of `build*` exports — the invariant moves from the compiler to
+CI, but it is still enforced on every build.

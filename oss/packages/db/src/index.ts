@@ -143,8 +143,8 @@ export {
 // --- Numeric coercion at the store edge (ADR 0051 §2) ---
 // Applied by every store's query runner so the collector always emits numbers.
 // Lives on the root barrel rather than the browser-safe `/query` subpath because
-// it reads the metric registry, which ships on its own `@uptimizr/db/registry`
-// subpath so a browser bundle opts into that data explicitly.
+// it reads the metric registry, which ships as its own dependency-free package
+// (`@uptimizr/metrics`) so a browser bundle opts into that data explicitly.
 export { coerceRows, numericColumns, numericColumnsOfMetric } from "./query/coerce.js";
 export type { CoerceRowsOptions } from "./query/coerce.js";
 

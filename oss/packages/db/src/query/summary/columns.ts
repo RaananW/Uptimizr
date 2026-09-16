@@ -8,7 +8,7 @@
  * it declares what its columns mean.
  */
 
-import type { ColumnSemantics, MetricDefinition } from "../registry.js";
+import type { ColumnSemantics, MetricDefinition } from "@uptimizr/metrics";
 import type { SampleSize } from "./types.js";
 
 /** A column name paired with its declared semantics. */

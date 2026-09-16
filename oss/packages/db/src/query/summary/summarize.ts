@@ -36,7 +36,7 @@
  * number of tokens as a 5-bin one.
  */
 
-import { getMetric, type MetricDefinition, type MetricId } from "../registry.js";
+import { getMetric, type MetricDefinition, type MetricId } from "@uptimizr/metrics";
 import { clusterCells, type GridCell } from "./cluster.js";
 import {
   axisColumn,

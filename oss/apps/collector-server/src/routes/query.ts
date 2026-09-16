@@ -13,7 +13,7 @@ import {
   type SummaryContext,
   type WorldAabb,
 } from "@uptimizr/db";
-import { allMetrics, type MetricDefinition } from "@uptimizr/db/registry";
+import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
 

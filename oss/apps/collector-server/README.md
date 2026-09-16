@@ -92,6 +92,18 @@ file; back up by copying the file).
 
 ## Endpoints
 
+### Self-description
+
+- `GET /api/v1/openapi.json` — an **OpenAPI 3.1** document for the whole read API,
+  generated from the semantic metric registry (ADR 0051) and this server's own
+  route table: one path per endpoint, every parameter carrying the schema that
+  actually validates it, and a response schema per metric. The semantics OpenAPI
+  cannot express ride along as `x-uptimizr-*` extensions — the result `grain`,
+  per-column `units`, `caveats`, `interpretation`, the capture channels that feed
+  the metric, and its row `limits`. **Unauthenticated**: it is documentation and
+  contains no project data. Generate a typed client with
+  `npx openapi-typescript <collector>/api/v1/openapi.json -o collector.d.ts`.
+
 ### Ingestion
 
 - `POST /api/v1/collect` — accepts a batched `collectRequest`. Validates → rejects
@@ -168,6 +180,7 @@ if `VISITOR_HASH_SECRET` is missing.
 | `POST /api/v1/live/token`                 | `x-api-key`        | Exchanges a project query key for a short-lived SSE token.                                                                                              |
 | Live SSE routes (`/api/v1/live/*` `GET`s) | `?token=...`       | Browser `EventSource` cannot attach custom headers, so live streams use short-lived bearer tokens.                                                      |
 | `GET /health`                             | None               | Liveness probe.                                                                                                                                         |
+| `GET /api/v1/openapi.json`                | None               | API documentation, not data — a client needs it before it has a key. Rate-limited like every other route.                                               |
 
 ### Threat model for keyless ingestion
 

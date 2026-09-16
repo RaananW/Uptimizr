@@ -14,7 +14,7 @@
  * in `format.ts`, which render a missing or non-finite value as `n/a`.
  */
 
-import type { MetricDefinition } from "../registry.js";
+import type { MetricDefinition } from "@uptimizr/metrics";
 import { measureColumn } from "./columns.js";
 import {
   formatLabel,

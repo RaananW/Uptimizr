@@ -33,7 +33,7 @@ import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PARITY_EVENTS, PARITY_PROJECT_ID } from "@uptimizr/db";
 import { resultSummarySchema, tableResultSchema } from "@uptimizr/db";
-import { allMetrics, type MetricDefinition } from "@uptimizr/db/registry";
+import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildApp } from "../app.js";

@@ -1,4 +1,5 @@
 ---
+"@uptimizr/metrics": minor
 "@uptimizr/db": minor
 "@uptimizr/db-clickhouse": minor
 "@uptimizr/db-postgres": minor
@@ -9,7 +10,8 @@
 Coerce numeric columns at every store's edge, so the collector always emits numbers (ADR 0051 §2).
 
 `@uptimizr/db` gains `coerceRows(metric, rows)`, driven by the metric registry's `row` schema, plus
-`numericColumns` / `numericColumnsOfMetric` and the `METRIC_BY_BUILDER` reverse lookup. Every
+`numericColumns` / `numericColumnsOfMetric`; `@uptimizr/metrics` gains the `METRIC_BY_BUILDER`
+reverse lookup behind `metricForBuilder` (pure registry data, so it lives with the registry). Every
 `build*` aggregation now tags its `QuerySpec` with the registry metric id (`QuerySpec.metric`), and
 `runDuckdbQuery`, `runClickhouseQuery`, `runPostgresQuery` and `runMssqlQuery` each apply the
 coercion at the single point rows leave their driver — so a 64-bit integer or decimal that

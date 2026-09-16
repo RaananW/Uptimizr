@@ -55,12 +55,14 @@
     "@uptimizr/db-clickhouse": "workspace:*",
     "@uptimizr/db-mssql": "workspace:*",
     "@uptimizr/db-postgres": "workspace:*",
+    "@uptimizr/metrics": "workspace:*",
     "@uptimizr/schema": "workspace:*",
     "fastify": "^5.12.3",
     "fastify-type-provider-zod": "^7.0.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@seriousme/openapi-schema-validator": "^2.9.1",
     "@types/node": "^26.4.1",
     "tsx": "^4.23.13",
     "vitest": "^4.1.11"
