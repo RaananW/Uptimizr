@@ -49,8 +49,10 @@ describe("buildCapabilities", () => {
   });
 
   it("exposes no ingestion or mutation tools", () => {
+    // Match whole snake_case segments: `top_input_actions` is a read tool, and
+    // a naive substring match sees the "put" inside "input".
     for (const tool of cap.tools) {
-      expect(tool.name).not.toMatch(/collect|ingest|delete|update|create|put|post/i);
+      expect(tool.name).not.toMatch(/(^|_)(collect|ingest|delete|update|create|put|post)(_|$)/i);
     }
   });
 });

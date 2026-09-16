@@ -13,7 +13,12 @@
 
 ## Key exports
 
-- `readTools` — the read-only tool catalog (one entry per query endpoint).
+- `readTools` — the read-only tool catalog (one entry per query endpoint), generated from the
+  `@uptimizr/db` metric registry: 69 tools, each with an input schema, an output schema and the
+  metric's interpretation notes and caveats in its description (ADR 0051).
+- `coreReadTools` / `selectReadTools(kind)` / `filterReadTools(names)` — narrowed views of the
+  catalog for models that cannot carry every tool schema.
+- `registryToTools(metrics?)` — generate the catalog from metric-registry definitions.
 - `createCollectorClient(config)` — the thin GET-only collector client.
 - `runAgent(options)` — the headless tool-calling loop (LLM ↔ tools ↔ collector).
 - `toToolSchemas(tools?)` — convert catalog tools to JSON-Schema tool descriptors for an LLM.

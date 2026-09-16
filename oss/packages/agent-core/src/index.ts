@@ -9,11 +9,13 @@ export {
   readTools,
   coreReadTools,
   selectReadTools,
+  filterReadTools,
   CORE_READ_TOOL_NAMES,
   type ReadTool,
   type ReadToolRequest,
   type ReadToolSetKind,
 } from "./tools.js";
+export { registryToTools, metricToTool, describeMetric } from "./registryTools.js";
 export type {
   AgentMessage,
   AgentToolCall,

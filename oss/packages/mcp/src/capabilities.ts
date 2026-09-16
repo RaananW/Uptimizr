@@ -63,6 +63,37 @@ const PARAM_SEMANTICS: Readonly<Record<string, string>> = {
   steps: "Funnel steps as a JSON-encoded array of ordered step predicates (ADR 0038).",
   sessionId: "The exact session id to describe.",
   sceneId: "The exact scene id to fetch.",
+  // Parameters the generated catalog (ADR 0051 §1) surfaces for the metrics the
+  // hand-written catalog never exposed. Semantics mirror the registry's
+  // `FILTER_TARGETS`; #297 replaces this glossary with the registry itself.
+  mesh: "Restrict to one mesh/object name (required for the per-mesh UV heatmap).",
+  region:
+    "World-space drill-down box `minX,minY,minZ,maxX,maxY,maxZ`; omit for the whole scene (ADR 0040 §4).",
+  bucket: "Histogram bin width in FPS.",
+  bucketMs: "Histogram bin width in milliseconds.",
+  bucketSize: "Histogram bin width in world units.",
+  minRepeats: "Minimum clicks in a window before it counts as a rage cluster.",
+  windowMs: "How long before a session's end a performance dip still counts as correlated.",
+  fpsThreshold: "A frame-perf sample below this FPS counts as a dip.",
+  stallMs: "A shader-compile stall at least this long (ms) counts as a dip.",
+  moveThreshold:
+    "Inter-sample distance in world units above which a segment counts as active travel.",
+  centerX: "X of the reference point camera distances are measured from.",
+  centerY: "Y of the reference point camera distances are measured from.",
+  centerZ: "Z of the reference point camera distances are measured from.",
+  severity:
+    "Graphics-diagnostic severity (info / warning / error / fatal); setting it excludes JS runtime errors.",
+  category:
+    "Graphics-diagnostic category (context-loss / validation / shader-compile / …); setting it excludes JS runtime errors.",
+  errorKind:
+    "Runtime-error kind (error / unhandledrejection); setting it excludes engine diagnostics.",
+  groupByOrigin: "Add the click-time standpoint voxel as a grouping dimension.",
+  originVoxel: "Restrict to clicks whose standpoint falls in this `vx,vy,vz` voxel.",
+  bands:
+    "Ascending, comma-separated load-time band boundaries in ms; omit for the default 1000,3000,5000.",
+  variant:
+    "JSON funnel-step predicate selecting the variant events; omit to treat every custom event as a variant.",
+  conversion: "JSON funnel-step predicate for the success event; omit to report views only.",
 };
 
 /**
