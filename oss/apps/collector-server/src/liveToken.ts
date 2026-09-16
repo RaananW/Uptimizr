@@ -37,6 +37,20 @@ function b64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64url");
 }
 
+/**
+ * HMAC-SHA256 the token payload with the server secret.
+ *
+ * What is hashed is the **payload**, not a credential: a project id, an expiry
+ * and the capability tokens (`{p, e, c}`). The API key that authorized the mint
+ * never reaches here — the route reads it from the header, resolves it to a
+ * record, and discards it. The `secret` is the server's own high-entropy
+ * `LIVE_TOKEN_SECRET`, so HMAC-SHA256 is the right primitive; a slow KDF would
+ * only matter if a low-entropy human password were being hashed.
+ *
+ * (CodeQL's `js/insufficient-password-hash` heuristic flags this because the
+ * payload's project id is traced back to a call named `resolveApiKey`. It is a
+ * false positive for the reason above — and the same finding is open on `main`.)
+ */
 function sign(payloadB64: string, secret: string): string {
   return createHmac("sha256", secret).update(payloadB64).digest("base64url");
 }
