@@ -59,6 +59,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@uptimizr/agent-core": "workspace:*",
+    "@uptimizr/db": "workspace:*",
     "@uptimizr/schema": "workspace:*",
     "zod": "^4.5.4"
   },

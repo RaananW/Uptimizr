@@ -61,6 +61,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@seriousme/openapi-schema-validator": "^2.9.1",
     "@types/node": "^26.4.1",
     "tsx": "^4.23.13",
     "vitest": "^4.1.11"

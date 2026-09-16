@@ -1,0 +1,309 @@
+#!/usr/bin/env node
+//
+// Render every hand-maintained metric table from the semantic metric registry
+// (ADR 0051 §1, design sketch §A.2). The registry in `@uptimizr/db/registry` is
+// the single source of truth for what the collector can compute; this script
+// projects it into the places that used to restate it by hand:
+//
+//   docs/integration.md                              §Query (read) endpoint table
+//   oss/apps/docs/src/content/docs/api/query.mdx     the docs-site query reference
+//   oss/packages/mcp/README.md                       the tool table
+//   oss/packages/mcp/AGENTS.md, llms.txt             the packaged tool catalog (ADR 0017)
+//   oss/packages/agent-core/README.md, AGENTS.md, llms.txt
+//
+// Only the text between a pair of markers is replaced, so the hand-written prose
+// around each table survives:
+//
+//   Markdown / text:  <!-- generated:<block>:start ... -->  …  <!-- generated:<block>:end -->
+//   MDX:              {/* generated:<block>:start ... */}   …  {/* generated:<block>:end */}
+//
+// (MDX has no HTML comments — `<!-- -->` is parsed as JSX there — hence the two
+// marker dialects.)
+//
+// Run locally:   pnpm gen:docs
+// Staleness gate: pnpm gen:docs:check   (exits non-zero when committed output drifted)
+//
+// The registry is imported from `@uptimizr/db`'s **built** output, so run
+// `pnpm build` (or `pnpm --filter @uptimizr/db... build`) first; CI runs this
+// after its build step.
+
+import { readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import process from "node:process";
+
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
+const REGISTRY_ENTRY = "oss/packages/db/dist/query/registry.js";
+
+/** Import the registry from the built `@uptimizr/db` output. */
+async function loadRegistry() {
+  const entry = new URL(`file://${path.resolve(ROOT, REGISTRY_ENTRY).split(path.sep).join("/")}`);
+  try {
+    return await import(entry.href);
+  } catch (error) {
+    throw new Error(
+      `Could not load the metric registry from ${REGISTRY_ENTRY}.\n` +
+        `Build @uptimizr/db first:  pnpm --filter @uptimizr/db... build\n\n` +
+        `Original error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+// --- rendering helpers ----------------------------------------------------
+
+/**
+ * Make a value safe to place in one Markdown table cell: collapse newlines, then
+ * backslash-escape the cell delimiter. The backslash itself is escaped in the
+ * same pass — escaping only `|` would turn a registry string ending in `\` into
+ * `\\|`, which Markdown renders as a literal backslash followed by a *column
+ * break*, silently shifting the rest of the row.
+ */
+function cell(value) {
+  return String(value)
+    .replace(/\s*\n\s*/g, " ")
+    .replace(/[\\|]/g, (char) => `\\${char}`)
+    .trim();
+}
+
+/** `` `a`, `b`, `c` `` — or an em dash when the list is empty. */
+function codeList(values) {
+  return values.length === 0 ? "—" : values.map((value) => `\`${value}\``).join(", ");
+}
+
+/** Render a Markdown table. Prettier aligns the columns afterwards. */
+function table(headers, rows) {
+  return [
+    `| ${headers.join(" | ")} |`,
+    `| ${headers.map(() => "---").join(" | ")} |`,
+    ...rows.map((row) => `| ${row.join(" | ")} |`),
+  ].join("\n");
+}
+
+/** Wrap a comma-separated list of inline-code names at `width` columns. */
+function wrapList(names, width = 98) {
+  const lines = [];
+  let line = "";
+  names.forEach((name, index) => {
+    const token = `\`${name}\`${index === names.length - 1 ? "" : ","}`;
+    if (line.length === 0) line = token;
+    else if (line.length + 1 + token.length <= width) line += ` ${token}`;
+    else {
+      lines.push(line);
+      line = token;
+    }
+  });
+  if (line.length > 0) lines.push(line);
+  return lines.join("\n");
+}
+
+/** Human title for each registry category, used as a section heading. */
+const CATEGORY_TITLES = {
+  sessions: "Sessions & scenes",
+  attention: "Attention & heatmaps",
+  interaction: "Meshes & interactions",
+  navigation: "Navigation & coverage",
+  performance: "Performance & stability",
+  errors: "Errors & diagnostics",
+  xr: "WebXR",
+  ar: "WebXR AR placement",
+  conversion: "Funnels & conversion",
+};
+
+/** Every request parameter a metric accepts: path params first, then filters. */
+function paramsOf(metric) {
+  return [...(metric.endpoint?.pathParams ?? []), ...metric.filters];
+}
+
+// --- blocks ---------------------------------------------------------------
+//
+// One renderer per marker name. Each takes the registry module and returns the
+// Markdown that replaces the text between its markers.
+
+const BLOCKS = {
+  /** `docs/integration.md` — the §Query (read) endpoint table. */
+  "registry-endpoints": ({ allMetrics }) =>
+    table(
+      ["Method", "Path", "Metric", "Purpose"],
+      allMetrics()
+        .filter((metric) => metric.endpoint)
+        .map((metric) => [
+          `\`${metric.endpoint.method}\``,
+          `\`${metric.endpoint.path}\``,
+          `\`${metric.id}\``,
+          cell(metric.description),
+        ]),
+    ),
+
+  /** The docs-site query reference: one table per registry category. */
+  "registry-query-reference": ({ allMetrics }) => {
+    const metrics = allMetrics().filter((metric) => metric.endpoint);
+    const categories = [...new Set(metrics.map((metric) => metric.category))];
+    return categories
+      .map((category) => {
+        const rows = metrics
+          .filter((metric) => metric.category === category)
+          .map((metric) => [
+            `\`${metric.endpoint.method}\``,
+            `\`${metric.endpoint.path}\``,
+            `\`${metric.id}\``,
+            cell(metric.grain),
+            codeList(paramsOf(metric)),
+            cell(metric.description),
+          ]);
+        return `## ${CATEGORY_TITLES[category] ?? category}\n\n${table(
+          ["Method", "Path", "Metric", "One row is", "Parameters", "Purpose"],
+          rows,
+        )}`;
+      })
+      .join("\n\n");
+  },
+
+  /** The packaged tool table (`@uptimizr/mcp` README). */
+  "registry-tools": ({ allMetrics }) =>
+    table(
+      ["Tool", "Endpoint", "Returns", "Parameters"],
+      allMetrics()
+        .filter((metric) => metric.endpoint)
+        .map((metric) => [
+          `\`${metric.id}\``,
+          `\`${metric.endpoint.path}\``,
+          cell(metric.title),
+          codeList(paramsOf(metric)),
+        ]),
+    ),
+
+  /** A compact name list for the packaged `AGENTS.md` / `llms.txt` (ADR 0017). */
+  "registry-tool-names": ({ allMetrics }) =>
+    wrapList(
+      allMetrics()
+        .filter((metric) => metric.endpoint)
+        .map((metric) => metric.id),
+    ),
+};
+
+// --- targets --------------------------------------------------------------
+
+/** Every file this script owns, and the blocks it renders into each. */
+const TARGETS = [
+  { file: "docs/integration.md", blocks: ["registry-endpoints"] },
+  {
+    file: "oss/apps/docs/src/content/docs/api/query.mdx",
+    blocks: ["registry-query-reference"],
+  },
+  { file: "oss/packages/mcp/README.md", blocks: ["registry-tools"] },
+  { file: "oss/packages/mcp/AGENTS.md", blocks: ["registry-tool-names"] },
+  { file: "oss/packages/mcp/llms.txt", blocks: ["registry-tool-names"] },
+  { file: "oss/packages/agent-core/README.md", blocks: ["registry-tool-names"] },
+  { file: "oss/packages/agent-core/AGENTS.md", blocks: ["registry-tool-names"] },
+  { file: "oss/packages/agent-core/llms.txt", blocks: ["registry-tool-names"] },
+];
+
+/** The two marker dialects: MDX cannot carry HTML comments. */
+function markers(file, block) {
+  const mdx = file.endsWith(".mdx");
+  return mdx
+    ? {
+        start: new RegExp(`\\{/\\*\\s*generated:${block}:start[^*]*\\*/\\}`),
+        end: new RegExp(`\\{/\\*\\s*generated:${block}:end\\s*\\*/\\}`),
+      }
+    : {
+        start: new RegExp(`<!--\\s*generated:${block}:start[^>]*-->`),
+        end: new RegExp(`<!--\\s*generated:${block}:end\\s*-->`),
+      };
+}
+
+/** Replace the text between one block's markers. */
+function replaceBlock(file, contents, block, rendered) {
+  const { start, end } = markers(file, block);
+  const startMatch = start.exec(contents);
+  const endMatch = end.exec(contents);
+  if (!startMatch || !endMatch) {
+    throw new Error(
+      `${file}: missing the \`generated:${block}\` ${startMatch ? "end" : "start"} marker. ` +
+        `Add the marker pair around the generated section.`,
+    );
+  }
+  const from = startMatch.index + startMatch[0].length;
+  const to = endMatch.index;
+  if (to < from) throw new Error(`${file}: \`generated:${block}\` markers are out of order.`);
+  return `${contents.slice(0, from)}\n\n${rendered}\n\n${contents.slice(to)}`;
+}
+
+/**
+ * Extensions the repo's own `format` script covers
+ * (`prettier --write "**\/*.{ts,tsx,js,jsx,json,md,yml,yaml}"`). Generated output
+ * for these files is run through Prettier so it is byte-identical to what
+ * `pnpm format:check` expects (Prettier aligns Markdown table columns). Files
+ * Prettier does not own — `.mdx`, `.txt` — are written as rendered.
+ */
+const FORMATTED_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".json",
+  ".md",
+  ".yml",
+  ".yaml",
+]);
+
+/** Format with the repo's Prettier config, when Prettier owns the file type. */
+async function format(prettier, absolute, contents) {
+  if (!FORMATTED_EXTENSIONS.has(path.extname(absolute))) return contents;
+  const options = await prettier.resolveConfig(absolute, { editorconfig: false });
+  return prettier.format(contents, { ...options, filepath: absolute });
+}
+
+async function main() {
+  const check = process.argv.includes("--check");
+  // `--root <dir>` renders into a copy of the target files under another
+  // directory instead of the working tree. The registry is always read from this
+  // repo; only the destinations move. Used by the generator's own tests to prove
+  // that `--check` detects a stale table without touching committed files.
+  const rootFlag = process.argv.indexOf("--root");
+  const targetRoot = rootFlag === -1 ? ROOT : path.resolve(process.argv[rootFlag + 1] ?? ".");
+  const registry = await loadRegistry();
+  const prettier = await import("prettier");
+
+  const rendered = Object.fromEntries(
+    Object.entries(BLOCKS).map(([name, render]) => [name, render(registry)]),
+  );
+
+  const stale = [];
+  for (const target of TARGETS) {
+    const absolute = path.resolve(targetRoot, target.file);
+    const original = await readFile(absolute, "utf8");
+    let next = original;
+    for (const block of target.blocks) {
+      next = replaceBlock(target.file, next, block, rendered[block]);
+    }
+    // Always resolve Prettier options against the real file in this repo, so
+    // `--root` output is formatted identically to the working tree's.
+    next = await format(prettier, path.resolve(ROOT, target.file), next);
+    if (next === original) continue;
+    if (check) stale.push(target.file);
+    else {
+      await writeFile(absolute, next, "utf8");
+      console.log(`updated  ${target.file}`);
+    }
+  }
+
+  if (check && stale.length > 0) {
+    console.error(
+      `\nThese files are generated from the metric registry and are out of date:\n` +
+        stale.map((file) => `  - ${file}`).join("\n") +
+        `\n\nRun \`pnpm gen:docs\` and commit the result.\n`,
+    );
+    process.exit(1);
+  }
+  console.log(
+    check
+      ? `ok  ${TARGETS.length} generated files are up to date`
+      : `done  ${TARGETS.length} files checked`,
+  );
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});

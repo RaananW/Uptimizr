@@ -232,13 +232,56 @@ endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, `c
 The server also exposes read-only [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources)
 so an agent can **self-discover** what it can ask instead of guessing:
 
-| Resource URI              | Type               | Contents                                                                                                                                                                                                                                                                         |
-| ------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `uptimizr://capabilities` | `application/json` | A machine-readable descriptor: schema version, the canonical **event types**, the full **tool catalog**, and the **parameter semantics** glossary. Built from the shared catalog + `@uptimizr/schema`, so it never drifts from the tools actually registered. No collector call. |
-| `uptimizr://scenes`       | `application/json` | The **live** list of scene ids with recent activity — the valid values for the `scene` parameter. Fetched via the read-only query API.                                                                                                                                           |
+| Resource URI              | Type               | Contents                                                                                                                                                                                                                                             |
+| ------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uptimizr://capabilities` | `application/json` | A machine-readable descriptor: schema version, the canonical **event types**, the **tool catalog**, the **parameter semantics** glossary, and `metrics` — the collector's whole [semantic metric registry](#the-metric-registry). No collector call. |
+| `uptimizr://scenes`       | `application/json` | The **live** list of scene ids with recent activity — the valid values for the `scene` parameter. Fetched via the read-only query API.                                                                                                               |
 
 Point an agent at `uptimizr://capabilities` first: it enumerates every tool, its parameters, and
 what each parameter means, so the agent can plan a query without trial and error.
+
+### The metric registry
+
+`uptimizr://capabilities` carries a `metrics` array — the collector's **semantic metric registry**
+serialised for agents. For every metric it gives:
+
+| Field                    | What it tells an agent                                                                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `grain`                  | What **one row** is: a project, a scene, a session, a mesh, a bin, a voxel, a bucket.                                                                                                                        |
+| `columns`                | Per-column description and **unit** (`ms`, `fps`, `count`, `ratio`, `world-units`, …), plus which column is the measure to rank by and which names the row.                                                  |
+| `row`                    | The **JSON Schema** of a result row, so a client with no Zod can still validate or shape it.                                                                                                                 |
+| `filters` / `dimensions` | The parameters it accepts and the dimensions its rows are keyed by.                                                                                                                                          |
+| `limits`                 | The registry-declared row caps, so nothing asks for an unbounded payload.                                                                                                                                    |
+| `interpretation`         | How to read the result — what a high or low value actually means.                                                                                                                                            |
+| `caveats`                | Small-sample, sampling-rate and capture-gating warnings. **Read these before quoting a number.**                                                                                                             |
+| `sourceChannels`         | The capture channels ([ADR 0012](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0012-capture-fidelity-dials.md)) that feed it — if a channel is off, the metric is empty by design, not by accident. |
+| `related` / `comparable` | Metrics worth reading alongside it, and which column's change is "the" change.                                                                                                                               |
+
+## OpenAPI
+
+The collector serves an **OpenAPI 3.1** description of its read API — no key required, because it is
+documentation and contains no project data:
+
+```bash
+curl https://collect.example.com/api/v1/openapi.json
+```
+
+It is generated from the same metric registry, so it lists exactly the aggregations that collector
+can compute: one path per endpoint, every parameter with the schema that actually validates it, and
+a `200` response schema per metric. The semantics OpenAPI has no vocabulary for ride along as vendor
+extensions on each operation — `x-uptimizr-grain`, `x-uptimizr-units`, `x-uptimizr-caveats`,
+`x-uptimizr-interpretation`, `x-uptimizr-source-channels`, `x-uptimizr-limits`,
+`x-uptimizr-dimensions`, `x-uptimizr-related` and `x-uptimizr-comparable`.
+
+That makes the collector consumable by anything that speaks OpenAPI without MCP at all — generate a
+typed client, point an API explorer at it, or hand the document to an agent framework:
+
+```bash
+npx openapi-typescript https://collect.example.com/api/v1/openapi.json -o collector.d.ts
+```
+
+Authenticate ordinary calls with the `apiKey` security scheme the document declares: the `x-api-key`
+header, using a key with the `query` capability.
 
 ## Prompts
 
