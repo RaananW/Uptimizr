@@ -1,5 +1,126 @@
 # @uptimizr/db
 
+## 2.0.0
+
+### Major Changes
+
+- a6d87b1: Agent-scoped API keys: capability sets, per-key rate limits, an audit log and `whoami` (#309, ADR 0051 §7).
+
+  **Breaking — raw per-session access now needs `query:raw`.** `GET /api/v1/sessions/:id/events` and the live per-session follow `GET /api/v1/live/sessions/:id` require **both** `ENABLE_RAW_SESSION_RETENTION` on the collector and the new `query:raw` capability on the key; previously retention alone was enough for any `query` key. Existing keys keep working for every aggregate endpoint and need no migration, but a key that drives session replay or live-follow must be re-minted with `uptimizr new-key <projectId> --capabilities query,query:raw`.
+
+  **Breaking — `@uptimizr/db` metadata contracts.** `ApiKeyCapability` grows from `"ingest" | "query"` to `"ingest" | "query" | "annotate" | "query:raw"`. `ApiKeyRecord` and `ResolvedApiKey` replace the singular `capability` field with `capabilities: ApiKeyCapability[]`, and gain `label` plus a nullable `rateLimit`; `ResolvedApiKey` also carries `keyId`. `createApiKey(client, projectId, capability?)` now takes an options object (`{ capabilities, label, rateLimit }`) on all four engines. Each store package gains `recordAudit` / `listAudit` / `pruneAudit`.
+
+  - Migrations on DuckDB, Postgres, SQL Server and ClickHouse add `capabilities`, `label`, `rate_limit_max`, `rate_limit_window_ms` and an `agent_audit` table. They are forward-only, additive and idempotent (ADR 0007); the legacy `capability` column is untouched and still feeds the read path as a fallback, so keys issued before this release resolve unchanged.
+  - Per-key rate limits (`uptimizr new-key --rate-limit-max N --rate-limit-window-ms M`) bucket on the key id instead of the client IP; keys without one keep the global `COLLECTOR_RATE_LIMIT_*` defaults. Keyless ingest is unaffected.
+  - `GET /api/v1/whoami` reports the calling key's project, key id, capabilities, label and effective rate limit. `GET /api/v1/audit` (`since`/`until`/`limit`, `query` capability) serves the agent audit trail: key id, route pattern, bounded and redacted params, row count, duration and status, written asynchronously and expiring after `AUDIT_RETENTION_DAYS` (default 30).
+  - New CLI: `uptimizr new-key <projectId> [--capabilities …] [--label …] [--rate-limit-max N --rate-limit-window-ms M]`. `init` and `new-project` keep minting read-only `query` keys; `uptimizr-db-new-project` gains a `--capabilities` flag.
+  - `@uptimizr/react`'s `CollectorApi` takes an optional third `client` argument (default `"dashboard"`) and sends it as `x-uptimizr-client`, which is how the collector tells a dashboard's panel refreshes apart from agent traffic in the audit log. Existing two-argument construction is unchanged.
+
+### Minor Changes
+
+- fa489c1: The metric registry moved to the new, dependency-free `@uptimizr/metrics` package, and the
+  `@uptimizr/db/registry` subpath is removed. The subpath was never published, so no released version
+  of any package consumed it; importers change `@uptimizr/db/registry` to `@uptimizr/metrics`.
+  `@uptimizr/db` now depends on `@uptimizr/metrics` and re-exports nothing from it — the
+  aggregations, dialects, stores and parity harness are unchanged.
+
+  `AGGREGATION_BUILDER_NAMES` is declared as literal data in `@uptimizr/metrics` rather than derived
+  from this package's `build*` exports, because deriving it would make the registry depend on the
+  DuckDB driver again. The invariant is unchanged, only moved from the compiler to CI:
+  `src/__tests__/registry.test.ts` asserts at runtime that the set of `build*` exports is exactly
+  that list, and still parses every registry `row` schema against real DuckDB output.
+
+- d1d8f7c: Add the semantic metric registry (ADR 0051 §1) — it ships in the new, dependency-free
+  `@uptimizr/metrics` package, which `@uptimizr/db` now depends on: one
+  `MetricDefinition` per `build*` aggregation — id, description, endpoint, grain, dimensions,
+  filters, Zod row schema, per-column units and semantics, limits, interpretation, caveats, source
+  capture channels, related metrics and comparison semantics — plus the closed `DimensionId` /
+  `FilterId` vocabularies and the `FILTER_TARGETS` map. The registry is pure data with no I/O, so
+  browser consumers can import it. CI now fails when an aggregation has no entry, when a row schema
+  does not match real query output, or when an endpoint's querystring keys diverge from its declared
+  filters. No behaviour change to any endpoint or tool.
+- e378214: Add a shared `format=full | table | summary` envelope to every aggregate query endpoint (ADR 0051 §2).
+
+  `format` filters nothing — it selects the shape the rows come back in. **`full` is the default and
+  is unchanged**, byte for byte, so the dashboard and every existing client are unaffected (a sweep
+  over the parity fixtures asserts each endpoint's default body still hashes to what it returned
+  before this change). `table` keeps the rows and adds a `meta` envelope: the metric, the requested
+  range, the applied filters, the sample size, the row count, whether the row cap truncated the
+  result, and the registry limits. `summary` returns a **bounded** digest capped at the metric's
+  `limits.maxSummaryRows`, so a 500-bin heatmap costs an agent the same number of tokens as a 5-bin
+  one.
+
+  `@uptimizr/db` gains the summariser behind it on a new browser-safe `@uptimizr/db/summary` subpath
+  (also re-exported from the package root): `summarizeRows(metric, rows, ctx)`,
+  `tableResult(metric, rows, ctx)`, the `clusterCells` spatial helper, `wilsonInterval`, and Zod
+  schemas for all three envelopes. It is pure and registry-driven — the metric's `grain` picks the
+  shape: ranked `top[]` rows with shares and a `rest` bucket for a leaderboard; a
+  `first / last / min / max / trend / slope` series for a `bucket` grain; deterministic greedy-merged
+  clusters (8-neighbourhood for 2D bins, 26 for voxels, ranked by summed weight, each reporting
+  centroid, extent, cells, weight and share) for `bin` and `voxel` grains; and the row itself plus its
+  `rateOf` rates for a single-row metric. Every summary carries a sample size derived from the
+  registry's column units, the metric's caveats plus any true only of that result, `drill` hints
+  naming filters the metric actually accepts, and a `reading` sentence templated from column semantics
+  alone — no model is involved, so the same rows always produce the same words. Shares, `total` and
+  the Wilson `confidence` note are reported only where the measure's unit can honestly be summed.
+
+  Registry additions: `"format"` is a `FilterId` and is declared on all 67 metrics served on a
+  querystring endpoint, and `ColumnSemantics` gains an optional `axis` flag marking the ordered column
+  of a `bucket`-grain metric (`label` cannot double as the axis — `mesh_trend` labels its rows by
+  mesh). Each affected route's 200 response schema is now the union of the three envelopes, with the
+  untouched `full` shape first.
+
+- 2f1a753: Add **scene regions** — named, labelled world-space boxes that give a scene a shared vocabulary
+  for _where_ things happen ("the entrance", "the checkout counter").
+
+  - `@uptimizr/schema`: `sceneRegionSchema` / `sceneRegionsSchema` (config, deliberately outside the
+    event union) plus the `maxSceneRegionLabelLength` / `maxSceneRegionDescriptionLength` /
+    `maxSceneRegions` bounds.
+  - `@uptimizr/db` and the optional Postgres / SQL Server / ClickHouse stores: a `scene_regions`
+    metadata table (forward-only, idempotent migration) keyed `(project_id, scene_id, region_id)`,
+    with `putSceneRegions` (replaces a scene's whole set atomically), `getSceneRegions` and
+    `listSceneRegions`.
+  - `@uptimizr/collector-server`: `PUT` / `GET /api/v1/scenes/:sceneId/regions`, the project-wide
+    `GET /api/v1/scene-regions` listing, `uptimizr regions set|get` CLI commands, and `region=<id>`
+    as an alternative to the six-number box on every spatial endpoint that already takes a region
+    (resolved server-side to the stored bounds; an unregistered id is a `400`). The region reads
+    take a `query`-capable key; the **write** takes an `annotate`-capable one (a `query`-only key
+    is refused with `403`). `uptimizr regions set` opens the store directly and needs no key.
+  - `@uptimizr/sdk-core`: `registerRegions(sceneId, regions, { endpoint, apiKey })`, the authoring
+    counterpart to a connector's `scanSceneProxy`.
+
+- ee1b7c7: Coerce numeric columns at every store's edge, so the collector always emits numbers (ADR 0051 §2).
+
+  `@uptimizr/db` gains `coerceRows(metric, rows)`, driven by the metric registry's `row` schema, plus
+  `numericColumns` / `numericColumnsOfMetric`; `@uptimizr/metrics` gains the `METRIC_BY_BUILDER`
+  reverse lookup behind `metricForBuilder` (pure registry data, so it lives with the registry). Every
+  `build*` aggregation now tags its `QuerySpec` with the registry metric id (`QuerySpec.metric`), and
+  `runDuckdbQuery`, `runClickhouseQuery`, `runPostgresQuery` and `runMssqlQuery` each apply the
+  coercion at the single point rows leave their driver — so a 64-bit integer or decimal that
+  ClickHouse renders as `"42"` over HTTP, or an `int8` that `pg` hands back as a string, reaches every
+  consumer as a number. `null` is preserved: an aggregate over an empty set means "no samples", never
+  `0`. A value that is neither a number, `null`, nor a finite numeric string throws under a test
+  runner and is left untouched with a one-per-column warning in production.
+
+  Because the coercion now happens at the edge, the registry's numeric columns are strict `z.number()`
+  rather than `z.coerce.number()`, and the collector's query routes carry those schemas as Fastify 200
+  response schemas. Tightening the schemas exposed that nine perf/resource metrics can legitimately
+  return `null` — SQL aggregates are NULL over an empty set, and a single-row summary is still
+  returned when the range matched nothing — so `perf_summary`, `perf_distribution`,
+  `frame_time_percentiles`, `jank_rate`, `perf_churn`, `render_scale_truth`, `resource_summary`,
+  `resource_percentiles` and `dead_clicks` now declare those columns nullable. Previously
+  `z.coerce.number()` silently reported them as `0`; consumers that treated `0` as "measured zero"
+  should now read `null` as "no data". Cross-engine parity asserts `typeof === "number"` for every
+  registry-numeric column on DuckDB, ClickHouse, Postgres and SQL Server.
+
+### Patch Changes
+
+- Updated dependencies [fa489c1]
+- Updated dependencies [2f1a753]
+- Updated dependencies [ee1b7c7]
+  - @uptimizr/metrics@0.1.0
+  - @uptimizr/schema@1.1.0
+
 ## 1.0.2
 
 ### Patch Changes
