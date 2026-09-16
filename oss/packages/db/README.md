@@ -116,6 +116,38 @@ The parity suites assert `typeof === "number"` for every registry-numeric column
 > `registryRoutes.test.ts` asserts that every `endpoint.path` is served and that its Zod
 > querystring keys equal the registry `filters`.
 
+### Result envelopes (`@uptimizr/db/summary`, ADR 0051 §2)
+
+The registry knows enough about a metric to **summarise** it, so the collector's
+`format=table | summary` envelopes are built here rather than in a route handler. Pure, browser-safe
+functions with no store and no I/O — published on their own subpath for the same reason the registry
+is, and re-exported from the package root for Node consumers:
+
+```ts
+import { summarizeRows, tableResult, clusterCells } from "@uptimizr/db/summary";
+
+tableResult("top_meshes", rows, { range, filters, limit });
+// { meta: { metric, range, filters, sampleSize, rows, truncated, limits }, rows }
+
+summarizeRows("top_meshes", rows, { range, filters });
+// { kind: "ranked", total, measure, top: [{ label, value, share, … }], rest, reading, caveats, … }
+```
+
+The metric's `grain` picks the shape: `ranked` top rows for a leaderboard, a `series`
+(first/last/min/max/trend/slope over the column flagged `axis`) for a time bucket, merged `clusters`
+for a `bin`/`voxel` grid (`clusterCells` — a deterministic greedy merge of adjacent occupied cells
+above a density threshold, 8-neighbourhood in 2D and 26 in 3D), and the `record` itself plus its
+`rateOf` rates for a single-row metric. Everything is capped at `limits.maxSummaryRows`.
+
+Two invariants worth knowing before extending it:
+
+- **`reading` is templated, not generated.** It is assembled from `ColumnSemantics` alone, so the
+  same rows always produce the same sentence. Every number goes through total formatters — a
+  `reading` containing `undefined` or `NaN` is a test failure.
+- **Shares are only claimed where they are true.** `total`, `share` and the Wilson `confidence` note
+  appear only when the measure's unit is additive; an FPS or ratio measure reports `null` and says
+  so in the `reading` rather than summing values that cannot be summed.
+
 ## Extending
 
 - **New columns / tables:** append a migration to `DUCKDB_MIGRATIONS`. Forward-only and additive —

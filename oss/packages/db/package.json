@@ -40,6 +40,10 @@
     "./registry": {
       "types": "./dist/query/registry.d.ts",
       "import": "./dist/query/registry.js"
+    },
+    "./summary": {
+      "types": "./dist/query/summary/index.d.ts",
+      "import": "./dist/query/summary/index.js"
     }
   },
   "bin": {
