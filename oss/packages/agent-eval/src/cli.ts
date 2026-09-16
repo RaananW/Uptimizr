@@ -49,6 +49,9 @@ function parseArgs(argv: readonly string[]): CliOptions {
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
+    // pnpm forwards the `--` separator to the script verbatim; it carries no
+    // option of its own, so skip it instead of rejecting it.
+    if (arg === "--") continue;
     if (arg === "--provider") {
       const value = argv[++i];
       if (value !== "scripted" && value !== "hosted") {
