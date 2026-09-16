@@ -53,6 +53,7 @@ than editing history.
 | [0048](./0048-ar-vr-spatial-analytics.md)                          | AR/VR spatial analytics — placement, boundary proximity, tracking quality         | Accepted   |
 | [0049](./0049-session-replay-live-presence-portable-panels.md)     | Session Replay and Live Presence are portable catalog panels                      | Accepted   |
 | [0050](./0050-in-browser-analytics-assistant.md)                   | In-browser, user-controlled analytics assistant (client-side agent); extends 0017 | Proposed   |
+| [0051](./0051-ai-first-analytics-layer.md)                         | AI-first analytics layer (semantic registry, insight primitives, agent autonomy)  | Accepted   |
 
 ## Template
 
