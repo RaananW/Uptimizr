@@ -25,11 +25,11 @@ describe("buildCapabilities", () => {
     expect(names).toEqual(served.map((metric) => metric.id).sort());
   });
 
-  it("is a superset of the shipped hand-written tool catalog (sketch §A.4)", () => {
-    // The generated catalog must never drop a tool name an MCP client already
-    // calls; the registry reuses those 20 ids verbatim.
-    const names = new Set(cap.tools.map((t) => t.name));
-    for (const tool of readTools) expect(names.has(tool.name), tool.name).toBe(true);
+  it("matches the shipped tool catalog exactly (sketch §A.4)", () => {
+    // `readTools` is now itself generated from the registry (#296), so the
+    // descriptor and the tools the server registers are the same 69 names —
+    // no longer merely a superset.
+    expect(cap.tools.map((t) => t.name).sort()).toEqual(readTools.map((t) => t.name).sort());
   });
 
   it("includes the #194 read tools", () => {
@@ -58,9 +58,10 @@ describe("buildCapabilities", () => {
   });
 
   it("exposes no ingestion or mutation tools", () => {
+    // Match whole snake_case segments: `top_input_actions` is a read tool, and
+    // a naive substring match sees the "put" inside "input".
     for (const tool of cap.tools) {
-      // Word-bounded: `top_input_actions` legitimately contains "put".
-      expect(tool.name).not.toMatch(/\b(collect|ingest|delete|update|create|post)\b/i);
+      expect(tool.name).not.toMatch(/(^|_)(collect|ingest|delete|update|create|put|post)(_|$)/i);
     }
     // The stronger guarantee: every served metric is a GET read.
     for (const metric of served) expect(metric.endpoint!.method, metric.id).toBe("GET");

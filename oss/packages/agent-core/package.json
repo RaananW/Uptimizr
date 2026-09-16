@@ -66,6 +66,7 @@
     "clean": "rimraf -g dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@uptimizr/db": "workspace:*",
     "zod": "^4.5.4"
   },
   "peerDependencies": {
@@ -78,6 +79,7 @@
   },
   "devDependencies": {
     "@mlc-ai/web-llm": "^0.2.84",
+    "esbuild": "^0.28.2",
     "vitest": "^4.1.11"
   },
   "engines": {

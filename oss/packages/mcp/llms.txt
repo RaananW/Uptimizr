@@ -37,4 +37,6 @@
 - `createMcpServer(client)` — build the read-only MCP server.
 - `createCollectorClient(config)` — the thin GET-only collector client.
 - `readMcpConfig()` — read `UPTIMIZR_COLLECTOR_URL` + `UPTIMIZR_API_KEY` from the environment.
-- `readTools` — the read-only tool catalog (one entry per query endpoint).
+- `readTools` — the read-only tool catalog (one entry per query endpoint), generated from the
+  `@uptimizr/db` metric registry: 69 tools, each with an input schema, an MCP `outputSchema` and the
+  metric's interpretation notes and caveats in its description (ADR 0051).

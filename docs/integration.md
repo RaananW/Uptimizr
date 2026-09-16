@@ -1256,14 +1256,18 @@ full walkthrough of each store.
 > catalog behind MCP lives in the framework-agnostic
 > [`@uptimizr/agent-core`](../oss/packages/agent-core/README.md) package (one read-only entry per
 > endpoint below, plus a headless provider-adapter interface and tool-calling loop), so the same
-> contract drives MCP and any in-browser or headless agent without duplication (ADR 0050).
+> contract drives MCP and any in-browser or headless agent without duplication (ADR 0050). That
+> catalog is **generated** from the semantic metric registry in
+> [`@uptimizr/db`](../oss/packages/db/README.md) (ADR 0051 §1): every read endpoint with a registry
+> entry is a tool (69 today), each carrying the metric's interpretation notes and caveats and an
+> output schema for its rows. Adding an endpoint without a registry entry fails the build, so the
+> agent surface cannot fall behind this table.
 >
 > Beyond tools, the MCP server exposes capability-discovery **resources** —
 > `uptimizr://capabilities` (a machine-readable descriptor of event types, the tool catalog, and
 > parameter semantics) and `uptimizr://scenes` (the live scene ids) — plus curated **prompts**
 > (`weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`) that drive the existing tools.
-> Recent tools map the funnel (ADR 0038), aggregate desire-line path (ADR 0037),
-> rendering-technology (ADR 0046), and XR spatial-analytics (ADR 0048) endpoints. A Streamable HTTP
+> A Streamable HTTP
 > transport is a deferred, auth-gated follow-up (ADR 0050 §7). See the
 > [MCP guide](https://uptimizr.com/docs/guides/mcp/) for the full resource/prompt/tool reference.
 
