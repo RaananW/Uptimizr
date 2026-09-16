@@ -1,0 +1,36 @@
+{
+  "name": "@uptimizr/agent-eval",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Evaluation harness for the Uptimizr analytics agent — a question bank scored against the seeded parity fixtures through the real collector and the generated read-tool catalog (ADR 0051 §8).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "eval": "tsx src/cli.ts",
+    "derive": "tsx scripts/derive-expectations.ts",
+    "eval:local": "tsx scripts/webllm-eval.ts",
+    "clean": "rimraf -g report.md report.json *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@uptimizr/agent-core": "workspace:*",
+    "@uptimizr/collector-server": "workspace:*",
+    "@uptimizr/db": "workspace:*",
+    "@uptimizr/mcp": "workspace:*",
+    "@uptimizr/schema": "workspace:*",
+    "yaml": "^2.9.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@types/node": "^26.4.1",
+    "fastify": "^5.12.3",
+    "tsx": "^4.23.13",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

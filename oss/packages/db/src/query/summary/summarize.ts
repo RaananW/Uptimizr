@@ -93,12 +93,21 @@ function rangeOf(ctx: SummaryContext): ResultRange {
   return { since: ctx.range?.since ?? null, until: ctx.range?.until ?? null };
 }
 
-/** Applied filters with `format` and anything unset stripped. */
-function filtersOf(ctx: SummaryContext): AppliedFilters {
+/**
+ * Applied filters with `format` and anything unset stripped. Iterates the
+ * metric's **declared** filter and path-parameter ids (a closed registry
+ * allowlist) rather than the keys of the request object, so an unexpected key
+ * can never become a property of the envelope.
+ */
+function filtersOf(metric: MetricDefinition, ctx: SummaryContext): AppliedFilters {
   const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(ctx.filters ?? {})) {
-    if (key === "format" || value === undefined || value === null) continue;
-    out[key] = value;
+  const source = ctx.filters ?? {};
+  const declared = [...metric.filters, ...(metric.endpoint?.pathParams ?? [])];
+  for (const id of declared) {
+    if (id === "format") continue;
+    const value = Object.hasOwn(source, id) ? source[id] : undefined;
+    if (value === undefined || value === null) continue;
+    out[id] = value;
   }
   return out;
 }
@@ -196,7 +205,7 @@ export function tableResult<Row extends ResultRow>(
     meta: {
       metric: definition.id,
       range: rangeOf(ctx),
-      filters: filtersOf(ctx),
+      filters: filtersOf(definition, ctx),
       sampleSize: sampleSizeOf(definition, rows),
       rows: rows.length,
       truncated: isTruncated(definition, rows, ctx),
@@ -221,7 +230,7 @@ function baseOf(
   return {
     metric: metric.id,
     range: rangeOf(ctx),
-    filters: filtersOf(ctx),
+    filters: filtersOf(metric, ctx),
     sampleSize: sampleSizeOf(metric, rows),
     total,
     measure,

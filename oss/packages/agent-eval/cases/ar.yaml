@@ -1,0 +1,25 @@
+# AR object placement: how long it takes, how many tries it costs, and which
+# real-world surfaces people place on (ADR 0048).
+
+- id: ar_placement_effort
+  category: ar
+  question: How hard is it for people to place an object in AR — how many attempts does it take and how long?
+  expectedTools:
+    - [ar_placement_attempts]
+    - [ar_placement_time_to_place]
+  expectedAnswer:
+    numbers:
+      - { value: 2, label: attempts in the harder placement }
+      - { value: 4000, label: time-to-place band in ms }
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: ar_placement_surfaces
+  category: ar
+  question: Which real-world surfaces are people placing objects on, and at what scale?
+  expectedTools:
+    - [ar_placement_surfaces]
+  expectedAnswer:
+    numbers:
+      - { value: 0.5, tolerance: 0.001, label: average scale on the table }
+    phrases: ["floor", "table"]
+    forbiddenPhrases: ["no data"]

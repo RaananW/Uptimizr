@@ -89,9 +89,6 @@ importers:
       '@uptimizr/replay':
         specifier: workspace:*
         version: link:../../oss/packages/replay
-      '@uptimizr/schema':
-        specifier: workspace:*
-        version: link:../../oss/packages/schema
       '@uptimizr/sdk-core':
         specifier: workspace:*
         version: link:../../oss/packages/sdk-core
@@ -365,6 +362,46 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@26.4.1)(happy-dom@20.14.0)(jsdom@30.0.1(canvas@3.2.3))(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+
+  oss/packages/agent-eval:
+    dependencies:
+      '@uptimizr/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
+      '@uptimizr/collector-server':
+        specifier: workspace:*
+        version: link:../../apps/collector-server
+      '@uptimizr/db':
+        specifier: workspace:*
+        version: link:../db
+      '@uptimizr/mcp':
+        specifier: workspace:*
+        version: link:../mcp
+      '@uptimizr/schema':
+        specifier: workspace:*
+        version: link:../schema
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+    devDependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.30.0
+        version: 1.30.0(supports-color@7.2.0)(zod@4.5.4)
+      '@types/node':
+        specifier: ^26.4.1
+        version: 26.4.1
+      fastify:
+        specifier: ^5.12.3
+        version: 5.12.3
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.4.1)(happy-dom@20.14.0)(jsdom@30.0.1(canvas@3.2.3))(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))

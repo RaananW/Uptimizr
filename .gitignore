@@ -57,3 +57,7 @@ oss/apps/collector-server/data/
 
 # Godot import cache of the web-export sample project (examples/godot-web-export)
 examples/godot-web-export/.godot/
+
+# Agent-eval run artefacts (the committed baseline in eval/ is NOT ignored)
+oss/packages/agent-eval/report.md
+oss/packages/agent-eval/report.json

@@ -152,6 +152,37 @@ level of scrutiny. You remain responsible for everything you submit: make sure i
   Babylon adapter, the collector, and replay. (A guided skill exists under `.github/skills`.)
 - **A new 3D engine connector?** Mirror `@uptimizr/babylon` as a sibling package depending only
   on `@uptimizr/sdk-core` + `@uptimizr/schema`.
+- **A new aggregation/metric?** Give it a registry entry in `@uptimizr/db` (the agent tool catalog,
+  OpenAPI and docs are generated from it) **and** an evaluation case — see below.
+
+## Agent evaluation
+
+The analytics agent's read-tool catalog is generated from the metric registry, so every new metric
+becomes a tool an agent can call. `@uptimizr/agent-eval` (private, `oss/packages/agent-eval`)
+measures whether the agent then uses those tools correctly: a bank of ~48 questions in
+`cases/*.yaml`, asked against the seeded parity fixtures through the real collector, scored on tool
+selection, argument correctness and answer accuracy (ADR 0051 §8).
+
+```bash
+pnpm --filter @uptimizr/agent-eval test        # scoring suites, the bank, the coverage rule
+pnpm --filter @uptimizr/agent-eval run eval    # the deterministic run CI gates on — no key needed
+```
+
+Two things to know when you touch the agent surface:
+
+- **A new metric must come with a case.** The coverage test fails when a served metric is neither
+  named by a case's `expectedTools` nor listed in `eval/uncovered.json` with a reason. Derive the
+  expected figures rather than computing them by hand:
+  `pnpm --filter @uptimizr/agent-eval run derive <metric>`.
+- **Expected numbers come from the aggregation, not from you.** The scripted provider answers from
+  what the collector actually returned, so a case whose expectation does not follow from the data
+  fails in CI.
+
+The eval runs on PRs that touch `agent-core`, `agent-eval`, `mcp`, `db/src/query` or
+`react/src/assistant` (`.github/workflows/agent-eval.yml`). A second leg runs a real hosted model
+when the `UPTIMIZR_EVAL_API_KEY` repository secret is configured, and compares the pass rate to the
+committed baseline; without the secret it posts a notice and passes rather than reporting a
+measurement nobody made. See `oss/packages/agent-eval/README.md` for the full picture.
 
 ## Releases & changelog
 

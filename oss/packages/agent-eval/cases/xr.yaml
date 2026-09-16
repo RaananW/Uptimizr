@@ -1,0 +1,66 @@
+# Immersive sessions: input-source mix, locomotion comfort, head rotation,
+# tracking quality and guardian/boundary proximity (ADR 0048).
+
+- id: xr_input_sources
+  category: xr
+  question: In immersive sessions, are people using hands, controllers or gaze?
+  expectedTools:
+    - [xr_sources]
+  expectedAnswer:
+    numbers:
+      - { value: 4, label: gaze interactions }
+      - { value: 2, label: hand interactions }
+    phrases: ["gaze", "hand", "xr-controller"]
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: xr_locomotion_comfort
+  category: xr
+  question: What locomotion style are immersive users on, and are they turning their head fast enough to risk motion sickness?
+  expectedTools:
+    - [xr_locomotion]
+    - [xr_rotation]
+  expectedAnswer:
+    numbers:
+      - { value: 3000, label: continuous locomotion milliseconds }
+      - { value: 1, label: teleports }
+    phrases: ["s3"]
+    forbiddenPhrases: ["no data"]
+
+- id: xr_tracking_quality
+  category: xr
+  question: Did spatial tracking degrade during immersive sessions, and was it the hands or the controllers?
+  expectedTools:
+    - [xr_tracking_quality]
+  expectedAnswer:
+    numbers:
+      - { value: 2000, label: total degraded milliseconds }
+      - { value: 1200, label: hand-degraded milliseconds }
+      - { value: 800, label: controller-degraded milliseconds }
+    phrases: ["s3"]
+    forbiddenPhrases: ["no data"]
+
+- id: xr_boundary_proximity
+  category: xr
+  question: Are people bumping into the play-space boundary, and where?
+  expectedTools:
+    - [xr_boundary_contacts]
+    - [boundary_heatmap_stats]
+  expectedAnswer:
+    numbers:
+      - { value: 900, label: near-boundary milliseconds in the worst session }
+      - { value: 3, label: boundary cells }
+      - { value: 4, label: boundary approaches }
+    forbiddenPhrases: ["no data"]
+
+- id: xr_abandonment
+  category: xr
+  question: Did any immersive session end early, and where in the space was the user when it did?
+  expectedTools:
+    - [xr_abandonment]
+    - [boundary_heatmap]
+  expectedAnswer:
+    numbers:
+      - { value: 18, label: events in the XR session }
+      - { value: 10, label: XR interactions }
+    phrases: ["s3"]
+    forbiddenPhrases: ["no data"]
