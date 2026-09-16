@@ -52,6 +52,24 @@ function get(request: APIRequestContext, path: string, key: string) {
   return request.get(`${COLLECTOR_URL}${path}`, { headers: { "x-api-key": key } });
 }
 
+/**
+ * Open an SSE endpoint and return only its status. Playwright's request context
+ * buffers the whole body, which never arrives on a stream that stays open, so
+ * this uses `fetch` + an `AbortController` to read the response head and hang up.
+ */
+async function sseStatus(url: string): Promise<number> {
+  const controller = new AbortController();
+  try {
+    const res = await fetch(url, {
+      headers: { accept: "text/event-stream" },
+      signal: controller.signal,
+    });
+    return res.status;
+  } finally {
+    controller.abort();
+  }
+}
+
 test("whoami reports each key's capability set", async ({ request }) => {
   const readOnly = await get(request, "/api/v1/whoami", QUERY_ONLY_API_KEY);
   expect(readOnly.status()).toBe(200);
@@ -141,13 +159,17 @@ test("the live per-session follow honours query:raw through the live token", asy
     error: "api key not permitted to read raw session data",
   });
 
-  // The presence feed is aggregate and privacy-safe, so the same token works there.
-  const presence = await request.get(
-    `${COLLECTOR_URL}/api/v1/live/presence?token=${encodeURIComponent(queryToken)}`,
-    { headers: { accept: "text/event-stream" }, timeout: 5_000 },
-  );
-  expect(presence.status()).toBe(200);
-  presence.dispose();
+  // The aggregate presence feed stays open to the same token — the tightening is
+  // scoped to raw per-session data. An SSE response never ends, so read the
+  // status line and abort instead of buffering the body (which `request.get`
+  // would do, and hang on).
+  expect(await sseStatus(`${COLLECTOR_URL}/api/v1/live/presence?token=${queryToken}`)).toBe(200);
+
+  // And a `query:raw` token *can* open the per-session follow.
+  const rawToken = await mint(RAW_API_KEY);
+  expect(
+    await sseStatus(`${COLLECTOR_URL}/api/v1/live/sessions/any-session?token=${rawToken}`),
+  ).toBe(200);
 });
 
 test("an audit row appears after an agent query, and carries no key material", async ({
