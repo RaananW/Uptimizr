@@ -10,7 +10,7 @@
 
 // Type-only: erased under `verbatimModuleSyntax`, so this file keeps no runtime
 // dependency on the registry (and the registry may keep importing this one).
-import type { MetricId } from "./registry.js";
+import type { MetricId } from "@uptimizr/metrics";
 
 /** A parameterized query, ready to hand to a dialect-specific runner. */
 export interface QuerySpec {

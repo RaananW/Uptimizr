@@ -15,7 +15,7 @@ import {
   numericColumnsOfMetric,
   resetCoercionWarnings,
 } from "../query/coerce.js";
-import { getMetric } from "../query/registry.js";
+import { getMetric } from "@uptimizr/metrics";
 
 describe("numericColumns", () => {
   it("finds numbers through nullable, optional and default wrappers", () => {
