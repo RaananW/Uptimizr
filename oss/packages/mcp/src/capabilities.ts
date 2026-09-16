@@ -177,8 +177,9 @@ export function buildCapabilities(): CapabilitiesDescriptor {
         "has that channel disabled or sampled down, the metric is empty or proportional rather " +
         "than exact — say so instead of reporting a zero as a finding.",
       "`tools` lists the registry's served read surface and the request parameters of each " +
-        "underlying endpoint. The authoritative input schema of a registered tool is the one " +
-        "returned by `tools/list`.",
+        "underlying endpoint. It is exactly the set this server registers, because the tool " +
+        "catalog is generated from the same registry (ADR 0051 §1) — the authoritative input " +
+        "and output schemas of a registered tool are still the ones returned by `tools/list`.",
       "Enumerate the concrete scene ids for the `scene` parameter with the uptimizr://scenes " +
         "resource or the list_scenes tool; enumerate sessions with the list_sessions tool.",
       "All time ranges use epoch-millisecond `since`/`until`. Omit both for all-time.",
