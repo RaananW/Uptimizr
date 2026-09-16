@@ -99,8 +99,14 @@ edit. Follow the `work-on-issue` skill and keep four things in lockstep:
 
 1. the **metric registry**, `oss/packages/db/src/query/registry.ts` — the contract (see below),
 2. the Zod querystring in `oss/apps/collector-server/src/routes/query.ts` (validate at the edge),
-3. the table in `docs/integration.md` §"Query (read)" (the published reference), and
+3. the **generated** tables — run `pnpm gen:docs` (after `pnpm build`) to re-render
+   `docs/integration.md` §"Query (read)", the docs-site `api/query` page and the packaged
+   `README`/`AGENTS.md`/`llms.txt` of `@uptimizr/mcp` and `@uptimizr/agent-core`; never hand-edit
+   the text between their `generated:*` markers, and
 4. the matching tool in `oss/packages/mcp` (so agents see it) and `CollectorApi` in the dashboard.
+
+`GET /api/v1/openapi.json` and the MCP `uptimizr://capabilities` resource are generated from the
+registry at runtime, so they need no follow-up edit — but check them when you change a row schema.
 
 Then update this skill if the workflow or a gotcha changed, and run the validation gate
 (`pnpm lint typecheck build test`).
@@ -123,3 +129,5 @@ Two CI gates keep it honest, so treat them as part of the definition of done:
 - **An endpoint's querystring keys must equal its registry `filters`**, asserted by
   `oss/apps/collector-server/src/__tests__/registryRoutes.test.ts`. Adding a query parameter without
   declaring it in the registry fails the build.
+- **The committed docs tables must match the registry**, asserted by `pnpm gen:docs:check` in CI and
+  by `oss/apps/collector-server/src/__tests__/genRegistryDocs.test.ts`. Run `pnpm gen:docs`.

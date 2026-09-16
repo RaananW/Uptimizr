@@ -88,6 +88,14 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # The endpoint/tool tables in docs/integration.md, the docs site and the
+      # packaged README/AGENTS.md/llms.txt are generated from the metric registry
+      # (ADR 0051 §1). This fails when a committed table drifted from the registry;
+      # the fix is `pnpm gen:docs`. It runs after `build` because the generator
+      # imports the registry from @uptimizr/db's built output.
+      - name: Generated registry docs up to date
+        run: pnpm gen:docs:check
+
       - name: Test
         run: pnpm test
 
