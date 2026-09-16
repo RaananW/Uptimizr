@@ -1,5 +1,8 @@
 import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
 import type {
+  AgentAuditEntry,
+  AgentAuditInput,
+  AuditQueryOptions,
   CameraDistanceBucketRow,
   CameraModeOptions,
   ClickGazeRayRow,
@@ -88,11 +91,21 @@ import type {
  */
 export interface CollectorStore {
   /**
-   * Resolve a plaintext API key to its project id and capability, or `null` if
-   * invalid/revoked. The capability scopes what the key may do at the read
-   * boundaries (query + live token exchange).
+   * Resolve a plaintext API key to its project id, key id, capability set and
+   * optional per-key rate limit, or `null` if invalid/revoked. The capability
+   * set scopes what the key may do at the request boundaries (query, raw
+   * session access, metadata writes, live token exchange).
    */
   resolveApiKey(key: string): Promise<ResolvedApiKey | null>;
+  /**
+   * Append one agent-audit row (#309, ADR 0051 §7). Called fire-and-forget after
+   * the response is sent — it must never be relied on to block a request.
+   */
+  recordAudit(entry: AgentAuditInput): Promise<void>;
+  /** Read a project's audit rows, newest first, within an optional range. */
+  listAudit(projectId: string, opts?: AuditQueryOptions): Promise<AgentAuditEntry[]>;
+  /** Delete audit rows older than `cutoffMs` (epoch ms). Idempotent. */
+  pruneAudit(cutoffMs: number): Promise<void>;
   /**
    * Whether a project with this id exists. The ingest route uses it to reject
    * events for unknown projects — the public `projectId` is the ingest credential,

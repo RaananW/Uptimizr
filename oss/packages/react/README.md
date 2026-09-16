@@ -60,6 +60,7 @@ input `source`, …) forwarded to the query API:
 | `ViewDirectionHeatmapPanel`                  | Polar view-direction heatmap (where the camera looked).   |
 | `PerformanceSummaryPanel`                    | FPS summary (samples, avg / p50 / min).                   |
 | `CollectorApi`, response types               | The full typed query client (build custom panels).        |
+| `CollectorClientKind`                        | Caller identity sent as `x-uptimizr-client` (audit log).  |
 | `drawPointerHeatmap`, `drawDirectionHeatmap` | The shared canvas painters, for custom renderers.         |
 | `ossPanelCatalog`                            | The complete, portable OSS panel catalog (ADR 0047).      |
 | `topMeshesPanel`, `worldHeatmapPanel`, …     | Each catalog panel, exported individually to cherry-pick. |

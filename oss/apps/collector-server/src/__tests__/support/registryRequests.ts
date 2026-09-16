@@ -35,6 +35,8 @@ export const TEST_CONFIG: CollectorConfig = {
   trustProxy: false,
   bodyLimit: 1_048_576,
   cspMode: "strict",
+  auditRetentionDays: 30,
+  auditDashboardRequests: false,
 };
 
 /** Fixture scene proxy, so the `scene_representation` resource has a hit. */

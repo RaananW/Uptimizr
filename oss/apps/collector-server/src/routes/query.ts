@@ -16,6 +16,7 @@ import {
 import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
+import { requireCapability } from "../auth.js";
 
 interface Options {
   store: CollectorStore;
@@ -725,31 +726,27 @@ const badRequestResponse = z.object({ error: z.string(), details: z.unknown().op
 
 /**
  * Authenticate a read request with a project API key (`x-api-key`). Returns the
- * resolved project id, or sends a 401 and returns `null`. Reads are always scoped
- * to the authenticated project — any client-supplied project id is ignored.
+ * resolved project id, or sends a 401/403 and returns `null`. Reads are always
+ * scoped to the authenticated project — any client-supplied project id is
+ * ignored — and require a `query`-capable key.
  */
 async function authProject(
   request: FastifyRequest,
   reply: FastifyReply,
   store: CollectorStore,
 ): Promise<string | null> {
-  const key = request.headers["x-api-key"];
-  if (typeof key !== "string" || key.length === 0) {
-    await reply.code(401).send({ error: "missing api key" });
-    return null;
-  }
-  const projectId = await store.resolveApiKey(key);
-  if (!projectId) {
-    await reply.code(401).send({ error: "invalid api key" });
-    return null;
-  }
-  // Read endpoints require a `query`-capable key (ingest-only keys cannot read).
-  if (projectId.capability !== "query") {
-    await reply.code(403).send({ error: "api key not permitted to read" });
-    return null;
-  }
-  return projectId.projectId;
+  const resolved = await requireCapability(request, reply, store, "query");
+  return resolved?.projectId ?? null;
 }
+
+/**
+ * Audit-log query params: an optional epoch-ms range and a bounded row cap.
+ */
+const auditQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  limit: z.coerce.number().int().positive().max(1000).optional(),
+});
 
 /**
  * Query API. All aggregations are computed at query time (v1). Every route is
@@ -771,17 +768,20 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // Four conditions have to hold before anything is touched, and the first of
   // them is the promise that this feature is invisible by default: no `format`,
   // or `format=full`, returns the payload untouched, so the dashboard — which
-  // never sends the parameter — cannot be affected.
+  // never sends the parameter — cannot be affected. The non-metric routes below
+  // (`/whoami`, `/audit`) describe the *calling key* rather than project
+  // telemetry; they are not in `METRIC_BY_PATH`, so the hook passes their
+  // payloads straight through (asserted in `resultFormat.test.ts`).
   app.addHook("preSerialization", async (request, reply, payload: unknown) => {
     if (reply.statusCode !== 200) return payload;
     const format = (request.query as { format?: ResultFormat } | undefined)?.format;
     if (format == null || format === "full") return payload;
     const metric = METRIC_BY_PATH.get(request.routeOptions.url ?? "");
     // Not a registry metric (the raw event stream, which has carried its own
-    // `format=json|ndjson` since long before this), or one of the two **resource**
-    // reads. A resource is a single stored record rather than an aggregation: it
-    // declares no filters, no querystring schema — so a stray `?format=` would
-    // arrive unvalidated — and has nothing to summarise.
+    // `format=json|ndjson` since long before this; `/whoami`; `/audit`), or one
+    // of the two **resource** reads. A resource is a single stored record rather
+    // than an aggregation: it declares no filters, no querystring schema — so a
+    // stray `?format=` would arrive unvalidated — and has nothing to summarise.
     if (metric == null || metric.builder == null) return payload;
 
     // A single-row endpoint (the spatial `stats` routes) still summarises as a
@@ -798,6 +798,38 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     // `null` only comes back for an unknown metric, which `METRIC_BY_PATH`
     // already excluded — fall back to the raw rows rather than fail the request.
     return shaped ?? payload;
+  });
+
+  // --- Key identity + audit (#309, ADR 0051 §7) ----------------------------
+
+  // What is this key allowed to do? Agent clients (and the MCP server) call it
+  // first so they can register only the tools their capabilities permit. It
+  // reports the key's *id*, never the key itself.
+  r.get("/api/v1/whoami", async (req, reply) => {
+    const resolved = await requireCapability(req, reply, store, "query");
+    if (!resolved) return reply;
+    return {
+      projectId: resolved.projectId,
+      keyId: resolved.keyId,
+      capabilities: resolved.capabilities,
+      label: resolved.label,
+      rateLimit: resolved.rateLimit ?? {
+        max: config.rateLimitMax,
+        windowMs: config.rateLimitWindowMs,
+      },
+      /** Whether {@link rateLimit} is the key's own budget or the collector default. */
+      rateLimitSource: resolved.rateLimit ? "key" : "default",
+    };
+  });
+
+  // The project's agent-audit trail, newest first. Reading it needs the ordinary
+  // `query` capability — it is the project owner's window onto what every agent
+  // key has asked for. Rows carry no key material and bounded, redacted params.
+  r.get("/api/v1/audit", { schema: { querystring: auditQueryParams } }, async (req, reply) => {
+    const projectId = await authProject(req, reply, store);
+    if (!projectId) return reply;
+    const rows = await store.listAudit(projectId, req.query);
+    return rows.map((row) => ({ ...row, at: row.at.toISOString() }));
   });
 
   r.get(
@@ -2120,11 +2152,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       },
     },
     async (req, reply) => {
-      const projectId = await authProject(req, reply, store);
-      if (!projectId) return reply;
+      // Raw per-session data needs BOTH halves of the gate (ADR 0051 §7):
+      // retention enabled on the collector AND `query:raw` on the key. A plain
+      // `query` key is authenticated (so an unknown key still gets a 401) but
+      // refused the raw stream even when retention is on.
+      const resolved = await requireCapability(req, reply, store, "query");
+      if (!resolved) return reply;
       if (!config.enableRawSessionRetention) {
         return reply.code(403).send({ error: "raw session retention is disabled" });
       }
+      if (!resolved.capabilities.includes("query:raw")) {
+        return reply.code(403).send({ error: "api key not permitted to read raw session data" });
+      }
+      const projectId = resolved.projectId;
       const accept = req.headers.accept ?? "";
       const wantsNdjson = req.query.format === "ndjson" || accept.includes("application/x-ndjson");
       if (!wantsNdjson) {

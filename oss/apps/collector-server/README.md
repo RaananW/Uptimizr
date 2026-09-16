@@ -25,7 +25,10 @@ npx -p @uptimizr/collector-server uptimizr serve
 and this server's URL (the **`endpoint`**) to your client SDK (e.g.
 `@uptimizr/babylon`); use the **API key** (`x-api-key`) for the query routes /
 dashboard. Mint more projects later with
-`npx -p @uptimizr/collector-server uptimizr new-project "<name>"`.
+`npx -p @uptimizr/collector-server uptimizr new-project "<name>"`, or add a key
+to an existing project with
+`npx -p @uptimizr/collector-server uptimizr new-key <projectId> [--capabilities …] [--label …]`
+— see [API keys and capabilities](#api-keys-and-capabilities).
 
 `init`, `new-project` and `migrate` target the store selected by
 `COLLECTOR_STORE`, read through the same connection variables `serve` uses — so
@@ -139,16 +142,24 @@ the project the API key resolves to.
   `/xr/sources`, `/xr/abandonment`, `/xr/locomotion`.
 - Scene representations: `PUT /api/v1/scenes/:sceneId/representation`,
   `GET /api/v1/scenes/:sceneId/representation`.
-- `GET /api/v1/sessions/:id/events` — ordered replay timeline, **gated by**
-  `ENABLE_RAW_SESSION_RETENTION` (returns `403` when disabled); supports buffered
-  JSON or NDJSON streaming (`Accept: application/x-ndjson` / `?format=ndjson`).
+- `GET /api/v1/sessions/:id/events` — ordered replay timeline. Raw per-session
+  data, so it is **gated twice**: `ENABLE_RAW_SESSION_RETENTION` must be on
+  **and** the key must hold `query:raw` (`403` otherwise). Supports buffered JSON
+  or NDJSON streaming (`Accept: application/x-ndjson` / `?format=ndjson`).
+- Key identity + audit: `GET /api/v1/whoami` (the calling key's project, key id,
+  capabilities, label and effective rate limit) and `GET /api/v1/audit`
+  (`since`/`until`/`limit`) — see
+  [API keys and capabilities](#api-keys-and-capabilities).
 
 Live endpoints:
 
-- `POST /api/v1/live/token` — exchange a query API key for a short-lived live token.
+- `POST /api/v1/live/token` — exchange a query API key for a short-lived live
+  token. The key's capability set is carried inside the signed token, so the
+  per-session follow can enforce `query:raw` without a header `EventSource`
+  cannot send.
 - `GET /api/v1/live/presence`, `/live/stream`, `/live/sessions/:id` — SSE streams
-  authenticated with `?token=...`; per-session live follow is also gated by raw
-  retention.
+  authenticated with `?token=...`; the per-session follow is gated by raw
+  retention **and** `query:raw`, exactly like the replay timeline.
 
 Common query params include `since`, `until` (epoch ms), `bins`, `limit`, `scene`,
 `session`, `cameraMode`, `source`, and spatial `cellSize` / `region` where supported.
@@ -182,6 +193,45 @@ if `VISITOR_HASH_SECRET` is missing.
 | `GET /health`                             | None               | Liveness probe.                                                                                                                                         |
 | `GET /api/v1/openapi.json`                | None               | API documentation, not data — a client needs it before it has a key. Rate-limited like every other route.                                               |
 
+### API keys and capabilities
+
+A key carries a **set of capabilities** (ADR 0051 §7), not a single role:
+
+| Capability  | Grants                                                                                                    |
+| ----------- | --------------------------------------------------------------------------------------------------------- |
+| `query`     | The aggregate analytics API, the scene registry, the live token exchange and `GET /api/v1/audit`.         |
+| `query:raw` | Raw per-session streams: `GET /api/v1/sessions/:id/events` and `GET /api/v1/live/sessions/:id`.           |
+| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events.   |
+| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys. |
+
+Keys default to `query`, including those from `uptimizr init` / `uptimizr new-project`:
+
+```bash
+uptimizr new-key <projectId> --capabilities query,annotate \
+  --label "weekly-report-agent" --rate-limit-max 120 --rate-limit-window-ms 60000
+```
+
+> **Breaking change.** `query:raw` is new, and the raw per-session endpoints now require **both**
+> `ENABLE_RAW_SESSION_RETENTION` **and** `query:raw` — previously retention alone was enough for
+> any `query` key. Existing keys keep working for every aggregate endpoint; a key that drives
+> session replay or live-follow must be re-minted with `--capabilities query,query:raw`.
+
+`--rate-limit-max` / `--rate-limit-window-ms` give a key its own request budget, bucketed on the
+key id rather than the client IP; keys without one fall back to `COLLECTOR_RATE_LIMIT_*`.
+Ingestion keeps its separate `COLLECTOR_INGEST_RATE_LIMIT_*` budget.
+
+### Agent audit log
+
+Every authenticated request made with a key that is not the dashboard's own session is recorded
+(`keyId`, `surface`, route pattern, bounded+redacted `params`, `rowCount`, `durationMs`,
+`status`), readable at `GET /api/v1/audit` with any `query` key. Refusals are recorded too. A key
+never appears in a row — the subject is the key's **id** — and `params` drops credential-shaped
+fields and is capped at 512 bytes. Writes happen after the response is flushed, so the audit log
+can never block or fail a request. "The dashboard's own session" is a request carrying
+`x-uptimizr-client: dashboard` (a volume filter, not a security boundary — set
+`AUDIT_DASHBOARD_REQUESTS=1` to record everything). Rows expire after `AUDIT_RETENTION_DAYS`
+(default `30`; `0` keeps them forever).
+
 ### Threat model for keyless ingestion
 
 Because `POST /api/v1/collect` accepts unauthenticated input, every request is treated as hostile:
@@ -211,7 +261,10 @@ Environment-driven (see [`.env.example`](../../../.env.example)):
   `ENABLE_RAW_SESSION_RETENTION`, `LIVE_TOKEN_SECRET`, `LIVE_TOKEN_TTL_MS`,
   `LIVE_WINDOW_MS`, `LIVE_MAX_CONNECTIONS`, `LIVE_PRESENCE_INTERVAL_MS`.
 - Rate limits: `COLLECTOR_RATE_LIMIT_MAX`, `COLLECTOR_RATE_LIMIT_WINDOW_MS`,
-  `COLLECTOR_INGEST_RATE_LIMIT_MAX`, `COLLECTOR_INGEST_RATE_LIMIT_WINDOW_MS`.
+  `COLLECTOR_INGEST_RATE_LIMIT_MAX`, `COLLECTOR_INGEST_RATE_LIMIT_WINDOW_MS`
+  (a key's own budget overrides the first pair).
+- Agent audit: `AUDIT_RETENTION_DAYS` (default `30`, `0` = keep forever),
+  `AUDIT_DASHBOARD_REQUESTS` (default off).
 - All-in-one dashboard: `COLLECTOR_DASHBOARD_DIR` (optional; see
   [above](#all-in-one-serve-the-dashboard-too)), `COLLECTOR_CSP` (`strict` or `off`).
 

@@ -142,4 +142,15 @@ through `trackScene`; reach for the custom-client path when you need it.
 No cookies, no persistent client id; the `sessionId` is in-memory only. Never put PII in `meta`,
 `track` props, or `user` (`user.id` must be pseudonymous/hashed). Per-session raw retention
 (needed for [replay](/docs/guides/replay/)) is opt-in on the collector via
-`ENABLE_RAW_SESSION_RETENTION=true`.
+`ENABLE_RAW_SESSION_RETENTION=true`, **and** reading a raw stream additionally requires an API key
+holding the `query:raw` [capability](/docs/deploy/collector/#api-keys-and-capabilities) — a plain
+`query` key reads aggregates only.
+
+## Collector-side keys, limits and auditing
+
+Beyond the SDK options above, the collector scopes what a key may do:
+[capabilities](/docs/deploy/collector/#api-keys-and-capabilities) (`query`, `query:raw`,
+`annotate`, `ingest`), an optional per-key request budget, `GET /api/v1/whoami` for a key to
+discover its own scope, and an [agent audit log](/docs/deploy/collector/#agent-audit-log) with
+`AUDIT_RETENTION_DAYS`. See the [self-hosting guide](/docs/deploy/collector/) for the environment
+variables and the `uptimizr new-key` CLI.

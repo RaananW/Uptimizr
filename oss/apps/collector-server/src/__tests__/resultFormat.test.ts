@@ -49,6 +49,14 @@ import {
 const API_KEY = "result-format-key";
 
 /**
+ * Store methods that are **not** on the request path and must never land in the
+ * sink. The agent audit log (#309) writes from a fire-and-forget `onResponse`
+ * hook and the retention sweep runs on a timer, so either could resolve after
+ * the handler did and overwrite the value the assertions are about to read.
+ */
+const OFF_REQUEST_PATH = new Set(["recordAudit", "pruneAudit"]);
+
+/**
  * SHA-256 of each endpoint's canonicalised response body over the parity
  * fixtures, recorded on `feat/store-edge-coercion` — the commit this change is
  * stacked on, before `format` existed.
@@ -190,6 +198,10 @@ describe("result format envelopes", () => {
       get(target, property, receiver) {
         const value = Reflect.get(target, property, receiver) as unknown;
         if (typeof value !== "function") return value;
+        if (typeof property === "string" && OFF_REQUEST_PATH.has(property)) {
+          return (...args: unknown[]): unknown =>
+            (value as (...a: unknown[]) => unknown).apply(target, args);
+        }
         return async (...args: unknown[]) => {
           const result: unknown = await (value as (...a: unknown[]) => unknown).apply(target, args);
           sink.last = result;
@@ -200,7 +212,15 @@ describe("result format envelopes", () => {
     const store: CollectorStore = {
       ...recording,
       resolveApiKey: async (key) =>
-        key === API_KEY ? { projectId: PARITY_PROJECT_ID, capability: "query" } : null,
+        key === API_KEY
+          ? {
+              projectId: PARITY_PROJECT_ID,
+              keyId: "result-format-key-id",
+              capabilities: ["query"],
+              label: null,
+              rateLimit: null,
+            }
+          : null,
     };
     app = await buildApp({ store, config });
   });
@@ -390,5 +410,39 @@ describe("result format envelopes", () => {
     // Raw retention is off in the test config, so this is a 403 — the point is
     // that the parameter was accepted rather than rejected as an envelope name.
     expect(response.statusCode).toBe(403);
+  });
+
+  it("leaves the key-identity routes untouched by the envelope hook", async () => {
+    // `/whoami` and `/audit` describe the **calling key** and its activity, not
+    // the project's telemetry (#309, ADR 0051 §5/§7). They are in the collector's
+    // `ROUTES_WITHOUT_METRICS` list, so `METRIC_BY_PATH` misses them and the
+    // `preSerialization` hook must hand their payloads back unchanged — even when
+    // a caller sends `format=` at them.
+    const whoami = await app.inject({
+      method: "GET",
+      url: "/api/v1/whoami?format=summary",
+      headers: { "x-api-key": API_KEY },
+    });
+    expect(whoami.statusCode, whoami.body.slice(0, 200)).toBe(200);
+    const identity = whoami.json() as Record<string, unknown>;
+    expect(identity).toMatchObject({
+      projectId: PARITY_PROJECT_ID,
+      keyId: "result-format-key-id",
+      capabilities: ["query"],
+    });
+    for (const envelopeKey of ["meta", "rows", "reading", "kind", "top", "clusters"]) {
+      expect(identity, `whoami carries an envelope key: ${envelopeKey}`).not.toHaveProperty(
+        envelopeKey,
+      );
+    }
+
+    const audit = await app.inject({
+      method: "GET",
+      url: "/api/v1/audit?format=table",
+      headers: { "x-api-key": API_KEY },
+    });
+    expect(audit.statusCode, audit.body.slice(0, 200)).toBe(200);
+    // A bare array, never a `{ meta, rows }` envelope.
+    expect(Array.isArray(audit.json())).toBe(true);
   });
 });

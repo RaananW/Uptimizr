@@ -4,7 +4,8 @@ import { z } from "zod";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
 import type { LiveBus } from "../liveBus.js";
-import { mintLiveToken, verifyLiveToken } from "../liveToken.js";
+import { mintLiveToken, verifyLiveToken, type LiveTokenClaims } from "../liveToken.js";
+import { requireCapability } from "../auth.js";
 
 interface Options {
   store: CollectorStore;
@@ -20,25 +21,27 @@ const streamQuery = tokenQuery.extend({
 });
 
 /**
- * Resolve the project for a live SSE request from a `?token=` (ADR 0032 §7).
+ * Resolve the claims for a live SSE request from a `?token=` (ADR 0032 §7).
  * Sends a 401 and returns `null` when the token is missing/invalid/expired.
+ * The claims carry the minting key's capability set, so the per-session follow
+ * can enforce `query:raw` even though `EventSource` cannot send `x-api-key`.
  */
 function authLiveToken(
   request: FastifyRequest<{ Querystring: { token?: string } }>,
   reply: FastifyReply,
   config: CollectorConfig,
-): string | null {
+): LiveTokenClaims | null {
   const token = request.query.token;
   if (!token) {
     void reply.code(401).send({ error: "missing live token" });
     return null;
   }
-  const projectId = verifyLiveToken(token, config.liveTokenSecret);
-  if (!projectId) {
+  const claims = verifyLiveToken(token, config.liveTokenSecret);
+  if (!claims) {
     void reply.code(401).send({ error: "invalid or expired live token" });
     return null;
   }
-  return projectId;
+  return claims;
 }
 
 /**
@@ -106,21 +109,15 @@ export const liveRoutes: FastifyPluginAsync<Options> = async (app, { store, conf
   }
 
   // Server-to-server: exchange an API key for a short-lived live token (ADR §7).
+  // The live feed is a read surface, so a `query`-capable key is required; the
+  // key's full capability set rides along in the token so the per-session follow
+  // below can enforce `query:raw` without the header `EventSource` cannot send.
   r.post("/api/v1/live/token", async (req, reply) => {
-    const key = req.headers["x-api-key"];
-    if (typeof key !== "string" || key.length === 0) {
-      return reply.code(401).send({ error: "missing api key" });
-    }
-    const projectId = await store.resolveApiKey(key);
-    if (!projectId) {
-      return reply.code(401).send({ error: "invalid api key" });
-    }
-    // The live feed is a read surface — require a `query`-capable key.
-    if (projectId.capability !== "query") {
-      return reply.code(403).send({ error: "api key not permitted to read" });
-    }
+    const resolved = await requireCapability(req, reply, store, "query");
+    if (!resolved) return reply;
     const { token, expiresAt } = mintLiveToken(
-      projectId.projectId,
+      resolved.projectId,
+      resolved.capabilities,
       config.liveTokenSecret,
       config.liveTokenTtlMs,
     );
@@ -130,8 +127,9 @@ export const liveRoutes: FastifyPluginAsync<Options> = async (app, { store, conf
   // Aggregate presence: pushes a snapshot immediately, then on an interval that
   // doubles as the heartbeat. Privacy-safe → not gated by raw retention (ADR §3a).
   r.get("/api/v1/live/presence", { schema: { querystring: tokenQuery } }, (req, reply) => {
-    const projectId = authLiveToken(req, reply, config);
-    if (!projectId) return;
+    const claims = authLiveToken(req, reply, config);
+    if (!claims) return;
+    const projectId = claims.projectId;
     if (!acquireSlot(reply)) return;
 
     const { send } = openSse(req, reply, config);
@@ -149,8 +147,9 @@ export const liveRoutes: FastifyPluginAsync<Options> = async (app, { store, conf
   // the dashboard's in-place panel/feed updates (ADR §3). Payloads carry no more
   // than the aggregate read API already exposes unless raw retention is on.
   r.get("/api/v1/live/stream", { schema: { querystring: streamQuery } }, (req, reply) => {
-    const projectId = authLiveToken(req, reply, config);
-    if (!projectId) return;
+    const claims = authLiveToken(req, reply, config);
+    if (!claims) return;
+    const projectId = claims.projectId;
     if (!acquireSlot(reply)) return;
 
     const types = req.query.types
@@ -178,17 +177,23 @@ export const liveRoutes: FastifyPluginAsync<Options> = async (app, { store, conf
     });
   });
 
-  // Per-session live-follow tail for live replay. Gated by raw-session retention,
-  // identical to historical replay (ADR 0003/0006). Sends connect-time backfill
-  // from the bounded ring, then live events.
+  // Per-session live-follow tail for live replay. Raw per-session data, so it
+  // needs BOTH halves of the gate (ADR 0003 / ADR 0051 §7): raw-session
+  // retention enabled on the collector AND `query:raw` on the key that minted
+  // the token — identical to the historical replay timeline.
   r.get(
     "/api/v1/live/sessions/:id",
     { schema: { params: z.object({ id: z.string().min(1).max(128) }), querystring: tokenQuery } },
     (req, reply) => {
-      const projectId = authLiveToken(req, reply, config);
-      if (!projectId) return;
+      const claims = authLiveToken(req, reply, config);
+      if (!claims) return;
+      const projectId = claims.projectId;
       if (!config.enableRawSessionRetention) {
         void reply.code(403).send({ error: "raw session retention is disabled" });
+        return;
+      }
+      if (!claims.capabilities.includes("query:raw")) {
+        void reply.code(403).send({ error: "api key not permitted to read raw session data" });
         return;
       }
       if (!acquireSlot(reply)) return;

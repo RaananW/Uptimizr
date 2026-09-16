@@ -1,6 +1,6 @@
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
-import rateLimit from "@fastify/rate-limit";
+import rateLimit, { normalizeIP } from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
 import {
@@ -11,6 +11,8 @@ import {
 import type { CollectorConfig } from "./config.js";
 import type { CollectorStore } from "./store.js";
 import { createLiveBus, type LiveBus } from "./liveBus.js";
+import { attachApiKey } from "./auth.js";
+import { registerAuditHooks, startAuditRetention } from "./audit.js";
 import { buildDashboardCsp } from "./csp.js";
 import { collectRoutes } from "./routes/collect.js";
 import { liveRoutes } from "./routes/live.js";
@@ -98,10 +100,34 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     // satisfies the preflight that sendBeacon forces.
     credentials: true,
   });
-  await app.register(rateLimit, {
-    max: config.rateLimitMax,
-    timeWindow: config.rateLimitWindowMs,
+  // Resolve `x-api-key` once, before the rate limiter runs, so (a) a key with
+  // its own budget is throttled per key rather than per client IP and (b) the
+  // handlers and the audit hook reuse one metadata lookup per request (#309).
+  // Instance-level `onRequest` hooks run before the route-level hook the
+  // rate-limit plugin installs, so registration order here is load-bearing.
+  app.decorateRequest("resolvedKey", null);
+  app.decorateRequest("auditRowCount", null);
+  app.addHook("onRequest", async (request) => {
+    await attachApiKey(request, store);
   });
+
+  await app.register(rateLimit, {
+    // A key carrying its own `rate_limit_max` / `rate_limit_window_ms` is
+    // bucketed on the key id with those values; everything else (including
+    // keyless ingest) keeps the global per-client-IP budget.
+    max: (request) => request.resolvedKey?.rateLimit?.max ?? config.rateLimitMax,
+    timeWindow: (request) => request.resolvedKey?.rateLimit?.windowMs ?? config.rateLimitWindowMs,
+    // `normalizeIP` is exactly what the plugin's own default key generator uses,
+    // so requests without a per-key budget keep their existing IPv6-aware bucket.
+    keyGenerator: (request) =>
+      request.resolvedKey?.rateLimit ? `key:${request.resolvedKey.keyId}` : normalizeIP(request.ip),
+  });
+
+  // Audit every authenticated, non-dashboard request (ADR 0051 §7). Registered
+  // after the rate limiter so a throttled request is still recorded.
+  registerAuditHooks(app, store, config);
+  const stopAuditRetention = startAuditRetention(app, store, config);
+  app.addHook("onClose", async () => stopAuditRetention());
 
   // Record every route's Zod schemas as they are registered, so the generated
   // OpenAPI document describes each parameter with the *same* schema that

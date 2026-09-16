@@ -51,6 +51,19 @@ export interface CollectorConfig {
   /** Content-Security-Policy for the bundled dashboard: `strict` (default) or `off`. */
   cspMode: "strict" | "off";
   /**
+   * How long agent-audit rows are kept, in days (ADR 0051 §7). A periodic,
+   * idempotent delete drops anything older. `0` disables the sweep and keeps
+   * rows indefinitely.
+   */
+  auditRetentionDays: number;
+  /**
+   * Also audit the dashboard's own requests. Off by default: the dashboard
+   * identifies itself with `x-uptimizr-client: dashboard` and its panel queries
+   * would otherwise drown the log the feature exists to make readable. Turn it
+   * on to audit every authenticated request without exception.
+   */
+  auditDashboardRequests: boolean;
+  /**
    * Absolute path to a pre-built static dashboard (`out/`) to serve as an
    * all-in-one bundle. Unset (the default) keeps the collector headless.
    */
@@ -124,6 +137,8 @@ export function loadConfig(env: Env = process.env): CollectorConfig {
     trustProxy: parseTrustProxy(env.COLLECTOR_TRUST_PROXY),
     bodyLimit: Number(env.COLLECTOR_BODY_LIMIT ?? 1_048_576),
     cspMode: env.COLLECTOR_CSP === "off" ? "off" : "strict",
+    auditRetentionDays: Math.max(0, Number(env.AUDIT_RETENTION_DAYS ?? 30) || 0),
+    auditDashboardRequests: bool(env.AUDIT_DASHBOARD_REQUESTS),
     dashboardDir: env.COLLECTOR_DASHBOARD_DIR ? resolve(env.COLLECTOR_DASHBOARD_DIR) : undefined,
   };
 }

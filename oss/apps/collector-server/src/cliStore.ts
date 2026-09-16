@@ -4,6 +4,8 @@ import {
   duckdbCreateProject,
   migrateDuckdb,
   readDbSettings,
+  type ApiKeyRecord,
+  type CreateApiKeyOptions,
 } from "@uptimizr/db";
 import {
   createApiKey as chCreateApiKey,
@@ -44,8 +46,14 @@ export type CliStoreKind = (typeof CLI_STORES)[number];
  */
 export interface CliStore {
   createProject(name: string): Promise<{ id: string; name: string }>;
-  /** Issue a query-capable API key; the plaintext is returned exactly once. */
-  createApiKey(projectId: string): Promise<{ key: string }>;
+  /**
+   * Issue an API key; the plaintext is returned exactly once. Defaults to the
+   * `query` (read-only) capability when no options are given.
+   */
+  createApiKey(
+    projectId: string,
+    options?: CreateApiKeyOptions,
+  ): Promise<{ key: string; record: ApiKeyRecord }>;
   close(): Promise<void>;
 }
 
@@ -133,7 +141,7 @@ export async function openCliStore(env: NodeJS.ProcessEnv = process.env): Promis
       await migrateDuckdb(db);
       return {
         createProject: (name) => duckdbCreateProject(db, name),
-        createApiKey: (projectId) => duckdbCreateApiKey(db, projectId),
+        createApiKey: (projectId, options) => duckdbCreateApiKey(db, projectId, options),
         close: () => db.close(),
       };
     }
@@ -142,7 +150,7 @@ export async function openCliStore(env: NodeJS.ProcessEnv = process.env): Promis
       await migratePostgres(pgc, settings.postgres);
       return {
         createProject: (name) => pgCreateProject(pgc, name),
-        createApiKey: (projectId) => pgCreateApiKey(pgc, projectId),
+        createApiKey: (projectId, options) => pgCreateApiKey(pgc, projectId, options),
         close: () => pgc.close(),
       };
     }
@@ -153,7 +161,7 @@ export async function openCliStore(env: NodeJS.ProcessEnv = process.env): Promis
       await migrateMssql(msc);
       return {
         createProject: (name) => msCreateProject(msc, name),
-        createApiKey: (projectId) => msCreateApiKey(msc, projectId),
+        createApiKey: (projectId, options) => msCreateApiKey(msc, projectId, options),
         close: () => msc.close(),
       };
     }
@@ -162,7 +170,7 @@ export async function openCliStore(env: NodeJS.ProcessEnv = process.env): Promis
       await migrateClickhouse(ch, settings.clickhouse);
       return {
         createProject: (name) => chCreateProject(ch, name),
-        createApiKey: (projectId) => chCreateApiKey(ch, projectId),
+        createApiKey: (projectId, options) => chCreateApiKey(ch, projectId, options),
         close: () => ch.close(),
       };
     }

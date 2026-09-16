@@ -140,6 +140,9 @@ import {
   getSessionMeta as pgGetSessionMeta,
   getProject as pgGetProject,
   resolveApiKey as pgResolveApiKey,
+  recordAudit as pgRecordAudit,
+  listAudit as pgListAudit,
+  pruneAudit as pgPruneAudit,
   upsertSceneProxy as pgUpsertSceneProxy,
   getSceneRepresentation as pgGetSceneRepresentation,
   listSceneRepresentations as pgListSceneRepresentations,
@@ -172,6 +175,9 @@ export async function createPostgresStore(): Promise<CollectorStore> {
   const d = postgresDialect;
   return {
     resolveApiKey: (key) => pgResolveApiKey(pgc, key),
+    recordAudit: (entry) => pgRecordAudit(pgc, entry),
+    listAudit: (projectId, opts) => pgListAudit(pgc, projectId, opts),
+    pruneAudit: (cutoffMs) => pgPruneAudit(pgc, cutoffMs),
     projectExists: async (projectId) => (await pgGetProject(pgc, projectId)) !== null,
     insertEvents: (events) => pgInsertEvents(pgc, [...events]),
     listSessions: (projectId, opts = {}) =>

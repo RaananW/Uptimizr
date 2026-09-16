@@ -29,10 +29,33 @@ export type { NodeSampleRow } from "./events.js";
 
 // --- Engine-neutral metadata helpers and types (ADR 0020) ---
 export { hashApiKey, apiKeyPrefix, generateApiKey } from "./metadata.js";
+// Agent-scoped key capabilities, per-key rate limits and the audit log
+// (#309, ADR 0051 §7).
+export {
+  API_KEY_CAPABILITIES,
+  AUDIT_PARAMS_MAX_LENGTH,
+  AUDIT_TOOL_MAX_LENGTH,
+  DEFAULT_API_KEY_CAPABILITIES,
+  clampAuditTool,
+  hasCapability,
+  isApiKeyCapability,
+  parseApiKeyCapabilities,
+  parseCapabilityList,
+  serializeApiKeyCapabilities,
+  serializeAuditParams,
+  toApiKeyColumns,
+  toApiKeyRateLimit,
+} from "./metadata.js";
 export type {
   Project,
+  AgentAuditEntry,
+  AgentAuditInput,
   ApiKeyRecord,
   ApiKeyCapability,
+  ApiKeyRateLimit,
+  AuditQueryOptions,
+  AuditSurface,
+  CreateApiKeyOptions,
   ResolvedApiKey,
   SceneRepresentation,
   SceneRepresentationKind,
@@ -255,6 +278,11 @@ export {
   createApiKey as duckdbCreateApiKey,
   resolveApiKey as duckdbResolveApiKey,
 } from "./duckdb/projects.js";
+export {
+  recordAudit as duckdbRecordAudit,
+  listAudit as duckdbListAudit,
+  pruneAudit as duckdbPruneAudit,
+} from "./duckdb/audit.js";
 export {
   upsertSceneProxy as duckdbUpsertSceneProxy,
   getSceneRepresentation as duckdbGetSceneRepresentation,

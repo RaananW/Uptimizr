@@ -9,7 +9,9 @@ The OSS storage contracts plus the single-file **DuckDB** store (ADR 0020):
 
 - **DuckDB** — one persisted `.duckdb` file holding both events and metadata. A wide `events`
   table (hot fields promoted to columns; the full event preserved as JSON in `payload` so reads
-  stay replay-complete) plus `projects` / `api_keys` (stored only as SHA-256 hashes).
+  stay replay-complete) plus `projects` / `api_keys` (stored only as SHA-256 hashes, each key
+  carrying a capability set, an optional label and an optional per-key rate limit) and the
+  `agent_audit` trail.
 - **Engine-neutral contracts** — the dialect-agnostic query layer (`buildX` + `Dialect`), the
   neutral event-row mapper (`toEventRow`, `formatUtcTimestamp`), and the metadata types
   (`Project`, `ApiKeyRecord`, `SceneRepresentation*`). An optional, separately-licensed
@@ -68,6 +70,16 @@ every tool (collector + CLIs) shares one canonical file regardless of cwd.
   fails without one.
 - Validate events upstream at the collector boundary; this layer assumes valid input.
 - API keys are only ever stored as SHA-256 hashes — never persist raw keys.
+- **Key capabilities are a set, not a role** (ADR 0051 §7): `ingest`, `query`, `annotate`,
+  `query:raw`, persisted as a canonical comma-separated token list in `api_keys.capabilities`.
+  Always read it with `parseApiKeyCapabilities(capabilities, capability)` so a key issued before
+  the set existed still resolves via the legacy singular column; always write it with
+  `toApiKeyColumns()` so ordering, validation and the per-key rate-limit columns stay consistent
+  across all four engines. `query:raw` is only ever honoured by a collector running with
+  `ENABLE_RAW_SESSION_RETENTION` (ADR 0003).
+- **The audit log records key ids, never keys.** `agent_audit` rows carry `key_id`; serialize
+  parameters with `serializeAuditParams()` (drops credential-shaped keys, bounds the document)
+  before they reach a store, and clamp the endpoint with `clampAuditTool()`.
 - **Single-writer store.** DuckDB allows only one read-write process per file; assume a single
   collector per `.duckdb` file. Back up = copy the file. Multi-writer / horizontal scale is the
   optional ClickHouse scale tier, not this package.

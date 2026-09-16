@@ -42,6 +42,14 @@ const API_KEY = "response-schema-key";
 const EMPTY_PROJECT_ID = "00000000-0000-4000-8000-000000000000";
 
 /**
+ * Store methods that are **not** on the request path and must never land in the
+ * sink. The agent audit log (#309) writes from a fire-and-forget `onResponse`
+ * hook and the retention sweep runs on a timer, so either could resolve after
+ * the handler did and overwrite the value the assertions are about to read.
+ */
+const OFF_REQUEST_PATH = new Set(["recordAudit", "pruneAudit"]);
+
+/**
  * Wrap a store so every method's return value is recorded. The recorded value is
  * what the handler saw; the response body is what survived serialisation.
  */
@@ -50,6 +58,10 @@ function recordingStore(store: CollectorStore, sink: { last: unknown }): Collect
     get(target, property, receiver) {
       const value = Reflect.get(target, property, receiver) as unknown;
       if (typeof value !== "function") return value;
+      if (typeof property === "string" && OFF_REQUEST_PATH.has(property)) {
+        return (...args: unknown[]): unknown =>
+          (value as (...a: unknown[]) => unknown).apply(target, args);
+      }
       return async (...args: unknown[]) => {
         const result: unknown = await (value as (...a: unknown[]) => unknown).apply(target, args);
         sink.last = result;
@@ -140,7 +152,16 @@ describe.each(SCENARIOS)("query response schemas — $label", (scenario) => {
     const { store: base, projectId } = await scenario.make();
     const store: CollectorStore = {
       ...recordingStore(base, sink),
-      resolveApiKey: async (key) => (key === API_KEY ? { projectId, capability: "query" } : null),
+      resolveApiKey: async (key) =>
+        key === API_KEY
+          ? {
+              projectId,
+              keyId: "query-response-schemas-key-id",
+              capabilities: ["query"],
+              label: null,
+              rateLimit: null,
+            }
+          : null,
     };
     app = await buildApp({ store, config });
   });

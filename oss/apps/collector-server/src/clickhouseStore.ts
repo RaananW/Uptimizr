@@ -140,6 +140,9 @@ import {
   getSessionMeta as chGetSessionMeta,
   getProject as chGetProject,
   resolveApiKey as chResolveApiKey,
+  recordAudit as chRecordAudit,
+  listAudit as chListAudit,
+  pruneAudit as chPruneAudit,
   upsertSceneProxy as chUpsertSceneProxy,
   getSceneRepresentation as chGetSceneRepresentation,
   listSceneRepresentations as chListSceneRepresentations,
@@ -169,6 +172,9 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
   const d = clickhouseDialect;
   return {
     resolveApiKey: (key) => chResolveApiKey(ch, key),
+    recordAudit: (entry) => chRecordAudit(ch, entry),
+    listAudit: (projectId, opts) => chListAudit(ch, projectId, opts),
+    pruneAudit: (cutoffMs) => chPruneAudit(ch, cutoffMs),
     projectExists: async (projectId) => (await chGetProject(ch, projectId)) !== null,
     insertEvents: (events) => chInsertEvents(ch, [...events]),
     listSessions: (projectId, opts = {}) =>

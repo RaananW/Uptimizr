@@ -1,5 +1,11 @@
+import { randomUUID } from "node:crypto";
 import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
-import type { ApiKeyCapability, SceneRepresentation, SessionMeta } from "@uptimizr/db";
+import type {
+  AgentAuditEntry,
+  ApiKeyCapability,
+  SceneRepresentation,
+  SessionMeta,
+} from "@uptimizr/db";
 import type { CollectorStore } from "./store.js";
 
 /** A `session_start` event narrowed to the descriptor fields we surface as meta. */
@@ -21,8 +27,13 @@ export interface MemoryStoreOptions {
   projectId: string;
   /** The plaintext API key that resolves to {@link projectId}. */
   apiKey: string;
-  /** Capability the {@link apiKey} resolves with. Defaults to `query` (reads). */
-  capability?: ApiKeyCapability;
+  /**
+   * Capability set the {@link apiKey} resolves with. Defaults to `["query"]`
+   * (reads only) — the same default as a key minted by the CLI.
+   */
+  capabilities?: readonly ApiKeyCapability[];
+  /** Stable id reported for {@link apiKey} (the audit-log subject). */
+  keyId?: string;
 }
 
 /**
@@ -38,10 +49,12 @@ export interface MemoryStoreOptions {
 export function createMemoryStore({
   projectId,
   apiKey,
-  capability = "query",
+  capabilities = ["query"],
+  keyId = "memory-key",
 }: MemoryStoreOptions): CollectorStore {
   const events: AnyEvent[] = [];
   const representations = new Map<string, SceneRepresentation>();
+  const audit: AgentAuditEntry[] = [];
 
   const forSession = (sid: string): AnyEvent[] =>
     events
@@ -57,7 +70,39 @@ export function createMemoryStore({
     (opts.since == null || e.ts >= opts.since) && (opts.until == null || e.ts < opts.until);
 
   return {
-    resolveApiKey: async (key) => (key === apiKey ? { projectId, capability } : null),
+    resolveApiKey: async (key) =>
+      key === apiKey
+        ? { projectId, keyId, capabilities: [...capabilities], label: null, rateLimit: null }
+        : null,
+    recordAudit: async (entry) => {
+      audit.push({
+        id: randomUUID(),
+        projectId: entry.projectId,
+        keyId: entry.keyId,
+        at: entry.at ?? new Date(),
+        surface: entry.surface,
+        toolOrPath: entry.toolOrPath,
+        params: entry.params,
+        rowCount: entry.rowCount ?? null,
+        durationMs: entry.durationMs,
+        status: entry.status,
+      });
+    },
+    listAudit: async (id, opts = {}) =>
+      audit
+        .filter(
+          (row) =>
+            row.projectId === id &&
+            (opts.since == null || row.at.getTime() >= opts.since) &&
+            (opts.until == null || row.at.getTime() < opts.until),
+        )
+        .sort((a, b) => b.at.getTime() - a.at.getTime())
+        .slice(0, Math.min(Math.max(Math.trunc(opts.limit ?? 100), 1), 1000)),
+    pruneAudit: async (cutoffMs) => {
+      for (let i = audit.length - 1; i >= 0; i -= 1) {
+        if (audit[i]!.at.getTime() < cutoffMs) audit.splice(i, 1);
+      }
+    },
     projectExists: async (id) => id === projectId,
     insertEvents: async (incoming) => {
       events.push(...incoming);

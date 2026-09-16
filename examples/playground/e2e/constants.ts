@@ -17,6 +17,21 @@ export const PLAYGROUND_PORT = 5174;
 export const DASHBOARD_PORT = 3210;
 export const PROJECT_ID = "e2e-project";
 export const API_KEY = "utk_e2e_key";
+
+/**
+ * Agent-scoped keys for the capability suite (#309, ADR 0051 §7), seeded
+ * alongside {@link API_KEY} on the same project:
+ *
+ * - {@link QUERY_ONLY_API_KEY} holds `query` only — it reads aggregates but is
+ *   refused the raw per-session stream even with retention on.
+ * - {@link RAW_API_KEY} holds `query,query:raw` — the only key that may read raw
+ *   per-session data, and only because the harness runs with
+ *   `ENABLE_RAW_SESSION_RETENTION=1`.
+ */
+export const QUERY_ONLY_API_KEY = "utk_e2e_query_only";
+export const QUERY_ONLY_KEY_ID = "e2e-key-query";
+export const RAW_API_KEY = "utk_e2e_query_raw";
+export const RAW_KEY_ID = "e2e-key-raw";
 export const COLLECTOR_URL = `http://localhost:${COLLECTOR_PORT}`;
 export const PLAYGROUND_URL = `http://localhost:${PLAYGROUND_PORT}`;
 export const DASHBOARD_URL = `http://localhost:${DASHBOARD_PORT}`;
