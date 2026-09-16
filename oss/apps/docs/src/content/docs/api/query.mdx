@@ -61,6 +61,12 @@ truncated top-N voxels so cold spots and coverage stay honest. The dashboard's 3
 world heatmap normalizes to the 95th-percentile cell so a couple of hotspots no
 longer wash out the rest.
 
+`region` also takes the **id of a registered scene region** — `region=entrance`
+instead of six numbers. The collector resolves the id to that region's stored box
+before the query runs, so you can drill into a place by name. Pass `scene=` too
+(a region belongs to a scene); an unregistered id returns `400`. See
+[Scene regions](#scene-regions).
+
 The tables below are generated from the collector's
 [semantic metric registry](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md),
 so they list exactly the aggregations this collector can compute. The same registry drives
@@ -184,6 +190,38 @@ including each column's unit and each metric's caveats.
 | `GET` | `/api/v1/variant-leaderboard` | `variant_leaderboard` | row | `since`, `until`, `scene`, `cameraMode`, `variant`, `conversion`, `limit`, `format` | For a product configurator (#150): per variant — a custom event grouped by its name — how often it was viewed, over how many sessions, how many of those converted, and the mean dwell before the visitor switched or converted. One row per variant, ranked by views. |
 
 {/* generated:registry-query-reference:end */}
+
+## Scene regions
+
+Named, labelled boxes that give a scene a vocabulary for _where_ — "the
+entrance", "the checkout counter" — so spatial answers read in words and any
+spatial endpoint can be drilled into a place with `?region=<id>`. Regions may
+overlap; at most 200 per scene.
+
+| Method | Path                              | Purpose                                                                                   | Body / params        |
+| ------ | --------------------------------- | ----------------------------------------------------------------------------------------- | -------------------- |
+| `PUT`  | `/api/v1/scenes/:sceneId/regions` | Declare a scene's regions, **replacing** the stored set (`[]` clears it).                 | `{ regions: [...] }` |
+| `GET`  | `/api/v1/scenes/:sceneId/regions` | A scene's stored regions. An unregistered scene is `[]`, not `404`.                       | —                    |
+| `GET`  | `/api/v1/scene-regions`           | Every region in the project as `{ sceneId, regionId, label }` — the vocabulary, no boxes. | —                    |
+
+These three are **not** registry metrics — they are the spatial vocabulary the
+aggregations are read against, so they aggregate nothing and take no `format`.
+
+A region is `{ id, label, bounds: [minX,minY,minZ,maxX,maxY,maxZ], description? }`.
+Author them with `registerRegions` from `@uptimizr/sdk-core`, with a plain `PUT`,
+or offline with `uptimizr regions set <sceneId> --file regions.json`.
+
+:::caution
+The two reads take a `query`-capable API key; the **write** takes an
+`annotate`-capable one — the dedicated metadata-write capability, so a
+read-only key you hand to an agent cannot redraw your spatial vocabulary. Mint
+one with `uptimizr new-key <projectId> --capabilities annotate` (or
+`query,annotate` if the same key reads the regions back); a `query`-only key is
+refused with `403`. `uptimizr regions set` writes straight to the store and
+needs no key at all. And as with the proxy upload, never ship the API key in a
+public bundle: register regions from a build script, a server-side route, or a
+developer-only path.
+:::
 
 ## Replay (raw events)
 

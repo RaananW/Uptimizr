@@ -78,6 +78,39 @@ invalid payload can never succeed and would block later flushes) — and `false`
 failures (network error, 5xx, 408, 429), which the client re-queues. Provide your own via the `transport` option to integrate a
 different delivery mechanism.
 
+## Registering scene regions
+
+`registerRegions(sceneId, regions, options)` declares the named places inside a scene — the
+authoring counterpart to a connector's `scanSceneProxy`. A region is a labelled world-space box
+(`{ id, label, bounds: [minX,minY,minZ,maxX,maxY,maxZ], description? }`); once registered, any
+spatial query can be drilled into it by name with `?region=<id>`, and summaries can answer "the
+checkout counter" instead of a voxel centre.
+
+```ts
+import { registerRegions } from "@uptimizr/sdk-core";
+
+await registerRegions(
+  "lobby",
+  [
+    { id: "entrance", label: "Entrance", bounds: [-5, 0, -5, 5, 3, 0] },
+    { id: "counter", label: "Checkout counter", bounds: [-1, 0, 1, 1, 2, 3] },
+  ],
+  { endpoint: "https://collect.example.com", apiKey: process.env.UPTIMIZR_API_KEY! },
+);
+```
+
+The call **replaces** the scene's whole set (leaving a region out removes it; `[]` clears them)
+and validates locally before sending, so a bad box fails with a precise message.
+
+> **Security.** Unlike event capture — which is deliberately keyless — this is an authenticated
+> write that sends a project API key as `x-api-key`, exactly like the scene-proxy upload. The
+> key must hold the **`annotate`** capability — mint one with
+> `uptimizr new-key <projectId> --capabilities annotate` (or `query,annotate` if the same key
+> reads the regions back); a `query`-only key is refused with `403`. Never
+> bake that key into a public production bundle: call `registerRegions` from a build/deploy
+> script, a server-side route, an internal admin tool, or a developer-only path. It is a one-off
+> authoring step, not a per-page-load call.
+
 ## Offloading work to a Web Worker
 
 Capture (reading your 3D scene) always runs on the main thread, but the **processing** that

@@ -14,3 +14,6 @@
 
 - `UptimizrClient` — create, `start()`, `track(name, props)`, `use(collector)`, `stop()`.
 - `Collector` / `Transport` types — the extension points.
+- `registerRegions(sceneId, regions, { endpoint, apiKey })` — declare a scene's named regions
+  in the scene registry (an authenticated write needing an `annotate`-capable key; keep the
+  API key out of public bundles).

@@ -41,13 +41,17 @@ interface RegisteredRoute {
  *   per-scene read (`scene_representation`) is the registered resource;
  * - `whoami` and `audit` describe the **calling key** and its activity, not the
  *   project's telemetry — they aggregate nothing and take no metric filters
- *   (ADR 0051 §5).
+ *   (ADR 0051 §5);
+ * - the scene-region reads are spatial **vocabulary** (ADR 0051 §2): they return
+ *   the named boxes a `region=` filter resolves against, and aggregate nothing.
  */
 const ROUTES_WITHOUT_METRICS: readonly string[] = [
   "/api/v1/sessions/:id/events",
   "/api/v1/scene-representations",
   "/api/v1/whoami",
   "/api/v1/audit",
+  "/api/v1/scene-regions",
+  "/api/v1/scenes/:sceneId/regions",
 ];
 
 function querystringKeys(schema: unknown): readonly string[] | null {

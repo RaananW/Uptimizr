@@ -145,6 +145,15 @@ export {
 } from "./sceneProxy.js";
 
 export {
+  regionIdSchema,
+  sceneRegionSchema,
+  sceneRegionsSchema,
+  type RegionId,
+  type SceneRegion,
+  type SceneRegions,
+} from "./sceneRegion.js";
+
+export {
   coordinateHandednessSchema,
   coordinateSystemSchema,
   type CoordinateHandedness,

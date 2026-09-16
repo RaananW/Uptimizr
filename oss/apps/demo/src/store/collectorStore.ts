@@ -79,6 +79,7 @@ import {
   funnelStepSchema,
   funnelStepsSchema,
   sceneProxySchema,
+  sceneRegionsSchema,
   type AnyEvent,
 } from "@uptimizr/schema";
 import { DEMO_PROJECT_ID } from "./constants.js";
@@ -201,6 +202,8 @@ export const DEMO_SPECIAL_GET_ROUTES = [
   "/api/v1/sessions/:id/meta",
   "/api/v1/scene-representations",
   "/api/v1/scenes/:sceneId/representation",
+  "/api/v1/scene-regions",
+  "/api/v1/scenes/:sceneId/regions",
   "/api/v1/funnel",
   "/api/v1/variant-leaderboard",
   // Large-scene spatial routes (ADR 0040): handled out-of-band because they need
@@ -345,6 +348,9 @@ function parseCenter(sp: URLSearchParams): [number, number, number] | undefined 
  */
 function parseRegion(raw: string | null): WorldAabb | undefined {
   if (!raw) return undefined;
+  // A registry region id (no commas) is resolved asynchronously against the
+  // stored regions by {@link resolveRegionId}; only an explicit box parses here.
+  if (!raw.includes(",")) return undefined;
   const p = raw.split(",").map((s) => Number(s.trim()));
   if (p.length !== 6 || p.some((n) => !Number.isFinite(n))) return undefined;
   const [minX, minY, minZ, maxX, maxY, maxZ] = p as [
@@ -357,6 +363,23 @@ function parseRegion(raw: string | null): WorldAabb | undefined {
   ];
   if (maxX < minX || maxY < minY || maxZ < minZ) return undefined;
   return [minX, minY, minZ, maxX, maxY, maxZ];
+}
+
+/**
+ * Resolve a `region=<registered-id>` filter to the stored box (ADR 0051 §2),
+ * mirroring the collector's `resolveRegionFilter`. An explicit box has already
+ * been parsed by {@link parseRegion}; this fills in the named form. Regions are
+ * keyed per scene, so an id without a `scene` (or one that was never registered)
+ * leaves the query unfiltered — the collector 400s, the backend-less demo falls
+ * back to the whole scene like it does for every other malformed filter.
+ */
+async function resolveRegionId(db: WasmDb, sp: URLSearchParams, opts: DemoOpts): Promise<DemoOpts> {
+  const raw = sp.get("region");
+  if (!raw || raw.includes(",") || opts.region != null || opts.scene == null) return opts;
+  const stored = await db.getSceneRegions(opts.scene);
+  const match = stored.find((r) => r.regionId === raw);
+  if (!match || match.bounds.length !== 6) return opts;
+  return { ...opts, region: match.bounds as unknown as WorldAabb };
 }
 
 /**
@@ -499,6 +522,32 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
     }
   }
 
+  // Scene regions (ADR 0051 §2): named, labelled boxes that give a scene a
+  // vocabulary for *where*, and back the `region=<id>` query filter. Mirrors the
+  // collector's PUT/GET pair, including replace-the-set semantics.
+  if (path === "/api/v1/scene-regions" && req.method === "GET") {
+    return ok(await db.listSceneRegions());
+  }
+  const regions = path.match(/^\/api\/v1\/scenes\/([^/]+)\/regions$/);
+  if (regions) {
+    const sceneId = decodeURIComponent(regions[1]!);
+    if (req.method === "PUT") {
+      let body: { regions?: unknown };
+      try {
+        body = JSON.parse(req.body ?? "{}") as { regions?: unknown };
+      } catch {
+        return { status: 400, body: { error: "invalid JSON" } };
+      }
+      const result = sceneRegionsSchema.safeParse(body.regions);
+      if (!result.success) return { status: 400, body: { error: "invalid scene regions" } };
+      await db.putSceneRegions(sceneId, result.data);
+      return ok(await db.getSceneRegions(sceneId));
+    }
+    if (req.method === "GET") {
+      return ok(await db.getSceneRegions(sceneId));
+    }
+  }
+
   if (req.method === "GET") {
     // Funnel (#78): `steps` is a JSON array validated against the shared schema,
     // mirroring the collector's `GET /api/v1/funnel` (400 on bad input). It is the
@@ -564,13 +613,13 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
 
     const route = READ_ROUTES[path];
     if (route) {
-      const rows = await db.all(route(pid, readOpts(sp), sp));
+      const rows = await db.all(route(pid, await resolveRegionId(db, sp, readOpts(sp)), sp));
       return ok(rows);
     }
 
     // Large-scene spatial routes (ADR 0040) — async, bounds-driven cellSize.
     if (SPATIAL_HEATMAP_ROUTES.has(path)) {
-      return handleSpatialHeatmap(db, pid, path, readOpts(sp));
+      return handleSpatialHeatmap(db, pid, path, await resolveRegionId(db, sp, readOpts(sp)));
     }
   }
 

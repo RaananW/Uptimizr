@@ -2,7 +2,13 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { Readable } from "node:stream";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { sceneProxySchema, funnelStepsSchema, funnelStepSchema } from "@uptimizr/schema";
+import {
+  sceneProxySchema,
+  sceneRegionsSchema,
+  regionIdSchema,
+  funnelStepsSchema,
+  funnelStepSchema,
+} from "@uptimizr/schema";
 import {
   defaultCellSizeForBounds,
   resultEnvelopeSchema,
@@ -67,16 +73,45 @@ function cameraTypeForMode(mode: "viewer" | "first-person" | undefined): string 
 }
 
 /**
- * World-space region filter (ADR 0040 §4): a `minX,minY,minZ,maxX,maxY,maxZ`
- * comma list naming an axis-aligned box to drill into. Validated to six finite
- * numbers with `max >= min` on every axis, then handed to the aggregation layer
- * as a {@link WorldAabb}. Omit for the whole scene.
+ * A parsed `region` querystring value: either an explicit box or the id of a
+ * region registered in the scene registry (ADR 0051 §2), which the route
+ * resolves to that region's stored bounds before the store ever sees it.
+ */
+type RegionFilter = { kind: "box"; bounds: WorldAabb } | { kind: "id"; id: string };
+
+/**
+ * World-space region filter (ADR 0040 §4, extended by ADR 0051 §2). Accepts
+ * either form:
+ *
+ * - a `minX,minY,minZ,maxX,maxY,maxZ` comma list naming an ad-hoc axis-aligned
+ *   box to drill into (validated to six finite numbers with `max >= min` on
+ *   every axis) — the original drill-down the dashboard sends; or
+ * - the **id of a registered scene region** (`region=checkout-counter`), the
+ *   shared vocabulary humans and agents use to talk about places. It is
+ *   resolved server-side to the stored bounds by {@link resolveRegionFilter},
+ *   so the aggregation layer only ever sees a {@link WorldAabb}.
+ *
+ * The two are unambiguous: a box always contains commas, a region id never can.
+ * Omit for the whole scene.
  */
 const regionFilter = z
   .string()
   .optional()
-  .transform((val, ctx): WorldAabb | undefined => {
+  .transform((val, ctx): RegionFilter | undefined => {
     if (val == null) return undefined;
+    if (!val.includes(",")) {
+      const id = regionIdSchema.safeParse(val);
+      if (!id.success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "region must be a registered region id (1-64 chars of [A-Za-z0-9._:-]) " +
+            "or 6 comma-separated finite numbers: minX,minY,minZ,maxX,maxY,maxZ",
+        });
+        return z.NEVER;
+      }
+      return { kind: "id", id: id.data };
+    }
     const parts = val.split(",").map((s) => Number(s.trim()));
     if (parts.length !== 6 || parts.some((n) => !Number.isFinite(n))) {
       ctx.addIssue({
@@ -100,8 +135,45 @@ const regionFilter = z
       });
       return z.NEVER;
     }
-    return [minX, minY, minZ, maxX, maxY, maxZ];
+    return { kind: "box", bounds: [minX, minY, minZ, maxX, maxY, maxZ] };
   });
+
+/** Why a `region=<id>` filter could not be resolved, for the 400 body. */
+type RegionResolutionError = { error: string };
+
+function isRegionError(value: unknown): value is RegionResolutionError {
+  return typeof value === "object" && value !== null && "error" in value;
+}
+
+/**
+ * Resolve a parsed `region` filter to the world box the aggregations take.
+ *
+ * A box passes straight through. A **region id** is looked up in the scene
+ * registry: regions are keyed by `(project, scene, region)`, so the request must
+ * also name the `scene` the region belongs to, and an id the project has never
+ * registered is a client error (`400`) rather than a silently unfiltered query —
+ * an agent must never be told "no hits in the entrance" when it merely misspelt
+ * the region. Returns the box, `undefined` when no filter was given, or an error
+ * object the caller turns into a `400`.
+ */
+async function resolveRegionFilter(
+  store: CollectorStore,
+  projectId: string,
+  scene: string | undefined,
+  filter: RegionFilter | undefined,
+): Promise<WorldAabb | undefined | RegionResolutionError> {
+  if (filter == null) return undefined;
+  if (filter.kind === "box") return filter.bounds;
+  if (scene == null) {
+    return {
+      error: "region names a registered region, so the request must also pass a scene",
+    };
+  }
+  const regions = await store.getSceneRegions(projectId, scene);
+  const match = regions.find((r) => r.regionId === filter.id);
+  if (!match) return { error: `unknown region "${filter.id}" in scene "${scene}"` };
+  return match.bounds;
+}
 
 /**
  * Resolve the effective voxel `cellSize` for a spatial heatmap (ADR 0040 §1).
@@ -725,6 +797,17 @@ const notFoundResponse = z.object({ error: z.string() });
 const badRequestResponse = z.object({ error: z.string(), details: z.unknown().optional() });
 
 /**
+ * Body for declaring a scene's regions (ADR 0051 §2): the scene's whole set.
+ * The write replaces what is stored, so an empty array clears the scene — the
+ * caller declares what the regions *are* rather than patching them one by one.
+ * `sceneRegionsSchema` bounds the count, the label/description lengths, the box
+ * shape, and rejects duplicate ids at the edge.
+ */
+const putRegionsBody = z.object({
+  regions: sceneRegionsSchema,
+});
+
+/**
  * Authenticate a read request with a project API key (`x-api-key`). Returns the
  * resolved project id, or sends a 401/403 and returns `null`. Reads are always
  * scoped to the authenticated project — any client-supplied project id is
@@ -879,13 +962,15 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     {
       schema: {
         querystring: worldHeatmapQueryParams,
-        response: { 200: rowsFor("/api/v1/heatmaps/world") },
+        response: { 200: rowsFor("/api/v1/heatmaps/world"), 400: badRequestResponse },
       },
     },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
-      const { cameraMode, region, cellSize, ...rest } = req.query;
+      const { cameraMode, region: regionParam, cellSize, ...rest } = req.query;
+      const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
+      if (isRegionError(region)) return reply.code(400).send(region);
       const resolved = await resolveSpatialCellSize(
         store,
         projectId,
@@ -914,13 +999,15 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     {
       schema: {
         querystring: worldStatsQueryParams,
-        response: { 200: statsRowFor("/api/v1/heatmaps/world/stats") },
+        response: { 200: statsRowFor("/api/v1/heatmaps/world/stats"), 400: badRequestResponse },
       },
     },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
-      const { cameraMode, region, cellSize, ...rest } = req.query;
+      const { cameraMode, region: regionParam, cellSize, ...rest } = req.query;
+      const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
+      if (isRegionError(region)) return reply.code(400).send(region);
       const resolved = await resolveSpatialCellSize(
         store,
         projectId,
@@ -948,13 +1035,15 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     {
       schema: {
         querystring: gazeHeatmapQueryParams,
-        response: { 200: rowsFor("/api/v1/heatmaps/gaze") },
+        response: { 200: rowsFor("/api/v1/heatmaps/gaze"), 400: badRequestResponse },
       },
     },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
-      const { cameraMode, region, cellSize, ...rest } = req.query;
+      const { cameraMode, region: regionParam, cellSize, ...rest } = req.query;
+      const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
+      if (isRegionError(region)) return reply.code(400).send(region);
       const resolved = await resolveSpatialCellSize(
         store,
         projectId,
@@ -980,13 +1069,15 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     {
       schema: {
         querystring: gazeStatsQueryParams,
-        response: { 200: statsRowFor("/api/v1/heatmaps/gaze/stats") },
+        response: { 200: statsRowFor("/api/v1/heatmaps/gaze/stats"), 400: badRequestResponse },
       },
     },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
-      const { cameraMode, region, cellSize, ...rest } = req.query;
+      const { cameraMode, region: regionParam, cellSize, ...rest } = req.query;
+      const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
+      if (isRegionError(region)) return reply.code(400).send(region);
       const resolved = await resolveSpatialCellSize(
         store,
         projectId,
@@ -1053,15 +1144,18 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     {
       schema: {
         querystring: cameraPositionQueryParams,
-        response: { 200: rowsFor("/api/v1/heatmaps/position") },
+        response: { 200: rowsFor("/api/v1/heatmaps/position"), 400: badRequestResponse },
       },
     },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
-      const { cameraMode, ...rest } = req.query;
+      const { cameraMode, region: regionParam, ...rest } = req.query;
+      const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
+      if (isRegionError(region)) return reply.code(400).send(region);
       return store.cameraPositionHeatmap(projectId, {
         ...rest,
+        region,
         cameraType: cameraTypeForMode(cameraMode),
       });
     },
@@ -1604,13 +1698,16 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     {
       schema: {
         querystring: errorHeatmapQueryParams,
-        response: { 200: rowsFor("/api/v1/heatmaps/errors") },
+        response: { 200: rowsFor("/api/v1/heatmaps/errors"), 400: badRequestResponse },
       },
     },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
-      return store.errorHeatmap(projectId, req.query);
+      const { region: regionParam, ...rest } = req.query;
+      const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
+      if (isRegionError(region)) return reply.code(400).send(region);
+      return store.errorHeatmap(projectId, { ...rest, region });
     },
   );
 
@@ -1626,13 +1723,15 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     {
       schema: {
         querystring: boundaryHeatmapQueryParams,
-        response: { 200: rowsFor("/api/v1/heatmaps/boundary") },
+        response: { 200: rowsFor("/api/v1/heatmaps/boundary"), 400: badRequestResponse },
       },
     },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
-      const { region, cellSize, ...rest } = req.query;
+      const { region: regionParam, cellSize, ...rest } = req.query;
+      const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
+      if (isRegionError(region)) return reply.code(400).send(region);
       const resolved = await resolveSpatialCellSize(
         store,
         projectId,
@@ -1654,13 +1753,15 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     {
       schema: {
         querystring: boundaryStatsQueryParams,
-        response: { 200: statsRowFor("/api/v1/heatmaps/boundary/stats") },
+        response: { 200: statsRowFor("/api/v1/heatmaps/boundary/stats"), 400: badRequestResponse },
       },
     },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
-      const { region, cellSize, ...rest } = req.query;
+      const { region: regionParam, cellSize, ...rest } = req.query;
+      const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
+      if (isRegionError(region)) return reply.code(400).send(region);
       const resolved = await resolveSpatialCellSize(
         store,
         projectId,
@@ -2243,6 +2344,52 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const representation = await store.getSceneRepresentation(projectId, req.params.sceneId);
       if (!representation) return reply.code(404).send({ error: "scene representation not found" });
       return representation;
+    },
+  );
+
+  // --- Scene regions (ADR 0051 §2 / sketch §B.2) ---------------------------
+  //
+  // Named, labelled boxes that give a scene a vocabulary for *where* — so a
+  // spatial answer can say "the checkout counter" instead of a voxel centre, and
+  // `?region=<id>` can drill a heatmap into that place by name.
+  //
+  // AUTH: the two **reads** take a `query`-capable key, like every other read.
+  // The **write** takes an `annotate`-capable key (#309, ADR 0051 §5/§7) — the
+  // dedicated metadata-write capability, so a read-only key handed to an agent
+  // cannot redraw the project's spatial vocabulary. `annotate` is a write
+  // capability only: mint `query,annotate` for a client that both declares
+  // regions and reads them back.
+
+  // List every region the project has declared, across all scenes (names only,
+  // no boxes) — the whole spatial vocabulary in one read, for a region picker or
+  // an agent's project context. The sibling of `/scene-representations`.
+  r.get("/api/v1/scene-regions", async (req, reply) => {
+    const projectId = await authProject(req, reply, store);
+    if (!projectId) return reply;
+    return store.listSceneRegions(projectId);
+  });
+
+  // Declare a scene's regions, replacing whatever was stored for that scene.
+  r.put(
+    "/api/v1/scenes/:sceneId/regions",
+    { schema: { params: sceneParams, body: putRegionsBody } },
+    async (req, reply) => {
+      const resolved = await requireCapability(req, reply, store, "annotate");
+      if (!resolved) return reply;
+      return store.putSceneRegions(resolved.projectId, req.params.sceneId, req.body.regions);
+    },
+  );
+
+  // Read one scene's regions. An unregistered scene is an empty set, not a 404 —
+  // "this scene has no regions" is a normal answer, and the caller need not know
+  // whether the scene was ever registered.
+  r.get(
+    "/api/v1/scenes/:sceneId/regions",
+    { schema: { params: sceneParams } },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.getSceneRegions(projectId, req.params.sceneId);
     },
   );
 };

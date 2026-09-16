@@ -104,6 +104,9 @@ Use the `uptimizr` CLI shipped with `@uptimizr/collector-server` directly:
 Need more projects/keys later? `npx -p @uptimizr/collector-server uptimizr new-project "<name>"`,
 or `uptimizr new-key <projectId>` to add a key to an existing project — see
 [API keys and capabilities](#api-keys-and-capabilities) below.
+To name places inside a scene (so spatial queries can be drilled with `?region=<id>`), use
+`uptimizr regions set <sceneId> --file regions.json --project "<projectId>"` — see
+[Scene regions](/docs/api/query/#scene-regions).
 
   </TabItem>
 </Tabs>

@@ -107,6 +107,44 @@ Omit the filter to see the whole session across all scenes, and use `/api/v1/sce
 distinct scenes that have activity. See the [query endpoints](/docs/api/query/) for the full
 parameter list.
 
+## Naming places inside a scene: regions
+
+A `sceneId` names a whole area; a **region** names a place _inside_ one — "the entrance", "the
+checkout counter". A region is a labelled axis-aligned box in the scene's world space, stored next
+to the scene proxy, and it does two things: it gives dashboards, summaries and agents a shared
+vocabulary instead of raw coordinates, and it lets any spatial endpoint be drilled into that place
+by name with `?region=<id>`.
+
+Declare a scene's regions once (they replace the stored set, so leaving one out removes it):
+
+```ts
+import { registerRegions } from "@uptimizr/sdk-core";
+
+await registerRegions(
+  "lobby",
+  [
+    { id: "entrance", label: "Entrance", bounds: [-5, 0, -5, 5, 3, 0] },
+    { id: "counter", label: "Checkout counter", bounds: [-1, 0, 1, 1, 2, 3] },
+  ],
+  { endpoint: ENDPOINT, apiKey: process.env.UPTIMIZR_API_KEY! },
+);
+```
+
+Then read any spatial aggregate for just that place:
+
+```bash
+curl "$ENDPOINT/api/v1/heatmaps/world?scene=lobby&region=counter" \
+  -H "x-api-key: $KEY"
+```
+
+Regions may overlap (an enclosing hall and a counter within it), so a point can belong to several.
+Registering regions is an **authenticated write** — like the scene-proxy upload it uses your project
+API key, which must hold the `annotate` capability (`uptimizr new-key <projectId> --capabilities
+annotate`), so do it from a build script, a server-side route, or a developer-only path, never from
+a public bundle. There is also a CLI, which writes straight to the store and needs no key:
+`uptimizr regions set lobby --file regions.json`. See
+[Scene regions](/docs/api/query/#scene-regions).
+
 ## In the dashboard
 
 The 3D panels (world heatmap, gaze heatmap, click rays) draw your scene geometry as a backdrop. By

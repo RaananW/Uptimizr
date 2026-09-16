@@ -95,9 +95,10 @@ function createProject(projectName, childEnv) {
         "new-project",
         "--",
         // Local dev projects back the playground + dashboard, whose replay and
-        // live-follow read raw per-session streams (`query:raw`, #309).
+        // live-follow read raw per-session streams (`query:raw`, #309), and whose
+        // "Register scene regions" button is a metadata write (`annotate`).
         "--capabilities",
-        "query,query:raw",
+        "query,query:raw,annotate",
         projectName,
       ],
       { cwd: repoRoot, env: childEnv, stdio: ["ignore", "pipe", "inherit"] },

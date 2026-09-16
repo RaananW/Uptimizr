@@ -89,6 +89,9 @@ importers:
       '@uptimizr/replay':
         specifier: workspace:*
         version: link:../../oss/packages/replay
+      '@uptimizr/schema':
+        specifier: workspace:*
+        version: link:../../oss/packages/schema
       '@uptimizr/sdk-core':
         specifier: workspace:*
         version: link:../../oss/packages/sdk-core

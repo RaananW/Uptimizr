@@ -110,6 +110,7 @@ tolerance).
 | `projects.ts`      | Project + API-key metadata (SHA-256 hashes, capability sets).                    |
 | `audit.ts`         | Agent audit log: record / list / prune (`agent_audit`).                          |
 | `sceneRegistry.ts` | Per-`(project, scene)` representation upserts/reads (`MERGE … HOLDLOCK`).        |
+| `sceneRegions.ts`  | Named scene regions: replace-the-set writes in one transaction.                  |
 | `queries.ts`       | `runMssqlQuery` — `toTsql` + positional params, executes a rendered `QuerySpec`. |
 
 The `CollectorStore` itself is assembled from these building blocks in the

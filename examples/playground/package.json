@@ -28,6 +28,7 @@
     "@uptimizr/playcanvas": "workspace:*",
     "@uptimizr/r3f": "workspace:*",
     "@uptimizr/replay": "workspace:*",
+    "@uptimizr/schema": "workspace:*",
     "@uptimizr/sdk-core": "workspace:*",
     "@uptimizr/three": "workspace:*",
     "@uptimizr/unity": "workspace:*",

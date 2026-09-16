@@ -52,13 +52,15 @@ async function main(): Promise<void> {
       id: PROJECT_ID,
       name: "E2E",
     });
-    // The harness key drives every spec, including the replay/live-follow ones,
-    // so it carries `query:raw` alongside `query` (#309, ADR 0051 §7). The
-    // collector still only honours `query:raw` because the harness runs with
-    // `ENABLE_RAW_SESSION_RETENTION=1` (see `playwright.config.ts`).
+    // The harness key drives every spec, including the replay/live-follow ones
+    // and the scene-regions spec, so it carries `query:raw` and `annotate`
+    // alongside `query` (#309, ADR 0051 §7) — region authoring is a metadata
+    // write and needs `annotate`. The collector still only honours `query:raw`
+    // because the harness runs with `ENABLE_RAW_SESSION_RETENTION=1` (see
+    // `playwright.config.ts`).
     await db.run(
       `INSERT INTO api_keys (id, project_id, key_hash, key_prefix, capability, capabilities)
-       VALUES ($id, $projectId, $keyHash, $keyPrefix, 'query', 'query,query:raw')`,
+       VALUES ($id, $projectId, $keyHash, $keyPrefix, 'query', 'query,query:raw,annotate')`,
       {
         id: randomUUID(),
         projectId: PROJECT_ID,

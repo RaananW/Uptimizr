@@ -1,4 +1,4 @@
-import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
+import type { AnyEvent, SceneProxy, SceneRegion } from "@uptimizr/schema";
 import type {
   AgentAuditEntry,
   AgentAuditInput,
@@ -69,6 +69,8 @@ import type {
   RegionOptions,
   ErrorHeatmapOptions,
   SceneOptions,
+  SceneRegionRecord,
+  SceneRegionSummary,
   SceneRepresentation,
   SceneRepresentationSummary,
   SceneRow,
@@ -741,6 +743,27 @@ export interface CollectorStore {
   getSceneRepresentation(projectId: string, sceneId: string): Promise<SceneRepresentation | null>;
   /** List a project's scene representations (summaries, no proxy blobs). */
   listSceneRepresentations(projectId: string): Promise<SceneRepresentationSummary[]>;
+  /**
+   * Replace a scene's whole region set (ADR 0051 §2 / sketch §B.2) and return
+   * the stored rows. Replace-the-set — not per-region upsert — keeps authoring
+   * a single idempotent declaration: removing a region is leaving it out, and
+   * an empty array clears the scene. Every store applies it atomically, so a
+   * concurrent reader never sees a half-replaced set.
+   */
+  putSceneRegions(
+    projectId: string,
+    sceneId: string,
+    regions: readonly SceneRegion[],
+  ): Promise<SceneRegionRecord[]>;
+  /** Read one scene's regions, ordered by region id. Empty when none are registered. */
+  getSceneRegions(projectId: string, sceneId: string): Promise<SceneRegionRecord[]>;
+  /**
+   * Lightweight project-wide region listing (scene id, region id, label — no
+   * boxes): the whole spatial vocabulary in one read, for a region picker or an
+   * agent's project context. The sibling of {@link listSceneRepresentations};
+   * kept separate so the scene listing stays exactly as it is.
+   */
+  listSceneRegions(projectId: string): Promise<SceneRegionSummary[]>;
   /** Release underlying connections. */
   close(): Promise<void>;
 }

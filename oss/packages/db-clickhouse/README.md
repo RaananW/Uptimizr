@@ -64,6 +64,7 @@ forward-only — ADR 0007), so it is usable out of the box.
 | `projects.ts`      | Project + API-key metadata (SHA-256 hashes, caps).          |
 | `audit.ts`         | Agent audit log: record / list / prune.                     |
 | `sceneRegistry.ts` | Per-`(project, scene)` representation upserts/reads.        |
+| `sceneRegions.ts`  | Named scene regions (`ReplacingMergeTree` + tombstones).    |
 | `queries.ts`       | `runClickhouseQuery` — executes a rendered `QuerySpec`.     |
 
 The `CollectorStore` itself is assembled from these building blocks in the

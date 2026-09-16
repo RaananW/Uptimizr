@@ -46,6 +46,7 @@ import {
   listSceneRepresentations,
   upsertSceneProxy,
 } from "../sceneRegistry.js";
+import { getSceneRegions, listSceneRegions, putSceneRegions } from "../sceneRegions.js";
 import { runMssqlQuery } from "../queries.js";
 import { discardTestDatabase, mssqlReachable, openTestDatabase } from "./probe.js";
 
@@ -169,6 +170,7 @@ describe.skipIf(!available)("mssql store", () => {
       "node_samples",
       "perf_daily",
       "projects",
+      "scene_regions",
       "scene_representations",
     ]);
   });
@@ -414,6 +416,49 @@ describe.skipIf(!available)("mssql store", () => {
     expect(list).toEqual([
       expect.objectContaining({ sceneId: "lobby", label: "Lobby", contentHash: "hash-2" }),
     ]);
+  });
+
+  it("round-trips a scene's regions, replacing the set on every write", async () => {
+    const entrance = {
+      id: "entrance",
+      label: "Entrance",
+      bounds: [-5, 0, -5, 5, 3, 0] as [number, number, number, number, number, number],
+      description: "Where visitors arrive.",
+    };
+    const counter = {
+      id: "counter",
+      label: "Checkout counter",
+      bounds: [-1, 0, 1, 1, 2, 3] as [number, number, number, number, number, number],
+    };
+
+    const saved = await putSceneRegions(ms, PID, "lobby", [entrance, counter]);
+    expect(saved.map((r) => r.regionId)).toEqual(["counter", "entrance"]);
+    expect(saved.find((r) => r.regionId === "entrance")).toMatchObject({
+      projectId: PID,
+      sceneId: "lobby",
+      label: "Entrance",
+      description: "Where visitors arrive.",
+    });
+    expect(saved.find((r) => r.regionId === "entrance")?.bounds).toEqual([-5, 0, -5, 5, 3, 0]);
+    expect(saved.find((r) => r.regionId === "counter")?.description).toBeNull();
+    expect(await getSceneRegions(ms, PID, "lobby")).toEqual(saved);
+
+    // Replace-the-set: a region left out is gone; other scenes are untouched.
+    await putSceneRegions(ms, PID, "atrium", [counter]);
+    const replaced = await putSceneRegions(ms, PID, "lobby", [{ ...counter, label: "Till" }]);
+    expect(replaced).toHaveLength(1);
+    expect(replaced[0]).toMatchObject({ regionId: "counter", label: "Till" });
+    expect(await getSceneRegions(ms, PID, "atrium")).toHaveLength(1);
+
+    expect(await listSceneRegions(ms, PID)).toEqual([
+      { sceneId: "atrium", regionId: "counter", label: "Checkout counter" },
+      { sceneId: "lobby", regionId: "counter", label: "Till" },
+    ]);
+
+    // An empty set clears the scene; an unregistered scene reads as empty.
+    expect(await putSceneRegions(ms, PID, "lobby", [])).toEqual([]);
+    expect(await getSceneRegions(ms, PID, "never-registered")).toEqual([]);
+    await putSceneRegions(ms, PID, "atrium", []);
   });
 
   describe("every aggregation matches DuckDB on the extended fixtures", () => {

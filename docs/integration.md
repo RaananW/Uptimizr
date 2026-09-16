@@ -1389,7 +1389,15 @@ explicit `cellSize` to override. A `region=minX,minY,minZ,maxX,maxY,maxZ` filter
 restricts a world/gaze/position heatmap to an axis-aligned box for drill-down,
 and the companion `/stats` endpoints report the **true** occupied-cell and hit
 totals behind the truncated top-N voxel list (so cold spots and coverage read
-correctly). The dashboard's 3D world heatmap also normalizes color/size to the
+correctly).
+
+`region` also accepts the **id of a registered scene region** — `region=entrance`
+instead of six numbers (ADR 0051 §2, see
+[Scene regions](#scene-regions-named-places)). The collector resolves the id to
+that region's stored box before the query runs, so named drill-down and ad-hoc
+boxes behave identically. A region is defined within a scene, so the request must
+also pass `scene=`; an id the project has never registered returns `400` (never a
+silently empty result). The dashboard's 3D world heatmap also normalizes color/size to the
 95th-percentile cell, so a few hotspots no longer wash out the rest of the scene.
 
 #### Result formats (`format=full | table | summary`)
@@ -1616,6 +1624,83 @@ curl -X PUT -H "x-api-key: $KEY" -H "content-type: application/json" \
   -d '{"proxy": <SceneProxy>, "label": "Main Lobby"}' \
   "https://collect.example.com/api/v1/scenes/lobby/representation"
 ```
+
+### Scene regions (named places)
+
+A proxy says what a scene _looks_ like; **regions** say what its places are
+_called_ (ADR 0051 §2). A region is a labelled axis-aligned box inside a scene —
+"the entrance", "the checkout counter" — giving humans, dashboards and agents a
+shared vocabulary for _where_ things happen, and letting any spatial query be
+drilled into a place by name (`?region=entrance`, see above).
+
+```jsonc
+{
+  "id": "counter", // 1–64 chars of [A-Za-z0-9._:-], unique in the scene
+  "label": "Checkout counter", // ≤ 120 chars, shown in dashboards and summaries
+  "bounds": [-1, 0, 1, 1, 2, 3], // [minX,minY,minZ,maxX,maxY,maxZ], max ≥ min per axis
+  "description": "Where visitors pay.", // optional, ≤ 500 chars
+}
+```
+
+Regions **may overlap** — a point can be inside several (the enclosing hall and
+the counter within it). At most 200 regions per scene. The write **replaces the
+scene's whole set**, so removing a region means leaving it out and `[]` clears
+them; re-sending the same set is a no-op.
+
+| Method | Path                              | Purpose                                                                                   | Body / params        |
+| ------ | --------------------------------- | ----------------------------------------------------------------------------------------- | -------------------- |
+| `PUT`  | `/api/v1/scenes/:sceneId/regions` | Declare a scene's regions, **replacing** the stored set.                                  | `{ regions: [...] }` |
+| `GET`  | `/api/v1/scenes/:sceneId/regions` | A scene's stored regions (with `updatedAt`). An unregistered scene is `[]`, not `404`.    | —                    |
+| `GET`  | `/api/v1/scene-regions`           | Every region in the project as `{ sceneId, regionId, label }` — the vocabulary, no boxes. | —                    |
+
+> **Auth.** The two reads take a `query`-capable project API key, like every
+> other read. The **write** takes an `annotate`-capable key — the dedicated
+> metadata-write capability — so a read-only key you hand to an agent cannot
+> redraw your spatial vocabulary. Mint one with
+> `uptimizr new-key <projectId> --capabilities annotate`, or
+> `--capabilities query,annotate` for a client that both declares regions and
+> reads them back; a `query`-only key is refused with `403`.
+> `uptimizr regions set` writes straight to the store the collector serves and
+> so needs no key at all — it is an operator command, like `new-project`.
+
+From an SDK (`@uptimizr/sdk-core`), next to the proxy scan:
+
+```ts
+import { registerRegions } from "@uptimizr/sdk-core";
+
+await registerRegions(
+  "lobby",
+  [
+    { id: "entrance", label: "Entrance", bounds: [-5, 0, -5, 5, 3, 0] },
+    { id: "counter", label: "Checkout counter", bounds: [-1, 0, 1, 1, 2, 3] },
+  ],
+  { endpoint: "https://collect.example.com", apiKey: process.env.UPTIMIZR_ANNOTATE_KEY! },
+);
+```
+
+The key passed to `registerRegions` needs the `annotate` capability.
+
+> **Never ship the API key in a public bundle.** Event capture is deliberately
+> keyless (ADR 0003), but the scene registry — proxy upload and regions alike — is
+> an authenticated write. Call `registerRegions` from a build/deploy script, a
+> server-side route, an internal admin tool, or a developer-only path. It is a
+> one-off authoring step, not a per-page-load call.
+
+Or over HTTP / from the CLI:
+
+```bash
+curl -X PUT -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{"regions": [{"id": "entrance", "label": "Entrance", "bounds": [-5,0,-5,5,3,0]}]}' \
+  "https://collect.example.com/api/v1/scenes/lobby/regions"
+
+# Offline, straight against the store the collector serves:
+uptimizr regions set lobby --file regions.json --project "$PROJECT_ID"
+uptimizr regions get lobby --project "$PROJECT_ID"
+```
+
+`regions.json` is either a bare array of regions or the `{ "regions": [...] }`
+envelope the endpoint takes, so one file works with both. `--project` may be
+replaced by the `UPTIMIZR_PROJECT_ID` environment variable.
 
 ```bash
 curl -H "x-api-key: $KEY" \

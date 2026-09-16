@@ -407,6 +407,39 @@ export interface SceneRepresentation {
   updatedAt: Date;
 }
 
+// --- Scene regions (ADR 0051 §2 / sketch §B.2) ---
+
+/**
+ * One stored region of a scene: a labelled world-space box that names a place
+ * ("the entrance", "the checkout counter") so spatial results can be talked
+ * about in words. Keyed by `(projectId, sceneId, regionId)`; regions may
+ * overlap. The wire shape is `sceneRegionSchema` in `@uptimizr/schema` — this is
+ * its storage projection, with the row's `updatedAt` added.
+ */
+export interface SceneRegionRecord {
+  projectId: string;
+  sceneId: string;
+  regionId: string;
+  /** Human-friendly name shown in dashboards, summaries, and agent answers. */
+  label: string;
+  /** Optional free-text note about what the region is. */
+  description: string | null;
+  /** World-space box `[minX,minY,minZ,maxX,maxY,maxZ]` (canonical frame). */
+  bounds: Aabb;
+  updatedAt: Date;
+}
+
+/**
+ * Lightweight project-wide region listing row: the names only, without the
+ * per-region box. Lets a client (or an agent building its project context) learn
+ * a project's whole spatial vocabulary in one read instead of one GET per scene.
+ */
+export interface SceneRegionSummary {
+  sceneId: string;
+  regionId: string;
+  label: string;
+}
+
 /** Lightweight registry listing row (omits the heavy `proxy` blob). */
 export interface SceneRepresentationSummary {
   sceneId: string;

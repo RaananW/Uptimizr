@@ -93,6 +93,21 @@ JS error capture). `context_lost` / `context_restored` are exempt and stay alway
 `fallback` category is reserved for forward-compatibility and is not emitted by any connector
 (engine-driven fallback stays in `capability_change`).
 
+## Config contracts (not events)
+
+A few shapes here are **config / metadata**, deliberately outside the event union — they are
+authored out-of-band and never reach the keyless ingest path:
+
+- `sceneProxySchema` — a scene's engine-agnostic proxy geometry (per-mesh AABBs) for the
+  scene registry.
+- `sceneRegionSchema` / `sceneRegionsSchema` — named, labelled boxes that give a scene a
+  vocabulary for _where_ (`{ id, label, bounds: [minX,minY,minZ,maxX,maxY,maxZ], description? }`).
+  Regions may overlap; `sceneRegionsSchema` bounds the set and rejects duplicate ids. Written
+  with `PUT /api/v1/scenes/:sceneId/regions` and read back as the `region=<id>` query filter.
+- `funnelStepSchema` / `funnelConfigSchema` — closed, validated predicates over existing events.
+
+They are validated at the boundary like events; they just are not part of `anyEventSchema`.
+
 ## Adding a new event type (extension point)
 
 1. Create `src/events/myEvent.ts`:
@@ -137,6 +152,7 @@ exceeds any cap fails validation, and the whole batch is rejected with `400`.
 | User id / trait value / count    | `maxUserIdLength` / `maxUserTraitValueLength` / `maxUserTraitEntries`                 | `session_start.user`    |
 | Scene description / camera       | `maxSceneDescriptionLength` / `maxCameraNameLength`                                   | `session_start.scene`   |
 | Scene-proxy mesh name/path/count | `maxSceneProxyMeshNameLength` / `maxSceneProxyMeshPathLength` / `maxSceneProxyMeshes` | `sceneProxy`            |
+| Region label / description/count | `maxSceneRegionLabelLength` / `maxSceneRegionDescriptionLength` / `maxSceneRegions`   | `sceneRegion`           |
 | Node / bone / child path         | `maxNodeIdLength` / `maxBoneIdLength` / `maxChildPathLength`                          | `node_transform`        |
 | Diagnostic message / code        | `maxGraphicsDiagnosticMessageLength` / `maxGraphicsDiagnosticCodeLength`              | `graphics_diagnostic`   |
 

@@ -12,7 +12,12 @@ The OSS storage contracts plus the single-file **DuckDB** store:
   limit), plus an `agent_audit` trail of what each key asked for (ADR 0051 §7).
 - **Engine-neutral contracts** — the dialect-agnostic query layer (`buildX` + `Dialect`), the
   neutral event-row mappers (`toEventRow`, `toNodeSampleRow`, `formatUtcTimestamp`), and the
-  metadata types (`Project`, `ApiKeyRecord`, `ResolvedApiKey`, `SceneRepresentation*`).
+  metadata types (`Project`, `ApiKeyRecord`, `ResolvedApiKey`, `SceneRepresentation*`,
+  `SceneRegionRecord` / `SceneRegionSummary`).
+- **Scene registry metadata** — `scene_representations` (one proxy per scene) and
+  `scene_regions` (named, labelled boxes per scene, keyed `(project_id, scene_id, region_id)`).
+  `duckdbPutSceneRegions` replaces a scene's whole set in one transaction; `duckdbGetSceneRegions`
+  / `duckdbListSceneRegions` read it back.
 
 This package carries **no ClickHouse/Postgres dependency**. Optional scale adapters such as
 `@uptimizr/db-clickhouse` compose these contracts behind the same interface. Server/Node only — no

@@ -11,7 +11,7 @@ import {
   type NodeSampleRow,
   type QuerySpec,
 } from "@uptimizr/db/query";
-import type { AnyEvent, NodeTransformEvent, SceneProxy } from "@uptimizr/schema";
+import type { AnyEvent, NodeTransformEvent, SceneProxy, SceneRegion } from "@uptimizr/schema";
 import { tableToRows, type ArrowTableLike } from "./arrow.js";
 import {
   DEMO_PROJECT_ID,
@@ -203,6 +203,40 @@ export interface DemoSceneRepresentation {
   proxyVersion: number | null;
   capturedAt: string | null;
   updatedAt: string;
+}
+
+/** Raw `scene_regions` row as selected (`bounds` is JSON text). */
+interface SceneRegionRow {
+  scene_id: string;
+  region_id: string;
+  label: string;
+  description: string | null;
+  bounds: string;
+  updated_at_ms: number;
+}
+
+/** A stored scene region as returned to the dashboard (`bounds` parsed). */
+export interface DemoSceneRegion {
+  projectId: string;
+  sceneId: string;
+  regionId: string;
+  label: string;
+  description: string | null;
+  bounds: number[];
+  updatedAt: string;
+}
+
+/** Map a raw region row to the dashboard-facing shape (JSON parsed). */
+function rowToRegion(row: SceneRegionRow): DemoSceneRegion {
+  return {
+    projectId: DEMO_PROJECT_ID,
+    sceneId: row.scene_id,
+    regionId: row.region_id,
+    label: row.label,
+    description: row.description ?? null,
+    bounds: JSON.parse(row.bounds) as number[],
+    updatedAt: new Date(row.updated_at_ms).toISOString(),
+  };
 }
 
 /** A scene representation summary (no proxy blob) for the registry listing. */
@@ -415,11 +449,63 @@ export class WasmDb {
     }));
   }
 
+  /**
+   * Replace a scene's whole **region** set (ADR 0051 §2), mirroring the Node
+   * store's `putSceneRegions`: regions are declared, not patched, so a region
+   * left out is removed and an empty array clears the scene.
+   */
+  async putSceneRegions(sceneId: string, regions: readonly SceneRegion[]): Promise<void> {
+    await this.#conn.query(
+      `DELETE FROM scene_regions
+       WHERE project_id = ${sqlString(DEMO_PROJECT_ID)} AND scene_id = ${sqlString(sceneId)}`,
+    );
+    for (const region of regions) {
+      await this.#conn.query(
+        `INSERT INTO scene_regions
+           (project_id, scene_id, region_id, label, description, bounds, updated_at)
+         VALUES (${sqlString(DEMO_PROJECT_ID)}, ${sqlString(sceneId)},
+                 ${sqlString(region.id)}, ${sqlString(region.label)},
+                 ${region.description == null ? "NULL" : sqlString(region.description)},
+                 ${sqlString(JSON.stringify(region.bounds))}, now())`,
+      );
+    }
+  }
+
+  /** Read one scene's regions, ordered by region id. */
+  async getSceneRegions(sceneId: string): Promise<DemoSceneRegion[]> {
+    const rows = await this.all<SceneRegionRow>({
+      query: `SELECT scene_id, region_id, label, description, bounds,
+                     epoch_ms(updated_at) AS updated_at_ms
+              FROM scene_regions
+              WHERE project_id = ${sqlString(DEMO_PROJECT_ID)} AND scene_id = ${sqlString(sceneId)}
+              ORDER BY region_id`,
+      query_params: {},
+    });
+    return rows.map(rowToRegion);
+  }
+
+  /** The demo project's whole region vocabulary (names only, no boxes). */
+  async listSceneRegions(): Promise<Array<{ sceneId: string; regionId: string; label: string }>> {
+    const rows = await this.all<Pick<SceneRegionRow, "scene_id" | "region_id" | "label">>({
+      query: `SELECT scene_id, region_id, label
+              FROM scene_regions
+              WHERE project_id = ${sqlString(DEMO_PROJECT_ID)}
+              ORDER BY scene_id, region_id`,
+      query_params: {},
+    });
+    return rows.map((row) => ({
+      sceneId: row.scene_id,
+      regionId: row.region_id,
+      label: row.label,
+    }));
+  }
+
   /** Clear all collected data while keeping the schema and demo project. */
   async reset(): Promise<void> {
     await this.#conn.query("DELETE FROM events");
     await this.#conn.query("DELETE FROM node_samples");
     await this.#conn.query("DELETE FROM scene_representations");
+    await this.#conn.query("DELETE FROM scene_regions");
   }
 
   /** Tear down the connection and terminate the worker (proactive teardown). */
