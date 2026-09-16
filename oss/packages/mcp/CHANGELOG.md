@@ -1,5 +1,69 @@
 # @uptimizr/mcp
 
+## 1.1.0
+
+### Minor Changes
+
+- afe3002: Generate the read-only tool catalog from the metric registry (ADR 0051 §1). `readTools` is no
+  longer a hand-written array of 20 tools: `registryToTools()` derives one tool per `@uptimizr/db`
+  metric that the collector serves on a read endpoint — **69** today — with the metric's
+  interpretation notes and caveats in its description, an input schema built from the endpoint's
+  filters and path parameters, and a new `ReadTool.outputSchema` (`{ rows: Row[] }`) derived from the
+  metric's row schema. `@uptimizr/mcp` registers that as the MCP `outputSchema` and now returns
+  `structuredContent` alongside the JSON text, so `tools/list` covers the whole read surface —
+  dead/rage clicks, jank, per-device and per-scene FPS, coverage, blind spots, scene retention, the
+  variant leaderboard and the load→bounce funnel included.
+
+  The 20 tool names that shipped before the registry, and their argument schemas, are unchanged; a
+  frozen-fixture test pins them, and the only widening is optional parameters the endpoints already
+  accepted. `@uptimizr/agent-core` stays browser-safe: it reads the registry from the
+  dependency-free `@uptimizr/metrics` package and never depends on `@uptimizr/db`, proven by a
+  browser bundle test and a manifest test.
+
+  New: `registryToTools()` and `filterReadTools(names)` in `@uptimizr/agent-core`, and a `tools`
+  option on `@uptimizr/react`'s `useAssistant()` to pin which read tools an assistant may call
+  (the per-backend default — the core subset locally, the full catalog hosted — is unchanged).
+
+- 018054b: Generate the collector's self-description from the semantic metric registry (ADR 0051 §1).
+
+  - **`@uptimizr/collector-server`** serves a new, unauthenticated
+    `GET /api/v1/openapi.json`: an OpenAPI 3.1 document built from the metric registry and the
+    server's own route table, so every path, parameter schema and response schema comes from the
+    code that actually serves and validates the request. Semantics OpenAPI cannot express —
+    result grain, per-column units, caveats, interpretation, capture channels, row limits,
+    dimensions, related metrics and comparison direction — ride along as `x-uptimizr-*` vendor
+    extensions. Rate-limited like every other route; it contains no project data.
+  - **`@uptimizr/mcp`**'s `uptimizr://capabilities` resource is now built from the registry and
+    gains a `metrics` array: the whole registry minus the SQL builder, with each row schema as
+    JSON Schema. Existing keys (`schemaVersion`, `readOnly`, `eventTypes`, `params`, `tools`,
+    `notes`) are unchanged.
+  - The tool/endpoint tables in the packaged `README.md`, `AGENTS.md` and `llms.txt` of
+    **`@uptimizr/mcp`** and **`@uptimizr/agent-core`** are now rendered from the registry by
+    `scripts/gen-registry-docs.mjs`, with a CI staleness gate (`pnpm gen:docs:check`).
+
+### Patch Changes
+
+- fa489c1: Drop the `@uptimizr/db` dependency. Both packages read the metric registry, which now ships as the
+  dependency-free `@uptimizr/metrics`; neither ever opened a database. `npm i @uptimizr/react` (which
+  depends on `@uptimizr/agent-core`) and `npx @uptimizr/mcp` therefore no longer download
+  `@duckdb/node-api`, a ~37 MB native binding they could not use. No behaviour, API or tool-catalog
+  change — the same 69 tools with the same names, input schemas and output schemas.
+
+  A new `dependencies.test.ts` in each package fails the build if `@uptimizr/db`, or any package with
+  a native/optional binary dependency, becomes reachable from `dependencies` / `peerDependencies`
+  again; `@uptimizr/agent-core`'s esbuild browser-bundle test continues to prove the same thing from
+  the bundler's side.
+
+- Updated dependencies [fa489c1]
+- Updated dependencies [afe3002]
+- Updated dependencies [fa489c1]
+- Updated dependencies [018054b]
+- Updated dependencies [2f1a753]
+- Updated dependencies [ee1b7c7]
+  - @uptimizr/agent-core@1.1.0
+  - @uptimizr/metrics@0.1.0
+  - @uptimizr/schema@1.1.0
+
 ## 1.0.1
 
 ### Patch Changes

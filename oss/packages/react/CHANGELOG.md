@@ -1,5 +1,60 @@
 # @uptimizr/react
 
+## 1.2.0
+
+### Minor Changes
+
+- a6d87b1: Agent-scoped API keys: capability sets, per-key rate limits, an audit log and `whoami` (#309, ADR 0051 §7).
+
+  **Breaking — raw per-session access now needs `query:raw`.** `GET /api/v1/sessions/:id/events` and the live per-session follow `GET /api/v1/live/sessions/:id` require **both** `ENABLE_RAW_SESSION_RETENTION` on the collector and the new `query:raw` capability on the key; previously retention alone was enough for any `query` key. Existing keys keep working for every aggregate endpoint and need no migration, but a key that drives session replay or live-follow must be re-minted with `uptimizr new-key <projectId> --capabilities query,query:raw`.
+
+  **Breaking — `@uptimizr/db` metadata contracts.** `ApiKeyCapability` grows from `"ingest" | "query"` to `"ingest" | "query" | "annotate" | "query:raw"`. `ApiKeyRecord` and `ResolvedApiKey` replace the singular `capability` field with `capabilities: ApiKeyCapability[]`, and gain `label` plus a nullable `rateLimit`; `ResolvedApiKey` also carries `keyId`. `createApiKey(client, projectId, capability?)` now takes an options object (`{ capabilities, label, rateLimit }`) on all four engines. Each store package gains `recordAudit` / `listAudit` / `pruneAudit`.
+
+  - Migrations on DuckDB, Postgres, SQL Server and ClickHouse add `capabilities`, `label`, `rate_limit_max`, `rate_limit_window_ms` and an `agent_audit` table. They are forward-only, additive and idempotent (ADR 0007); the legacy `capability` column is untouched and still feeds the read path as a fallback, so keys issued before this release resolve unchanged.
+  - Per-key rate limits (`uptimizr new-key --rate-limit-max N --rate-limit-window-ms M`) bucket on the key id instead of the client IP; keys without one keep the global `COLLECTOR_RATE_LIMIT_*` defaults. Keyless ingest is unaffected.
+  - `GET /api/v1/whoami` reports the calling key's project, key id, capabilities, label and effective rate limit. `GET /api/v1/audit` (`since`/`until`/`limit`, `query` capability) serves the agent audit trail: key id, route pattern, bounded and redacted params, row count, duration and status, written asynchronously and expiring after `AUDIT_RETENTION_DAYS` (default 30).
+  - New CLI: `uptimizr new-key <projectId> [--capabilities …] [--label …] [--rate-limit-max N --rate-limit-window-ms M]`. `init` and `new-project` keep minting read-only `query` keys; `uptimizr-db-new-project` gains a `--capabilities` flag.
+  - `@uptimizr/react`'s `CollectorApi` takes an optional third `client` argument (default `"dashboard"`) and sends it as `x-uptimizr-client`, which is how the collector tells a dashboard's panel refreshes apart from agent traffic in the audit log. Existing two-argument construction is unchanged.
+
+- ee1b7c7: `CollectorApi` no longer needs to coerce aggregate columns: the collector now guarantees JSON
+  numbers on every store (ADR 0051 §2). The coercion is **kept as a documented back-compat shim**
+  rather than removed, in one place (`num()`) instead of ~165 unexplained `Number(...)` casts —
+  `@uptimizr/react` is published independently of the collector, so a dashboard (including the
+  redistributable static export) can legitimately be pointed at an older collector that still emits
+  strings, and silently summing strings there would be the worse failure. The same call sites also
+  supply the `?? 0` that turns a `null` aggregate — SQL's "no samples" — into a chartable zero, which
+  is a display decision rather than a wire-format one. Behaviour is unchanged; drop the shim once the
+  supported collector range no longer includes a pre-#298 release.
+- afe3002: Generate the read-only tool catalog from the metric registry (ADR 0051 §1). `readTools` is no
+  longer a hand-written array of 20 tools: `registryToTools()` derives one tool per `@uptimizr/db`
+  metric that the collector serves on a read endpoint — **69** today — with the metric's
+  interpretation notes and caveats in its description, an input schema built from the endpoint's
+  filters and path parameters, and a new `ReadTool.outputSchema` (`{ rows: Row[] }`) derived from the
+  metric's row schema. `@uptimizr/mcp` registers that as the MCP `outputSchema` and now returns
+  `structuredContent` alongside the JSON text, so `tools/list` covers the whole read surface —
+  dead/rage clicks, jank, per-device and per-scene FPS, coverage, blind spots, scene retention, the
+  variant leaderboard and the load→bounce funnel included.
+
+  The 20 tool names that shipped before the registry, and their argument schemas, are unchanged; a
+  frozen-fixture test pins them, and the only widening is optional parameters the endpoints already
+  accepted. `@uptimizr/agent-core` stays browser-safe: it reads the registry from the
+  dependency-free `@uptimizr/metrics` package and never depends on `@uptimizr/db`, proven by a
+  browser bundle test and a manifest test.
+
+  New: `registryToTools()` and `filterReadTools(names)` in `@uptimizr/agent-core`, and a `tools`
+  option on `@uptimizr/react`'s `useAssistant()` to pin which read tools an assistant may call
+  (the per-backend default — the core subset locally, the full catalog hosted — is unchanged).
+
+### Patch Changes
+
+- Updated dependencies [fa489c1]
+- Updated dependencies [afe3002]
+- Updated dependencies [018054b]
+- Updated dependencies [2f1a753]
+  - @uptimizr/agent-core@1.1.0
+  - @uptimizr/schema@1.1.0
+  - @uptimizr/replay@1.0.2
+
 ## 1.1.1
 
 ### Patch Changes
