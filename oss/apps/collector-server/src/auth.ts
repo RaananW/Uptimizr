@@ -21,8 +21,13 @@ import type { CollectorStore } from "./store.js";
 
 declare module "fastify" {
   interface FastifyRequest {
-    /** The resolved API key for this request, or `null` when unauthenticated. */
-    apiKey: ResolvedApiKey | null;
+    /**
+     * What this request's `x-api-key` resolved to, or `null` when
+     * unauthenticated. This is the key's **record** — project, key id,
+     * capabilities, rate limit — and deliberately never the key itself, which
+     * is read from the header and discarded.
+     */
+    resolvedKey: ResolvedApiKey | null;
     /** Rows in the response body, when it serialized to an array (audit log). */
     auditRowCount: number | null;
   }
@@ -50,15 +55,15 @@ export function isDashboardRequest(request: FastifyRequest): boolean {
 }
 
 /**
- * Resolve the request's `x-api-key` into {@link FastifyRequest.apiKey}. Never
- * replies and never throws: an absent, unknown or revoked key simply leaves
- * `apiKey` null, and the route-level helpers below turn that into a 401.
+ * Resolve the request's `x-api-key` into {@link FastifyRequest.resolvedKey}.
+ * Never replies and never throws: an absent, unknown or revoked key simply
+ * leaves `resolvedKey` null, and the helpers below turn that into a 401.
  */
 export async function attachApiKey(request: FastifyRequest, store: CollectorStore): Promise<void> {
-  const key = request.headers["x-api-key"];
-  if (typeof key !== "string" || key.length === 0) return;
+  const header = request.headers["x-api-key"];
+  if (typeof header !== "string" || header.length === 0) return;
   try {
-    request.apiKey = await store.resolveApiKey(key);
+    request.resolvedKey = await store.resolveApiKey(header);
   } catch (err) {
     request.log.warn({ err }, "api key resolution failed");
   }
@@ -92,8 +97,8 @@ export async function requireCapability(
   }
   // The `onRequest` hook has normally resolved this already; fall back to a
   // direct lookup so the helper is usable from a plugin registered without it.
-  if (!request.apiKey) await attachApiKey(request, store);
-  const resolved = request.apiKey;
+  if (!request.resolvedKey) await attachApiKey(request, store);
+  const resolved = request.resolvedKey;
   if (!resolved) {
     await reply.code(401).send({ error: "invalid api key" });
     return null;

@@ -190,9 +190,9 @@ describe("requireCapability (the `annotate` guard #310 will use)", () => {
     const store = makeStore();
     const app = await buildApp({ store, config });
     app.get("/test/annotate", async (req, reply) => {
-      const key = await requireCapability(req, reply, store, "annotate");
-      if (!key) return reply;
-      return { ok: true, keyId: key.keyId };
+      const resolved = await requireCapability(req, reply, store, "annotate");
+      if (!resolved) return reply;
+      return { ok: true, keyId: resolved.keyId };
     });
     await app.ready();
 

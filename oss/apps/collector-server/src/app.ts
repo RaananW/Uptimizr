@@ -104,7 +104,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   // handlers and the audit hook reuse one metadata lookup per request (#309).
   // Instance-level `onRequest` hooks run before the route-level hook the
   // rate-limit plugin installs, so registration order here is load-bearing.
-  app.decorateRequest("apiKey", null);
+  app.decorateRequest("resolvedKey", null);
   app.decorateRequest("auditRowCount", null);
   app.addHook("onRequest", async (request) => {
     await attachApiKey(request, store);
@@ -114,12 +114,12 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     // A key carrying its own `rate_limit_max` / `rate_limit_window_ms` is
     // bucketed on the key id with those values; everything else (including
     // keyless ingest) keeps the global per-client-IP budget.
-    max: (request) => request.apiKey?.rateLimit?.max ?? config.rateLimitMax,
-    timeWindow: (request) => request.apiKey?.rateLimit?.windowMs ?? config.rateLimitWindowMs,
+    max: (request) => request.resolvedKey?.rateLimit?.max ?? config.rateLimitMax,
+    timeWindow: (request) => request.resolvedKey?.rateLimit?.windowMs ?? config.rateLimitWindowMs,
     // `normalizeIP` is exactly what the plugin's own default key generator uses,
     // so requests without a per-key budget keep their existing IPv6-aware bucket.
     keyGenerator: (request) =>
-      request.apiKey?.rateLimit ? `key:${request.apiKey.keyId}` : normalizeIP(request.ip),
+      request.resolvedKey?.rateLimit ? `key:${request.resolvedKey.keyId}` : normalizeIP(request.ip),
   });
 
   // Audit every authenticated, non-dashboard request (ADR 0051 §7). Registered

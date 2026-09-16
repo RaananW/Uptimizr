@@ -552,19 +552,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // first so they can register only the tools their capabilities permit. It
   // reports the key's *id*, never the key itself.
   r.get("/api/v1/whoami", async (req, reply) => {
-    const key = await requireCapability(req, reply, store, "query");
-    if (!key) return reply;
+    const resolved = await requireCapability(req, reply, store, "query");
+    if (!resolved) return reply;
     return {
-      projectId: key.projectId,
-      keyId: key.keyId,
-      capabilities: key.capabilities,
-      label: key.label,
-      rateLimit: key.rateLimit ?? {
+      projectId: resolved.projectId,
+      keyId: resolved.keyId,
+      capabilities: resolved.capabilities,
+      label: resolved.label,
+      rateLimit: resolved.rateLimit ?? {
         max: config.rateLimitMax,
         windowMs: config.rateLimitWindowMs,
       },
       /** Whether {@link rateLimit} is the key's own budget or the collector default. */
-      rateLimitSource: key.rateLimit ? "key" : "default",
+      rateLimitSource: resolved.rateLimit ? "key" : "default",
     };
   });
 
@@ -1565,15 +1565,15 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       // retention enabled on the collector AND `query:raw` on the key. A plain
       // `query` key is authenticated (so an unknown key still gets a 401) but
       // refused the raw stream even when retention is on.
-      const key = await requireCapability(req, reply, store, "query");
-      if (!key) return reply;
+      const resolved = await requireCapability(req, reply, store, "query");
+      if (!resolved) return reply;
       if (!config.enableRawSessionRetention) {
         return reply.code(403).send({ error: "raw session retention is disabled" });
       }
-      if (!key.capabilities.includes("query:raw")) {
+      if (!resolved.capabilities.includes("query:raw")) {
         return reply.code(403).send({ error: "api key not permitted to read raw session data" });
       }
-      const projectId = key.projectId;
+      const projectId = resolved.projectId;
       const accept = req.headers.accept ?? "";
       const wantsNdjson = req.query.format === "ndjson" || accept.includes("application/x-ndjson");
       if (!wantsNdjson) {

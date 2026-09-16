@@ -43,8 +43,8 @@ export function registerAuditHooks(
   });
 
   app.addHook("onResponse", async (request, reply) => {
-    const key = request.apiKey;
-    if (!key) return;
+    const resolved = request.resolvedKey;
+    if (!resolved) return;
     if (!config.auditDashboardRequests && isDashboardRequest(request)) return;
     // `reply.elapsedTime` is the ms between the request arriving and the
     // response being sent — exactly the duration the audit log wants.
@@ -52,8 +52,8 @@ export function registerAuditHooks(
     try {
       void store
         .recordAudit({
-          projectId: key.projectId,
-          keyId: key.keyId,
+          projectId: resolved.projectId,
+          keyId: resolved.keyId,
           surface: "http",
           // The route pattern (`/api/v1/sessions/:id/events`), not the raw URL:
           // it groups cleanly and cannot carry a querystring credential.

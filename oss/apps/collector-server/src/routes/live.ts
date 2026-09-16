@@ -113,11 +113,11 @@ export const liveRoutes: FastifyPluginAsync<Options> = async (app, { store, conf
   // key's full capability set rides along in the token so the per-session follow
   // below can enforce `query:raw` without the header `EventSource` cannot send.
   r.post("/api/v1/live/token", async (req, reply) => {
-    const key = await requireCapability(req, reply, store, "query");
-    if (!key) return reply;
+    const resolved = await requireCapability(req, reply, store, "query");
+    if (!resolved) return reply;
     const { token, expiresAt } = mintLiveToken(
-      key.projectId,
-      key.capabilities,
+      resolved.projectId,
+      resolved.capabilities,
       config.liveTokenSecret,
       config.liveTokenTtlMs,
     );
