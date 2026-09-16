@@ -9,9 +9,14 @@
  * 2. **Internal consistency** — ids, column semantics, `related` links and
  *    `comparable` targets all resolve.
  * 3. **Reality** — every `row` schema parses the rows the aggregation actually
- *    produces, run in-process against DuckDB over the shared parity fixtures,
- *    and parses the same rows with every number string-encoded (the shape
- *    ClickHouse returns 64-bit integers and decimals in over HTTP).
+ *    produces, run in-process against DuckDB over the shared parity fixtures.
+ * 4. **The edge, not the schema, makes numbers numbers** (ADR 0051 §2) — the
+ *    same rows with every number string-encoded (the shape ClickHouse returns
+ *    64-bit integers and decimals in over HTTP) must **fail** the strict `row`
+ *    schema and **pass** it after `coerceRows`. That is what pins the coercion
+ *    to the store edge: if a `z.coerce.number()` ever creeps back into the
+ *    registry the first half of this test fails, and if `coerceRows` stops
+ *    covering a column the second half does.
  *
  * The invariant: **a new aggregation is not done until it has a registry entry.**
  */
@@ -21,6 +26,7 @@ import type { AnyEvent } from "@uptimizr/schema";
 import * as aggregations from "../query/aggregations.js";
 import {
   FILTER_TARGETS,
+  METRIC_BY_BUILDER,
   METRIC_IDS,
   METRIC_REGISTRY,
   allMetrics,
@@ -30,6 +36,7 @@ import {
   type MetricDefinition,
   type MetricId,
 } from "../query/registry.js";
+import { coerceRows, numericColumns } from "../query/coerce.js";
 import { duckdbDialect } from "../query/duckdbDialect.js";
 import type { Dialect } from "../query/dialect.js";
 import type { QuerySpec } from "../query/types.js";
@@ -114,7 +121,61 @@ describe("metric registry — coverage", () => {
     expect(getMetric("top_meshes")?.builder).toBe("buildTopMeshes");
     expect(getMetric("not_a_metric")).toBeUndefined();
   });
+
+  it("indexes every claimed builder in the reverse lookup", () => {
+    const claimed = allMetrics()
+      .filter((metric) => metric.builder != null)
+      .map((metric) => metric.builder);
+    expect([...METRIC_BY_BUILDER.keys()].sort()).toEqual([...claimed].sort());
+    for (const [builder, metric] of METRIC_BY_BUILDER) {
+      expect(metric.builder).toBe(builder);
+    }
+  });
+
+  /**
+   * The store edge (ADR 0051 §2) coerces numbers by reading `QuerySpec.metric`.
+   * That tag and the registry's `builder` field are two halves of one mapping:
+   * if they ever disagree a store would coerce a query against the wrong row
+   * schema — silently, because a missing column is simply not coerced. Every
+   * builder is rendered here with a throwaway dialect and its tag checked
+   * against the reverse lookup.
+   */
+  it("tags every builder's QuerySpec with the metric that claims it", () => {
+    const untagged: string[] = [];
+    const mismatched: string[] = [];
+    for (const [builder, metric] of METRIC_BY_BUILDER) {
+      const build = (aggregations as Record<string, unknown>)[builder];
+      if (typeof build !== "function") continue;
+      const spec = callBuilder(build as (...args: unknown[]) => QuerySpec, builder);
+      if (spec.metric == null) untagged.push(builder);
+      else if (spec.metric !== metric.id) mismatched.push(`${builder} → ${spec.metric}`);
+    }
+    expect(untagged, `builders with no QuerySpec.metric tag: ${untagged.join(", ")}`).toEqual([]);
+    expect(mismatched, `builders tagged with the wrong metric: ${mismatched.join(", ")}`).toEqual(
+      [],
+    );
+  });
 });
+
+/**
+ * Render one aggregation with plausible arguments. Every builder takes
+ * `(projectId, options, dialect)`; the three funnel-shaped ones need at least one
+ * step predicate in their options to render at all.
+ */
+function callBuilder(build: (...args: unknown[]) => QuerySpec, name: string): QuerySpec {
+  const step = { type: "pointer_click" as const };
+  const options: Record<string, unknown> = {
+    ...PARITY_RANGE,
+    steps: [step, step],
+    variant: step,
+    conversion: step,
+  };
+  try {
+    return build(PARITY_PROJECT_ID, options, duckdbDialect);
+  } catch (error) {
+    throw new Error(`${name} failed to render`, { cause: error });
+  }
+}
 
 describe("metric registry — internal consistency", () => {
   const metrics = allMetrics();
@@ -546,14 +607,43 @@ describe("metric registry — row schemas against real DuckDB output", () => {
           parsed.success,
           `${metric.id}: ${parsed.success ? "" : JSON.stringify(parsed.error.issues)}`,
         ).toBe(true);
+      }
+    });
+  }
 
+  for (const metric of allMetrics()) {
+    if (metric.builder == null) continue;
+    it(`coerceRows, not the schema, absorbs string-encoded numbers for ${metric.id}`, () => {
+      const rows = produced.get(metric.id) ?? [];
+      const numeric = new Set(numericColumns(metric.row));
+      for (const row of rows) {
         // The same row as ClickHouse renders it over HTTP: 64-bit integers and
-        // decimals arrive as strings. `z.coerce.number()` must absorb that.
-        const coerced = metric.row.safeParse(stringifyNumbers(row));
+        // decimals arrive as strings.
+        const wire = stringifyNumbers(row);
+        const affected = Object.keys(row).filter(
+          (key) => numeric.has(key) && typeof row[key] === "number",
+        );
+
+        // The registry describes the API, not the wire: a string-encoded numeric
+        // column must be rejected. (Rows whose numeric columns are all null in
+        // the fixtures are unchanged by `stringifyNumbers` and prove nothing.)
+        if (affected.length > 0) {
+          const strict = metric.row.safeParse(wire);
+          expect(
+            strict.success,
+            `${metric.id}: strict row schema accepted string-encoded ${affected.join(", ")} — ` +
+              `has a z.coerce.number() crept back in?`,
+          ).toBe(false);
+        }
+
+        // …and the store edge is what makes it a number again.
+        const [coercedRow] = coerceRows(metric.id, [wire]);
+        const coerced = metric.row.safeParse(coercedRow);
         expect(
           coerced.success,
-          `${metric.id} (string-encoded numbers): ${coerced.success ? "" : JSON.stringify(coerced.error.issues)}`,
+          `${metric.id} (after coerceRows): ${coerced.success ? "" : JSON.stringify(coerced.error.issues)}`,
         ).toBe(true);
+        expect(coercedRow, `${metric.id}: coerceRows changed a value`).toEqual(row);
       }
     });
   }

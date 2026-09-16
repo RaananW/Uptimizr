@@ -8,10 +8,26 @@
  * the optional scale tier.
  */
 
+// Type-only: erased under `verbatimModuleSyntax`, so this file keeps no runtime
+// dependency on the registry (and the registry may keep importing this one).
+import type { MetricId } from "./registry.js";
+
 /** A parameterized query, ready to hand to a dialect-specific runner. */
 export interface QuerySpec {
   query: string;
   query_params: Record<string, unknown>;
+  /**
+   * The registry metric this query computes (ADR 0051 §1). Every `build*`
+   * aggregation tags its spec, which is what lets each store's runner apply
+   * {@link coerceRows} at the single point rows leave the driver without any of
+   * the ~280 store call sites having to name the metric themselves. A registry
+   * test pins each builder's tag to the entry that claims it.
+   *
+   * Optional so a hand-written or ad-hoc `QuerySpec` (migrations, the parity
+   * harness's own probes, a future query DSL) stays valid — an untagged spec is
+   * simply passed through uncoerced.
+   */
+  metric?: MetricId;
 }
 
 export interface RangeOptions {

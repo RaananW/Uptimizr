@@ -89,8 +89,24 @@ import { getMetric, allMetrics, METRIC_IDS } from "@uptimizr/db/registry";
 
 Its own subpath, because the package root is Node-only. The registry imports **only** `zod` plus
 type-only declarations, performs no I/O and holds no store or dialect reference, so it is safe to
-bundle into a browser consumer. Numeric columns are `z.coerce.number()` so one schema validates
-DuckDB / Postgres / SQL Server numbers _and_ ClickHouse's string-encoded 64-bit integers.
+bundle into a browser consumer.
+
+### Numeric coercion at the store edge (ADR 0051 §2)
+
+Numeric columns are strict `z.number()` — the schema describes the API, not the wire. Every
+`build*` tags its `QuerySpec` with the metric id, and each store's runner (`runDuckdbQuery`,
+`runClickhouseQuery`, `runPostgresQuery`, `runMssqlQuery`) calls `coerceRows(spec.metric, rows)` at
+the one point rows leave the driver, so a string-encoded 64-bit integer or decimal becomes a number
+before any consumer sees it. `null` passes through — an aggregate over an empty set is "no
+samples", not `0`, which is why nine perf/resource metrics declare nullable columns.
+
+- **Do not** reintroduce `z.coerce.number()` in `registry.ts`: a registry test proves that
+  string-encoded rows _fail_ the strict schema and _pass_ after `coerceRows`, which is what pins
+  the work to the edge.
+- A new store must call `coerceRows` in its runner; the parity suite asserts
+  `typeof === "number"` for every registry-numeric column on every engine (`numericColumnsForSpec`).
+- Junk in a numeric column throws under a test runner and is left untouched with a one-per-column
+  warning in production (`coerceRows(..., { strict })` pins either).
 
 **Rules for agents:**
 
@@ -98,10 +114,13 @@ DuckDB / Postgres / SQL Server numbers _and_ ClickHouse's string-encoded 64-bit 
   (`NoUnregisteredAggregations` in `registry.ts` names the missing builder).
 - The 20 ids that are already `@uptimizr/agent-core` tool names (`top_meshes`, `perf_summary`,
   `list_sessions`, …) are frozen — renaming one breaks every MCP client.
-- `row` must match what the SQL actually projects, not what `types.ts` declares. Three tests
-  enforce this: `db`'s `registry.test.ts` (coverage, internal consistency, `row` parsing against
-  real DuckDB output over the parity fixtures, plus the string-encoded ClickHouse shape) and the
-  collector's `registryRoutes.test.ts` (endpoint exists; querystring keys === `filters`).
+- `row` must match what the SQL actually projects, not what `types.ts` declares. It is also the
+  collector's **response schema**, so an undeclared column is stripped from the API and a `null` in
+  a non-nullable one is a 500. Three tests enforce this: `db`'s `registry.test.ts` (coverage,
+  internal consistency, `row` parsing against real DuckDB output over the parity fixtures, and the
+  string-encoded ClickHouse shape through `coerceRows`), the collector's `registryRoutes.test.ts`
+  (endpoint exists; querystring keys === `filters`) and its `queryResponseSchemas.test.ts` (every
+  endpoint, against a seeded store, an empty one, and the in-memory store).
 
 ## Cross-engine parity (ADR 0020)
 

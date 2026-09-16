@@ -142,6 +142,11 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
         engine: "webgpu",
         is_mobile: "false",
         renderer: "M3",
+        // `browser`/`os` are part of the `perf_by_device` row (ADR 0042) and so
+        // part of its response schema — a fixture that omits a declared column
+        // now fails serialisation rather than silently under-reporting.
+        browser: "chrome",
+        os: "macos",
         sessions: 2,
         samples: 80,
         p50_fps: 60,
@@ -1303,6 +1308,8 @@ describe("collector app", () => {
         engine: "webgpu",
         is_mobile: "false",
         renderer: "M3",
+        browser: "chrome",
+        os: "macos",
         sessions: 2,
         samples: 80,
         p50_fps: 60,

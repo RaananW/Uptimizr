@@ -1389,11 +1389,15 @@ curl -H "x-api-key: $KEY" \
   "https://collect.example.com/api/v1/perf?session=<session-id>"
 ```
 
-> Aggregate columns (`count(*)`, percentiles, sums) come back as JSON numbers from
-> every store — the `clickhouse` store disables 64-bit integer quoting and the
-> `postgres` store parses `int8`/`numeric` columns to numbers, so results match
-> the DuckDB store byte-for-byte. The dashboard's `CollectorApi` still coerces
-> defensively.
+> Aggregate columns (`count(*)`, percentiles, sums) come back as JSON **numbers**
+> from every store. Each store coerces its driver's output at the single point
+> rows leave it, and every query route serialises through the metric registry's
+> row schema (ADR 0051 §2), so DuckDB, ClickHouse, Postgres and SQL Server return
+> the same types — no client-side coercion is needed.
+>
+> A `null` is not a `0`: a single-row summary is still returned over a range that
+> matched no samples, with its aggregate columns `null`. Read that as "no data",
+> and check the row's plain count before dividing by it.
 
 ### Funnels (`/api/v1/funnel`) — caller-configured (ADR 0038, #78)
 

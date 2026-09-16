@@ -17,11 +17,12 @@
  * a browser bundle (e.g. `@uptimizr/agent-core`) without dragging the DuckDB
  * driver in.
  *
- * **Numbers are coerced.** Every numeric column is `z.coerce.number()`: DuckDB,
- * Postgres and SQL Server return JS numbers, but ClickHouse renders 64-bit
- * integers and decimals as *strings* over HTTP. Coercing in the row schema makes
- * one schema valid for every engine today; moving the coercion to the store edge
- * is tracked separately (ADR 0051 §2 "numbers are numbers").
+ * **Numbers are numbers.** Every numeric column is a strict `z.number()`, so a
+ * `row` schema describes exactly what the collector emits. The engines that
+ * string-encode 64-bit integers or decimals (ClickHouse over HTTP) are
+ * normalised by `coerceRows` in every store's query runner, at the one point
+ * rows leave the driver (ADR 0051 §2, `query/coerce.ts`) — the schema is the
+ * contract, the store edge is what upholds it.
  *
  * The invariant this file exists to enforce: **a new aggregation is not done
  * until it has a registry entry.** `src/__tests__/registry.test.ts` fails the
@@ -540,16 +541,35 @@ export type MetricId =
 
 // --- Row-schema building blocks ------------------------------------------
 //
-// `num`/`int` coerce because ClickHouse renders 64-bit integers and decimals as
-// strings over HTTP while DuckDB / Postgres / SQL Server return JS numbers. One
-// schema therefore validates every engine's output (see the module doc).
+// Numeric columns are **strict** `z.number()`: they describe what the collector
+// actually emits. Engines that string-encode 64-bit integers or decimals (notably
+// ClickHouse over HTTP) are normalised by `coerceRows` in every store's query
+// runner, at the single point rows leave the driver (ADR 0051 §2) — so by the
+// time a row reaches a consumer, a numeric column *is* a number. Do not
+// reintroduce `z.coerce.number()` here: that would make the schema describe a
+// wire format rather than the API contract, and would let a store regression
+// pass unnoticed.
 
 /** A numeric column (integer or fractional). */
-const num = z.coerce.number();
+const num = z.number();
 /** A whole-number column: a `count(*)`, a distinct count, or a `floor()` bin. */
-const int = z.coerce.number().int();
-/** A nullable numeric column (a metric an engine/connector may not report). */
-const numOrNull = z.coerce.number().nullable();
+const int = z.number().int();
+/**
+ * A nullable numeric column. Two things make a column nullable:
+ *
+ * 1. the metric is one an engine or connector may not report at all
+ *    (`avg_render_scale` on a renderer with no dynamic resolution); or
+ * 2. it is an aggregate over a set that can be **empty** — `sum`, `avg`, `max`
+ *    and `quantile` are SQL-`NULL` over no rows, and a summary metric with no
+ *    `GROUP BY` still returns its one row when the range or filter matched
+ *    nothing. A brand-new project reads `null`, not `0`.
+ *
+ * `null` means "no samples" and is never `0`-filled: a zero average is a claim
+ * about the data, absence is not.
+ */
+const numOrNull = z.number().nullable();
+/** A nullable whole-number column — see {@link numOrNull} for when null occurs. */
+const intOrNull = z.number().int().nullable();
 /** An identifier or label column; `''` means "unknown"/"unattributed". */
 const text = z.string();
 /**
@@ -585,6 +605,16 @@ const POINTER_SAMPLED =
 const GAZE_OPT_IN =
   "Requires the gaze raycast capture option (`capture.gaze`, **off by default**, ADR 0030 / " +
   "ADR 0012). Without it `camera_sample` carries no `hitPoint` and this metric is empty.";
+
+/**
+ * Aggregates over an empty set are SQL-NULL, and a single-row summary still
+ * returns its row when nothing matched. Shared by every metric whose columns can
+ * therefore come back `null` on a fresh project or an over-narrow filter.
+ */
+const EMPTY_SET_NULLS =
+  "Over a range or filter that matched no samples the row is still returned, with every " +
+  "aggregate column `null` rather than `0` (only the plain counts stay numeric). Read `null` " +
+  "as 'no data' — do not sum it as zero.";
 
 /** Small-sample warning shared by per-row leaderboards. */
 const SMALL_SAMPLE =
@@ -1844,7 +1874,7 @@ export const METRIC_REGISTRY = {
     grain: "project",
     dimensions: ["scene", "session", "source", "cameraMode"],
     filters: ["since", "until", "bins", "limit", "scene", "session", "source", "cameraMode"],
-    row: z.object({ total_clicks: int, dead_clicks: int }),
+    row: z.object({ total_clicks: int, dead_clicks: intOrNull }),
     columns: {
       total_clicks: { description: "Clicks in scope.", unit: "count" },
       dead_clicks: {
@@ -1860,6 +1890,7 @@ export const METRIC_REGISTRY = {
       "scene (people click empty space to deselect); the signal is a *change* in the rate or an " +
       "unusually high rate in a scene meant to be clicked.",
     caveats: [
+      EMPTY_SET_NULLS,
       "Clicks are never sampled, so this rate is exact for the captured sessions.",
       "A scene with no pickable geometry registered will report a 100% dead rate — check `top_meshes` is non-empty first.",
       "Fewer than ~50 clicks makes the rate too noisy to act on.",
@@ -2171,7 +2202,7 @@ export const METRIC_REGISTRY = {
     grain: "project",
     dimensions: ["session"],
     filters: ["since", "until", "bins", "limit", "session"],
-    row: z.object({ samples: int, avg_fps: num, min_fps: num, p50_fps: num }),
+    row: z.object({ samples: int, avg_fps: numOrNull, min_fps: numOrNull, p50_fps: numOrNull }),
     columns: {
       samples: { description: "`frame_perf` samples in scope.", unit: "count" },
       avg_fps: { description: "Mean FPS across samples.", unit: "fps", measure: true },
@@ -2184,6 +2215,7 @@ export const METRIC_REGISTRY = {
       "each visitor equally, use `perf_distribution`; for the resolution behind the number, " +
       "`render_scale_truth`.",
     caveats: [
+      EMPTY_SET_NULLS,
       "`frame_perf` is a sampled channel (`samplePerfMs`, 2 s by default, ADR 0012); `min_fps` is the worst *sampled* frame, not the worst frame.",
       "No scene filter on this builder — scope by session or use `perf_by_scene`.",
       "A healthy average can hide adaptive down-scaling; check `render_scale_truth`.",
@@ -2208,12 +2240,12 @@ export const METRIC_REGISTRY = {
     filters: ["since", "until", "bins", "limit", "session"],
     row: z.object({
       samples: int,
-      avg_fps: num,
-      p50_fps: num,
+      avg_fps: numOrNull,
+      p50_fps: numOrNull,
       avg_render_scale: numOrNull,
       p50_render_scale: numOrNull,
-      downscaled_samples: int,
-      scale_samples: int,
+      downscaled_samples: intOrNull,
+      scale_samples: intOrNull,
     }),
     columns: {
       samples: { description: "`frame_perf` samples in scope.", unit: "count" },
@@ -2240,6 +2272,7 @@ export const METRIC_REGISTRY = {
       "the caller so it stays integer-exact across engines. A high share next to a good FPS means " +
       "the frame rate was bought with pixels.",
     caveats: [
+      EMPTY_SET_NULLS,
       "`scale_samples` is 0 when no connector reported a render scale; both scale columns are then `null` and the share is undefined.",
       "`frame_perf` is a sampled channel (ADR 0012).",
       "No scene filter on this builder.",
@@ -2261,7 +2294,13 @@ export const METRIC_REGISTRY = {
     grain: "project",
     dimensions: ["scene", "session"],
     filters: ["since", "until", "bins", "limit", "scene", "session"],
-    row: z.object({ sessions: int, samples: int, p05_fps: num, p50_fps: num, p95_fps: num }),
+    row: z.object({
+      sessions: int,
+      samples: intOrNull,
+      p05_fps: numOrNull,
+      p50_fps: numOrNull,
+      p95_fps: numOrNull,
+    }),
     columns: {
       sessions: { description: "Sessions contributing a percentile.", unit: "sessions" },
       samples: { description: "Total `frame_perf` samples behind them.", unit: "count" },
@@ -2279,6 +2318,7 @@ export const METRIC_REGISTRY = {
       "experience. A wide p05→p95 spread means inconsistent frame pacing, which reads worse than a " +
       "steadily lower frame rate.",
     caveats: [
+      EMPTY_SET_NULLS,
       PER_SESSION_THEN_AGGREGATE,
       "These are medians of per-session percentiles, not global percentiles — they do not describe the worst sessions. Use `jank_rate`'s worst-decile for that.",
       "Fewer than ~20 sessions makes the medians unstable.",
@@ -2336,7 +2376,7 @@ export const METRIC_REGISTRY = {
     grain: "project",
     dimensions: ["scene", "session"],
     filters: ["since", "until", "bins", "limit", "scene", "session"],
-    row: z.object({ sessions: int, samples: int, p50_ms: num, p95_ms: num }),
+    row: z.object({ sessions: int, samples: intOrNull, p50_ms: numOrNull, p95_ms: numOrNull }),
     columns: {
       sessions: { description: "Sessions contributing a percentile.", unit: "sessions" },
       samples: { description: "Total `frame_perf` samples behind them.", unit: "count" },
@@ -2355,6 +2395,7 @@ export const METRIC_REGISTRY = {
       "16.7 ms is the 60 Hz budget and 11.1 ms the 90 Hz XR budget. `p95_ms` is what makes a scene " +
       "feel janky even when `p50_ms` looks fine.",
     caveats: [
+      EMPTY_SET_NULLS,
       "`p95_ms` is read from the SDK's per-window p95, not re-derived from window means, so it is a tail of tails.",
       "Samples that never reported frame-time detail are excluded rather than counted as zero.",
       PER_SESSION_THEN_AGGREGATE,
@@ -2378,9 +2419,9 @@ export const METRIC_REGISTRY = {
     filters: ["since", "until", "bins", "limit", "scene", "session"],
     row: z.object({
       sessions: int,
-      total_long_frames: num,
-      median_rate: num,
-      worst_decile_rate: num,
+      total_long_frames: numOrNull,
+      median_rate: numOrNull,
+      worst_decile_rate: numOrNull,
     }),
     columns: {
       sessions: { description: "Sessions contributing a rate.", unit: "sessions" },
@@ -2403,6 +2444,7 @@ export const METRIC_REGISTRY = {
       "A `median_rate` near zero with a high `worst_decile_rate` is the signature of a device-class " +
       "problem: most visitors are fine, a tenth are not. Follow it into `perf_by_device`.",
     caveats: [
+      EMPTY_SET_NULLS,
       "A 'long frame' is defined by the SDK's `jankFrameMs` threshold (50 ms by default); apps that retune it are not comparable.",
       "Rates are per sample *window*, not per frame, so they scale with `samplePerfMs`.",
       PER_SESSION_THEN_AGGREGATE,
@@ -2437,8 +2479,8 @@ export const METRIC_REGISTRY = {
     row: z.object({
       sessions: int,
       churn_sessions: int,
-      fps_churn_sessions: int,
-      stall_churn_sessions: int,
+      fps_churn_sessions: intOrNull,
+      stall_churn_sessions: intOrNull,
     }),
     columns: {
       sessions: {
@@ -2465,6 +2507,7 @@ export const METRIC_REGISTRY = {
       "This is correlation, not causation — a session that ends after a dip may have ended anyway. " +
       "Compare the churn rate against a period with fewer dips before acting.",
     caveats: [
+      EMPTY_SET_NULLS,
       "A session counted in both cause columns is counted once in `churn_sessions`, so the cause columns can sum to more than the total.",
       "Sessions with no `session_end` (a hard tab close that never flushed) are outside the denominator entirely.",
       "Every number moves with `windowMs` / `fpsThreshold` / `stallMs`; report the thresholds with the result.",
@@ -2702,16 +2745,16 @@ export const METRIC_REGISTRY = {
     filters: ["since", "until", "bins", "limit", "session"],
     row: z.object({
       samples: int,
-      avg_js_heap_bytes: num,
-      max_js_heap_bytes: num,
-      avg_triangles: num,
-      max_triangles: num,
-      avg_vertices: num,
-      max_vertices: num,
-      avg_texture_bytes: num,
-      max_texture_bytes: num,
-      avg_geometry_bytes: num,
-      max_geometry_bytes: num,
+      avg_js_heap_bytes: numOrNull,
+      max_js_heap_bytes: numOrNull,
+      avg_triangles: numOrNull,
+      max_triangles: numOrNull,
+      avg_vertices: numOrNull,
+      max_vertices: numOrNull,
+      avg_texture_bytes: numOrNull,
+      max_texture_bytes: numOrNull,
+      avg_geometry_bytes: numOrNull,
+      max_geometry_bytes: numOrNull,
     }),
     columns: {
       samples: { description: "Footprint samples in the range.", unit: "count" },
@@ -2731,6 +2774,7 @@ export const METRIC_REGISTRY = {
       "Peaks matter more than averages here: a device runs out of memory at the peak. Read it " +
       "against the device caps in `session_meta`, not against an absolute budget.",
     caveats: [
+      EMPTY_SET_NULLS,
       "Requires the footprint capture option (`capture.resourceSample`, **off by default**, ADR 0012); without it the result is empty.",
       "Unreported metrics are stored as `0` and excluded from the averages, so a metric one engine omits does not dilute another's.",
       "JS heap is only available where the browser exposes it (Chromium-family); elsewhere it reads as unreported.",
@@ -2755,13 +2799,13 @@ export const METRIC_REGISTRY = {
     filters: ["since", "until", "bins", "limit", "scene", "session"],
     row: z.object({
       sessions: int,
-      samples: int,
-      p50_js_heap_bytes: num,
-      p95_js_heap_bytes: num,
-      p50_texture_bytes: num,
-      p95_texture_bytes: num,
-      p50_triangles: num,
-      p95_triangles: num,
+      samples: intOrNull,
+      p50_js_heap_bytes: numOrNull,
+      p95_js_heap_bytes: numOrNull,
+      p50_texture_bytes: numOrNull,
+      p95_texture_bytes: numOrNull,
+      p50_triangles: numOrNull,
+      p95_triangles: numOrNull,
     }),
     columns: {
       sessions: { description: "Sessions contributing a percentile.", unit: "sessions" },
@@ -2785,6 +2829,7 @@ export const METRIC_REGISTRY = {
       "The distribution-honest companion to `resource_summary`: a single heavy session no longer " +
       "sets the headline footprint.",
     caveats: [
+      EMPTY_SET_NULLS,
       "Requires the footprint capture option (`capture.resourceSample`, **off by default**, ADR 0012).",
       "Unreported metrics (stored `0`) are excluded rather than counted as zero.",
       PER_SESSION_THEN_AGGREGATE,
@@ -3699,11 +3744,30 @@ export function allMetrics(): readonly MetricDefinition[] {
 }
 
 /**
+ * Reverse lookup: aggregation builder name → the metric that claims it.
+ *
+ * `MetricDefinition.builder` is the forward direction (a metric names its
+ * builder); this is the direction the *store edge* needs — a `QuerySpec` knows
+ * which aggregation produced it, and numeric coercion has to find that
+ * aggregation's row schema (ADR 0051 §2). Built once, at module load: the
+ * compile-time coverage guard below makes the mapping total over every exported
+ * `build*`, and every builder is claimed by exactly one metric (asserted in
+ * `src/__tests__/registry.test.ts`).
+ */
+export const METRIC_BY_BUILDER: ReadonlyMap<AggregationBuilderName, MetricDefinition> = new Map(
+  METRIC_IDS.map((id) => METRIC_REGISTRY[id] as MetricDefinition)
+    .filter((metric): metric is MetricDefinition & { builder: AggregationBuilderName } =>
+      Boolean(metric.builder),
+    )
+    .map((metric) => [metric.builder, metric] as const),
+);
+
+/**
  * The registry entry that claims a given aggregation builder, or `undefined` for
  * the (currently empty) set of unclaimed builders.
  */
 export function metricForBuilder(builder: AggregationBuilderName): MetricDefinition | undefined {
-  return allMetrics().find((metric) => metric.builder === builder);
+  return METRIC_BY_BUILDER.get(builder);
 }
 
 /**

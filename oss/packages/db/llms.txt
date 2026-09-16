@@ -18,5 +18,6 @@
 - Query layer: `buildX(projectId, opts, dialect)` builders, `duckdbDialect`, `Dialect`/`QuerySpec` types.
 - Metric registry (`@uptimizr/db/registry`, ADR 0051 §1): `METRIC_REGISTRY`, `getMetric`, `allMetrics`, `METRIC_IDS`, `FILTER_TARGETS` — one `MetricDefinition` per aggregation (unit, grain, dimensions, filters, Zod row schema, limits, interpretation, caveats, source channels). Pure data, browser-safe, no I/O. A new aggregation without a registry entry fails the build.
 - Neutral helpers: `toEventRow`, `formatUtcTimestamp`, api-key helpers, `Project`/`ApiKeyRecord`/`SceneRepresentation*` types.
-- Parity: `PARITY_CASES`, `diffParity` (DuckDB-vs-ClickHouse cross-engine equality).
+- Numeric coercion at the store edge (ADR 0051 §2): `coerceRows(metric, rows)`, `numericColumns(rowSchema)`. Every `build*` tags its `QuerySpec` with the registry metric id and every store runner coerces there, so numeric columns reach consumers as JS numbers on DuckDB / ClickHouse / Postgres / SQL Server alike. Registry row schemas are strict `z.number()`; `null` stays `null` (no samples ≠ zero).
+- Parity: `PARITY_CASES`, `diffParity` (DuckDB-vs-ClickHouse cross-engine equality), `numericColumnsForSpec` (assert numeric types per engine).
 - `readDbSettings()` — environment-driven DuckDB settings with a local-dev default (`DUCKDB_PATH`).
