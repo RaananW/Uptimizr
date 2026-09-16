@@ -64,11 +64,44 @@ every tool (collector + CLIs) shares one canonical file regardless of cwd.
 - A new aggregation = a pure `buildX(projectId, opts, dialect)` builder returning a `QuerySpec`
   (`{ query, query_params }`), run with `runDuckdbQuery`. Keep builders pure, dialect-agnostic,
   and unit-tested without a live database; add a `PARITY_CASES` entry so both engines stay equal.
+- **A new aggregation is not done until it has a metric-registry entry** (see below). The build
+  fails without one.
 - Validate events upstream at the collector boundary; this layer assumes valid input.
 - API keys are only ever stored as SHA-256 hashes — never persist raw keys.
 - **Single-writer store.** DuckDB allows only one read-write process per file; assume a single
   collector per `.duckdb` file. Back up = copy the file. Multi-writer / horizontal scale is the
   optional ClickHouse scale tier, not this package.
+
+## Metric registry (ADR 0051 §1)
+
+`@uptimizr/db/registry` is the semantic layer over the aggregations: one `MetricDefinition` per
+exported `build*` (plus two builder-less resource entries — `session_meta`, `scene_representation`)
+declaring id, title, agent-facing description, builder, collector endpoint, `grain`, `dimensions`,
+`filters`, the output `row` Zod schema, per-column semantics (unit / measure / label / `rateOf`),
+row `limits`, `interpretation`, `caveats`, `sourceChannels` (the ADR 0012 capture dials that must
+be on for the metric to have data), `related` metrics, `comparable` semantics and a `category`.
+`DimensionId` / `FilterId` are closed unions declared once; `FILTER_TARGETS` maps each filter to
+the `query/types.ts` option field it drives.
+
+```ts
+import { getMetric, allMetrics, METRIC_IDS } from "@uptimizr/db/registry";
+```
+
+Its own subpath, because the package root is Node-only. The registry imports **only** `zod` plus
+type-only declarations, performs no I/O and holds no store or dialect reference, so it is safe to
+bundle into a browser consumer. Numeric columns are `z.coerce.number()` so one schema validates
+DuckDB / Postgres / SQL Server numbers _and_ ClickHouse's string-encoded 64-bit integers.
+
+**Rules for agents:**
+
+- Adding a `build*` aggregation without a registry entry is a **compile error**
+  (`NoUnregisteredAggregations` in `registry.ts` names the missing builder).
+- The 20 ids that are already `@uptimizr/agent-core` tool names (`top_meshes`, `perf_summary`,
+  `list_sessions`, …) are frozen — renaming one breaks every MCP client.
+- `row` must match what the SQL actually projects, not what `types.ts` declares. Three tests
+  enforce this: `db`'s `registry.test.ts` (coverage, internal consistency, `row` parsing against
+  real DuckDB output over the parity fixtures, plus the string-encoded ClickHouse shape) and the
+  collector's `registryRoutes.test.ts` (endpoint exists; querystring keys === `filters`).
 
 ## Cross-engine parity (ADR 0020)
 

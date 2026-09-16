@@ -371,6 +371,9 @@ importers:
       '@uptimizr/schema':
         specifier: workspace:*
         version: link:../schema
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
     devDependencies:
       '@types/node':
         specifier: ^26.4.1

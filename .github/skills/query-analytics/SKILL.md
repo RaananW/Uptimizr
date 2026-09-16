@@ -95,11 +95,31 @@ handled for you (ADR 0017).
 ## 6. If you change the query surface
 
 A new or changed query endpoint is a code change in `collector-server` + `db`, not just a skill
-edit. Follow the `work-on-issue` skill and keep three things in lockstep:
+edit. Follow the `work-on-issue` skill and keep four things in lockstep:
 
-1. the Zod querystring in `oss/apps/collector-server/src/routes/query.ts` (validate at the edge),
-2. the table in `docs/integration.md` §"Query (read)" (the contract), and
-3. the matching tool in `oss/packages/mcp` (so agents see it) and `CollectorApi` in the dashboard.
+1. the **metric registry**, `oss/packages/db/src/query/registry.ts` — the contract (see below),
+2. the Zod querystring in `oss/apps/collector-server/src/routes/query.ts` (validate at the edge),
+3. the table in `docs/integration.md` §"Query (read)" (the published reference), and
+4. the matching tool in `oss/packages/mcp` (so agents see it) and `CollectorApi` in the dashboard.
 
 Then update this skill if the workflow or a gotcha changed, and run the validation gate
 (`pnpm lint typecheck build test`).
+
+### The registry is the contract (ADR 0051 §1)
+
+`@uptimizr/db/registry` holds one `MetricDefinition` per aggregation: its id (the same string the
+agent tool uses), endpoint, result grain, group-by dimensions, accepted filters, the **output row
+schema** (Zod), per-column units and semantics, row limits, how to interpret the result, the
+caveats that make it untrustworthy, and the SDK capture channels (ADR 0012) that must be enabled
+for it to have data. Read it before guessing what a column means — it is more precise than any
+prose table, and it is what the generated tool catalog, OpenAPI document and docs tables will be
+derived from.
+
+Two CI gates keep it honest, so treat them as part of the definition of done:
+
+- **A new aggregation is not done until it has a registry entry.** Adding a `build*` without one is
+  a compile error, and `oss/packages/db/src/__tests__/registry.test.ts` re-checks it at runtime and
+  parses every `row` schema against real DuckDB output.
+- **An endpoint's querystring keys must equal its registry `filters`**, asserted by
+  `oss/apps/collector-server/src/__tests__/registryRoutes.test.ts`. Adding a query parameter without
+  declaring it in the registry fails the build.
