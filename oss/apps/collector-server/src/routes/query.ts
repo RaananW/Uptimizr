@@ -1749,15 +1749,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // spatial answer can say "the checkout counter" instead of a voxel centre, and
   // `?region=<id>` can drill a heatmap into that place by name.
   //
-  // AUTH (interim): both the read and the **write** accept a `query`-capable key,
-  // the only capability the OSS store issues today (`ingest` | `query`). Authoring
-  // regions is a write and should require the dedicated `annotate` capability the
-  // AI-first layer introduces (#309); until that capability exists there is
-  // nothing narrower to demand, so a `query` key may declare regions. When
-  // `annotate` lands, this route MUST move to it — anyone handing out a read-only
-  // key today is also handing out region authoring. Regions are non-destructive
-  // metadata (no event data can be read or altered through them), which is what
-  // makes the interim acceptable.
+  // AUTH: the two **reads** take a `query`-capable key, like every other read.
+  // The **write** takes an `annotate`-capable key (#309, ADR 0051 §5/§7) — the
+  // dedicated metadata-write capability, so a read-only key handed to an agent
+  // cannot redraw the project's spatial vocabulary. `annotate` is a write
+  // capability only: mint `query,annotate` for a client that both declares
+  // regions and reads them back.
 
   // List every region the project has declared, across all scenes (names only,
   // no boxes) — the whole spatial vocabulary in one read, for a region picker or
@@ -1773,9 +1770,9 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
     "/api/v1/scenes/:sceneId/regions",
     { schema: { params: sceneParams, body: putRegionsBody } },
     async (req, reply) => {
-      const projectId = await authProject(req, reply, store);
-      if (!projectId) return reply;
-      return store.putSceneRegions(projectId, req.params.sceneId, req.body.regions);
+      const resolved = await requireCapability(req, reply, store, "annotate");
+      if (!resolved) return reply;
+      return store.putSceneRegions(resolved.projectId, req.params.sceneId, req.body.regions);
     },
   );
 

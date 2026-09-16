@@ -23,9 +23,10 @@ import type { SceneRegion } from "@uptimizr/schema";
  * app (the Uptimizr playground registers from its dev UI for exactly this
  * reason). It is a one-off authoring step, not something to run per page load.
  *
- * The write today accepts a `query`-capable key because that is the only
- * capability the OSS collector issues; the dedicated `annotate` capability
- * arrives with the AI-first layer (#309) and the endpoint will move to it.
+ * The key needs the **`annotate`** capability — the dedicated metadata-write
+ * capability (ADR 0051 §5/§7), not `query`. Mint one with
+ * `uptimizr new-key <projectId> --capabilities annotate`, or
+ * `--capabilities query,annotate` if the same key also reads the regions back.
  */
 
 /** Transport/auth settings for a scene-registry write. */
@@ -36,8 +37,9 @@ export interface RegisterRegionsOptions {
    */
   endpoint: string;
   /**
-   * Project API key, sent as `x-api-key`. See the security note above: never
-   * ship this in a public bundle.
+   * Project API key, sent as `x-api-key`. It must hold the `annotate`
+   * capability. See the security note above: never ship this in a public
+   * bundle.
    */
   apiKey: string;
   /** `fetch` implementation to use. Defaults to the global `fetch`. */

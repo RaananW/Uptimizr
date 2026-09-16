@@ -1520,12 +1520,15 @@ them; re-sending the same set is a no-op.
 | `GET`  | `/api/v1/scenes/:sceneId/regions` | A scene's stored regions (with `updatedAt`). An unregistered scene is `[]`, not `404`.    | —                    |
 | `GET`  | `/api/v1/scene-regions`           | Every region in the project as `{ sceneId, regionId, label }` — the vocabulary, no boxes. | —                    |
 
-> **Auth (interim).** Both the read and the write take a `query`-capable project
-> API key today, because `ingest` and `query` are the only capabilities the OSS
-> collector issues. Region authoring is a write and will move to the dedicated
-> `annotate` capability when it lands (#309) — until then, a read-only key you
-> hand out can also declare regions. Regions are non-destructive metadata: no
-> event data can be read or altered through them.
+> **Auth.** The two reads take a `query`-capable project API key, like every
+> other read. The **write** takes an `annotate`-capable key — the dedicated
+> metadata-write capability — so a read-only key you hand to an agent cannot
+> redraw your spatial vocabulary. Mint one with
+> `uptimizr new-key <projectId> --capabilities annotate`, or
+> `--capabilities query,annotate` for a client that both declares regions and
+> reads them back; a `query`-only key is refused with `403`.
+> `uptimizr regions set` writes straight to the store the collector serves and
+> so needs no key at all — it is an operator command, like `new-project`.
 
 From an SDK (`@uptimizr/sdk-core`), next to the proxy scan:
 
@@ -1538,9 +1541,11 @@ await registerRegions(
     { id: "entrance", label: "Entrance", bounds: [-5, 0, -5, 5, 3, 0] },
     { id: "counter", label: "Checkout counter", bounds: [-1, 0, 1, 1, 2, 3] },
   ],
-  { endpoint: "https://collect.example.com", apiKey: process.env.UPTIMIZR_API_KEY! },
+  { endpoint: "https://collect.example.com", apiKey: process.env.UPTIMIZR_ANNOTATE_KEY! },
 );
 ```
+
+The key passed to `registerRegions` needs the `annotate` capability.
 
 > **Never ship the API key in a public bundle.** Event capture is deliberately
 > keyless (ADR 0003), but the scene registry — proxy upload and regions alike — is

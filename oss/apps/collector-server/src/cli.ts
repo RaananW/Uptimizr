@@ -309,6 +309,11 @@ function parseSceneId(value: string | undefined): string {
  * `uptimizr regions set <sceneId> --file regions.json` — replace a scene's
  * region set in the store the collector serves (ADR 0051 §2). Replace-the-set:
  * a region left out of the file is removed, and an empty array clears the scene.
+ *
+ * The offline sibling of `PUT /api/v1/scenes/:sceneId/regions`, which requires
+ * an `annotate`-capable key. This command takes no key at all: like
+ * `new-project` and `new-key` it is an **operator** command that opens the store
+ * directly, and store access is already strictly more than any capability grants.
  */
 async function cmdRegionsSet(args: string[]): Promise<void> {
   loadLocalEnv();

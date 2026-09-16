@@ -60,7 +60,8 @@ Engine adapters are just collectors that translate engine events into `@uptimizr
 - New instrumentation = a new collector, not a core modification.
 - `registerRegions(sceneId, regions, { endpoint, apiKey })` declares a scene's named regions
   (the scene registry, not capture). It **replaces** the scene's set and is an authenticated
-  write — never emit the API key into a public bundle; call it from build/deploy/admin code.
+  write needing an **`annotate`**-capable key (a `query`-only key gets `403`) — never emit the
+  API key into a public bundle; call it from build/deploy/admin code.
 
 ## Key options
 

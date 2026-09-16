@@ -2400,7 +2400,7 @@ describe("scene region routes (ADR 0051 §2)", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/scenes/lobby/regions",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "annotate-key" },
       payload: { regions: [entrance, counter] },
     });
     expect(res.statusCode).toBe(200);
@@ -2417,7 +2417,7 @@ describe("scene region routes (ADR 0051 §2)", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/scenes/lobby/regions",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "annotate-key" },
       payload: { regions: [] },
     });
     expect(res.statusCode).toBe(200);
@@ -2430,7 +2430,7 @@ describe("scene region routes (ADR 0051 §2)", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/scenes/lobby/regions",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "annotate-key" },
       payload: { regions: [{ ...entrance, bounds: [0, 0, 0, -1, 1, 1] }] },
     });
     expect(res.statusCode).toBe(400);
@@ -2442,7 +2442,7 @@ describe("scene region routes (ADR 0051 §2)", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/scenes/lobby/regions",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "annotate-key" },
       payload: { regions: [{ ...entrance, bounds: [0, 0, 0] }] },
     });
     expect(res.statusCode).toBe(400);
@@ -2458,7 +2458,7 @@ describe("scene region routes (ADR 0051 §2)", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/scenes/lobby/regions",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "annotate-key" },
       payload: { regions },
     });
     expect(res.statusCode).toBe(400);
@@ -2470,7 +2470,7 @@ describe("scene region routes (ADR 0051 §2)", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/scenes/lobby/regions",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "annotate-key" },
       payload: { regions: [entrance, entrance] },
     });
     expect(res.statusCode).toBe(400);
@@ -2482,7 +2482,7 @@ describe("scene region routes (ADR 0051 §2)", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/scenes/lobby/regions",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "annotate-key" },
       payload: {
         regions: [{ ...entrance, label: "x".repeat(LIMITS.maxSceneRegionLabelLength + 1) }],
       },
@@ -2509,7 +2509,7 @@ describe("scene region routes (ADR 0051 §2)", () => {
     await app.close();
   });
 
-  it("refuses an ingest-only key for region authoring (interim: needs `query` — #309)", async () => {
+  it("refuses an ingest-only key for region authoring (needs `annotate`)", async () => {
     const app = await buildApp({ store: makeStore(), config });
     const res = await app.inject({
       method: "PUT",
@@ -2518,6 +2518,46 @@ describe("scene region routes (ADR 0051 §2)", () => {
       payload: { regions: [entrance] },
     });
     expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  // Region authoring is a metadata *write*: a read-only key handed to an agent
+  // must not be able to redraw the project's spatial vocabulary (ADR 0051 §5/§7).
+  it("refuses a query-only key for region authoring (needs `annotate`)", async () => {
+    let called = false;
+    const app = await buildApp({
+      store: makeStore({
+        putSceneRegions: async () => {
+          called = true;
+          return [];
+        },
+      }),
+      config,
+    });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/regions",
+      headers: { "x-api-key": "valid-key" },
+      payload: { regions: [entrance] },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(called).toBe(false);
+    await app.close();
+  });
+
+  // …and the reads keep the ordinary `query` capability: `annotate` is a write
+  // capability, so a key that only annotates cannot read the vocabulary back.
+  it("reads a scene's regions with a query-capable key", async () => {
+    const app = await buildApp({
+      store: makeStore({ getSceneRegions: async () => [storedEntrance] }),
+      config,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/scenes/lobby/regions",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
     await app.close();
   });
 

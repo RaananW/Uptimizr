@@ -79,13 +79,15 @@ Author them with `registerRegions` from `@uptimizr/sdk-core`, with a plain `PUT`
 or offline with `uptimizr regions set <sceneId> --file regions.json`.
 
 :::caution
-Both the read and the **write** take a `query`-capable API key today — `ingest`
-and `query` are the only capabilities the OSS collector issues. Region authoring
-will move to the dedicated `annotate` capability when it lands, so until then a
-read-only key you hand out can also declare regions (regions are
-non-destructive metadata; no event data is reachable through them). And as with
-the proxy upload, never ship the API key in a public bundle: register regions
-from a build script, a server-side route, or a developer-only path.
+The two reads take a `query`-capable API key; the **write** takes an
+`annotate`-capable one — the dedicated metadata-write capability, so a
+read-only key you hand to an agent cannot redraw your spatial vocabulary. Mint
+one with `uptimizr new-key <projectId> --capabilities annotate` (or
+`query,annotate` if the same key reads the regions back); a `query`-only key is
+refused with `403`. `uptimizr regions set` writes straight to the store and
+needs no key at all. And as with the proxy upload, never ship the API key in a
+public bundle: register regions from a build script, a server-side route, or a
+developer-only path.
 :::
 
 ## Meshes & interactions

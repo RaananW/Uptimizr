@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { API_KEY, COLLECTOR_URL } from "./constants.js";
+import { API_KEY, COLLECTOR_URL, QUERY_ONLY_API_KEY } from "./constants.js";
 import {
   bootEngine,
   enableAllCapture,
@@ -24,6 +24,8 @@ import {
  * 3. A spatial endpoint filtered with `region=<id>` returns a **subset** of the
  *    unfiltered result — the registry id really is resolved to the stored box and
  *    applied — while an unknown region id is a `400`, never a silently empty map.
+ * 4. The write is gated on the `annotate` capability: a `query`-only key is
+ *    refused with `403` against the live collector (ADR 0051 §5/§7).
  */
 
 interface StoredRegion {
@@ -156,4 +158,51 @@ test("playground registers scene regions and filters a spatial query by region i
   });
   expect(unknown.status()).toBe(400);
   expect(await unknown.text()).toContain("unknown region");
+});
+
+/**
+ * Region authoring is a metadata **write**: it needs the `annotate` capability,
+ * not `query` (ADR 0051 §5/§7). The harness key holds both; the seeded
+ * query-only agent key holds neither the raw nor the annotate capability, so the
+ * same request it can happily *read* with is refused when it tries to write.
+ */
+test("region authoring refuses a query-only key and accepts the annotate key", async ({
+  request,
+}) => {
+  const body = {
+    regions: [
+      {
+        id: "capability-probe",
+        label: "Capability probe",
+        bounds: [-1, -1, -1, 1, 1, 1],
+      },
+    ],
+  };
+  const url = `${COLLECTOR_URL}/api/v1/scenes/capability-probe-scene/regions`;
+
+  const refused = await request.put(url, {
+    headers: { "x-api-key": QUERY_ONLY_API_KEY },
+    data: body,
+  });
+  expect(refused.status(), await refused.text()).toBe(403);
+
+  // Nothing was written.
+  const afterRefusal = await getJson<StoredRegion[]>(request, url);
+  expect(afterRefusal).toEqual([]);
+
+  // The harness key carries `annotate`, so the identical request succeeds.
+  const accepted = await request.put(url, {
+    headers: { "x-api-key": API_KEY },
+    data: body,
+  });
+  expect(accepted.status(), await accepted.text()).toBe(200);
+  const afterWrite = await getJson<StoredRegion[]>(request, url);
+  expect(afterWrite.map((r) => r.regionId)).toEqual(["capability-probe"]);
+
+  // Leave the scene clean for reruns against a warm store.
+  const cleared = await request.put(url, {
+    headers: { "x-api-key": API_KEY },
+    data: { regions: [] },
+  });
+  expect(cleared.status()).toBe(200);
 });

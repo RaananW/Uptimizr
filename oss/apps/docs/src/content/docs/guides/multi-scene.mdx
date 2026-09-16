@@ -139,8 +139,10 @@ curl "$ENDPOINT/api/v1/heatmaps/world?scene=lobby&region=counter" \
 
 Regions may overlap (an enclosing hall and a counter within it), so a point can belong to several.
 Registering regions is an **authenticated write** — like the scene-proxy upload it uses your project
-API key, so do it from a build script, a server-side route, or a developer-only path, never from a
-public bundle. There is also a CLI: `uptimizr regions set lobby --file regions.json`. See
+API key, which must hold the `annotate` capability (`uptimizr new-key <projectId> --capabilities
+annotate`), so do it from a build script, a server-side route, or a developer-only path, never from
+a public bundle. There is also a CLI, which writes straight to the store and needs no key:
+`uptimizr regions set lobby --file regions.json`. See
 [Scene regions](/docs/api/query/#scene-regions).
 
 ## In the dashboard

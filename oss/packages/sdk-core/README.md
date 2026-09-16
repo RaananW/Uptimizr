@@ -103,7 +103,10 @@ The call **replaces** the scene's whole set (leaving a region out removes it; `[
 and validates locally before sending, so a bad box fails with a precise message.
 
 > **Security.** Unlike event capture — which is deliberately keyless — this is an authenticated
-> write that sends a project API key as `x-api-key`, exactly like the scene-proxy upload. Never
+> write that sends a project API key as `x-api-key`, exactly like the scene-proxy upload. The
+> key must hold the **`annotate`** capability — mint one with
+> `uptimizr new-key <projectId> --capabilities annotate` (or `query,annotate` if the same key
+> reads the regions back); a `query`-only key is refused with `403`. Never
 > bake that key into a public production bundle: call `registerRegions` from a build/deploy
 > script, a server-side route, an internal admin tool, or a developer-only path. It is a one-off
 > authoring step, not a per-page-load call.

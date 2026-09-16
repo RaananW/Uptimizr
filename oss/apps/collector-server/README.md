@@ -66,9 +66,11 @@ npx -p @uptimizr/collector-server uptimizr regions get lobby --project "$PROJECT
 The file is either a bare array or the `{ "regions": [...] }` envelope the HTTP
 endpoint takes, so one file works with both. `--project` may be replaced by
 `UPTIMIZR_PROJECT_ID`. The write **replaces** the scene's whole set, so leaving a
-region out removes it and `[]` clears them. Over HTTP the same thing is
-`PUT /api/v1/scenes/:sceneId/regions` (see the integration guide), and from a
-client build `registerRegions` in `@uptimizr/sdk-core`.
+region out removes it and `[]` clears them. The CLI talks to the store directly,
+so it needs no API key. Over HTTP the same thing is
+`PUT /api/v1/scenes/:sceneId/regions` (see the integration guide), which takes
+an `annotate`-capable key, and from a client build `registerRegions` in
+`@uptimizr/sdk-core`.
 
 ### All-in-one: serve the dashboard too
 

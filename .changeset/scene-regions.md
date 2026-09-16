@@ -21,7 +21,8 @@ for _where_ things happen ("the entrance", "the checkout counter").
 - `@uptimizr/collector-server`: `PUT` / `GET /api/v1/scenes/:sceneId/regions`, the project-wide
   `GET /api/v1/scene-regions` listing, `uptimizr regions set|get` CLI commands, and `region=<id>`
   as an alternative to the six-number box on every spatial endpoint that already takes a region
-  (resolved server-side to the stored bounds; an unregistered id is a `400`). Region authoring
-  accepts a `query`-capable key for now — an interim until the `annotate` capability lands.
+  (resolved server-side to the stored bounds; an unregistered id is a `400`). The region reads
+  take a `query`-capable key; the **write** takes an `annotate`-capable one (a `query`-only key
+  is refused with `403`). `uptimizr regions set` opens the store directly and needs no key.
 - `@uptimizr/sdk-core`: `registerRegions(sceneId, regions, { endpoint, apiKey })`, the authoring
   counterpart to a connector's `scanSceneProxy`.
