@@ -1,0 +1,46 @@
+# @uptimizr/dashboard
+
+> The OSS analytics UI for Uptimizr (Next.js App Router + Tailwind). A **passive viewer**: it
+> reads only the collector's query API, never a database, and does no authoring — no project or
+> key minting, no ingestion, no admin writes. Every panel comes from `@uptimizr/react`, which owns
+> the OSS panel catalog (ADR 0047). The canonical artifact is a static export served against any
+> collector URL, supplied at runtime in the connection bar.
+
+## Docs
+
+- [Package reference](./README.md): the three ways to run it, configuration, current OSS surface.
+- [Agent guide](./AGENTS.md): static-export rules, env vars, the assistant seam, and the rules an agent must follow.
+- [Deploy guide](https://uptimizr.com/docs/deploy/dashboard/): running it in production.
+- [Panel package](../../packages/react/README.md): `@uptimizr/react` — where panels are authored.
+- [Collector](../collector-server/README.md): the query API the dashboard reads.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), distribution & self-host DX (0029), live sessions (0032), extensible dashboard panels (0036), runtime remote panels (0041), react owns the OSS panel catalog (0047), replay + live presence (0049), in-browser analytics assistant (0050).
+
+## Run
+
+- Build the export: `pnpm --filter @uptimizr/dashboard build:static` → `out/` (sets `DASHBOARD_STATIC=1`).
+- Standalone: `npx -p @uptimizr/dashboard uptimizr-dashboard --port 3000`.
+- All-in-one: `COLLECTOR_DASHBOARD_DIR=./out npx -p @uptimizr/collector-server uptimizr serve`.
+- Static drop-in: copy `out/` anywhere, with an SPA fallback to `index.html` for `/projects/:id/...`.
+
+## Environment
+
+- `DASHBOARD_STATIC=1` — build the static export (`output: "export"`; no Next server, no rewrites).
+- `NEXT_PUBLIC_COLLECTOR_URL`, `NEXT_PUBLIC_API_KEY` — local-dev defaults for the connection bar.
+- `NEXT_BASE_PATH` (exposed to the client as `NEXT_PUBLIC_BASE_PATH`) — sub-path builds.
+- `NEXT_PUBLIC_PANELS_MANIFEST_URL`, `NEXT_PUBLIC_PANELS_ALLOWED_ORIGINS` — runtime/remote panels (ADR 0041).
+- `NEXT_PUBLIC_PLAYGROUND_URL` — playground links.
+- `DASHBOARD_PORT` / `PORT`, `DASHBOARD_HOST` — standalone static server.
+
+Every `NEXT_PUBLIC_*` value is baked into the client bundle and visible to viewers.
+
+## Surface
+
+Project/session selection, live presence and live event feed; the registry-driven
+`@uptimizr/react` panels (sessions, pointer/world/view-direction heatmaps, mesh and interaction
+leaderboards, funnels, paths, performance, diagnostics, XR summaries); session detail with a
+metadata/raw-event inspector, replay, live-follow replay and a first-person trajectory view; an
+opt-in, lazily loaded in-browser analytics assistant; and optional runtime/remote panels.
+
+## Bin
+
+- `uptimizr-dashboard` → `server/standalone.mjs` — zero-dependency static server for `out/`.

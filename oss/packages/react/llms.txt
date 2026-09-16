@@ -1,0 +1,39 @@
+# @uptimizr/react
+
+> Embeddable React analytics panels for an Uptimizr collector, and the single source of truth for
+> the OSS dashboard's panel set (ADR 0047). Panels read the collector's query API through a shared
+> `CollectorApi` — browser → query API only, never the database. Babylon and the LLM runtime are
+> optional, code-split peers, so the core entry stays tree-shakeable.
+
+## Docs
+
+- [Package reference](./README.md): usage, the export table, the portable catalog, Tailwind setup, the assistant.
+- [Agent guide](./AGENTS.md): entry points, the panel contract, the assistant options, and the rules an agent must follow.
+- [Custom panels guide](https://uptimizr.com/docs/guides/custom-panels/): authoring a `PanelDefinition`.
+- [Assistant guide](https://uptimizr.com/docs/guides/assistant/): the in-browser analytics assistant.
+- [Query API reference](https://uptimizr.com/docs/api/query/): every endpoint a panel can read.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), extensible dashboard panels (0036), viewer-configurable panels (0039), runtime remote panels (0041), react owns the OSS panel catalog (0047), replay + live presence + portable panels (0049), in-browser analytics assistant (0050), AI-first analytics layer (0051).
+
+## Entry points
+
+- `@uptimizr/react` — provider, hooks, `CollectorApi`, the panel contract, the OSS catalog and views.
+- `@uptimizr/react/panels-3d` — Babylon-backed 3D views (`WorldHeatmap3DView`, `ClickRays3DView`, `SessionReplayView`, …); the only entry that pulls 3D view modules into your graph.
+- `@uptimizr/react/assistant` — `AssistantPanel`, `useAssistant` (opt-in, code-split).
+
+## Key exports
+
+- Connection: `UptimizrProvider`, `useUptimizr`, `useOptionalUptimizr`, `useCollectorApi`, `CollectorApi`, `CollectorClientKind` (sent as `x-uptimizr-client` for the audit log).
+- Ready-made panels: `SessionsPanel`, `PointerHeatmapPanel`, `ViewDirectionHeatmapPanel`, `PerformanceSummaryPanel`.
+- Catalog: `ossPanelCatalog` plus every panel individually (`topMeshesPanel`, `worldHeatmapPanel`, `flowPanel`, `livePresencePanel`, `sessionReplayPanel`, …) and the view bodies (`TopMeshesView`, `FloorPlanHeatmapView`, `PointerHeatmapView`, …).
+- Panel contract: `definePanel`, `PANEL_CONTRACT_VERSION`, types `PanelDefinition` / `PanelContext` / `PanelActions` / `PanelLive` / `PanelCapabilities` / `PanelSurface` / `PanelSpan` / `PanelSettingSpec`; `usePanelData`, `PanelCard`, `PanelMessage`.
+- Panel settings (ADR 0039): `resolvePanelSettings`, `coercePanelSetting`, `pruneDefaultOverrides`, `createLocalStoragePanelStore`, `memoryPanelStore`, `EMPTY_PANEL_STATE`.
+- Remote panels (ADR 0041): `fetchPanelManifest`, `loadRemotePanels`, `mergePanels`, `isPanelDefinition`, `isPanelManifest`, `isContractCompatible`.
+- Filters + live: `DEFAULT_FILTERS`, `TIME_PRESETS`, `INPUT_SOURCES`, `resolveRange`, `toQueryParams`, `pickInterval`, `formatSource`, `useLiveSession`, `useSessionTail`, `LivePresenceView`.
+- Drawing helpers: `drawPointerHeatmap`, `drawDirectionHeatmap`, `heatRgb`, `HEAT_GRADIENT`, `percentileMax`, `heatColor`, `formatNumber`, `formatTime`, `parseTimestamp`.
+- Assistant subpath: `AssistantPanel`, `useAssistant`, `DEFAULT_SYSTEM_PROMPT`, `composeSystemPrompt`, `refreshSystemPrompt`, `DEFAULT_ASSISTANT_MAX_STEPS`.
+
+## Optional peers
+
+`@babylonjs/core`, `@babylonjs/loaders` (3D panels) and `@mlc-ai/web-llm` (the local assistant
+backend) are declared **optional** and loaded lazily — add them only if you render a 3D panel or
+run a local model.

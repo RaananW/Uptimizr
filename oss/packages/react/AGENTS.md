@@ -1,0 +1,161 @@
+# AGENTS.md — @uptimizr/react
+
+> Packaged agent guide. For the human reference see [README.md](./README.md); for design
+> rationale see the project ADRs at https://github.com/RaananW/Uptimizr/tree/main/docs/adr.
+
+## What this package is
+
+Embeddable React analytics panels for an Uptimizr collector, and the **single source of truth for
+the OSS dashboard's panel set** (ADR 0047). Drop individual panels into your own React app, render
+the entire built-in catalog, or build custom panels on the typed query client. The standalone
+`@uptimizr/dashboard` is itself just a thin consumer of this package.
+
+Panels read the collector's **query API** through a shared `CollectorApi` — browser → query API
+only, **never the database**. That is the same client the dashboard uses, so there is one
+implementation of each panel.
+
+## Install
+
+```bash
+pnpm add @uptimizr/react
+# react and react-dom are peer dependencies you already have.
+```
+
+## Entry points
+
+| Import                      | Contains                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------- |
+| `@uptimizr/react`           | Provider, hooks, `CollectorApi`, the panel contract, the OSS panel catalog and views. |
+| `@uptimizr/react/panels-3d` | The Babylon-backed 3D view components (opt-in subpath).                               |
+| `@uptimizr/react/assistant` | The in-browser analytics assistant (opt-in, code-split).                              |
+
+## Canonical usage
+
+```tsx
+import {
+  UptimizrProvider,
+  SessionsPanel,
+  PointerHeatmapPanel,
+  ViewDirectionHeatmapPanel,
+  PerformanceSummaryPanel,
+} from "@uptimizr/react";
+
+<UptimizrProvider endpoint="http://localhost:4318" apiKey={import.meta.env.VITE_UPTIMIZR_KEY}>
+  <PerformanceSummaryPanel />
+  <SessionsPanel onSelect={(id) => console.log(id)} />
+  <PointerHeatmapPanel params={{ since: Date.now() - 86_400_000, scene: "main" }} />
+  <ViewDirectionHeatmapPanel />
+</UptimizrProvider>;
+```
+
+Every panel accepts an optional `params` object (time range, `scene`, `session`, input `source`, …)
+forwarded to the query API. `useCollectorApi()` / `useUptimizr()` hand you the shared client and
+connection for custom UI.
+
+### The portable OSS panel catalog (ADR 0036 / 0047)
+
+`ossPanelCatalog` is the complete, portable set of the dashboard's built-in analytics panels. A
+host can enumerate and render **every OSS panel from this package alone**, adding only chrome and
+layout:
+
+```tsx
+import { ossPanelCatalog } from "@uptimizr/react";
+import type { PanelContext } from "@uptimizr/react";
+
+for (const panel of ossPanelCatalog) {
+  // panel.id / panel.title / panel.span / panel.surfaces describe it;
+  // panel.load(ctx) fetches data and panel.render({ data, ctx }) draws the body.
+}
+```
+
+Each panel is also exported individually (`topMeshesPanel`, `worldHeatmapPanel`, `flowPanel`,
+`livePresencePanel`, `sessionReplayPanel`, …) to cherry-pick, and the panel **view** components
+(`TopMeshesView`, `FloorPlanHeatmapView`, `PointerHeatmapView`, …) plus the 3D/canvas helper libs
+(`mergeSceneProxies`, `disableWheelZoom`, `attachMeshHover`, `buildTwoStageGraph`, …) are exported
+for building custom panels.
+
+### The panel contract (ADR 0036, extended by 0039 and 0041)
+
+Author a panel with `definePanel({ … })` so `load`'s return type flows into `render` and settings
+stay typed:
+
+```tsx
+import { definePanel, PANEL_CONTRACT_VERSION } from "@uptimizr/react";
+import type { PanelDefinition, PanelContext } from "@uptimizr/react";
+```
+
+- **Viewer-configurable settings (ADR 0039):** declare `PanelSettingSpec`s (number / boolean /
+  select); resolve and persist them with `resolvePanelSettings`, `coercePanelSetting`,
+  `pruneDefaultOverrides` and a `PanelStateStore` (`createLocalStoragePanelStore` or
+  `memoryPanelStore`).
+- **Runtime / remote panels (ADR 0041):** `fetchPanelManifest`, `loadRemotePanels`, `mergePanels`,
+  `isPanelDefinition`, `isPanelManifest`, `isContractCompatible` load third-party panels behind the
+  **same** `PanelDefinition` interface. `PANEL_CONTRACT_VERSION` bumps only on a breaking contract
+  change — check compatibility, never assume it.
+
+### The in-browser assistant (ADR 0050)
+
+`@uptimizr/react/assistant` ships a drop-in `<AssistantPanel>` and a headless `useAssistant()`
+hook. The agent loop runs **entirely in the browser** against the same read-only query API the
+panels use. It ships **no model and no key**: the user picks a local WebGPU model (`@mlc-ai/web-llm`,
+an optional peer, loaded lazily) or a bring-your-own hosted provider.
+
+```tsx
+import { AssistantPanel } from "@uptimizr/react/assistant";
+
+// Reuses an ambient <UptimizrProvider> connection, or takes explicit props:
+<AssistantPanel collectorUrl="http://localhost:4318" apiKey="utk_…" />;
+```
+
+```tsx
+import { useAssistant } from "@uptimizr/react/assistant";
+
+const { messages, send, status, setBackend, backend } = useAssistant({
+  collectorUrl: "http://localhost:4318",
+  apiKey: "utk_…",
+  // Optional: pin the read tools this assistant may call. Omit and the hook chooses —
+  // the local (WebGPU) backend gets agent-core's focused core subset, a hosted backend
+  // the full ~69-tool catalog. Unknown names are ignored; `[]` falls back to the default.
+  tools: ["perf_summary", "jank_rate", "perf_by_device"],
+  // systemPrompt, maxSteps, confirmDownload, cachePolicy, persistBackend, now …
+});
+```
+
+Other `UseAssistantOptions`: `api` (reuse a built `CollectorApi`), `backend` (omit and the hook
+loads the persisted choice; with none it stays `null` so the UI can show an explicit first-run
+chooser — nothing downloads until the user picks), `systemPrompt` (defaults to
+`DEFAULT_SYSTEM_PROMPT`; `composeSystemPrompt` / `refreshSystemPrompt` build and re-stamp it),
+`maxSteps` (`DEFAULT_ASSISTANT_MAX_STEPS`, 12), `confirmDownload`, `cachePolicy`
+(`"active-only"` default — switching models evicts the previous ~4 GB cache), `onCacheEvicted`,
+`persistBackend`, `now`.
+
+## Rules for agents
+
+- **Query API only.** A panel reads through `CollectorApi`; it never talks to a database and never
+  invents an endpoint. A new panel that needs new data means a new metric-registry entry and a
+  collector endpoint first.
+- **This package is the panel source of truth** (ADR 0047). Add a panel here and the dashboard
+  gets it; never fork a panel into `@uptimizr/dashboard`.
+- **Keep the core entry Babylon-free and `sideEffects: false`.** The Babylon-backed 3D panels keep
+  their view code behind `React.lazy` inside the catalog, so importing `ossPanelCatalog` never
+  loads `@babylonjs/*` at module-eval time. `@babylonjs/core`, `@babylonjs/loaders` and
+  `@mlc-ai/web-llm` are **optional** peers — a static import of any of them from the core barrel
+  is a regression (ADR 0047 / 0050).
+- **Keep the assistant and the LLM runtime code-split.** Importing `@uptimizr/react` must pull no
+  assistant or LLM code; the assistant itself loads `@mlc-ai/web-llm` lazily, only when a local
+  model actually runs.
+- **Never ship a key into a public bundle.** The `apiKey` a panel uses is the viewer's; treat it
+  as a credential and keep it out of committed source.
+- Privacy (ADR 0003): panels render aggregates. Raw per-session views (replay, live-follow) need a
+  collector with `ENABLE_RAW_SESSION_RETENTION` **and** a `query:raw` key — surface the `403`, do
+  not work around it.
+- Catalog panel bodies use the dashboard's Tailwind utility classes. Tailwind v4 skips
+  `node_modules`, so a host must add
+  `@source "../node_modules/@uptimizr/react/dist/**/*.js";` or the panels render unstyled.
+
+## More
+
+- Package reference: [README.md](./README.md)
+- Custom panels guide: https://uptimizr.com/docs/guides/custom-panels/
+- Assistant guide: https://uptimizr.com/docs/guides/assistant/
+- Query API reference: https://uptimizr.com/docs/api/query/

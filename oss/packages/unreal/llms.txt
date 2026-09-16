@@ -1,0 +1,31 @@
+# @uptimizr/unreal
+
+> The Unreal Engine (web export) connector for Uptimizr (ADR 0045). Built on
+> `@uptimizr/web-export`: a JS-only tier captures pointer heatmaps / FPS / errors with no engine
+> code, and a copy-in Emscripten shim pushes camera pose, picks and perf over the versioned
+> bridge. Unreal's left-handed, z-up, centimeter frame is rebased and rescaled in TypeScript.
+> Bridged tier is best-effort — there is no official Epic web target.
+
+## Docs
+
+- [Package reference](./README.md): the two tiers, `trackUnreal`, the best-effort caveat.
+- [Agent guide](./AGENTS.md): rules, the engine-side vs web-side split, export caveats.
+- [Engine-side bridge](./bridge/README.md): the copy-in `Uptimizr.h`/`Uptimizr.cpp`, viable web targets, the JS API.
+- [Unreal guide](https://uptimizr.com/docs/connectors/unreal/): the docs-site walkthrough.
+- [Shared foundation](../web-export/README.md): `@uptimizr/web-export`, the bridge contract and the JS-only tier.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data (see "Web-export engines").
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), coordinate frame & connector provenance (0018), web-export engine connectors (0045).
+
+## Key exports
+
+- `trackUnreal(options)` — one-call integration; returns `{ client, bridge }`.
+- `unrealCollector(options)` — the collector for manual composition (`client.use(...)`).
+- `UNREAL_FRAME` — `{ handedness: "left", upAxis: "z", unitScale: 100 }` (z-up, centimeters).
+- `UNREAL_CONNECTOR_NAME` — `"unreal"`, the connector provenance / collector name.
+- Types: `TrackUnrealOptions`, `UnrealCollectorOptions`, `EngineBridge`.
+
+## Engine-side copy-in assets
+
+- `bridge/Uptimizr.h` + `bridge/Uptimizr.cpp` — copy into `Source/<Module>/` of your web target;
+  `UptimizrTelemetry().Initialize()` / `.Tick(World, DeltaSeconds)` / `.TraceAndReportPick(World)`.
+  No-ops off Emscripten.

@@ -1,0 +1,24 @@
+# @uptimizr/aframe
+
+> The A-Frame (WebXR) connector for Uptimizr. A thin A-Frame layer over `@uptimizr/three`: a
+> declarative `<a-scene uptimizr="...">` component hands A-Frame's three.js scene/camera/renderer
+> to the three connector. `three` is a peer dependency; A-Frame itself is supplied by the host
+> page. Adds WebXR controller/gaze capture on the existing source-neutral events.
+
+## Docs
+
+- [Package reference](./README.md): component usage, the WebXR mapping table, the full attribute schema, replay, package boundary.
+- [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
+- [Connector guide](https://uptimizr.com/docs/connectors/aframe/): the docs-site walkthrough.
+- [three connector](../sdk-three/README.md): the capture engine and the full option surface.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), scene ids (0010), input-source-agnostic events (0011), sampling & fidelity (0012), coordinate frame & connector provenance (0018), AR/VR spatial analytics (0048).
+
+## Key exports
+
+- Importing the package registers the `uptimizr` component against the global `AFRAME` (side effect).
+- `registerUptimizrComponent(aframe?)` / `createUptimizrComponent(libraryVersion?)` — explicit registration.
+- `COMPONENT_NAME`, `UPTIMIZR_SCHEMA` — the attribute name and the declared component schema.
+- `buildTrackOptions(data)` — maps the component schema onto three's `TrackSceneOptions`.
+- `xrCollector(options)` — WebXR controller/gaze capture, re-exported from `@uptimizr/three`.
+- Re-exported option types: `TrackSceneOptions`, `ThreeCaptureOptions`, `XrCollectorOptions`, `XrCaptureOptions`, `MeshVisibilityOptions`, `HoverDwellOptions`, `ResourceSampleOptions`.

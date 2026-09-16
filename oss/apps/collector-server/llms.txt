@@ -1,0 +1,38 @@
+# @uptimizr/collector-server
+
+> The OSS ingestion + query API (Fastify) for Uptimizr, plus the `uptimizr` CLI that self-hosts
+> it. Keyless, schema-validated ingestion; `x-api-key` read routes scoped to the key's project and
+> capability set. The single gateway to the data — the dashboard, `@uptimizr/mcp` and your own
+> agents all read through this HTTP API, never the database. Storage is swappable
+> (`COLLECTOR_STORE`: DuckDB by default, plus Postgres / SQL Server / ClickHouse).
+
+## Docs
+
+- [Package reference](./README.md): self-host, all endpoints, security, the full configuration list.
+- [Agent guide](./AGENTS.md): the CLI, capabilities, result envelopes, filters, stores, and the rules an agent must follow.
+- [HTTP API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md#4-http-api): keys, capabilities, rate limits, the audit log, storage backends.
+- [Query API guide](https://uptimizr.com/docs/api/query/): every read endpoint and the result formats.
+- [Deploy guide](https://uptimizr.com/docs/deploy/collector/): running it in production.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), thin backends (0005), migrations (0007), consumer-facing agents (0017), open-core storage boundary (0020), distribution & self-host DX (0029), live sessions (0032), AI-first analytics layer (0051).
+
+## Self-describe before you call
+
+- `GET /api/v1/openapi.json` — unauthenticated OpenAPI 3.1 for the whole read API, generated from
+  the `@uptimizr/metrics` registry: one path per endpoint, real parameter schemas, a response
+  schema per metric, plus `x-uptimizr-*` extensions carrying grain, column units, caveats,
+  interpretation, source capture channels and row limits.
+- `GET /api/v1/whoami` — the calling key's project, key id, capabilities, label and effective rate
+  limit.
+- `GET /api/v1/audit?since=&until=&limit=` — the agent audit log (key ids, never keys).
+
+## Key facts
+
+- **CLI:** `uptimizr init | serve | new-project <name> | new-key <projectId> | migrate | regions set|get <sceneId> | help`. `new-key` takes `--capabilities`, `--label`, `--rate-limit-max`, `--rate-limit-window-ms`. Every command targets `COLLECTOR_STORE`.
+- **Capabilities:** `ingest` (server-side writes), `query` (aggregates, scene registry, live token, audit), `annotate` (project metadata writes), `query:raw` (raw per-session + live-follow streams). Default `query`.
+- **Raw data is gated twice:** `ENABLE_RAW_SESSION_RETENTION` **and** a `query:raw` key, or `403`.
+- **Result envelopes:** `format=full | table | summary` on every aggregate endpoint (ADR 0051 §2) — `summary` is the bounded, LLM-affordable digest.
+- **Filters:** `since`, `until`, `bins`, `limit`, `scene`, `session`, `cameraMode`, `source`, `cellSize`, and `region=<id>` to drill a spatial query into a named place.
+- **Audit retention:** `AUDIT_RETENTION_DAYS` (default `30`, `0` = forever); `AUDIT_DASHBOARD_REQUESTS` to also record dashboard traffic.
+- **Stores:** `COLLECTOR_STORE=duckdb` (default, single-file, single-writer, `DUCKDB_PATH`) | `memory` | `postgres` | `mssql` | `clickhouse` — identical analytics on all four (parity suite).
+- **Required:** `VISITOR_HASH_SECRET`. The server fails fast without it; the raw IP is never stored.
+- **Bins:** `uptimizr` (`dist/cli.js`) and the legacy `uptimizr-collector` (`dist/server.js`).

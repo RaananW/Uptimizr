@@ -32,7 +32,9 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "AGENTS.md",
+    "llms.txt"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

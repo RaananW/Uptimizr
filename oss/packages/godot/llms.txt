@@ -1,0 +1,29 @@
+# @uptimizr/godot
+
+> The Godot 4 (Web export) connector for Uptimizr (ADR 0045). Built on `@uptimizr/web-export`:
+> a JS-only tier captures pointer heatmaps / FPS / errors with no engine code, and a thin copy-in
+> `JavaScriptBridge` autoload (GDScript or C#) pushes camera pose, picks, perf and a scene proxy
+> over the versioned bridge. Godot's right-handed frame is normalized by negating Z in TypeScript.
+
+## Docs
+
+- [Package reference](./README.md): the two tiers, `trackGodot`, autoload setup, verification status.
+- [Agent guide](./AGENTS.md): rules, the engine-side vs web-side split, export caveats.
+- [Engine-side bridge](./bridge/README.md): the copy-in autoloads, their options, the JS API and coordinate notes.
+- [Godot guide](https://uptimizr.com/docs/connectors/godot/): the docs-site walkthrough.
+- [Shared foundation](../web-export/README.md): `@uptimizr/web-export`, the bridge contract and the JS-only tier.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data (see "Web-export engines").
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), coordinate frame & connector provenance (0018), web-export engine connectors (0045).
+
+## Key exports
+
+- `trackGodot(options)` — one-call integration; returns `{ client, bridge }`.
+- `godotCollector(options)` — the collector for manual composition (`client.use(...)`).
+- `GODOT_FRAME` — `{ handedness: "right", upAxis: "y", unitScale: 1 }`.
+- `GODOT_CONNECTOR_NAME` — `"godot"`, the connector provenance / collector name.
+- Types: `TrackGodotOptions`, `GodotCollectorOptions`, `EngineBridge`.
+
+## Engine-side copy-in assets
+
+- `bridge/UptimizrGodot.gd` — GDScript autoload (recommended); register it as `UptimizrGodot`.
+- `bridge/UptimizrGodot.cs` — the functionally identical C# autoload for Godot 4 .NET projects.

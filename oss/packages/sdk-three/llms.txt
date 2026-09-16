@@ -1,0 +1,24 @@
+# @uptimizr/three
+
+> The three.js connector for Uptimizr. Registers as an sdk-core collector and captures camera
+> pose, pointer move/click/buttons, camera gestures, mesh picks, FPS, and opt-in attention
+> channels. `three` is a (type-only) peer dependency; WebXR capture is on by default.
+
+## Docs
+
+- [Package reference](./README.md): `trackScene`, advanced composition, sampling/fidelity, WebXR, three.js adaptations.
+- [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
+- [Connector guide](https://uptimizr.com/docs/connectors/three/): the docs-site walkthrough.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), input-source-agnostic events (0011), sampling & fidelity (0012), coordinate frame & connector provenance (0018), keyboard input actions (0023), scene actors (0027), world-space gaze (0030), pointer lock (0034).
+
+## Key exports
+
+- `trackScene(scene, camera, renderer, options)` — one-call integration; returns the `UptimizrClient`.
+- `threeCollector(options)` — the collector for manual composition (`client.use(...)`).
+- `xrCollector(options)` — WebXR controller/gaze capture; registered by `trackScene` unless `xr: false`.
+- `readDeviceCaps(renderer)`, `readGraphics(renderer)`, `readConnector(overrides)`,
+  `readSceneMeta(scene, camera)`, `classifyCamera` — the `session_start` provenance blocks.
+- `scanSceneProxy(scene, options)` — per-object world-AABB scene proxy (spatial heatmap backdrop).
+- `createSceneRaycaster`, `createGazeRaycaster`, `createXrRaycaster` — hit-resolution probes.
+- `toVec3`, `clamp01` — vector helpers.

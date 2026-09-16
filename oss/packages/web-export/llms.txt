@@ -1,0 +1,31 @@
+# @uptimizr/web-export
+
+> The shared foundation for Uptimizr's web-export engine connectors (Unity, Godot, Unreal —
+> ADR 0045). These engines render into a `<canvas>` from WebAssembly, so there is no live JS scene
+> to read: a JS-only tier captures pointer heatmaps / FPS / errors with no engine code, and a thin
+> engine-side shim pushes pose, picks, perf and a scene proxy over a tiny versioned bridge. All
+> schema mapping and coordinate normalization stay in TypeScript.
+
+## Docs
+
+- [Package reference](./README.md): when to use it directly, the two tiers, `trackWebExport`, the bridge contract.
+- [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
+- [Web-export guide](https://uptimizr.com/docs/connectors/web-export/): the docs-site walkthrough.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data (see "Web-export engines").
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), coordinate frame & connector provenance (0018), web-export engine connectors (0045).
+
+## Engine packages built on this
+
+- [`@uptimizr/unity`](../unity/README.md) — left-handed, y-up, meters (already canonical).
+- [`@uptimizr/godot`](../godot/README.md) — right-handed, y-up, meters (negate Z).
+- [`@uptimizr/unreal`](../unreal/README.md) — left-handed, z-up, centimeters (rebase + rescale).
+
+## Key exports
+
+- `trackWebExport(options)` — one-call setup; returns `{ client, bridge }` (`WebExportSession`).
+- `webExportCollector(options)` — the combined sdk-core collector (JS-only tier + engine bridge).
+- `createEngineBridge(options)`, `EngineBridge`, `BRIDGE_PROTOCOL_VERSION` — the versioned bridge contract.
+- `startJsOnlyCapture(options)` — the bare zero-engine-code tier (pointer, rAF FPS/long frames, JS errors).
+- `normalizePosition`, `normalizeDirection`, `normalizeAabb`, `rebaseZUpToYUp` — native → canonical frame.
+- `buildConnector(...)`, `buildSceneProxy(...)` — `session_start` provenance and the scene proxy.
+- Types: `NativeFrame`, `TrackWebExportOptions`, `WebExportSession`, `WebExportCollectorOptions`, `CanvasView`, `JsOnlyOptions`, `JsOnlyCaptureOptions`, `BridgeSceneNode`.
