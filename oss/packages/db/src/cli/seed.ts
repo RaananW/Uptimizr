@@ -171,14 +171,22 @@ async function main(): Promise<void> {
   const db = await createDuckdbClient(readDbSettings().duckdb.path);
   await migrateDuckdb(db);
 
+  // Local development seed: the demo projects back the playground + dashboard,
+  // whose session replay and live-follow read raw per-session streams. Those
+  // need `query:raw` alongside `query` (#309, ADR 0051 §7) — the collector still
+  // only honours it when `ENABLE_RAW_SESSION_RETENTION` is on, which the repo's
+  // `.env.example` sets for local dev. Production keys keep the read-only
+  // `query` default (`uptimizr init` / `new-project`); grant `query:raw`
+  // deliberately with `uptimizr new-key --capabilities query,query:raw`.
+  const devCapabilities = { capabilities: ["query", "query:raw"] } as const;
   const viewer = await createProject(db, `${baseName} (Viewer)`);
-  const viewerKey = (await createApiKey(db, viewer.id)).key;
+  const viewerKey = (await createApiKey(db, viewer.id, devCapabilities)).key;
   const walkable = await createProject(db, `${baseName} (Walkable)`);
-  const walkableKey = (await createApiKey(db, walkable.id)).key;
+  const walkableKey = (await createApiKey(db, walkable.id, devCapabilities)).key;
   const showcase = await createProject(db, `${baseName} (Showcase)`);
-  const showcaseKey = (await createApiKey(db, showcase.id)).key;
+  const showcaseKey = (await createApiKey(db, showcase.id, devCapabilities)).key;
   const gallery = await createProject(db, `${baseName} (Gallery)`);
-  const galleryKey = (await createApiKey(db, gallery.id)).key;
+  const galleryKey = (await createApiKey(db, gallery.id, devCapabilities)).key;
   await db.close();
 
   console.log(`✓ project created: ${viewer.id} (${viewer.name})`);

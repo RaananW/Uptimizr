@@ -215,6 +215,53 @@ export const POSTGRES_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
       GROUP BY project_id, event_type, CAST(ts AS DATE);
     `,
   },
+  // --- Agent-scoped keys (#309, ADR 0051 §7) --------------------------------
+  // The singular `capability` column becomes a capability *set*, stored as a
+  // canonical comma-separated token list in a plain `text` column (mirrors the
+  // DuckDB store, so no engine needs a JSON type). Forward-only and additive:
+  // `0007_api_keys` is untouched and its column keeps feeding the read path as
+  // the fallback for any row this backfill has not reached.
+  {
+    id: "0011_api_keys_capabilities",
+    sql: /* sql */ `
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS capabilities text;
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS label text;
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS rate_limit_max bigint;
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS rate_limit_window_ms bigint;
+    `,
+  },
+  // Idempotent backfill: promote each legacy single capability to a one-element
+  // set, exactly once. Guarded on NULL/'' so re-running on every boot is a no-op
+  // after the first (and never clobbers a key minted with a set).
+  {
+    id: "0012_api_keys_capabilities_backfill",
+    sql: /* sql */ `
+      UPDATE api_keys
+         SET capabilities = coalesce(nullif(capability, ''), 'query')
+       WHERE capabilities IS NULL OR capabilities = '';
+    `,
+  },
+  // Agent audit log: one row per authenticated request made with a non-dashboard
+  // key. `params` is bounded and redacted before it is written (never the key);
+  // rows expire after AUDIT_RETENTION_DAYS. Metadata, not events.
+  {
+    id: "0013_agent_audit",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS agent_audit (
+        id            text PRIMARY KEY,
+        project_id    text NOT NULL,
+        key_id        text NOT NULL,
+        at            timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+        surface       text NOT NULL DEFAULT 'http',
+        tool_or_path  text NOT NULL,
+        params        text NOT NULL DEFAULT '',
+        row_count     bigint,
+        duration_ms   bigint NOT NULL DEFAULT 0,
+        status        integer NOT NULL DEFAULT 200
+      );
+      CREATE INDEX IF NOT EXISTS agent_audit_project_at_idx ON agent_audit (project_id, at DESC);
+    `,
+  },
 ];
 
 /**

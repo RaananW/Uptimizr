@@ -33,6 +33,29 @@ ENABLE_RAW_SESSION_RETENTION=true
 With it off, the collector keeps only aggregates; `/api/v1/sessions/:id/events` returns `403`. The
 aggregate endpoints never expose raw events.
 
+Retention is only **half** the gate. Reading a raw per-session stream — the replay timeline
+`/api/v1/sessions/:id/events` and the live per-session follow `/api/v1/live/sessions/:id` — also
+requires an API key holding the `query:raw`
+[capability](/docs/deploy/collector/#api-keys-and-capabilities). A plain `query` key reads
+aggregates only, whatever retention is set to, so "who may see raw sessions" is a deliberate,
+per-key decision rather than a collector-wide switch.
+
+:::caution[Breaking change]
+This is a tightening: previously `ENABLE_RAW_SESSION_RETENTION` alone was enough and any `query`
+key could read the raw stream. Existing keys keep working for every aggregate endpoint; a key that
+drives replay or live-follow must be re-minted with
+`uptimizr new-key <projectId> --capabilities query,query:raw`.
+:::
+
+## Agent activity is audited
+
+Every authenticated request made with a key that is not the dashboard's own session is written to
+an audit trail the project owner can read at `GET /api/v1/audit`: which key (by **id** — never the
+key), which endpoint, bounded and redacted parameters, rows returned, duration and status.
+Credential-shaped parameters are dropped before the row is written, and rows expire after
+`AUDIT_RETENTION_DAYS` (default 30). See
+[the collector guide](/docs/deploy/collector/#agent-audit-log).
+
 ## Opt-in capture channels
 
 Several capture channels are off by default for privacy and cost, and must be enabled per scene in

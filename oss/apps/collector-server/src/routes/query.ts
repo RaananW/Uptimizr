@@ -6,6 +6,7 @@ import { sceneProxySchema, funnelStepsSchema, funnelStepSchema } from "@uptimizr
 import { defaultCellSizeForBounds, type WorldAabb } from "@uptimizr/db";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
+import { requireCapability } from "../auth.js";
 
 interface Options {
   store: CollectorStore;
@@ -516,31 +517,27 @@ const putRepresentationBody = z.object({
 
 /**
  * Authenticate a read request with a project API key (`x-api-key`). Returns the
- * resolved project id, or sends a 401 and returns `null`. Reads are always scoped
- * to the authenticated project — any client-supplied project id is ignored.
+ * resolved project id, or sends a 401/403 and returns `null`. Reads are always
+ * scoped to the authenticated project — any client-supplied project id is
+ * ignored — and require a `query`-capable key.
  */
 async function authProject(
   request: FastifyRequest,
   reply: FastifyReply,
   store: CollectorStore,
 ): Promise<string | null> {
-  const key = request.headers["x-api-key"];
-  if (typeof key !== "string" || key.length === 0) {
-    await reply.code(401).send({ error: "missing api key" });
-    return null;
-  }
-  const projectId = await store.resolveApiKey(key);
-  if (!projectId) {
-    await reply.code(401).send({ error: "invalid api key" });
-    return null;
-  }
-  // Read endpoints require a `query`-capable key (ingest-only keys cannot read).
-  if (projectId.capability !== "query") {
-    await reply.code(403).send({ error: "api key not permitted to read" });
-    return null;
-  }
-  return projectId.projectId;
+  const resolved = await requireCapability(request, reply, store, "query");
+  return resolved?.projectId ?? null;
 }
+
+/**
+ * Audit-log query params: an optional epoch-ms range and a bounded row cap.
+ */
+const auditQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  limit: z.coerce.number().int().positive().max(1000).optional(),
+});
 
 /**
  * Query API. All aggregations are computed at query time (v1). Every route is
@@ -548,6 +545,38 @@ async function authProject(
  */
 export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, config }) => {
   const r = app.withTypeProvider<ZodTypeProvider>();
+
+  // --- Key identity + audit (#309, ADR 0051 §7) ----------------------------
+
+  // What is this key allowed to do? Agent clients (and the MCP server) call it
+  // first so they can register only the tools their capabilities permit. It
+  // reports the key's *id*, never the key itself.
+  r.get("/api/v1/whoami", async (req, reply) => {
+    const key = await requireCapability(req, reply, store, "query");
+    if (!key) return reply;
+    return {
+      projectId: key.projectId,
+      keyId: key.keyId,
+      capabilities: key.capabilities,
+      label: key.label,
+      rateLimit: key.rateLimit ?? {
+        max: config.rateLimitMax,
+        windowMs: config.rateLimitWindowMs,
+      },
+      /** Whether {@link rateLimit} is the key's own budget or the collector default. */
+      rateLimitSource: key.rateLimit ? "key" : "default",
+    };
+  });
+
+  // The project's agent-audit trail, newest first. Reading it needs the ordinary
+  // `query` capability — it is the project owner's window onto what every agent
+  // key has asked for. Rows carry no key material and bounded, redacted params.
+  r.get("/api/v1/audit", { schema: { querystring: auditQueryParams } }, async (req, reply) => {
+    const projectId = await authProject(req, reply, store);
+    if (!projectId) return reply;
+    const rows = await store.listAudit(projectId, req.query);
+    return rows.map((row) => ({ ...row, at: row.at.toISOString() }));
+  });
 
   r.get(
     "/api/v1/sessions",
@@ -1532,11 +1561,19 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       },
     },
     async (req, reply) => {
-      const projectId = await authProject(req, reply, store);
-      if (!projectId) return reply;
+      // Raw per-session data needs BOTH halves of the gate (ADR 0051 §7):
+      // retention enabled on the collector AND `query:raw` on the key. A plain
+      // `query` key is authenticated (so an unknown key still gets a 401) but
+      // refused the raw stream even when retention is on.
+      const key = await requireCapability(req, reply, store, "query");
+      if (!key) return reply;
       if (!config.enableRawSessionRetention) {
         return reply.code(403).send({ error: "raw session retention is disabled" });
       }
+      if (!key.capabilities.includes("query:raw")) {
+        return reply.code(403).send({ error: "api key not permitted to read raw session data" });
+      }
+      const projectId = key.projectId;
       const accept = req.headers.accept ?? "";
       const wantsNdjson = req.query.format === "ndjson" || accept.includes("application/x-ndjson");
       if (!wantsNdjson) {

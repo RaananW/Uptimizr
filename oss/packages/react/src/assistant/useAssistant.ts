@@ -204,7 +204,9 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
   const ctx = useOptionalUptimizr();
   const api = useMemo<CollectorApi | null>(() => {
     if (apiOption) return apiOption;
-    if (collectorUrl && apiKey) return new CollectorApi(collectorUrl, apiKey);
+    // Identify as the assistant, so its reads land in the collector's agent
+    // audit log rather than being skipped as dashboard traffic (ADR 0051 §7).
+    if (collectorUrl && apiKey) return new CollectorApi(collectorUrl, apiKey, "assistant");
     return ctx?.api ?? null;
   }, [apiOption, collectorUrl, apiKey, ctx?.api]);
 

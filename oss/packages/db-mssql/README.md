@@ -107,7 +107,8 @@ tolerance).
 | `client.ts`        | Pooled `mssql` wrapper (UTC, plain-JS values, database bootstrap / teardown).    |
 | `migrations.ts`    | Forward-only DDL (quantile helper, events, node_samples, metadata, views).       |
 | `events.ts`        | Batched multi-row inserts (JSON vectors) + replay-complete session reads.        |
-| `projects.ts`      | Project + API-key metadata (SHA-256 hashes).                                     |
+| `projects.ts`      | Project + API-key metadata (SHA-256 hashes, capability sets).                    |
+| `audit.ts`         | Agent audit log: record / list / prune (`agent_audit`).                          |
 | `sceneRegistry.ts` | Per-`(project, scene)` representation upserts/reads (`MERGE … HOLDLOCK`).        |
 | `queries.ts`       | `runMssqlQuery` — `toTsql` + positional params, executes a rendered `QuerySpec`. |
 

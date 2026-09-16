@@ -7,7 +7,9 @@ The OSS storage contracts plus the single-file **DuckDB** store:
   table (hot fields like camera `position`/`direction`, pointer `screen`, `mesh`, `fps` promoted to
   columns; the full event preserved as JSON in `payload` so reads stay replay-complete) plus a
   dedicated `node_samples` table for high-cardinality `node_transform` rows, and `projects` /
-  `api_keys` (stored only as SHA-256 hashes, with `query` / `ingest` capability).
+  `api_keys` (stored only as SHA-256 hashes, each carrying a **capability set** —
+  `query` / `query:raw` / `annotate` / `ingest` — an optional label and an optional per-key rate
+  limit), plus an `agent_audit` trail of what each key asked for (ADR 0051 §7).
 - **Engine-neutral contracts** — the dialect-agnostic query layer (`buildX` + `Dialect`), the
   neutral event-row mappers (`toEventRow`, `toNodeSampleRow`, `formatUtcTimestamp`), and the
   metadata types (`Project`, `ApiKeyRecord`, `ResolvedApiKey`, `SceneRepresentation*`).

@@ -15,8 +15,45 @@ function evt(partial: Partial<AnyEvent> & { type: string }): AnyEvent {
 describe("memory store", () => {
   it("resolves only the seeded api key", async () => {
     const store = createMemoryStore({ projectId: "p1", apiKey: "k1" });
-    expect(await store.resolveApiKey("k1")).toEqual({ projectId: "p1", capability: "query" });
+    expect(await store.resolveApiKey("k1")).toEqual({
+      projectId: "p1",
+      keyId: "memory-key",
+      capabilities: ["query"],
+      label: null,
+      rateLimit: null,
+    });
     expect(await store.resolveApiKey("nope")).toBeNull();
+  });
+
+  it("resolves a custom capability set and key id (#309)", async () => {
+    const store = createMemoryStore({
+      projectId: "p1",
+      apiKey: "k1",
+      capabilities: ["query", "query:raw"],
+      keyId: "agent-1",
+    });
+    expect(await store.resolveApiKey("k1")).toMatchObject({
+      keyId: "agent-1",
+      capabilities: ["query", "query:raw"],
+    });
+  });
+
+  it("records, lists and prunes agent audit rows (#309)", async () => {
+    const store = createMemoryStore({ projectId: "p1", apiKey: "k1" });
+    await store.recordAudit({
+      projectId: "p1",
+      keyId: "memory-key",
+      surface: "http",
+      toolOrPath: "/api/v1/sessions",
+      params: "{}",
+      durationMs: 3,
+      status: 200,
+      at: new Date(1_000),
+    });
+    expect(await store.listAudit("p1")).toHaveLength(1);
+    expect(await store.listAudit("other")).toHaveLength(0);
+    await store.pruneAudit(2_000);
+    expect(await store.listAudit("p1")).toHaveLength(0);
   });
 
   it("stores and returns a session timeline in ts order", async () => {

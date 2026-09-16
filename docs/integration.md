@@ -560,7 +560,10 @@ funnel** panel.
 No cookies, no persistent client id; the `sessionId` is in-memory only. Never put
 PII in `meta`, `track` props, or `user` — `user.id` must be pseudonymous/hashed
 (ADR 0003). Per-session raw event retention (needed for replay) is opt-in on the
-collector via `ENABLE_RAW_SESSION_RETENTION=true`.
+collector via `ENABLE_RAW_SESSION_RETENTION=true`, **and** reading a raw stream
+additionally requires an API key holding the `query:raw`
+[capability](#api-keys-capabilities-rate-limits-and-the-audit-log) — a plain
+`query` key reads aggregates only, whatever retention is set to.
 
 ---
 
@@ -1217,6 +1220,103 @@ The collector exposes one ingestion endpoint and a set of read endpoints. Reads
 are authenticated with a project API key (`x-api-key`); the project is resolved
 from the key, so a client can only ever read its own data.
 
+### API keys: capabilities, rate limits and the audit log
+
+A key carries a **set of capabilities** (ADR 0051 §7), not a single role:
+
+| Capability  | Grants                                                                                                                              |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `query`     | The aggregate analytics API — everything in the tables below, plus the scene registry, the live token exchange and `/api/v1/audit`. |
+| `query:raw` | Raw **per-session** streams: `GET /api/v1/sessions/:id/events` and the live per-session follow `GET /api/v1/live/sessions/:id`.     |
+| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events — events stay read-only.     |
+| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless (see below), so issued keys are normally read keys.               |
+
+Mint a key with the collector CLI (`uptimizr`, ADR 0029). The default is
+read-only, matching `uptimizr init` and `uptimizr new-project`:
+
+```bash
+# A read-only key (the default)
+uptimizr new-key <projectId> --label "weekly-report"
+
+# An agent key that may also write metadata, with its own request budget
+uptimizr new-key <projectId> \
+  --capabilities query,annotate \
+  --label "weekly-report-agent" \
+  --rate-limit-max 120 --rate-limit-window-ms 60000
+
+# A key that may read raw session streams (replay, live-follow)
+uptimizr new-key <projectId> --capabilities query,query:raw --label "replay"
+```
+
+> **Breaking change (from the release that adds this section).** `query:raw` is
+> new, and the raw per-session endpoints now require **both** halves of the gate:
+> `ENABLE_RAW_SESSION_RETENTION` on the collector **and** `query:raw` on the key.
+> Previously, retention alone was enough and any `query` key could read the raw
+> stream. **Existing keys keep working for every aggregate endpoint**, but a key
+> that drives session replay or live-follow must be re-minted with `query:raw`
+> (or a new one issued alongside it). `pnpm db:seed` and the repo's local
+> provisioning scripts already grant it to the demo projects.
+
+**Per-key rate limits.** `--rate-limit-max` / `--rate-limit-window-ms` give a key
+its own budget, bucketed on the key id rather than the client IP. Keys without
+one fall back to the collector's `COLLECTOR_RATE_LIMIT_*` defaults. Ingestion is
+deliberately untouched: it is keyless, and keeps its own
+`COLLECTOR_INGEST_RATE_LIMIT_*` budget.
+
+**`GET /api/v1/whoami`** reports the calling key's identity so an agent (or the
+MCP server) can register only the tools its capabilities permit:
+
+```json
+{
+  "projectId": "3f2a…",
+  "keyId": "9c41…",
+  "capabilities": ["query", "query:raw"],
+  "label": "replay",
+  "rateLimit": { "max": 600, "windowMs": 60000 },
+  "rateLimitSource": "default"
+}
+```
+
+`keyId` is the key's row id, never the key itself. `rateLimit` is always the
+budget actually in force; `rateLimitSource` says whether it came from the key
+(`"key"`) or the collector defaults (`"default"`).
+
+**Agent audit log.** Every authenticated request made with a key that is not the
+dashboard's own session is recorded: `{ id, projectId, keyId, at, surface,
+toolOrPath, params, rowCount, durationMs, status }`. Refusals (401/403) are
+recorded too — they are precisely what a project owner wants to see.
+
+- `toolOrPath` is the **route pattern** (`/api/v1/sessions/:id/events`), so rows
+  group cleanly and never carry a path-embedded value.
+- `params` is a bounded (512-byte) JSON document with credential-shaped keys
+  (`token`, `apiKey`, `secret`, `password`, `authorization`, …) dropped, nested
+  values summarized, and long strings clipped. **A key never appears in a row.**
+- `surface` is `http` today; `mcp-http` / `mcp-stdio` / `assistant` are reserved
+  for the later agent transports.
+- "The dashboard's own session" means a request carrying
+  `x-uptimizr-client: dashboard` — the header `@uptimizr/react`'s `CollectorApi`
+  sends by default, so a dashboard's panel refreshes do not drown the agent
+  activity the log exists to surface. The in-browser assistant identifies itself
+  as `assistant` and **is** recorded. This is a volume filter, not a security
+  boundary: anyone holding the key could send the header, and anyone holding the
+  key can already do everything the key allows. Set `AUDIT_DASHBOARD_REQUESTS=1`
+  to record every authenticated request without exception.
+- Writes are asynchronous — they happen after the response is flushed and can
+  never block or fail a request.
+- Rows older than `AUDIT_RETENTION_DAYS` (default `30`) are removed by a
+  periodic, idempotent sweep. `0` keeps them indefinitely.
+
+```bash
+# The project's agent activity, newest first (needs a `query` key)
+curl -H "x-api-key: $KEY" \
+  "$COLLECTOR/api/v1/audit?since=1757000000000&limit=100"
+```
+
+| Method | Path             | Purpose                                                                          | Capability | Extra params              |
+| ------ | ---------------- | -------------------------------------------------------------------------------- | ---------- | ------------------------- |
+| `GET`  | `/api/v1/whoami` | The calling key's project, key id, capabilities, label and effective rate limit. | `query`    | —                         |
+| `GET`  | `/api/v1/audit`  | The project's agent audit trail, newest first.                                   | `query`    | `since`, `until`, `limit` |
+
 ### Storage backends (`COLLECTOR_STORE`)
 
 The API is identical whichever store backs it — the dashboard, SDKs and this
@@ -1349,7 +1449,7 @@ correctly). The dashboard's 3D world heatmap also normalizes color/size to the
 | `GET`  | `/api/v1/sessions/:id/meta`          | Coarse session descriptor (device/scene/user).                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | —                                                                                                    |
 | `GET`  | `/api/v1/sessions/:id/trajectory`    | One session's ordered walked path (ADR 0026): `camera_sample` positions oldest-first (`ts,x,y,z`).                                                                                                                                                                                                                                                                                                                                                                                                                       | `scene`, `limit`                                                                                     |
 | `GET`  | `/api/v1/paths`                      | Aggregate desire lines (ADR 0037): every session's `camera_sample` path binned onto the X/Z ground grid (`session_id,ts,gx,gz`), ordered per session — the crowd's common routes overlaid as low-opacity poly-lines (#73).                                                                                                                                                                                                                                                                                               | `cellSize`, `limit`, `scene`, `cameraMode`                                                           |
-| `GET`  | `/api/v1/sessions/:id/events`        | Ordered raw event stream for replay. Requires `ENABLE_RAW_SESSION_RETENTION` (ADR 0003); otherwise `403`.                                                                                                                                                                                                                                                                                                                                                                                                                | —                                                                                                    |
+| `GET`  | `/api/v1/sessions/:id/events`        | Ordered raw event stream for replay. Requires **both** `ENABLE_RAW_SESSION_RETENTION` on the collector (ADR 0003) and the `query:raw` capability on the key (ADR 0051 §7); otherwise `403`.                                                                                                                                                                                                                                                                                                                              | —                                                                                                    |
 | `GET`  | `/api/v1/variant-leaderboard`        | Variant → conversion leaderboard (#150): ranks `custom` events grouped by their `name` (a configurator variant) by `views`, with `sessions`, `conversions`, and `avg_dwell_ms` (mean dwell before the next variant switch/conversion). Optional `conversion` predicate adds the per-variant conversion rate. Read-only; the caller supplies the variant/success predicates.                                                                                                                                              | `variant` (JSON), `conversion` (JSON), `limit`, `scene`, `cameraMode`, `session`                     |
 
 ### Scene registry (representations)

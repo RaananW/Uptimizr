@@ -14,8 +14,8 @@
 
 ## Key exports
 
-- DuckDB store: `createDuckdbClient`, `migrateDuckdb`, `duckdbInsertEvents`, `duckdbGetSessionEvents`, `duckdbResolveApiKey`, `runDuckdbQuery`.
+- DuckDB store: `createDuckdbClient`, `migrateDuckdb`, `duckdbInsertEvents`, `duckdbGetSessionEvents`, `duckdbCreateApiKey`, `duckdbResolveApiKey`, `duckdbRecordAudit`/`duckdbListAudit`/`duckdbPruneAudit`, `runDuckdbQuery`.
 - Query layer: `buildX(projectId, opts, dialect)` builders, `duckdbDialect`, `Dialect`/`QuerySpec` types.
-- Neutral helpers: `toEventRow`, `formatUtcTimestamp`, api-key helpers, `Project`/`ApiKeyRecord`/`SceneRepresentation*` types.
+- Neutral helpers: `toEventRow`, `formatUtcTimestamp`, api-key helpers (`parseApiKeyCapabilities`, `serializeApiKeyCapabilities`, `parseCapabilityList`, `hasCapability`, `toApiKeyColumns`, `toApiKeyRateLimit`), audit helpers (`serializeAuditParams`, `clampAuditTool`), `Project`/`ApiKeyRecord`/`ResolvedApiKey`/`ApiKeyCapability`/`AgentAuditEntry`/`SceneRepresentation*` types.
 - Parity: `PARITY_CASES`, `diffParity` (DuckDB-vs-ClickHouse cross-engine equality).
 - `readDbSettings()` — environment-driven DuckDB settings with a local-dev default (`DUCKDB_PATH`).
