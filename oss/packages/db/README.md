@@ -63,6 +63,40 @@ CLIs all share one canonical file regardless of which package they run from. The
 its backend with `COLLECTOR_STORE` (`duckdb` by default; `clickhouse` and `memory` are also wired in
 `@uptimizr/collector-server`).
 
+## Metric registry (`@uptimizr/db/registry`)
+
+`src/query/registry.ts` describes **what every aggregation means**. It is a
+`Readonly<Record<MetricId, MetricDefinition>>` with one entry per exported `build*` aggregation
+(plus two builder-less "resource" entries for the session descriptor and the scene
+representation), declaring the metric's id, title, agent-facing description, the builder behind
+it, its collector endpoint, result `grain`, group-by `dimensions`, accepted `filters`, the output
+`row` schema (Zod), per-column semantics (unit, measure, label, `rateOf`), row `limits`, how to
+read the result (`interpretation`), the `caveats` that make it untrustworthy, the capture channels
+that feed it (`sourceChannels`, ADR 0012), `related` metrics and comparison semantics. `DimensionId`
+and `FilterId` are closed unions declared once, and `FILTER_TARGETS` maps each filter to the option
+field in `query/types.ts` it drives. (ADR 0051 §1.)
+
+```ts
+import { METRIC_REGISTRY, getMetric, allMetrics } from "@uptimizr/db/registry";
+
+const metric = getMetric("top_meshes");
+metric?.endpoint; // { method: "GET", path: "/api/v1/meshes/top" }
+metric?.row.parse(row); // validates + coerces one result row
+```
+
+It is published on its **own subpath** because the package root is Node-only: the registry imports
+nothing but `zod` plus _type-only_ declarations from `./aggregations.js` and `@uptimizr/schema`, so
+it is pure data with no I/O and safe to bundle for the browser. Every numeric column is
+`z.coerce.number()` — DuckDB, Postgres and SQL Server return JS numbers, but ClickHouse renders
+64-bit integers and decimals as strings over HTTP, and one schema has to validate all four.
+
+> **A new aggregation is not done until it has a registry entry.** `registry.ts` carries a
+> compile-time guard (`NoUnregisteredAggregations`) that fails to typecheck and names the missing
+> builder, `src/__tests__/registry.test.ts` re-checks it at runtime and parses every `row` schema
+> against real DuckDB output over the parity fixtures, and the collector's
+> `registryRoutes.test.ts` asserts that every `endpoint.path` is served and that its Zod
+> querystring keys equal the registry `filters`.
+
 ## Extending
 
 - **New columns / tables:** append a migration to `DUCKDB_MIGRATIONS`. Forward-only and additive —
@@ -73,7 +107,8 @@ its backend with `COLLECTOR_STORE` (`duckdb` by default; `clickhouse` and `memor
   `QuerySpec` (`{ query, query_params }`) using the `Dialect` fragments (never hard-code
   engine-specific SQL). Run it with `runDuckdbQuery(db, buildX(..., duckdbDialect))`; the scale
   path runs the _same_ builder with `clickhouseDialect`. Add a `PARITY_CASES` entry so both engines
-  stay provably equal. Builders are pure and unit-tested without a live database.
+  stay provably equal, **and a `METRIC_REGISTRY` entry so consumers know what it means**. Builders
+  are pure and unit-tested without a live database.
 
 ## Develop
 
