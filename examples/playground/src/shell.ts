@@ -5,7 +5,8 @@
 // replay / heatmap / scene-proxy controls. It is written once and adapts to the
 // selected engine through its declared {@link EngineCapabilities}.
 
-import type { Transport } from "@uptimizr/sdk-core";
+import { registerRegions, type Transport } from "@uptimizr/sdk-core";
+import type { Aabb, SceneRegion } from "@uptimizr/schema";
 import { ReplayPlayer, fetchSessionEvents } from "@uptimizr/replay";
 
 import {
@@ -795,5 +796,71 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
     // (which need the scene representation, ADR 0014) always render without a
     // manual click. Skipped when no API key is configured (standalone dev).
     if (activeApiKey) void runProxyScan();
+
+    // --- Scene regions (ADR 0051 §2) ---------------------------------------
+    // Regions give the scene a *vocabulary* the proxy cannot: named boxes
+    // ("the near half", "the whole scene") that a spatial query can be drilled
+    // into by name (`?region=<id>`) and that summaries/agents answer in.
+    // Registered on demand via the SDK helper, which is an authenticated write —
+    // the playground holds a dev API key, which a production bundle must not.
+    const runRegionRegistration = async (): Promise<void> => {
+      if (!activeApiKey) {
+        heatmapStatus.textContent = "Set VITE_API_KEY to register scene regions.";
+        return;
+      }
+      try {
+        heatmapStatus.textContent = `Registering regions for "${currentScene}"…`;
+        const regions = await buildPlaygroundRegions(currentScene, activeApiKey);
+        await registerRegions(currentScene, regions, {
+          endpoint: COLLECTOR_URL,
+          apiKey: activeApiKey,
+        });
+        heatmapStatus.textContent = `Registered ${regions.length} regions for "${currentScene}".`;
+      } catch (err) {
+        heatmapStatus.textContent =
+          err instanceof Error ? err.message : "Region registration failed.";
+      }
+    };
+    const registerRegionsButton = requireElement("registerRegionsButton", HTMLButtonElement);
+    registerRegionsButton.addEventListener("click", () => void runRegionRegistration());
   }
+}
+
+/**
+ * Two demo regions for the active scene (ADR 0051 §2), derived from the scene's
+ * own registered bounds so they are meaningful in any engine's scene:
+ *
+ * - `whole-scene` — the scene's full world box.
+ * - `near-half` — the lower half on X, so a `region=near-half` heatmap is a
+ *   genuine subset of the unfiltered one (what the e2e asserts).
+ *
+ * Falls back to a small box around the origin when the scene has no registered
+ * representation yet (proxy scan not run, or a connector without proxy support).
+ */
+async function buildPlaygroundRegions(sceneId: string, apiKey: string): Promise<SceneRegion[]> {
+  const fallback: Aabb = [-10, -10, -10, 10, 10, 10];
+  let bounds = fallback;
+  try {
+    const res = await fetch(
+      `${COLLECTOR_URL}/api/v1/scenes/${encodeURIComponent(sceneId)}/representation`,
+      { headers: { "x-api-key": apiKey } },
+    );
+    if (res.ok) {
+      const body = (await res.json()) as { bounds?: Aabb | null };
+      if (Array.isArray(body.bounds) && body.bounds.length === 6) bounds = body.bounds;
+    }
+  } catch {
+    // Offline / unregistered scene — the fallback box still exercises the flow.
+  }
+  const [minX, minY, minZ, maxX, maxY, maxZ] = bounds;
+  const midX = minX + (maxX - minX) / 2;
+  return [
+    { id: "whole-scene", label: "Whole scene", bounds },
+    {
+      id: "near-half",
+      label: "Near half",
+      bounds: [minX, minY, minZ, midX, maxY, maxZ],
+      description: "The lower half of the scene on X.",
+    },
+  ];
 }

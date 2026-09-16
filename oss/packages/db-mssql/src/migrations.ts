@@ -279,6 +279,30 @@ export const MSSQL_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
       GROUP BY project_id, event_type, CAST(ts AS date);
     `,
   },
+  // Scene regions (ADR 0051 §2 / sketch §B.2): developer-named, labelled boxes
+  // that extend the scene registry (ADR 0014) with a vocabulary for *where*.
+  // One row per region, keyed by (project, scene, region); regions may overlap.
+  // `bounds` is JSON text parsed by the row mapper, exactly as in the other stores.
+  // The key is declared NONCLUSTERED: SQL Server caps a *clustered* index key at
+  // 900 bytes, and three `nvarchar(255)` columns exceed that (a nonclustered key
+  // may reach 1700 bytes). Region reads are tiny point lookups, so a heap with a
+  // nonclustered unique key is the right shape anyway.
+  {
+    id: "0011_scene_regions",
+    sql: /* sql */ `
+      IF OBJECT_ID(N'dbo.scene_regions', N'U') IS NULL
+      CREATE TABLE dbo.scene_regions (
+        project_id   ${KEY} NOT NULL,
+        scene_id     ${KEY} NOT NULL,
+        region_id    ${KEY} NOT NULL,
+        label        ${TEXT} NOT NULL,
+        description  ${TEXT} NULL,
+        bounds       nvarchar(max) NOT NULL,
+        updated_at   datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+        PRIMARY KEY NONCLUSTERED (project_id, scene_id, region_id)
+      );
+    `,
+  },
 ];
 
 /**

@@ -42,3 +42,6 @@ export type {
   SceneRepresentationKind,
   SceneRepresentationSummary,
 } from "./sceneRegistry.js";
+
+export { putSceneRegions, getSceneRegions, listSceneRegions } from "./sceneRegions.js";
+export type { SceneRegionRecord, SceneRegionSummary } from "./sceneRegions.js";

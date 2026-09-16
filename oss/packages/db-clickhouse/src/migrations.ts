@@ -217,6 +217,33 @@ export const CLICKHOUSE_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> =
         ADD COLUMN IF NOT EXISTS near   Float64 DEFAULT 0;
     `,
   },
+  // Scene regions (ADR 0051 §2 / sketch §B.2): developer-named, labelled boxes
+  // that extend the scene registry (ADR 0014) with a vocabulary for *where*.
+  // One row per region, keyed by (project, scene, region); regions may overlap.
+  //
+  // ClickHouse has no DELETE-in-a-transaction, so "replace the scene's set"
+  // is expressed the ReplacingMergeTree way: every write inserts the new rows
+  // *and* a `deleted = 1` tombstone for each region id it drops, in one atomic
+  // block, with a monotonic `version` so the newest wins. Reads use `FINAL` and
+  // filter `deleted = 0`, matching how the other metadata tables dedupe here.
+  {
+    id: "0009_scene_regions",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS scene_regions (
+        project_id   String,
+        scene_id     String,
+        region_id    String,
+        label        String DEFAULT '',
+        description  Nullable(String) DEFAULT NULL,
+        bounds       String DEFAULT '[]',
+        updated_at   DateTime64(3) DEFAULT now64(3),
+        deleted      UInt8 DEFAULT 0,
+        version      UInt64 DEFAULT 0
+      )
+      ENGINE = ReplacingMergeTree(version)
+      ORDER BY (project_id, scene_id, region_id);
+    `,
+  },
 ];
 
 /**

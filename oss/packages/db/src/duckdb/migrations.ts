@@ -333,6 +333,27 @@ export const DUCKDB_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
       ALTER TABLE events ADD COLUMN IF NOT EXISTS near DOUBLE;
     `,
   },
+  // Scene regions (ADR 0051 §2 / sketch §B.2): developer-named, labelled boxes
+  // that extend the scene registry (ADR 0014) with a vocabulary for *where* —
+  // "the entrance", "the checkout counter". One row per region, keyed by
+  // (project, scene, region); regions may overlap. `bounds` is JSON text (the
+  // `[minX,…,maxZ]` tuple) parsed by the row mapper, exactly as
+  // `scene_representations.bounds` is.
+  {
+    id: "0031_scene_regions",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS scene_regions (
+        project_id   VARCHAR NOT NULL,
+        scene_id     VARCHAR NOT NULL,
+        region_id    VARCHAR NOT NULL,
+        label        VARCHAR NOT NULL,
+        description  VARCHAR,
+        bounds       VARCHAR NOT NULL,
+        updated_at   TIMESTAMP NOT NULL DEFAULT now(),
+        PRIMARY KEY (project_id, scene_id, region_id)
+      );
+    `,
+  },
 ];
 
 /**

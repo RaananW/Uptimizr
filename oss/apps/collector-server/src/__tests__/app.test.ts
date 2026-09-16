@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LIMITS } from "@uptimizr/schema";
 import type { AnyEvent } from "@uptimizr/schema";
 import { buildApp } from "../app.js";
 import type { CollectorConfig } from "../config.js";
@@ -290,6 +291,18 @@ function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
     }),
     getSceneRepresentation: async () => null,
     listSceneRepresentations: async () => [],
+    putSceneRegions: async (projectId, sceneId, regions) =>
+      regions.map((region) => ({
+        projectId,
+        sceneId,
+        regionId: region.id,
+        label: region.label,
+        description: region.description ?? null,
+        bounds: region.bounds,
+        updatedAt: new Date(0),
+      })),
+    getSceneRegions: async () => [],
+    listSceneRegions: async () => [],
     close: async () => {},
     ...overrides,
   };
@@ -2238,6 +2251,387 @@ describe("scene registry routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toHaveLength(1);
     expect(res.json()[0]).toMatchObject({ sceneId: "lobby", kind: "proxy" });
+    await app.close();
+  });
+});
+
+describe("scene region routes (ADR 0051 §2)", () => {
+  const entrance = {
+    id: "entrance",
+    label: "Entrance",
+    bounds: [-5, 0, -5, 5, 3, 0] as [number, number, number, number, number, number],
+  };
+  const counter = {
+    id: "counter",
+    label: "Checkout counter",
+    bounds: [-1, 0, 1, 1, 2, 3] as [number, number, number, number, number, number],
+    description: "Where visitors pay.",
+  };
+
+  const storedEntrance = {
+    projectId: "p1",
+    sceneId: "lobby",
+    regionId: entrance.id,
+    label: entrance.label,
+    description: null,
+    bounds: entrance.bounds,
+    updatedAt: new Date(0),
+  };
+
+  it("registers a scene's regions via PUT and echoes the stored set", async () => {
+    let received: unknown;
+    const app = await buildApp({
+      store: makeStore({
+        putSceneRegions: async (projectId, sceneId, regions) => {
+          received = { projectId, sceneId, regions };
+          return regions.map(() => storedEntrance);
+        },
+      }),
+      config,
+    });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/regions",
+      headers: { "x-api-key": "valid-key" },
+      payload: { regions: [entrance, counter] },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received).toMatchObject({
+      projectId: "p1",
+      sceneId: "lobby",
+      regions: [entrance, counter],
+    });
+    await app.close();
+  });
+
+  it("accepts an empty set, which clears the scene's regions", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/regions",
+      headers: { "x-api-key": "valid-key" },
+      payload: { regions: [] },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([]);
+    await app.close();
+  });
+
+  it("rejects a region whose bounds are inverted on an axis", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/regions",
+      headers: { "x-api-key": "valid-key" },
+      payload: { regions: [{ ...entrance, bounds: [0, 0, 0, -1, 1, 1] }] },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("rejects bounds that are not a 6-number tuple", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/regions",
+      headers: { "x-api-key": "valid-key" },
+      payload: { regions: [{ ...entrance, bounds: [0, 0, 0] }] },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("rejects more regions than the schema cap allows", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const regions = Array.from({ length: LIMITS.maxSceneRegions + 1 }, (_, i) => ({
+      ...entrance,
+      id: `r${i}`,
+    }));
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/regions",
+      headers: { "x-api-key": "valid-key" },
+      payload: { regions },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("rejects duplicate region ids in one scene", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/regions",
+      headers: { "x-api-key": "valid-key" },
+      payload: { regions: [entrance, entrance] },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("rejects an over-length region label", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/regions",
+      headers: { "x-api-key": "valid-key" },
+      payload: {
+        regions: [{ ...entrance, label: "x".repeat(LIMITS.maxSceneRegionLabelLength + 1) }],
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("requires an API key to register regions", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/regions",
+      payload: { regions: [entrance] },
+    });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("requires an API key to read regions", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({ method: "GET", url: "/api/v1/scenes/lobby/regions" });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("refuses an ingest-only key for region authoring (interim: needs `query` — #309)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/regions",
+      headers: { "x-api-key": "ingest-key" },
+      payload: { regions: [entrance] },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("returns an empty set (not 404) for a scene with no regions", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/scenes/lobby/regions",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([]);
+    await app.close();
+  });
+
+  it("lists a project's whole region vocabulary", async () => {
+    const app = await buildApp({
+      store: makeStore({
+        listSceneRegions: async () => [
+          { sceneId: "lobby", regionId: "entrance", label: "Entrance" },
+        ],
+      }),
+      config,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/scene-regions",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([{ sceneId: "lobby", regionId: "entrance", label: "Entrance" }]);
+    await app.close();
+  });
+});
+
+describe("region= query filter (ADR 0040 §4 + ADR 0051 §2)", () => {
+  const stored = {
+    projectId: "p1",
+    sceneId: "lobby",
+    regionId: "counter",
+    label: "Checkout counter",
+    description: null,
+    bounds: [-1, 0, 1, 1, 2, 3] as [number, number, number, number, number, number],
+    updatedAt: new Date(0),
+  };
+
+  it("resolves a registered region id to its stored bounds", async () => {
+    let received: { region?: readonly number[] } | undefined;
+    const app = await buildApp({
+      store: makeStore({
+        getSceneRegions: async () => [stored],
+        worldHeatmap: async (_projectId, opts) => {
+          received = opts;
+          return [];
+        },
+      }),
+      config,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/world?scene=lobby&region=counter",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received?.region).toEqual(stored.bounds);
+    await app.close();
+  });
+
+  it("still accepts an explicit six-number box (ADR 0040 drill-down unchanged)", async () => {
+    let received: { region?: readonly number[] } | undefined;
+    const app = await buildApp({
+      store: makeStore({
+        gazeHeatmap: async (_projectId, opts) => {
+          received = opts;
+          return [];
+        },
+      }),
+      config,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/gaze?scene=lobby&region=0,0,0,2,2,2",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received?.region).toEqual([0, 0, 0, 2, 2, 2]);
+    await app.close();
+  });
+
+  it("400s on a region id the project has not registered", async () => {
+    const app = await buildApp({ store: makeStore({ getSceneRegions: async () => [] }), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/world?scene=lobby&region=nope",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(String(res.json().error)).toContain("unknown region");
+    await app.close();
+  });
+
+  it("400s when a region id is given without a scene to resolve it in", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/world?region=counter",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("400s on a malformed region value (neither a box nor a legal id)", async () => {
+    const app = await buildApp({ store: makeStore(), config });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/world?scene=lobby&region=1,2,3",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("applies the region filter on the floor-plan position heatmap", async () => {
+    let received: { region?: readonly number[] } | undefined;
+    const app = await buildApp({
+      store: makeStore({
+        getSceneRegions: async () => [stored],
+        cameraPositionHeatmap: async (_projectId, opts) => {
+          received = opts;
+          return [];
+        },
+      }),
+      config,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/position?scene=lobby&region=counter",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received?.region).toEqual(stored.bounds);
+    await app.close();
+  });
+
+  it("applies the region filter on the spatial error heatmap", async () => {
+    let received: { region?: readonly number[] } | undefined;
+    const app = await buildApp({
+      store: makeStore({
+        getSceneRegions: async () => [stored],
+        errorHeatmap: async (_projectId, opts) => {
+          received = opts;
+          return [];
+        },
+      }),
+      config,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/errors?scene=lobby&region=counter",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received?.region).toEqual(stored.bounds);
+    await app.close();
+  });
+
+  it("applies the region filter on the boundary heatmap and its stats", async () => {
+    let heatmapRegion: readonly number[] | undefined;
+    let statsRegion: readonly number[] | undefined;
+    const app = await buildApp({
+      store: makeStore({
+        getSceneRegions: async () => [stored],
+        boundaryHeatmap: async (_projectId, opts) => {
+          heatmapRegion = opts?.region;
+          return [];
+        },
+        boundaryHeatmapStats: async (_projectId, opts) => {
+          statsRegion = opts?.region;
+          return { cells: 0, hits: 0 };
+        },
+      }),
+      config,
+    });
+    const heat = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/boundary?scene=lobby&region=counter",
+      headers: { "x-api-key": "valid-key" },
+    });
+    const stats = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/boundary/stats?scene=lobby&region=counter",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(heat.statusCode).toBe(200);
+    expect(stats.statusCode).toBe(200);
+    expect(heatmapRegion).toEqual(stored.bounds);
+    expect(statsRegion).toEqual(stored.bounds);
+    await app.close();
+  });
+
+  it("uses the region box to derive the voxel cellSize when none is pinned (ADR 0040 §1)", async () => {
+    let received: { cellSize?: number } | undefined;
+    const app = await buildApp({
+      store: makeStore({
+        getSceneRegions: async () => [
+          { ...stored, regionId: "hall", bounds: [0, 0, 0, 128, 4, 8] },
+        ],
+        worldHeatmap: async (_projectId, opts) => {
+          received = opts;
+          return [];
+        },
+      }),
+      config,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/heatmaps/world?scene=lobby&region=hall",
+      headers: { "x-api-key": "valid-key" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(received?.cellSize).toBeGreaterThan(0.5);
     await app.close();
   });
 });

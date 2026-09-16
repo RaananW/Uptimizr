@@ -41,6 +41,9 @@ const batch = collectRequestSchema.parse(requestBody);
 ## Rules for agents
 
 - **Events live once.** Import types/schemas from here; do not re-declare event shapes.
+- Some shapes here are **config, not events** — `sceneProxySchema`, `sceneRegionSchema` /
+  `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`. They are authored
+  out-of-band and are deliberately absent from `anyEventSchema`; never add them to the union.
 - Keep events **replay-complete**: ordered, timestamped, `sessionId`-keyed.
 - Clients never set `visitorId` (privacy model — ADR 0003).
 - To add an event type, use `defineEvent` and register it in `src/events/index.ts`; see the

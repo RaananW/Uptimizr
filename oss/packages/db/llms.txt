@@ -16,6 +16,7 @@
 
 - DuckDB store: `createDuckdbClient`, `migrateDuckdb`, `duckdbInsertEvents`, `duckdbGetSessionEvents`, `duckdbResolveApiKey`, `runDuckdbQuery`.
 - Query layer: `buildX(projectId, opts, dialect)` builders, `duckdbDialect`, `Dialect`/`QuerySpec` types.
-- Neutral helpers: `toEventRow`, `formatUtcTimestamp`, api-key helpers, `Project`/`ApiKeyRecord`/`SceneRepresentation*` types.
+- Neutral helpers: `toEventRow`, `formatUtcTimestamp`, api-key helpers, `Project`/`ApiKeyRecord`/`SceneRepresentation*`/`SceneRegionRecord`/`SceneRegionSummary` types.
+- Scene registry: `duckdbUpsertSceneProxy`, `duckdbPutSceneRegions` (replaces a scene's region set atomically), `duckdbGetSceneRegions`, `duckdbListSceneRegions`.
 - Parity: `PARITY_CASES`, `diffParity` (DuckDB-vs-ClickHouse cross-engine equality).
 - `readDbSettings()` — environment-driven DuckDB settings with a local-dev default (`DUCKDB_PATH`).

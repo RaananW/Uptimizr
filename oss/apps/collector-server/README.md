@@ -41,6 +41,32 @@ npx -p @uptimizr/collector-server uptimizr init "My Project"   # schema + first 
 npx -p @uptimizr/collector-server uptimizr serve
 ```
 
+### Naming places in a scene: `uptimizr regions`
+
+A scene can carry **regions** — named, labelled world-space boxes ("the
+entrance", "the checkout counter") that give spatial results a vocabulary and let
+any spatial query be drilled into a place with `?region=<id>`. Declare them from
+a JSON file straight against the store, without a running collector:
+
+```bash
+cat > regions.json <<'JSON'
+[
+  { "id": "entrance", "label": "Entrance", "bounds": [-5, 0, -5, 5, 3, 0] },
+  { "id": "counter", "label": "Checkout counter", "bounds": [-1, 0, 1, 1, 2, 3] }
+]
+JSON
+
+npx -p @uptimizr/collector-server uptimizr regions set lobby --file regions.json --project "$PROJECT_ID"
+npx -p @uptimizr/collector-server uptimizr regions get lobby --project "$PROJECT_ID"
+```
+
+The file is either a bare array or the `{ "regions": [...] }` envelope the HTTP
+endpoint takes, so one file works with both. `--project` may be replaced by
+`UPTIMIZR_PROJECT_ID`. The write **replaces** the scene's whole set, so leaving a
+region out removes it and `[]` clears them. Over HTTP the same thing is
+`PUT /api/v1/scenes/:sceneId/regions` (see the integration guide), and from a
+client build `registerRegions` in `@uptimizr/sdk-core`.
+
 ### All-in-one: serve the dashboard too
 
 The collector can also serve a pre-built static dashboard from its own origin, so

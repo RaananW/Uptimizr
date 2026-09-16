@@ -145,6 +145,9 @@ import {
   upsertSceneProxy as msUpsertSceneProxy,
   getSceneRepresentation as msGetSceneRepresentation,
   listSceneRepresentations as msListSceneRepresentations,
+  putSceneRegions as msPutSceneRegions,
+  getSceneRegions as msGetSceneRegions,
+  listSceneRegions as msListSceneRegions,
   type MssqlClient,
 } from "@uptimizr/db-mssql";
 import type { CollectorStore } from "./store.js";
@@ -348,6 +351,10 @@ export async function createMssqlStore(): Promise<CollectorStore> {
     getSceneRepresentation: (projectId, sceneId) =>
       msGetSceneRepresentation(msc, projectId, sceneId),
     listSceneRepresentations: (projectId) => msListSceneRepresentations(msc, projectId),
+    putSceneRegions: (projectId, sceneId, regions) =>
+      msPutSceneRegions(msc, projectId, sceneId, regions),
+    getSceneRegions: (projectId, sceneId) => msGetSceneRegions(msc, projectId, sceneId),
+    listSceneRegions: (projectId) => msListSceneRegions(msc, projectId),
     async close() {
       await msc.close();
     },

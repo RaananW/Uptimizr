@@ -1,29 +1,43 @@
+import type { SceneRegion } from "@uptimizr/schema";
 import {
   createDuckdbClient,
   duckdbCreateApiKey,
   duckdbCreateProject,
+  duckdbGetProject,
+  duckdbGetSceneRegions,
+  duckdbPutSceneRegions,
   migrateDuckdb,
   readDbSettings,
+  type SceneRegionRecord,
 } from "@uptimizr/db";
 import {
   createApiKey as chCreateApiKey,
   createClickhouseClient,
   createProject as chCreateProject,
+  getProject as chGetProject,
+  getSceneRegions as chGetSceneRegions,
   migrateClickhouse,
+  putSceneRegions as chPutSceneRegions,
 } from "@uptimizr/db-clickhouse";
 import {
   createApiKey as msCreateApiKey,
   createMssqlClient,
   createProject as msCreateProject,
   ensureMssqlDatabase,
+  getProject as msGetProject,
+  getSceneRegions as msGetSceneRegions,
   migrateMssql,
+  putSceneRegions as msPutSceneRegions,
   resolveMssqlConfig,
 } from "@uptimizr/db-mssql";
 import {
   createApiKey as pgCreateApiKey,
   createPostgresClient,
   createProject as pgCreateProject,
+  getProject as pgGetProject,
+  getSceneRegions as pgGetSceneRegions,
   migratePostgres,
+  putSceneRegions as pgPutSceneRegions,
 } from "@uptimizr/db-postgres";
 
 /**
@@ -46,6 +60,19 @@ export interface CliStore {
   createProject(name: string): Promise<{ id: string; name: string }>;
   /** Issue a query-capable API key; the plaintext is returned exactly once. */
   createApiKey(projectId: string): Promise<{ key: string }>;
+  /** Look a project up so a command can fail fast on a wrong `--project`. */
+  getProject(projectId: string): Promise<{ id: string; name: string } | null>;
+  /**
+   * Replace a scene's region set (ADR 0051 §2) — the CLI's `regions set`, the
+   * offline sibling of `PUT /api/v1/scenes/:sceneId/regions`.
+   */
+  putSceneRegions(
+    projectId: string,
+    sceneId: string,
+    regions: readonly SceneRegion[],
+  ): Promise<SceneRegionRecord[]>;
+  /** Read a scene's regions — the CLI's `regions get`. */
+  getSceneRegions(projectId: string, sceneId: string): Promise<SceneRegionRecord[]>;
   close(): Promise<void>;
 }
 
@@ -134,6 +161,10 @@ export async function openCliStore(env: NodeJS.ProcessEnv = process.env): Promis
       return {
         createProject: (name) => duckdbCreateProject(db, name),
         createApiKey: (projectId) => duckdbCreateApiKey(db, projectId),
+        getProject: (projectId) => duckdbGetProject(db, projectId),
+        putSceneRegions: (projectId, sceneId, regions) =>
+          duckdbPutSceneRegions(db, projectId, sceneId, regions),
+        getSceneRegions: (projectId, sceneId) => duckdbGetSceneRegions(db, projectId, sceneId),
         close: () => db.close(),
       };
     }
@@ -143,6 +174,10 @@ export async function openCliStore(env: NodeJS.ProcessEnv = process.env): Promis
       return {
         createProject: (name) => pgCreateProject(pgc, name),
         createApiKey: (projectId) => pgCreateApiKey(pgc, projectId),
+        getProject: (projectId) => pgGetProject(pgc, projectId),
+        putSceneRegions: (projectId, sceneId, regions) =>
+          pgPutSceneRegions(pgc, projectId, sceneId, regions),
+        getSceneRegions: (projectId, sceneId) => pgGetSceneRegions(pgc, projectId, sceneId),
         close: () => pgc.close(),
       };
     }
@@ -154,6 +189,10 @@ export async function openCliStore(env: NodeJS.ProcessEnv = process.env): Promis
       return {
         createProject: (name) => msCreateProject(msc, name),
         createApiKey: (projectId) => msCreateApiKey(msc, projectId),
+        getProject: (projectId) => msGetProject(msc, projectId),
+        putSceneRegions: (projectId, sceneId, regions) =>
+          msPutSceneRegions(msc, projectId, sceneId, regions),
+        getSceneRegions: (projectId, sceneId) => msGetSceneRegions(msc, projectId, sceneId),
         close: () => msc.close(),
       };
     }
@@ -163,6 +202,10 @@ export async function openCliStore(env: NodeJS.ProcessEnv = process.env): Promis
       return {
         createProject: (name) => chCreateProject(ch, name),
         createApiKey: (projectId) => chCreateApiKey(ch, projectId),
+        getProject: (projectId) => chGetProject(ch, projectId),
+        putSceneRegions: (projectId, sceneId, regions) =>
+          chPutSceneRegions(ch, projectId, sceneId, regions),
+        getSceneRegions: (projectId, sceneId) => chGetSceneRegions(ch, projectId, sceneId),
         close: () => ch.close(),
       };
     }

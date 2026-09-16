@@ -100,6 +100,7 @@ selectPrefix: "SELECT TOP 1", selectSuffix: "" }`.
 | `events.ts`        | Batched multi-row inserts + replay-complete session reads.              |
 | `projects.ts`      | Project + API-key metadata (SHA-256 hashes).                            |
 | `sceneRegistry.ts` | Per-`(project, scene)` representation upserts/reads (`ON CONFLICT`).    |
+| `sceneRegions.ts`  | Named scene regions: replace-the-set writes in one transaction.         |
 | `queries.ts`       | `runPostgresQuery` — executes a rendered `QuerySpec`.                   |
 
 The `CollectorStore` itself is assembled from these building blocks in the

@@ -215,6 +215,26 @@ export const POSTGRES_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
       GROUP BY project_id, event_type, CAST(ts AS DATE);
     `,
   },
+  // Scene regions (ADR 0051 §2 / sketch §B.2): developer-named, labelled boxes
+  // that extend the scene registry (ADR 0014) with a vocabulary for *where*.
+  // One row per region, keyed by (project, scene, region); regions may overlap.
+  // `bounds` is JSON text (the `[minX,…,maxZ]` tuple) parsed by the row mapper,
+  // exactly as `scene_representations.bounds` is.
+  {
+    id: "0011_scene_regions",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS scene_regions (
+        project_id   text NOT NULL,
+        scene_id     text NOT NULL,
+        region_id    text NOT NULL,
+        label        text NOT NULL,
+        description  text,
+        bounds       text NOT NULL,
+        updated_at   timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+        PRIMARY KEY (project_id, scene_id, region_id)
+      );
+    `,
+  },
 ];
 
 /**

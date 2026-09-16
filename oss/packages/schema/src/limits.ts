@@ -66,6 +66,13 @@ export const LIMITS = {
   /** Number of meshes carried in a single scene proxy (connectors cap huge scenes). */
   maxSceneProxyMeshes: 10_000,
 
+  /** Human label of a scene region (ADR 0051 §2 / sketch §B.2). */
+  maxSceneRegionLabelLength: 120,
+  /** Free-text description of a scene region. */
+  maxSceneRegionDescriptionLength: 500,
+  /** Number of regions one scene may declare (curated metadata, not a payload). */
+  maxSceneRegions: 200,
+
   /** Developer-declared scene-actor id on `node_transform` (ADR 0027). */
   maxNodeIdLength: 128,
   /** Skeleton bone name on `node_transform` Tier-2 samples (ADR 0027). */

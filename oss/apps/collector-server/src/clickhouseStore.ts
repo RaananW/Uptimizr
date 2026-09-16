@@ -143,6 +143,9 @@ import {
   upsertSceneProxy as chUpsertSceneProxy,
   getSceneRepresentation as chGetSceneRepresentation,
   listSceneRepresentations as chListSceneRepresentations,
+  putSceneRegions as chPutSceneRegions,
+  getSceneRegions as chGetSceneRegions,
+  listSceneRegions as chListSceneRegions,
   type ClickhouseClient,
 } from "@uptimizr/db-clickhouse";
 import type { CollectorStore } from "./store.js";
@@ -342,6 +345,10 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
     getSceneRepresentation: (projectId, sceneId) =>
       chGetSceneRepresentation(ch, projectId, sceneId),
     listSceneRepresentations: (projectId) => chListSceneRepresentations(ch, projectId),
+    putSceneRegions: (projectId, sceneId, regions) =>
+      chPutSceneRegions(ch, projectId, sceneId, regions),
+    getSceneRegions: (projectId, sceneId) => chGetSceneRegions(ch, projectId, sceneId),
+    listSceneRegions: (projectId) => chListSceneRegions(ch, projectId),
     async close() {
       await ch.close();
     },

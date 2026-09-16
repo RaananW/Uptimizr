@@ -1,5 +1,10 @@
 import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
-import type { ApiKeyCapability, SceneRepresentation, SessionMeta } from "@uptimizr/db";
+import type {
+  ApiKeyCapability,
+  SceneRegionRecord,
+  SceneRepresentation,
+  SessionMeta,
+} from "@uptimizr/db";
 import type { CollectorStore } from "./store.js";
 
 /** A `session_start` event narrowed to the descriptor fields we surface as meta. */
@@ -42,6 +47,8 @@ export function createMemoryStore({
 }: MemoryStoreOptions): CollectorStore {
   const events: AnyEvent[] = [];
   const representations = new Map<string, SceneRepresentation>();
+  /** Scene regions keyed by scene id; each value is that scene's whole set. */
+  const regions = new Map<string, SceneRegionRecord[]>();
 
   const forSession = (sid: string): AnyEvent[] =>
     events
@@ -438,9 +445,35 @@ export function createMemoryStore({
           capturedAt: r.capturedAt,
           updatedAt: r.updatedAt,
         })),
+    // Regions are replace-the-set, exactly like the persistent stores: the map
+    // entry IS the scene's whole set, so an empty array clears it.
+    putSceneRegions: async (_projectId, sceneId, input) => {
+      const now = new Date();
+      const stored: SceneRegionRecord[] = [...input]
+        .map((region) => ({
+          projectId,
+          sceneId,
+          regionId: region.id,
+          label: region.label,
+          description: region.description ?? null,
+          bounds: region.bounds,
+          updatedAt: now,
+        }))
+        .sort((a, b) => (a.regionId < b.regionId ? -1 : a.regionId > b.regionId ? 1 : 0));
+      regions.set(sceneId, stored);
+      return stored;
+    },
+    getSceneRegions: async (_projectId, sceneId) => regions.get(sceneId) ?? [],
+    listSceneRegions: async () =>
+      [...regions.entries()]
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .flatMap(([sceneId, set]) =>
+          set.map((r) => ({ sceneId, regionId: r.regionId, label: r.label })),
+        ),
     close: async () => {
       events.length = 0;
       representations.clear();
+      regions.clear();
     },
   };
 }

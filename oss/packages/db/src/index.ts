@@ -37,6 +37,8 @@ export type {
   SceneRepresentation,
   SceneRepresentationKind,
   SceneRepresentationSummary,
+  SceneRegionRecord,
+  SceneRegionSummary,
 } from "./metadata.js";
 
 // --- Dialect-agnostic query layer (ADR 0020) ---
@@ -245,6 +247,11 @@ export {
   getSceneRepresentation as duckdbGetSceneRepresentation,
   listSceneRepresentations as duckdbListSceneRepresentations,
 } from "./duckdb/sceneRegistry.js";
+export {
+  putSceneRegions as duckdbPutSceneRegions,
+  getSceneRegions as duckdbGetSceneRegions,
+  listSceneRegions as duckdbListSceneRegions,
+} from "./duckdb/sceneRegions.js";
 
 // --- Cross-engine parity harness (ADR 0020) ---
 // Shared fixtures, golden expectations, and a tolerance-aware comparator. OSS

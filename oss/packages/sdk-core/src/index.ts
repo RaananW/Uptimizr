@@ -10,6 +10,8 @@ export { EventQueue } from "./queue.js";
 export { createBeaconTransport } from "./transport.js";
 export { createMainProcessor, createWorkerProcessor, collectTransferables } from "./processor.js";
 export { randomId } from "./idgen.js";
+export { registerRegions } from "./regions.js";
+export type { RegisterRegionsOptions } from "./regions.js";
 export { SDK_VERSION } from "./version.js";
 export { resolveCadence } from "./sampling.js";
 export { classifyCameraGesture, DEFAULT_GESTURE_THRESHOLDS } from "./gesture.js";

@@ -143,6 +143,9 @@ import {
   upsertSceneProxy as pgUpsertSceneProxy,
   getSceneRepresentation as pgGetSceneRepresentation,
   listSceneRepresentations as pgListSceneRepresentations,
+  putSceneRegions as pgPutSceneRegions,
+  getSceneRegions as pgGetSceneRegions,
+  listSceneRegions as pgListSceneRegions,
   type PostgresClient,
 } from "@uptimizr/db-postgres";
 import type { CollectorStore } from "./store.js";
@@ -345,6 +348,10 @@ export async function createPostgresStore(): Promise<CollectorStore> {
     getSceneRepresentation: (projectId, sceneId) =>
       pgGetSceneRepresentation(pgc, projectId, sceneId),
     listSceneRepresentations: (projectId) => pgListSceneRepresentations(pgc, projectId),
+    putSceneRegions: (projectId, sceneId, regions) =>
+      pgPutSceneRegions(pgc, projectId, sceneId, regions),
+    getSceneRegions: (projectId, sceneId) => pgGetSceneRegions(pgc, projectId, sceneId),
+    listSceneRegions: (projectId) => pgListSceneRegions(pgc, projectId),
     async close() {
       await pgc.close();
     },

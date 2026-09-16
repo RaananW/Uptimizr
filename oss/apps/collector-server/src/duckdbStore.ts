@@ -68,12 +68,15 @@ import {
   buildGazeHeatmapStats,
   createDuckdbClient,
   duckdbDialect,
+  duckdbGetSceneRegions,
   duckdbGetSceneRepresentation,
   duckdbGetSessionEvents,
   duckdbGetSessionMeta,
   duckdbGetProject,
   duckdbInsertEvents,
+  duckdbListSceneRegions,
   duckdbListSceneRepresentations,
+  duckdbPutSceneRegions,
   duckdbResolveApiKey,
   duckdbStreamSessionEvents,
   duckdbUpsertSceneProxy,
@@ -385,6 +388,10 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
     getSceneRepresentation: (projectId, sceneId) =>
       duckdbGetSceneRepresentation(db, projectId, sceneId),
     listSceneRepresentations: (projectId) => duckdbListSceneRepresentations(db, projectId),
+    putSceneRegions: (projectId, sceneId, regions) =>
+      duckdbPutSceneRegions(db, projectId, sceneId, regions),
+    getSceneRegions: (projectId, sceneId) => duckdbGetSceneRegions(db, projectId, sceneId),
+    listSceneRegions: (projectId) => duckdbListSceneRegions(db, projectId),
     async close() {
       await db.close();
     },

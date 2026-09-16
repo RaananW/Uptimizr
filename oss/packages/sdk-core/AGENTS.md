@@ -58,6 +58,9 @@ Engine adapters are just collectors that translate engine events into `@uptimizr
 - Respect privacy: never set or persist a client identifier; honor `disabled` / Do-Not-Track.
 - Use `beforeSend` for filtering/redaction; use a custom `transport` for delivery changes.
 - New instrumentation = a new collector, not a core modification.
+- `registerRegions(sceneId, regions, { endpoint, apiKey })` declares a scene's named regions
+  (the scene registry, not capture). It **replaces** the scene's set and is an authenticated
+  write — never emit the API key into a public bundle; call it from build/deploy/admin code.
 
 ## Key options
 
