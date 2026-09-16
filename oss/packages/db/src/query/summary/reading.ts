@@ -5,7 +5,7 @@
  * No model is involved, and none may be: `reading` is part of a deterministic
  * API response, so the same rows have to produce the same words on every engine
  * and every process. Everything it can say is therefore a function of the
- * metric's `title`, `grain`, and the `unit` / `label` / `measure` / `rateOf`
+ * metric's `title`, `grain`, and the `unit` / `label` / `measure` / `axis` / `rateOf`
  * flags on its columns — which is exactly the information the registry exists to
  * hold.
  *
@@ -53,10 +53,11 @@ function rankedReading(metric: MetricDefinition, summary: RankedSummary): string
   const unit = measure?.[1].unit;
   const [first, second] = summary.top;
   if (measure == null || first == null) {
+    const rows = summary.top.length + summary.rest.rows;
     return (
-      `${metric.title}: ${formatNumber(summary.top.length)} ` +
-      `${grainNoun(metric.grain, summary.top.length)} returned in store order; the metric ` +
-      `declares no measure column, so they cannot be ranked.${sampleSentence(summary.sampleSize)}`
+      `${metric.title}: ${formatNumber(rows)} ${grainNoun(metric.grain, rows)} returned in store ` +
+      `order; the metric declares no measure column, so they cannot be ranked.` +
+      sampleSentence(summary.sampleSize)
     );
   }
 
@@ -81,9 +82,13 @@ function rankedReading(metric: MetricDefinition, summary: RankedSummary): string
       `${grainNoun(metric.grain, summary.rest.rows)} hold ${held}.`;
   }
   if (summary.measure != null && !summary.measure.additive) {
+    const unitPhrase =
+      summary.measure.unit == null
+        ? "not an additive quantity"
+        : `measured in ${summary.measure.unit}`;
     text +=
-      ` Shares are not reported: ${measureName} is a ${summary.measure.unit ?? "non-additive"} ` +
-      `value and cannot be summed across ${grainNoun(metric.grain, 2)}.`;
+      ` Shares are not reported: ${measureName} is ${unitPhrase} and cannot be summed across ` +
+      `${grainNoun(metric.grain, 2)}.`;
   }
   return text + sampleSentence(summary.sampleSize);
 }
@@ -140,11 +145,21 @@ function clusterReading(metric: MetricDefinition, summary: ClusterSummary): stri
     `${extent} ${cellNoun} centred at (${centroid}) on ${summary.axes.join("/")}, holding ` +
     `${formatQuantity(densest.weight, weightUnit)}`;
   text += densest.share == null ? "." : ` (${formatShare(densest.share)}).`;
-  if (summary.rest.clusters > 0 || summary.rest.cells > 0) {
-    text +=
-      ` ${formatNumber(summary.rest.clusters)} further cluster` +
-      `${summary.rest.clusters === 1 ? "" : "s"} and ${formatNumber(summary.rest.cells)} ` +
-      `looser ${cellNoun} hold ${formatShare(summary.rest.share)}.`;
+  // Only name the part of `rest` that actually exists — "0 further clusters" is
+  // noise in a sentence meant to be read at a glance.
+  const rest: string[] = [];
+  if (summary.rest.clusters > 0) {
+    rest.push(
+      `${formatNumber(summary.rest.clusters)} further cluster${summary.rest.clusters === 1 ? "" : "s"}`,
+    );
+  }
+  if (summary.rest.cells > 0) {
+    rest.push(
+      `${formatNumber(summary.rest.cells)} looser ${grainNoun(metric.grain, summary.rest.cells)}`,
+    );
+  }
+  if (rest.length > 0) {
+    text += ` ${rest.join(" and ")} hold ${formatShare(summary.rest.share)}.`;
   }
   return text + sampleSentence(summary.sampleSize);
 }
