@@ -454,9 +454,13 @@ describe("tableResult", () => {
   it("echoes only the filters the metric declares, never arbitrary request keys", () => {
     // `top_meshes` accepts `session` but not `scene`; unknown keys (and
     // prototype-shaped ones) must never become properties of the envelope.
-    const table = tableResult("top_meshes", [{ mesh: "a", count: 1 }], {
-      filters: { session: "s-1", scene: "lobby", __proto__: "x", constructor: "y" },
-    });
+    // Parsed from text, as a wire payload would be, so `__proto__` is a real
+    // own key rather than an (ignored) object-literal prototype assignment.
+    const hostile = JSON.parse(
+      '{"session":"s-1","scene":"lobby","__proto__":"x","constructor":"y"}',
+    ) as Record<string, unknown>;
+    expect(Object.hasOwn(hostile, "__proto__")).toBe(true);
+    const table = tableResult("top_meshes", [{ mesh: "a", count: 1 }], { filters: hostile });
     expect(table?.meta.filters).toEqual({ session: "s-1" });
   });
 
