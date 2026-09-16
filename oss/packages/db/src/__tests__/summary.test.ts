@@ -178,7 +178,7 @@ describe("summarizeRows — ranked grains", () => {
   it("ranks by the measure and reports shares of the total", () => {
     const summary = summarizeRows("top_meshes", rows, {
       range: { since: 1, until: 2 },
-      filters: { scene: "lobby", format: "summary" },
+      filters: { session: "s-1", format: "summary" },
       maxRows: 2,
     }) as RankedSummary;
 
@@ -186,7 +186,7 @@ describe("summarizeRows — ranked grains", () => {
     expect(summary.metric).toBe("top_meshes");
     expect(summary.range).toEqual({ since: 1, until: 2 });
     // `format` never appears in the echoed filters: it narrows nothing.
-    expect(summary.filters).toEqual({ scene: "lobby" });
+    expect(summary.filters).toEqual({ session: "s-1" });
     expect(summary.total).toBe(100);
     expect(summary.measure).toEqual({ column: "count", unit: "count", additive: true });
     expect(summary.top.map((row) => row.label)).toEqual(["checkout_button", "door_left"]);
@@ -451,18 +451,27 @@ describe("summarizeRows — single-row grains", () => {
 });
 
 describe("tableResult", () => {
+  it("echoes only the filters the metric declares, never arbitrary request keys", () => {
+    // `top_meshes` accepts `session` but not `scene`; unknown keys (and
+    // prototype-shaped ones) must never become properties of the envelope.
+    const table = tableResult("top_meshes", [{ mesh: "a", count: 1 }], {
+      filters: { session: "s-1", scene: "lobby", __proto__: "x", constructor: "y" },
+    });
+    expect(table?.meta.filters).toEqual({ session: "s-1" });
+  });
+
   it("wraps the rows without touching them", () => {
     const rows = [{ mesh: "a", count: 1 }];
     const table = tableResult("top_meshes", rows, {
       range: { since: 5 },
-      filters: { scene: "lobby", format: "table" },
+      filters: { session: "s-1", format: "table" },
       limit: 10,
     });
     expect(table?.rows).toBe(rows);
     expect(table?.meta).toEqual({
       metric: "top_meshes",
       range: { since: 5, until: null },
-      filters: { scene: "lobby" },
+      filters: { session: "s-1" },
       sampleSize: { sessions: null, events: 1 },
       rows: 1,
       truncated: false,
