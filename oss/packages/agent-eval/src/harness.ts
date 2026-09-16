@@ -56,6 +56,10 @@ const EVAL_CONFIG: CollectorConfig = {
   trustProxy: false,
   bodyLimit: 1_048_576,
   cspMode: "off",
+  // Audit log (#309): keep the default retention and never audit the
+  // dashboard's own requests — the harness has no dashboard.
+  auditRetentionDays: 30,
+  auditDashboardRequests: false,
 };
 
 /** A booted, seeded collector plus the read-only client an agent run uses. */
@@ -104,7 +108,15 @@ export async function startHarness(): Promise<EvalHarness> {
   const store: CollectorStore = {
     ...duckdb,
     resolveApiKey: async (key: string) =>
-      key === apiKey ? { projectId: EVAL_PROJECT_ID, capability: "query" } : null,
+      key === apiKey
+        ? {
+            projectId: EVAL_PROJECT_ID,
+            keyId: "eval-key",
+            capabilities: ["query"],
+            label: "agent-eval",
+            rateLimit: null,
+          }
+        : null,
     projectExists: async (projectId: string) => projectId === EVAL_PROJECT_ID,
   };
   await store.insertEvents(EVAL_EVENTS);
