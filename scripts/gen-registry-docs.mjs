@@ -7,6 +7,7 @@
 //
 //   docs/integration.md                              §Query (read) endpoint table
 //   oss/apps/docs/src/content/docs/api/query.mdx     the docs-site query reference
+//   oss/apps/docs/.../guides/mcp.md                  the docs-site MCP tool catalog
 //   oss/packages/mcp/README.md                       the tool table
 //   oss/packages/mcp/AGENTS.md, llms.txt             the packaged tool catalog (ADR 0017)
 //   oss/packages/agent-core/README.md, AGENTS.md, llms.txt
@@ -158,6 +159,31 @@ const BLOCKS = {
       .join("\n\n");
   },
 
+  /**
+   * The docs-site MCP guide's tool catalog: one `####` table per registry
+   * category, narrower than the packaged README table (no parameter column —
+   * the guide documents the shared parameters in prose above it).
+   */
+  "registry-guide-tools": ({ allMetrics }) => {
+    const metrics = allMetrics().filter((metric) => metric.endpoint);
+    const categories = [...new Set(metrics.map((metric) => metric.category))];
+    return categories
+      .map((category) => {
+        const rows = metrics
+          .filter((metric) => metric.category === category)
+          .map((metric) => [
+            `\`${metric.id}\``,
+            `\`${metric.endpoint.path}\``,
+            cell(metric.title),
+          ]);
+        return `#### ${CATEGORY_TITLES[category] ?? category}\n\n${table(
+          ["Tool", "Endpoint", "Returns"],
+          rows,
+        )}`;
+      })
+      .join("\n\n");
+  },
+
   /** The packaged tool table (`@uptimizr/mcp` README). */
   "registry-tools": ({ allMetrics }) =>
     table(
@@ -189,6 +215,10 @@ const TARGETS = [
   {
     file: "oss/apps/docs/src/content/docs/api/query.mdx",
     blocks: ["registry-query-reference"],
+  },
+  {
+    file: "oss/apps/docs/src/content/docs/guides/mcp.md",
+    blocks: ["registry-guide-tools"],
   },
   { file: "oss/packages/mcp/README.md", blocks: ["registry-tools"] },
   { file: "oss/packages/mcp/AGENTS.md", blocks: ["registry-tool-names"] },

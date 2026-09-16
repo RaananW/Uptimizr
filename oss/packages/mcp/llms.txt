@@ -32,6 +32,45 @@
 
 <!-- generated:registry-tool-names:end -->
 
+## Result formats (`format`)
+
+Every aggregate tool takes `format` — the envelope its rows arrive in, not a filter (ADR 0051 §2).
+
+- `summary` — **prefer this.** A bounded digest: `ranked` top rows, a `series` trend, merged spatial
+  `clusters`, or a single `record`, with shares, a sample size, the metric's `caveats` and a
+  templated `reading` sentence. Capped at the metric's `limits.maxSummaryRows`, so a 500-bin heatmap
+  costs the same as a 5-bin one. `reading` and `caveats` are templated by pure code — no model —
+  so identical rows always produce identical words.
+- `table` — `{ meta, rows }`: every row plus the metric, range, applied filters, sample size, row
+  count, a truncation flag and the registry limits. Use it when you need the rows *and* the context
+  to judge them.
+- `full` — the bare rows, unchanged. Today's catalog default; pass `format` explicitly.
+
+Shares appear only where the measure can honestly be summed (an FPS or ratio metric reports
+`total: null` and no shares). Cluster coordinates are grid indices — multiply by the effective
+`cellSize` for world space. `session_meta` and `scene_representation` are stored records, not
+aggregations, and take no `format`.
+
+## Resources and prompts
+
+- `uptimizr://capabilities` (`application/json`) — static descriptor: schema version, canonical
+  event types, the tool catalog, the parameter-semantics glossary, and `metrics` (the whole registry
+  with grain, column units, row JSON Schema, filters, limits, interpretation, caveats, source
+  channels). No collector call. Read it first.
+- `uptimizr://scenes` (`application/json`) — the live scene ids with recent activity, i.e. the valid
+  values for the `scene` parameter. Fetched through the read-only query API.
+- Prompts: `weekly_scene_health` (optional `scene`), `attention_hotspots` (required `scene`),
+  `xr_comfort_review` (optional `scene`) — each renders one user message sequencing the read-only
+  tools; they fetch nothing themselves.
+
+## Required key capability
+
+`UPTIMIZR_API_KEY` needs the `query` capability, and only that
+(`uptimizr new-key <projectId> --capabilities query --label "mcp-agent"`; `query` is the default).
+`query:raw` is **deliberately not required** — no tool here reads raw per-session, replay or
+live-follow data. `annotate` and `ingest` are never used either. `GET /api/v1/whoami` reports what a
+key holds; a key missing a required capability is refused with `403`.
+
 ## Key exports
 
 - `createMcpServer(client)` — build the read-only MCP server.

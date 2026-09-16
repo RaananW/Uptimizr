@@ -55,6 +55,9 @@ capability.
 
 ### 1. Semantic metric registry — generated, not hand-written
 
+> **Superseded in part:** the registry ships as its own package, `@uptimizr/metrics`, not inside
+> `@uptimizr/db`. See the [amendment](#amendment-2026-09-16-the-registry-ships-as-uptimizrmetrics).
+
 A single **metric registry** in `@uptimizr/db` (next to the aggregations it describes) declares,
 for every aggregation: `name`, `description`, `unit`, `grain`, `dimensions`, accepted `filters`,
 the **output row schema** (Zod), `caveats` (e.g. minimum sample size, sampling-rate sensitivity),

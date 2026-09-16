@@ -225,14 +225,29 @@ developer-only path.
 
 ## Replay (raw events)
 
-| Method | Path                          | Purpose                              | Extra params |
-| ------ | ----------------------------- | ------------------------------------ | ------------ |
-| `GET`  | `/api/v1/sessions/:id/events` | Ordered raw event stream for replay. | —            |
+| Method | Path                          | Purpose                                                       | Capability  | Extra params           |
+| ------ | ----------------------------- | ------------------------------------------------------------- | ----------- | ---------------------- |
+| `GET`  | `/api/v1/sessions/:id/events` | Ordered raw event stream for replay.                          | `query:raw` | `format=json\|ndjson`  |
+| `GET`  | `/api/v1/live/sessions/:id`   | Live per-session follow — an SSE tail of that same raw stream. | `query:raw` | `token`                |
+| `POST` | `/api/v1/live/token`          | Exchange the API key for the short-lived live-stream `token`.  | `query`     | —                      |
 
-:::note
-`/api/v1/sessions/:id/events` requires the collector to run with `ENABLE_RAW_SESSION_RETENTION`;
-otherwise it returns `403`. The aggregate endpoints never expose raw events — don't
-reach for the raw stream to build an aggregate.
+:::caution[Raw per-session access has two gates]
+Both raw routes need **both** halves, and either one missing is a `403`:
+
+1. the collector running with `ENABLE_RAW_SESSION_RETENTION` (ADR 0003), **and**
+2. the `query:raw` capability on the key (ADR 0051 §7).
+
+A plain `query` key reads every aggregate endpoint on this page but is refused here. Mint a
+raw-capable key with
+`uptimizr new-key <projectId> --capabilities query,query:raw --label "replay"`, and check what a key
+already holds with [`GET /api/v1/whoami`](/docs/api/overview/#api-keys-and-capabilities).
+
+`/api/v1/live/sessions/:id` authenticates with a short-lived token rather than the `x-api-key`
+header, because `EventSource` cannot send one; the key's capability set rides along inside the
+token, so `query:raw` is enforced there too.
+
+The aggregate endpoints never expose raw events — don't reach for the raw stream to build an
+aggregate.
 :::
 
 ## Example

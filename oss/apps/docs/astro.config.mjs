@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import starlightLlmsTxt from "starlight-llms-txt";
 
 // https://astro.build/config
 export default defineConfig({
@@ -11,6 +12,40 @@ export default defineConfig({
       title: "Uptimizr Docs",
       description:
         "Documentation for Uptimizr — open-source, privacy-first analytics for 3D scenes.",
+      // Emit /docs/llms.txt (an index) and /docs/llms-full.txt (every page, inlined)
+      // at build time, so an agent can read the docs without crawling the HTML —
+      // the site-level companion to the packaged `llms.txt` files (ADR 0017).
+      plugins: [
+        starlightLlmsTxt({
+          projectName: "Uptimizr",
+          description:
+            "Open-source, privacy-first analytics for 3D scenes: view-direction and click " +
+            "heatmaps, mesh interactions, navigation, performance, WebXR, session replay, and " +
+            "an AI-first agent layer (semantic metric registry, OpenAPI, MCP server).",
+          details: [
+            "Self-hosted: a single Fastify collector writes to an embedded DuckDB file by default,",
+            "with optional Postgres, SQL Server and ClickHouse stores. Connectors exist for",
+            "Babylon.js, three.js, PlayCanvas, react-three-fiber, A-Frame and Unity/Godot/Unreal",
+            "web exports.",
+            "",
+            "Agents: the collector's read API is generated from a semantic metric registry",
+            "(`@uptimizr/metrics`), served as OpenAPI 3.1 at `/api/v1/openapi.json` and as MCP",
+            "tools by `@uptimizr/mcp`. Prefer `format=summary` on aggregate reads.",
+          ].join("\n"),
+          optionalLinks: [
+            {
+              label: "GitHub repository",
+              url: "https://github.com/RaananW/Uptimizr",
+              description: "Source, ADRs, and the integration reference.",
+            },
+            {
+              label: "Live demo",
+              url: "https://demo.uptimizr.com",
+              description: "Playground + dashboard running entirely in the browser.",
+            },
+          ],
+        }),
+      ],
       logo: {
         src: "./src/assets/logo-lockup.svg",
         replacesTitle: true,
@@ -77,8 +112,14 @@ export default defineConfig({
             { label: "Session replay", slug: "guides/replay" },
             { label: "In-scene heatmap overlays", slug: "guides/overlays" },
             { label: "Custom dashboard panels", slug: "guides/custom-panels" },
-            { label: "In-browser assistant (LLM)", slug: "guides/assistant" },
+          ],
+        },
+        {
+          label: "AI & agents",
+          items: [
+            { label: "Building agents on Uptimizr", slug: "guides/agents" },
             { label: "MCP server (AI agents)", slug: "guides/mcp" },
+            { label: "In-browser assistant (LLM)", slug: "guides/assistant" },
           ],
         },
         {

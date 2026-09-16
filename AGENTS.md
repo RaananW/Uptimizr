@@ -39,15 +39,42 @@ ingestion/query collector, the dashboard, and an embedded DuckDB store.
 ## Repository map
 
 ```
-oss/apps/collector-server   Fastify ingestion + query API
+oss/apps/collector-server   Fastify ingestion + query API, OpenAPI, audit, CLI
 oss/apps/dashboard          Next.js + Tailwind dashboard
-oss/packages/schema         @uptimizr/schema   (Zod contracts + types) — build first
-oss/packages/sdk-core       @uptimizr/sdk-core (session, batch, beacon, cookieless)
-oss/packages/sdk-babylon    @uptimizr/babylon  (Babylon.js collector adapter)
-oss/packages/replay         @uptimizr/replay   (re-drive a session in the user's scene)
-oss/packages/db             @uptimizr/db       (DuckDB store + dialect-agnostic query contracts)
+oss/apps/docs               Astro Starlight documentation site (uptimizr.com/docs)
+oss/apps/web                Astro marketing site (uptimizr.com)
+oss/apps/demo               In-browser test drive (playground + dashboard, no server)
+
+oss/packages/schema         @uptimizr/schema     (Zod contracts + types) — build first
+oss/packages/sdk-core       @uptimizr/sdk-core   (session, batch, beacon, cookieless)
+oss/packages/replay         @uptimizr/replay     (re-drive a session in the user's scene)
+oss/packages/heatmap        @uptimizr/heatmap    (in-scene heatmap overlays)
+oss/packages/react          @uptimizr/react      (embeddable panel catalog + CollectorApi)
+oss/packages/create-uptimizr create-uptimizr     (self-host scaffolder)
+
+oss/packages/metrics        @uptimizr/metrics    (semantic metric registry — the agent source of truth)
+oss/packages/agent-core     @uptimizr/agent-core (generated read-tool catalog, LLM adapter, agent loop)
+oss/packages/mcp            @uptimizr/mcp        (read-only MCP server over the query API)
+oss/packages/agent-eval     @uptimizr/agent-eval (PRIVATE — the agent evaluation harness, not published)
+
+oss/packages/db             @uptimizr/db           (DuckDB store + dialect-agnostic query contracts)
+oss/packages/db-postgres    @uptimizr/db-postgres  (optional Postgres store)
+oss/packages/db-mssql       @uptimizr/db-mssql     (optional SQL Server store)
+oss/packages/db-clickhouse  @uptimizr/db-clickhouse(optional ClickHouse scale tier)
+
+oss/packages/sdk-babylon      @uptimizr/babylon       (Babylon.js connector)
+oss/packages/sdk-babylon-lite @uptimizr/babylon-lite  (dependency-free Babylon connector)
+oss/packages/sdk-three        @uptimizr/three         (three.js connector)
+oss/packages/sdk-r3f          @uptimizr/r3f           (react-three-fiber connector)
+oss/packages/sdk-playcanvas   @uptimizr/playcanvas    (PlayCanvas connector)
+oss/packages/sdk-aframe       @uptimizr/aframe        (A-Frame / WebXR connector)
+oss/packages/web-export       @uptimizr/web-export    (web-export foundation)
+oss/packages/unity            @uptimizr/unity         (Unity WebGL export bridge)
+oss/packages/godot            @uptimizr/godot         (Godot web export bridge)
+oss/packages/unreal           @uptimizr/unreal        (Unreal web export bridge)
+
 examples/playground         Multi-engine demo scene for E2E testing
-infra/docker                docker-compose: optional ClickHouse + Postgres scale tier
+infra/docker                docker-compose: optional ClickHouse, Postgres and SQL Server engines
 docs/                       architecture, phases, ADRs
 ```
 

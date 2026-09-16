@@ -31,9 +31,44 @@ project's** aggregated data — no cross-project access, no raw events, no PII (
 
 ## Get an API key
 
-The MCP server needs a **query-capable** project API key (`utk_…`) — the same kind the dashboard
-uses to read. Self-hosting locally, `pnpm db:seed` mints one and prints it once (also written to
-`.env` as `NEXT_PUBLIC_API_KEY` / `VITE_API_KEY`). Ingest-only keys are rejected for reads.
+The MCP server needs a project API key (`utk_…`) holding the **`query`** capability — and nothing
+else. Mint one with the collector CLI; `query` is the default, so no `--capabilities` flag is
+strictly required, but naming it keeps the intent in the shell history:
+
+```bash
+npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
+  --capabilities query --label "mcp-agent"
+```
+
+The key is printed **once** — store it where you keep secrets, not in a repo. Give the agent its own
+key with its own label rather than reusing the dashboard's: the
+[audit log](/docs/api/overview/#agent-audit-log) records activity per key id, so a labelled key is
+what makes "what did the agent ask for?" answerable, and a per-key budget
+(`--rate-limit-max 120 --rate-limit-window-ms 60000`) keeps an agent from spending the dashboard's
+allowance.
+
+Confirm what a key holds before wiring it in:
+
+```bash
+curl -H "x-api-key: utk_…" https://collect.example.com/api/v1/whoami
+```
+
+```jsonc
+{
+  "projectId": "3f2a…",
+  "keyId": "9c41…",
+  "capabilities": ["query"],
+  "label": "mcp-agent",
+  "rateLimit": { "max": 600, "windowMs": 60000 },
+  "rateLimitSource": "default",
+}
+```
+
+`query` is all this server needs. Every tool it exposes is an aggregate read, so **`query:raw` is
+deliberately not required** — the MCP server has no raw per-session or replay tool, and giving its
+key `query:raw` would widen the blast radius for nothing. An `ingest`-only key is refused with
+`403`. See [API keys and capabilities](/docs/api/overview/#api-keys-and-capabilities) for the full
+capability set.
 
 ## Run
 
@@ -109,15 +144,6 @@ metric's interpretation notes and caveats (sample-size warnings, which capture c
 enabled), and each declares an MCP **output schema** describing the rows it returns, so a client can
 parse a result without guessing.
 
-A tool returns the endpoint's rows as they are. For a large result — a 500-bin heatmap, a voxel
-cloud, a thousand-row list — that is token-expensive and hard for a model to read, so the collector
-also serves a bounded [`format=summary` envelope](/docs/api/query/#result-formats): top rows, a
-trend, or merged spatial clusters, with shares, a sample size, the metric's caveats and a templated
-`reading` sentence. Today it is reachable over HTTP; the generated tool catalog exposes `format` on
-every aggregate tool (and defaults it to a bounded envelope) as a follow-up — see
-[#299](https://github.com/RaananW/Uptimizr/issues/299). Until then, keep results small with `limit`,
-`scene` and a tight `since`/`until`.
-
 Most tools accept an optional time range (`since` / `until`, epoch ms) plus the filters their
 endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, `cameraMode`,
 `region`, …). `session_meta`, `session_trajectory` and `scene_representation` take a required id.
@@ -125,123 +151,159 @@ endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, `c
 The catalog is also **evaluated**, not just generated: a bank of ~48 real analytics questions is run
 against a deterministic fixture set through this exact tool surface on every change to it, and each
 answer is scored on tool selection, argument correctness and accuracy. That is what keeps the tool
-descriptions above honest — every metric the collector serves has at least one question an agent is
+descriptions honest — every metric the collector serves has at least one question an agent is
 measured on. The harness lives in the repository at
 [`oss/packages/agent-eval`](https://github.com/RaananW/Uptimizr/tree/main/oss/packages/agent-eval).
 
-### Sessions & orientation
+### Result formats — pass `format=summary`
 
-| Tool                   | Endpoint                                 | Returns                 |
-| ---------------------- | ---------------------------------------- | ----------------------- |
-| `list_sessions`        | `/api/v1/sessions`                       | Recent sessions.        |
-| `session_meta`         | `/api/v1/sessions/:id/meta`              | Session descriptor.     |
-| `scene_representation` | `/api/v1/scenes/:sceneId/representation` | Scene representation.   |
-| `list_scenes`          | `/api/v1/scenes`                         | Active scenes.          |
-| `timeseries`           | `/api/v1/timeseries`                     | Event volume over time. |
-| `event_counts`         | `/api/v1/event-counts`                   | Counts per event type.  |
+By default a tool returns the endpoint's rows as they are. For a large result — a 500-bin heatmap, a
+voxel cloud, a thousand-row list — that is token-expensive and hard for a model to read, so **every
+generated aggregate tool accepts a `format` argument** that picks the envelope the rows arrive in
+([result formats](/docs/api/query/#result-formats)):
 
-### Attention & spatial
+| `format`  | What the tool returns                                                                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `full`    | The bare rows. **Today's default**, so the dashboard is unaffected.                                                                                          |
+| `table`   | `{ meta, rows }` — the same rows plus the metric, range, applied filters, sample size, row count, whether the cap truncated them, and the registry's limits. |
+| `summary` | A bounded digest: top rows, a trend or merged spatial clusters, with shares, a sample size, the metric's caveats and a templated `reading` sentence.         |
 
-| Tool                      | Endpoint                          | Returns                              |
-| ------------------------- | --------------------------------- | ------------------------------------ |
-| `pointer_heatmap`         | `/api/v1/heatmaps/pointer`        | 2D pointer heatmap.                  |
-| `mesh_uv_heatmap`         | `/api/v1/heatmaps/mesh-uv`        | Per-mesh UV (texture-space) heatmap. |
-| `world_heatmap`           | `/api/v1/heatmaps/world`          | 3D world-space pointer heatmap.      |
-| `world_heatmap_stats`     | `/api/v1/heatmaps/world/stats`    | World heatmap totals.                |
-| `gaze_heatmap`            | `/api/v1/heatmaps/gaze`           | World-space gaze heatmap.            |
-| `gaze_heatmap_stats`      | `/api/v1/heatmaps/gaze/stats`     | Gaze heatmap totals.                 |
-| `camera_heatmap`          | `/api/v1/heatmaps/camera`         | View-direction heatmap.              |
-| `view_coverage_histogram` | `/api/v1/coverage/view-histogram` | 360° view-coverage histogram.        |
-| `mesh_dwell`              | `/api/v1/meshes/dwell`            | Per-object dwell / attention.        |
-| `mesh_blind_spots`        | `/api/v1/meshes/blind-spots`      | Blind spots / never-noticed meshes.  |
-| `hover_dwell`             | `/api/v1/hover/dwell`             | Hover hesitation per object.         |
+**Prefer `format=summary` for agent work.** It is capped at the metric's `maxSummaryRows`, so a
+500-bin heatmap costs the same as a 5-bin one, and the `reading` sentence and `caveats` come from
+the metric registry by pure code — no model is involved, so the same rows always produce the same
+words. Reach for `format=table` when you want every row but also need the sample size and the
+truncation flag to judge how much to trust them, and `full` when you are post-processing the rows
+yourself. Narrowing with `limit`, `scene` and a tight `since`/`until` still helps on top of any
+format.
 
-### Meshes & interaction
+The two single-record reads (`session_meta`, `scene_representation`) are stored resources rather
+than aggregations, so they take no `format`. Switching the generated catalog's **default** away from
+`full` is a separate, deliberate change — see
+[#336](https://github.com/RaananW/Uptimizr/issues/336); until it lands, pass `format` explicitly.
 
-| Tool                     | Endpoint                       | Returns                            |
-| ------------------------ | ------------------------------ | ---------------------------------- |
-| `click_rays`             | `/api/v1/heatmaps/click-rays`  | View-gated click rays.             |
-| `flow_links`             | `/api/v1/heatmaps/flow`        | Gaze → mesh flow links.            |
-| `top_meshes`             | `/api/v1/meshes/top`           | Most-interacted meshes.            |
-| `mesh_sources`           | `/api/v1/meshes/sources`       | Mesh interactions by input source. |
-| `mesh_trend`             | `/api/v1/meshes/trend`         | Per-mesh interaction trend.        |
-| `mesh_interaction_kinds` | `/api/v1/meshes/kinds`         | Interaction kinds per mesh.        |
-| `mesh_reachability`      | `/api/v1/meshes/reachability`  | Mesh reachability by distance.     |
-| `dead_clicks`            | `/api/v1/clicks/dead`          | Dead-click rate.                   |
-| `rage_clicks`            | `/api/v1/clicks/rage`          | Rage-click clusters.               |
-| `interaction_sources`    | `/api/v1/interactions/sources` | Interactions by input source.      |
-| `top_input_actions`      | `/api/v1/input-actions/top`    | Most-used shortcuts and actions.   |
+### Tool catalog
 
-### Navigation
+One tool per registry metric that the collector serves on a read endpoint, grouped by the registry's
+own categories. `uptimizr://capabilities` enumerates the same list at runtime with each tool's
+grain, column units, limits and caveats.
 
-| Tool                 | Endpoint                                 | Returns                              |
-| -------------------- | ---------------------------------------- | ------------------------------------ |
-| `position_heatmap`   | `/api/v1/heatmaps/position`              | Floor-plan camera-position heatmap.  |
-| `session_trajectory` | `/api/v1/sessions/:sessionId/trajectory` | Session walked path.                 |
-| `aggregate_paths`    | `/api/v1/paths`                          | Aggregate desire-line paths.         |
-| `scene_coverage`     | `/api/v1/coverage`                       | Scene coverage / dead zones.         |
-| `camera_distance`    | `/api/v1/camera/distance`                | Camera distance / zoom distribution. |
-| `camera_gestures`    | `/api/v1/camera-gestures`                | Camera navigation gestures.          |
-| `navigation_stats`   | `/api/v1/navigation`                     | Navigation effort per session.       |
-| `backtrack_ratio`    | `/api/v1/backtrack`                      | Path retrace / backtracking.         |
+<!-- generated:registry-guide-tools:start — generated by `pnpm gen:docs`; edit the metric registry, not these tables -->
 
-### Performance
+#### Sessions & scenes
 
-| Tool                     | Endpoint                            | Returns                             |
-| ------------------------ | ----------------------------------- | ----------------------------------- |
-| `perf_summary`           | `/api/v1/perf`                      | Rendering performance summary.      |
-| `render_scale_truth`     | `/api/v1/perf/render-scale`         | Render-scale truth.                 |
-| `perf_distribution`      | `/api/v1/perf/distribution`         | FPS distribution (per-session).     |
-| `fps_histogram`          | `/api/v1/perf/fps-histogram`        | Per-session median-FPS histogram.   |
-| `frame_time_percentiles` | `/api/v1/perf/frame-time`           | Frame-time percentiles.             |
-| `jank_rate`              | `/api/v1/perf/jank`                 | Jank rate.                          |
-| `perf_churn`             | `/api/v1/perf/churn`                | Perf-correlated churn.              |
-| `perf_by_device`         | `/api/v1/perf/by-device`            | FPS by device class.                |
-| `perf_by_scene`          | `/api/v1/perf/by-scene`             | FPS by scene.                       |
-| `perf_heatmap`           | `/api/v1/heatmaps/perf`             | Spatial FPS heatmap.                |
-| `compile_stalls`         | `/api/v1/perf/compile-stalls`       | Shader / pipeline compile stalls.   |
-| `resource_summary`       | `/api/v1/perf/resources`            | GPU / memory footprint summary.     |
-| `resource_percentiles`   | `/api/v1/perf/resource-percentiles` | GPU / memory footprint percentiles. |
-| `rendering_technology`   | `/api/v1/rendering-technology`      | Rendering-technology mix.           |
+| Tool                   | Endpoint                                 | Returns                |
+| ---------------------- | ---------------------------------------- | ---------------------- |
+| `list_sessions`        | `/api/v1/sessions`                       | Recent sessions        |
+| `session_meta`         | `/api/v1/sessions/:id/meta`              | Session descriptor     |
+| `scene_representation` | `/api/v1/scenes/:sceneId/representation` | Scene representation   |
+| `list_scenes`          | `/api/v1/scenes`                         | Active scenes          |
+| `timeseries`           | `/api/v1/timeseries`                     | Event volume over time |
+| `event_counts`         | `/api/v1/event-counts`                   | Counts per event type  |
 
-### Errors & stability
+#### Attention & heatmaps
 
-| Tool                   | Endpoint                       | Returns                            |
-| ---------------------- | ------------------------------ | ---------------------------------- |
-| `stability_counts`     | `/api/v1/perf/stability`       | Stability incidents.               |
-| `graphics_diagnostics` | `/api/v1/graphics-diagnostics` | Engine diagnostic counts.          |
-| `error_heatmap`        | `/api/v1/heatmaps/errors`      | Spatial error heatmap.             |
-| `capability_changes`   | `/api/v1/capabilities`         | Capability / fidelity transitions. |
+| Tool                      | Endpoint                          | Returns                             |
+| ------------------------- | --------------------------------- | ----------------------------------- |
+| `pointer_heatmap`         | `/api/v1/heatmaps/pointer`        | 2D pointer heatmap                  |
+| `mesh_uv_heatmap`         | `/api/v1/heatmaps/mesh-uv`        | Per-mesh UV (texture-space) heatmap |
+| `world_heatmap`           | `/api/v1/heatmaps/world`          | 3D world-space pointer heatmap      |
+| `world_heatmap_stats`     | `/api/v1/heatmaps/world/stats`    | World heatmap totals                |
+| `gaze_heatmap`            | `/api/v1/heatmaps/gaze`           | World-space gaze heatmap            |
+| `gaze_heatmap_stats`      | `/api/v1/heatmaps/gaze/stats`     | Gaze heatmap totals                 |
+| `camera_heatmap`          | `/api/v1/heatmaps/camera`         | View-direction heatmap              |
+| `view_coverage_histogram` | `/api/v1/coverage/view-histogram` | 360° view-coverage histogram        |
+| `mesh_dwell`              | `/api/v1/meshes/dwell`            | Per-object dwell / attention        |
+| `mesh_blind_spots`        | `/api/v1/meshes/blind-spots`      | Blind spots / never-noticed meshes  |
+| `hover_dwell`             | `/api/v1/hover/dwell`             | Hover hesitation per object         |
 
-### XR
+#### Navigation & coverage
 
-| Tool                     | Endpoint                          | Returns                            |
-| ------------------------ | --------------------------------- | ---------------------------------- |
-| `xr_rotation`            | `/api/v1/xr/rotation`             | XR head-rotation rate.             |
-| `xr_sources`             | `/api/v1/xr/sources`              | XR input-source usage.             |
-| `xr_abandonment`         | `/api/v1/xr/abandonment`          | XR session abandonment.            |
-| `xr_locomotion`          | `/api/v1/xr/locomotion`           | XR locomotion & comfort.           |
-| `xr_tracking_quality`    | `/api/v1/xr/tracking`             | XR tracking quality.               |
-| `boundary_heatmap`       | `/api/v1/heatmaps/boundary`       | Guardian / boundary-touch heatmap. |
-| `boundary_heatmap_stats` | `/api/v1/heatmaps/boundary/stats` | Boundary heatmap totals.           |
-| `xr_boundary_contacts`   | `/api/v1/xr/boundary-contacts`    | Boundary contacts per session.     |
+| Tool                 | Endpoint                                 | Returns                             |
+| -------------------- | ---------------------------------------- | ----------------------------------- |
+| `position_heatmap`   | `/api/v1/heatmaps/position`              | Floor-plan camera-position heatmap  |
+| `session_trajectory` | `/api/v1/sessions/:sessionId/trajectory` | Session walked path                 |
+| `aggregate_paths`    | `/api/v1/paths`                          | Aggregate desire-line paths         |
+| `scene_coverage`     | `/api/v1/coverage`                       | Scene coverage / dead zones         |
+| `camera_distance`    | `/api/v1/camera/distance`                | Camera distance / zoom distribution |
+| `camera_gestures`    | `/api/v1/camera-gestures`                | Camera navigation gestures          |
+| `navigation_stats`   | `/api/v1/navigation`                     | Navigation effort per session       |
+| `backtrack_ratio`    | `/api/v1/backtrack`                      | Path retrace / backtracking         |
 
-### AR
+#### Meshes & interactions
 
-| Tool                         | Endpoint                             | Returns                        |
-| ---------------------------- | ------------------------------------ | ------------------------------ |
-| `ar_placement_time_to_place` | `/api/v1/ar/placement/time-to-place` | AR time-to-place distribution. |
-| `ar_placement_attempts`      | `/api/v1/ar/placement/attempts`      | AR re-placement distribution.  |
-| `ar_placement_surfaces`      | `/api/v1/ar/placement/surfaces`      | AR placement surfaces.         |
+| Tool                     | Endpoint                       | Returns                           |
+| ------------------------ | ------------------------------ | --------------------------------- |
+| `click_rays`             | `/api/v1/heatmaps/click-rays`  | View-gated click rays             |
+| `flow_links`             | `/api/v1/heatmaps/flow`        | Gaze → mesh flow links            |
+| `top_meshes`             | `/api/v1/meshes/top`           | Most-interacted meshes            |
+| `mesh_sources`           | `/api/v1/meshes/sources`       | Mesh interactions by input source |
+| `mesh_trend`             | `/api/v1/meshes/trend`         | Per-mesh interaction trend        |
+| `mesh_interaction_kinds` | `/api/v1/meshes/kinds`         | Interaction kinds per mesh        |
+| `mesh_reachability`      | `/api/v1/meshes/reachability`  | Mesh reachability by distance     |
+| `dead_clicks`            | `/api/v1/clicks/dead`          | Dead-click rate                   |
+| `rage_clicks`            | `/api/v1/clicks/rage`          | Rage-click clusters               |
+| `interaction_sources`    | `/api/v1/interactions/sources` | Interactions by input source      |
+| `top_input_actions`      | `/api/v1/input-actions/top`    | Most-used shortcuts and actions   |
 
-### Conversion
+#### Performance & stability
 
-| Tool                  | Endpoint                      | Returns                           |
-| --------------------- | ----------------------------- | --------------------------------- |
-| `funnel`              | `/api/v1/funnel`              | Conversion funnel (`steps` JSON). |
-| `scene_retention`     | `/api/v1/scene-retention`     | Scene-to-scene retention.         |
-| `load_bounce_funnel`  | `/api/v1/load-bounce`         | Load → bounce funnel.             |
-| `variant_leaderboard` | `/api/v1/variant-leaderboard` | Variant → conversion leaderboard. |
+| Tool                     | Endpoint                            | Returns                            |
+| ------------------------ | ----------------------------------- | ---------------------------------- |
+| `perf_summary`           | `/api/v1/perf`                      | Rendering performance summary      |
+| `render_scale_truth`     | `/api/v1/perf/render-scale`         | Render-scale truth                 |
+| `perf_distribution`      | `/api/v1/perf/distribution`         | FPS distribution (per-session)     |
+| `fps_histogram`          | `/api/v1/perf/fps-histogram`        | Per-session median-FPS histogram   |
+| `frame_time_percentiles` | `/api/v1/perf/frame-time`           | Frame-time percentiles             |
+| `jank_rate`              | `/api/v1/perf/jank`                 | Jank rate                          |
+| `perf_churn`             | `/api/v1/perf/churn`                | Perf-correlated churn              |
+| `perf_by_device`         | `/api/v1/perf/by-device`            | FPS by device class                |
+| `perf_by_scene`          | `/api/v1/perf/by-scene`             | FPS by scene                       |
+| `perf_heatmap`           | `/api/v1/heatmaps/perf`             | Spatial FPS heatmap                |
+| `compile_stalls`         | `/api/v1/perf/compile-stalls`       | Shader / pipeline compile stalls   |
+| `resource_summary`       | `/api/v1/perf/resources`            | GPU / memory footprint summary     |
+| `resource_percentiles`   | `/api/v1/perf/resource-percentiles` | GPU / memory footprint percentiles |
+| `rendering_technology`   | `/api/v1/rendering-technology`      | Rendering-technology mix           |
+
+#### Errors & diagnostics
+
+| Tool                   | Endpoint                       | Returns                           |
+| ---------------------- | ------------------------------ | --------------------------------- |
+| `stability_counts`     | `/api/v1/perf/stability`       | Stability incidents               |
+| `graphics_diagnostics` | `/api/v1/graphics-diagnostics` | Engine diagnostic counts          |
+| `error_heatmap`        | `/api/v1/heatmaps/errors`      | Spatial error heatmap             |
+| `capability_changes`   | `/api/v1/capabilities`         | Capability / fidelity transitions |
+
+#### WebXR
+
+| Tool                     | Endpoint                          | Returns                           |
+| ------------------------ | --------------------------------- | --------------------------------- |
+| `xr_rotation`            | `/api/v1/xr/rotation`             | XR head-rotation rate             |
+| `xr_sources`             | `/api/v1/xr/sources`              | XR input-source usage             |
+| `xr_abandonment`         | `/api/v1/xr/abandonment`          | XR session abandonment            |
+| `xr_locomotion`          | `/api/v1/xr/locomotion`           | XR locomotion & comfort           |
+| `xr_tracking_quality`    | `/api/v1/xr/tracking`             | XR tracking quality               |
+| `boundary_heatmap`       | `/api/v1/heatmaps/boundary`       | Guardian / boundary-touch heatmap |
+| `boundary_heatmap_stats` | `/api/v1/heatmaps/boundary/stats` | Boundary heatmap totals           |
+| `xr_boundary_contacts`   | `/api/v1/xr/boundary-contacts`    | Boundary contacts per session     |
+
+#### WebXR AR placement
+
+| Tool                         | Endpoint                             | Returns                       |
+| ---------------------------- | ------------------------------------ | ----------------------------- |
+| `ar_placement_time_to_place` | `/api/v1/ar/placement/time-to-place` | AR time-to-place distribution |
+| `ar_placement_attempts`      | `/api/v1/ar/placement/attempts`      | AR re-placement distribution  |
+| `ar_placement_surfaces`      | `/api/v1/ar/placement/surfaces`      | AR placement surfaces         |
+
+#### Funnels & conversion
+
+| Tool                  | Endpoint                      | Returns                          |
+| --------------------- | ----------------------------- | -------------------------------- |
+| `funnel`              | `/api/v1/funnel`              | Conversion funnel                |
+| `scene_retention`     | `/api/v1/scene-retention`     | Scene-to-scene retention         |
+| `load_bounce_funnel`  | `/api/v1/load-bounce`         | Load → bounce funnel             |
+| `variant_leaderboard` | `/api/v1/variant-leaderboard` | Variant → conversion leaderboard |
+
+<!-- generated:registry-guide-tools:end -->
 
 ## Resources
 
@@ -261,17 +323,17 @@ what each parameter means, so the agent can plan a query without trial and error
 `uptimizr://capabilities` carries a `metrics` array — the collector's **semantic metric registry**
 serialised for agents. For every metric it gives:
 
-| Field                    | What it tells an agent                                                                                                                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `grain`                  | What **one row** is: a project, a scene, a session, a mesh, a bin, a voxel, a bucket.                                                                                                                        |
-| `columns`                | Per-column description and **unit** (`ms`, `fps`, `count`, `ratio`, `world-units`, …), plus which column is the measure to rank by and which names the row.                                                  |
-| `row`                    | The **JSON Schema** of a result row, so a client with no Zod can still validate or shape it.                                                                                                                 |
-| `filters` / `dimensions` | The parameters it accepts and the dimensions its rows are keyed by.                                                                                                                                          |
-| `limits`                 | The registry-declared row caps, so nothing asks for an unbounded payload.                                                                                                                                    |
-| `interpretation`         | How to read the result — what a high or low value actually means.                                                                                                                                            |
-| `caveats`                | Small-sample, sampling-rate and capture-gating warnings. **Read these before quoting a number.**                                                                                                             |
-| `sourceChannels`         | The capture channels ([ADR 0012](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0012-capture-fidelity-dials.md)) that feed it — if a channel is off, the metric is empty by design, not by accident. |
-| `related` / `comparable` | Metrics worth reading alongside it, and which column's change is "the" change.                                                                                                                               |
+| Field                    | What it tells an agent                                                                                                                                                                                      |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `grain`                  | What **one row** is: a project, a scene, a session, a mesh, a bin, a voxel, a bucket.                                                                                                                       |
+| `columns`                | Per-column description and **unit** (`ms`, `fps`, `count`, `ratio`, `world-units`, …), plus which column is the measure to rank by and which names the row.                                                 |
+| `row`                    | The **JSON Schema** of a result row, so a client with no Zod can still validate or shape it.                                                                                                                |
+| `filters` / `dimensions` | The parameters it accepts and the dimensions its rows are keyed by.                                                                                                                                         |
+| `limits`                 | The registry-declared row caps, so nothing asks for an unbounded payload.                                                                                                                                   |
+| `interpretation`         | How to read the result — what a high or low value actually means.                                                                                                                                           |
+| `caveats`                | Small-sample, sampling-rate and capture-gating warnings. **Read these before quoting a number.**                                                                                                            |
+| `sourceChannels`         | The capture channels ([ADR 0012](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0012-sampling-and-fidelity.md)) that feed it — if a channel is off, the metric is empty by design, not by accident. |
+| `related` / `comparable` | Metrics worth reading alongside it, and which column's change is "the" change.                                                                                                                              |
 
 ## OpenAPI
 

@@ -44,6 +44,32 @@ The core ships **no model and no key**. It only ever reads a consumer's **own** 
 Each name is a metric in the collector's semantic metric registry (ADR 0051) and maps one-to-one to
 a documented query endpoint. Most accept `since`/`until` (epoch ms) plus endpoint-specific filters.
 
+## Result formats (`format`)
+
+Every **aggregate** tool in the catalog declares a `format` argument — `full | table | summary`.
+It picks the envelope the rows arrive in and filters nothing (ADR 0051 §2). The collector's
+`preSerialization` hook does the shaping, so the tool definitions stay pure `buildRequest` functions.
+
+| `format`  | Returns                                                                                                                                                                                         | Use it when                                                        |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `summary` | A bounded digest — `ranked` top rows, a `series` trend, merged spatial `clusters` or a single `record` — with shares, a sample size, the metric's `caveats` and a templated `reading` sentence. | **The default choice when a model will read the result.**          |
+| `table`   | `{ meta, rows }`: the rows plus metric, range, applied filters, sample size, row count, a truncation flag and the registry's limits.                                                            | You need every row _and_ the context to judge how far to trust it. |
+| `full`    | The bare rows, unchanged.                                                                                                                                                                       | You are post-processing the rows yourself. Today's default.        |
+
+- `summary` is capped at the metric's `limits.maxSummaryRows`, which is what makes a heatmap, voxel
+  cloud or long leaderboard safe to hand a model at all. This matters most for the **local** backend:
+  a 4-bit 7–8B model's whole context can be filled by one `full` heatmap.
+- `reading` and `caveats` are templated from the registry's column semantics by pure code — no model
+  — so identical rows always produce identical words. Quote them rather than re-deriving them.
+- Shares appear only where the measure can honestly be summed; an FPS or ratio metric reports
+  `total: null` and no shares. Cluster coordinates are grid indices — multiply by the effective
+  `cellSize` for world space.
+- `session_meta` and `scene_representation` are single stored records, not aggregations, and declare
+  no `format`.
+- `full` remains the generated catalog's default so that existing consumers (the dashboard) are
+  unaffected. Pass `format: "summary"` explicitly from an agent path; the default flip is a separate,
+  documented change.
+
 ## Rules for agents
 
 - **Read-only and privacy-preserving.** Never add ingestion, mutation, or raw per-session event

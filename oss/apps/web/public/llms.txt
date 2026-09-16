@@ -1,0 +1,47 @@
+# Uptimizr
+
+> Open-source (Apache-2.0), privacy-first, self-hosted analytics for 3D scenes. Captures what
+> visitors look at, click, walk past and miss inside a WebGL/WebGPU/WebXR scene — view-direction and
+> click heatmaps, mesh interaction, navigation, performance and session replay — and exposes all of
+> it to AI agents through a generated, semantically described read API.
+
+This is the marketing site. The documentation, and the machine-readable versions of it, live under
+`/docs`.
+
+## Documentation
+
+- [Docs index for LLMs](https://uptimizr.com/docs/llms.txt): the entry point — links to the
+  abridged and complete documentation sets.
+- [Abridged documentation](https://uptimizr.com/docs/llms-small.txt): the whole docs site with
+  non-essential content removed.
+- [Complete documentation](https://uptimizr.com/docs/llms-full.txt): every docs page, inlined.
+- [Docs site](https://uptimizr.com/docs/): the human-readable version.
+- [Building agents on Uptimizr](https://uptimizr.com/docs/guides/agents/): the AI-first layer end to
+  end — metric registry, discovery, MCP, result formats, scoped keys, evaluation.
+
+## Querying an Uptimizr deployment
+
+There is no Uptimizr-operated API: every deployment is the operator's own collector, so the base URL
+is theirs. Against any collector:
+
+- `GET {collector}/api/v1/openapi.json` — an OpenAPI 3.1 description of the whole read API,
+  generated from the semantic metric registry. No API key required; it contains no project data.
+  Each operation carries the metric's grain, units, limits, caveats and interpretation as
+  `x-uptimizr-*` vendor extensions.
+- `GET {collector}/api/v1/whoami` — what the calling API key is permitted to do.
+- Read endpoints authenticate with an `x-api-key` header holding the `query` capability, and accept
+  `format=full | table | summary`. **Prefer `format=summary`**: a bounded digest with shares, the
+  metric's caveats and a templated reading sentence, instead of a thousand raw rows.
+
+## MCP
+
+- [`@uptimizr/mcp`](https://www.npmjs.com/package/@uptimizr/mcp): a read-only Model Context Protocol
+  server over a collector's query API, run over stdio with
+  `UPTIMIZR_COLLECTOR_URL` + `UPTIMIZR_API_KEY`. One tool per served metric, plus the
+  `uptimizr://capabilities` and `uptimizr://scenes` resources and three analysis prompts. No
+  ingestion, mutation or raw per-session tools; nothing leaves the operator's infrastructure.
+
+## Source
+
+- [GitHub repository](https://github.com/RaananW/Uptimizr): source, architecture decision records,
+  and the full SDK/API integration reference.
