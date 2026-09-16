@@ -333,6 +333,82 @@ export const DUCKDB_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
       ALTER TABLE events ADD COLUMN IF NOT EXISTS near DOUBLE;
     `,
   },
+  // --- Agent-scoped keys (#309, ADR 0051 §7) --------------------------------
+  // The singular `capability` column becomes a capability *set*, stored as a
+  // canonical comma-separated token list in a plain text column (every engine
+  // stores and compares text natively — no JSON type needed). Forward-only and
+  // additive: `0027_api_keys_capability` stays untouched and keeps feeding the
+  // read path as the fallback for any row this backfill has not reached.
+  {
+    id: "0031_api_keys_capabilities",
+    sql: /* sql */ `
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS capabilities VARCHAR;
+    `,
+  },
+  // Idempotent backfill: promote each legacy single capability to a one-element
+  // set, exactly once. Guarded on NULL/'' so re-running the migration on every
+  // boot is a no-op after the first (and never clobbers a key minted with a set).
+  {
+    id: "0032_api_keys_capabilities_backfill",
+    sql: /* sql */ `
+      UPDATE api_keys
+         SET capabilities = coalesce(nullif(capability, ''), 'query')
+       WHERE capabilities IS NULL OR capabilities = '';
+    `,
+  },
+  // Operator-supplied key name (`uptimizr new-key --label "weekly-report-agent"`).
+  {
+    id: "0033_api_keys_label",
+    sql: /* sql */ `
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS label VARCHAR;
+    `,
+  },
+  // Optional per-key request budget. NULL on either half falls back to the
+  // collector's global COLLECTOR_RATE_LIMIT_* defaults.
+  {
+    id: "0034_api_keys_rate_limit_max",
+    sql: /* sql */ `
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS rate_limit_max BIGINT;
+    `,
+  },
+  {
+    id: "0035_api_keys_rate_limit_window_ms",
+    sql: /* sql */ `
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS rate_limit_window_ms BIGINT;
+    `,
+  },
+  // Agent audit log: one row per authenticated request made with a non-dashboard
+  // key. `params` is bounded and redacted before it is written (never the key);
+  // rows expire after AUDIT_RETENTION_DAYS. Metadata, not events — no event type
+  // is added (`@uptimizr/schema` untouched).
+  //
+  // `at` is a DuckDB keyword, so it is double-quoted here and in every accessor
+  // (`duckdb/audit.ts`). The column name matches the other three engines, where
+  // it needs no quoting.
+  {
+    id: "0036_agent_audit",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS agent_audit (
+        id            VARCHAR PRIMARY KEY,
+        project_id    VARCHAR NOT NULL,
+        key_id        VARCHAR NOT NULL,
+        "at"          TIMESTAMP NOT NULL DEFAULT now(),
+        surface       VARCHAR NOT NULL DEFAULT 'http',
+        tool_or_path  VARCHAR NOT NULL,
+        params        VARCHAR NOT NULL DEFAULT '',
+        row_count     BIGINT,
+        duration_ms   BIGINT NOT NULL DEFAULT 0,
+        status        INTEGER NOT NULL DEFAULT 200
+      );
+    `,
+  },
+  {
+    id: "0037_agent_audit_idx",
+    sql: /* sql */ `
+      CREATE INDEX IF NOT EXISTS agent_audit_project_at_idx
+        ON agent_audit (project_id, "at");
+    `,
+  },
   // Scene regions (ADR 0051 §2 / sketch §B.2): developer-named, labelled boxes
   // that extend the scene registry (ADR 0014) with a vocabulary for *where* —
   // "the entrance", "the checkout counter". One row per region, keyed by
@@ -340,7 +416,7 @@ export const DUCKDB_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
   // `[minX,…,maxZ]` tuple) parsed by the row mapper, exactly as
   // `scene_representations.bounds` is.
   {
-    id: "0031_scene_regions",
+    id: "0038_scene_regions",
     sql: /* sql */ `
       CREATE TABLE IF NOT EXISTS scene_regions (
         project_id   VARCHAR NOT NULL,

@@ -117,3 +117,27 @@ trackScene(scene, { projectId, endpoint, user: { id: hashedUserId, traits: { pla
 
 The user descriptor is surfaced per session at `GET /api/v1/sessions/:id/meta`. The same
 `sceneDescription` / `meta` / `user` fields work in the `<script>`-tag form.
+
+## Reading a session's raw timeline
+
+`GET /api/v1/sessions/:id/meta` is a coarse descriptor (device, scene, anonymized user) and needs
+only a `query` key. The **ordered raw event stream** that powers
+[replay](/docs/guides/replay/) — `GET /api/v1/sessions/:id/events`, and its live sibling
+`GET /api/v1/live/sessions/:id` — is gated twice over:
+
+1. the collector must run with `ENABLE_RAW_SESSION_RETENTION=true`, and
+2. the API key must hold the `query:raw`
+   [capability](/docs/deploy/collector/#api-keys-and-capabilities).
+
+Either half missing answers `403`. Mint a replay-capable key with:
+
+```bash
+npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
+  --capabilities query,query:raw --label "replay"
+```
+
+:::caution[Breaking change]
+Retention alone used to be enough: any `query` key could read the raw stream once retention was
+on. Aggregate endpoints are unaffected and existing keys need no migration, but a key used for
+replay or live-follow must be re-minted with `query:raw`.
+:::

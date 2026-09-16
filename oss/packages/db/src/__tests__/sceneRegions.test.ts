@@ -107,7 +107,7 @@ describe("duckdb scene regions", () => {
 
 describe("DUCKDB_MIGRATIONS", () => {
   it("creates scene_regions idempotently, keyed by (project, scene, region)", () => {
-    const migration = DUCKDB_MIGRATIONS.find((m) => m.id === "0031_scene_regions");
+    const migration = DUCKDB_MIGRATIONS.find((m) => m.id === "0038_scene_regions");
     expect(migration?.sql).toContain("CREATE TABLE IF NOT EXISTS scene_regions");
     expect(migration?.sql).toContain("PRIMARY KEY (project_id, scene_id, region_id)");
   });

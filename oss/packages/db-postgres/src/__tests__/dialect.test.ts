@@ -15,6 +15,7 @@ import {
   toPositionalParams,
   toPostgresTimestamp,
 } from "@uptimizr/db";
+import { POSTGRES_MIGRATIONS } from "../migrations.js";
 
 const d = postgresDialect;
 
@@ -141,5 +142,36 @@ describe("toPositionalParams", () => {
       const { sql } = toPositionalParams(spec.query, spec.query_params, (i) => `$${i}`);
       expect(sql, parityCase.name).not.toMatch(/\$[A-Za-z_]/);
     }
+  });
+});
+
+/**
+ * Static checks on the migration list (ADR 0007): forward-only, appended never
+ * edited, and idempotent because the runner re-applies everything on every boot.
+ */
+describe("POSTGRES_MIGRATIONS", () => {
+  it("has unique, sorted ids and idempotent statements", () => {
+    const ids = POSTGRES_MIGRATIONS.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect([...ids].sort()).toEqual(ids);
+    for (const migration of POSTGRES_MIGRATIONS) {
+      expect(migration.sql, migration.id).toMatch(/IF NOT EXISTS|CREATE OR REPLACE|WHERE /);
+    }
+  });
+
+  it("adds the agent-scoped key columns, the guarded backfill and the audit table (#309)", () => {
+    const columns = POSTGRES_MIGRATIONS.find((m) => m.id === "0011_api_keys_capabilities");
+    for (const column of ["capabilities", "label", "rate_limit_max", "rate_limit_window_ms"]) {
+      expect(columns?.sql, column).toContain(`ADD COLUMN IF NOT EXISTS ${column}`);
+    }
+
+    const backfill = POSTGRES_MIGRATIONS.find(
+      (m) => m.id === "0012_api_keys_capabilities_backfill",
+    );
+    expect(backfill?.sql).toContain("WHERE capabilities IS NULL OR capabilities = ''");
+
+    const audit = POSTGRES_MIGRATIONS.find((m) => m.id === "0013_agent_audit");
+    expect(audit?.sql).toContain("CREATE TABLE IF NOT EXISTS agent_audit");
+    expect(audit?.sql).toContain("CREATE INDEX IF NOT EXISTS agent_audit_project_at_idx");
   });
 });

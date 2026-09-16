@@ -217,6 +217,53 @@ export const CLICKHOUSE_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> =
         ADD COLUMN IF NOT EXISTS near   Float64 DEFAULT 0;
     `,
   },
+  // --- Agent-scoped keys (#309, ADR 0051 §7) --------------------------------
+  // The singular `capability` column becomes a capability *set*, stored as a
+  // canonical comma-separated token list in a plain `String` column (same shape
+  // as the other three engines — no JSON type anywhere). Forward-only and
+  // additive: `0004_api_keys` is untouched.
+  //
+  // The backfill is the column's DEFAULT expression rather than an
+  // `ALTER TABLE … UPDATE`: migrations re-run on every boot, and a ClickHouse
+  // mutation is asynchronous and would be re-queued each time. `DEFAULT
+  // capability` makes every pre-existing row read its legacy single capability
+  // as a one-element set with no mutation at all, and rows written by the new
+  // code supply the column explicitly.
+  {
+    id: "0009_api_keys_capabilities",
+    sql: /* sql */ `
+      ALTER TABLE api_keys
+        ADD COLUMN IF NOT EXISTS capabilities          String DEFAULT capability,
+        ADD COLUMN IF NOT EXISTS label                 Nullable(String) DEFAULT NULL,
+        ADD COLUMN IF NOT EXISTS rate_limit_max        Nullable(Int64) DEFAULT NULL,
+        ADD COLUMN IF NOT EXISTS rate_limit_window_ms  Nullable(Int64) DEFAULT NULL;
+    `,
+  },
+  // Agent audit log: one row per authenticated request made with a non-dashboard
+  // key. `params` is bounded and redacted before it is written (never the key);
+  // rows expire after AUDIT_RETENTION_DAYS, enforced by the collector's periodic
+  // delete (a lightweight delete, not a TTL, so the retention window is the same
+  // configurable value on every engine). Append-only, so a plain MergeTree.
+  {
+    id: "0010_agent_audit",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS agent_audit (
+        id            String,
+        project_id    String,
+        key_id        String,
+        at            DateTime64(3) DEFAULT now64(3),
+        surface       LowCardinality(String) DEFAULT 'http',
+        tool_or_path  String,
+        params        String DEFAULT '',
+        row_count     Nullable(Int64) DEFAULT NULL,
+        duration_ms   Int64 DEFAULT 0,
+        status        Int32 DEFAULT 200
+      )
+      ENGINE = MergeTree
+      PARTITION BY toYYYYMM(at)
+      ORDER BY (project_id, at);
+    `,
+  },
   // Scene regions (ADR 0051 §2 / sketch §B.2): developer-named, labelled boxes
   // that extend the scene registry (ADR 0014) with a vocabulary for *where*.
   // One row per region, keyed by (project, scene, region); regions may overlap.
@@ -227,7 +274,7 @@ export const CLICKHOUSE_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> =
   // block, with a monotonic `version` so the newest wins. Reads use `FINAL` and
   // filter `deleted = 0`, matching how the other metadata tables dedupe here.
   {
-    id: "0009_scene_regions",
+    id: "0011_scene_regions",
     sql: /* sql */ `
       CREATE TABLE IF NOT EXISTS scene_regions (
         project_id   String,

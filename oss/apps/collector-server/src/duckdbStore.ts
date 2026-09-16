@@ -78,6 +78,9 @@ import {
   duckdbListSceneRepresentations,
   duckdbPutSceneRegions,
   duckdbResolveApiKey,
+  duckdbRecordAudit,
+  duckdbListAudit,
+  duckdbPruneAudit,
   duckdbStreamSessionEvents,
   duckdbUpsertSceneProxy,
   migrateDuckdb,
@@ -166,6 +169,9 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
 
   return {
     resolveApiKey: (key) => duckdbResolveApiKey(db, key),
+    recordAudit: (entry) => duckdbRecordAudit(db, entry),
+    listAudit: (projectId, opts) => duckdbListAudit(db, projectId, opts),
+    pruneAudit: (cutoffMs) => duckdbPruneAudit(db, cutoffMs),
     projectExists: async (projectId) => (await duckdbGetProject(db, projectId)) !== null,
     insertEvents: (events) => duckdbInsertEvents(db, [...events]),
     listSessions: (projectId, opts = {}) =>

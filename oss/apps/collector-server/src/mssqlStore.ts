@@ -142,6 +142,9 @@ import {
   getSessionMeta as msGetSessionMeta,
   getProject as msGetProject,
   resolveApiKey as msResolveApiKey,
+  recordAudit as msRecordAudit,
+  listAudit as msListAudit,
+  pruneAudit as msPruneAudit,
   upsertSceneProxy as msUpsertSceneProxy,
   getSceneRepresentation as msGetSceneRepresentation,
   listSceneRepresentations as msListSceneRepresentations,
@@ -181,6 +184,9 @@ export async function createMssqlStore(): Promise<CollectorStore> {
   const d = mssqlDialect;
   return {
     resolveApiKey: (key) => msResolveApiKey(msc, key),
+    recordAudit: (entry) => msRecordAudit(msc, entry),
+    listAudit: (projectId, opts) => msListAudit(msc, projectId, opts),
+    pruneAudit: (cutoffMs) => msPruneAudit(msc, cutoffMs),
     projectExists: async (projectId) => (await msGetProject(msc, projectId)) !== null,
     insertEvents: (events) => msInsertEvents(msc, [...events]),
     listSessions: (projectId, opts = {}) =>

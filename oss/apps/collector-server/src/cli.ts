@@ -2,6 +2,7 @@
 import { randomBytes } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { parseCapabilityList } from "@uptimizr/db";
 import { sceneIdSchema, sceneRegionsSchema, type SceneRegion } from "@uptimizr/schema";
 import { type CliStoreKind, openCliStore, renderEnv, resolveCliStoreKind } from "./cliStore.js";
 
@@ -15,6 +16,9 @@ import { type CliStoreKind, openCliStore, renderEnv, resolveCliStoreKind } from 
  *                          store, mint a first project + API key, and write `.env`.
  * - `serve` (default)    — run the ingestion + query API (see {@link serve}).
  * - `new-project <name>` — mint an additional project + API key.
+ * - `new-key <id>`       — mint an additional API key on an existing project,
+ *                          with an explicit capability set, label and per-key
+ *                          rate limit (#309, ADR 0051 §7).
  * - `migrate`            — apply store migrations.
  * - `regions set|get`    — declare / read a scene's named regions (ADR 0051 §2).
  *
@@ -40,6 +44,46 @@ function nameArg(args: string[]): string {
     .filter((a) => a !== "--")
     .join(" ")
     .trim();
+}
+
+/**
+ * Split `--flag value` / `--flag=value` pairs out of an argument list, returning
+ * the flags plus whatever positional arguments remain. Deliberately tiny: the
+ * CLI has no dependency on an argument parser.
+ */
+function parseFlags(args: string[]): { flags: Record<string, string>; rest: string[] } {
+  const flags: Record<string, string> = {};
+  const rest: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i]!;
+    if (!arg.startsWith("--") || arg === "--") {
+      if (arg !== "--") rest.push(arg);
+      continue;
+    }
+    const eq = arg.indexOf("=");
+    if (eq > 2) {
+      flags[arg.slice(2, eq)] = arg.slice(eq + 1);
+    } else {
+      const next = args[i + 1];
+      if (next === undefined || next.startsWith("--")) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+      flags[arg.slice(2)] = next;
+      i += 1;
+    }
+  }
+  return { flags, rest };
+}
+
+/** Parse a positive-integer flag, or throw with an actionable message. */
+function intFlag(flags: Record<string, string>, name: string): number | undefined {
+  const raw = flags[name];
+  if (raw === undefined) return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`--${name} must be a positive integer (got "${raw}")`);
+  }
+  return value;
 }
 
 /** Persist a generated secret so `serve` works on the next run. */
@@ -100,6 +144,69 @@ async function cmdNewProject(name: string): Promise<void> {
   process.stdout.write(
     `${JSON.stringify({ projectId: project.id, name: project.name, apiKey: key })}\n`,
   );
+}
+
+/**
+ * Mint an additional API key on an existing project with an explicit capability
+ * set, label and optional per-key rate limit (#309, ADR 0051 §7):
+ *
+ * ```
+ * uptimizr new-key <projectId> --capabilities query,annotate --label "weekly-report-agent"
+ * ```
+ *
+ * Capabilities default to `query` (read-only), matching `init` / `new-project`.
+ * `query:raw` additionally needs `ENABLE_RAW_SESSION_RETENTION` on the collector
+ * before it grants anything (ADR 0003).
+ */
+async function cmdNewKey(args: string[]): Promise<void> {
+  loadLocalEnv();
+  const { flags, rest } = parseFlags(args);
+  const projectId = rest[0];
+  if (!projectId) {
+    throw new Error(
+      "Usage: uptimizr new-key <projectId> [--capabilities query,annotate] [--label NAME] " +
+        "[--rate-limit-max N --rate-limit-window-ms M]",
+    );
+  }
+  const capabilities = parseCapabilityList(flags.capabilities ?? "query");
+  const rateLimitMax = intFlag(flags, "rate-limit-max");
+  const rateLimitWindowMs = intFlag(flags, "rate-limit-window-ms");
+  if ((rateLimitMax == null) !== (rateLimitWindowMs == null)) {
+    throw new Error("--rate-limit-max and --rate-limit-window-ms must be given together");
+  }
+
+  const db = await openCliStore();
+  try {
+    const { key, record } = await db.createApiKey(projectId, {
+      capabilities,
+      label: flags.label ?? null,
+      rateLimit:
+        rateLimitMax != null && rateLimitWindowMs != null
+          ? { max: rateLimitMax, windowMs: rateLimitWindowMs }
+          : null,
+    });
+    console.error(`✓ API key created for project ${projectId}`);
+    console.error(`  Capabilities: ${record.capabilities.join(", ")}`);
+    if (record.label) console.error(`  Label:        ${record.label}`);
+    if (record.rateLimit) {
+      console.error(
+        `  Rate limit:   ${record.rateLimit.max} requests / ${record.rateLimit.windowMs} ms`,
+      );
+    }
+    console.error(`  API key (shown once): ${key}`);
+    process.stdout.write(
+      `${JSON.stringify({
+        projectId,
+        keyId: record.id,
+        capabilities: record.capabilities,
+        label: record.label,
+        rateLimit: record.rateLimit,
+        apiKey: key,
+      })}\n`,
+    );
+  } finally {
+    await db.close();
+  }
 }
 
 async function cmdMigrate(): Promise<void> {
@@ -275,12 +382,21 @@ function printUsage(): void {
       "  uptimizr init [name]          generate a secret, create the store, mint a project + key, write .env",
       "  uptimizr serve                run the ingestion + query API (default)",
       "  uptimizr new-project <name>   mint an additional project + API key",
+      "  uptimizr new-key <projectId>  mint an additional API key on an existing project",
       "  uptimizr migrate              apply store migrations",
       "  uptimizr regions set <sceneId> --file <regions.json>",
       "                                declare a scene's named regions (replaces the set)",
       "  uptimizr regions get <sceneId>",
       "                                print a scene's named regions as JSON",
       "  uptimizr help                 show this help",
+      "",
+      "new-key options:",
+      "  --capabilities <list>         comma-separated: ingest, query, annotate, query:raw",
+      "                                (default: query). `query:raw` is only honoured when the",
+      "                                collector runs with ENABLE_RAW_SESSION_RETENTION.",
+      '  --label <name>                operator-supplied name, e.g. "weekly-report-agent"',
+      "  --rate-limit-max <n>          per-key request budget (needs --rate-limit-window-ms)",
+      "  --rate-limit-window-ms <ms>   per-key rate-limit window (needs --rate-limit-max)",
       "",
       "The regions commands target a project: pass --project <projectId> or set",
       "UPTIMIZR_PROJECT_ID. The file is either a bare array of",
@@ -311,6 +427,9 @@ async function main(): Promise<void> {
       return;
     case "new-project":
       await cmdNewProject(nameArg(rest) || "Project");
+      return;
+    case "new-key":
+      await cmdNewKey(rest);
       return;
     case "migrate":
       await cmdMigrate();

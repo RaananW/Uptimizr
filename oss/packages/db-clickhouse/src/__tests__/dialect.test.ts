@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import { clickhouseDialect, toClickhouseTimestamp } from "@uptimizr/db";
+import { CLICKHOUSE_MIGRATIONS } from "../migrations.js";
 
 const d = clickhouseDialect;
 
@@ -46,5 +47,39 @@ describe("clickhouseDialect", () => {
     expect(d.countMerge("samples_state")).toBe("sum(samples_state)");
     expect(d.avgMerge("avg_fps_state")).toBe("avg(avg_fps_state)");
     expect(d.quantileMerge("p50_fps_state", 0.5)).toBe("quantile(0.5)(p50_fps_state)");
+  });
+});
+
+/**
+ * Static checks on the migration list (ADR 0007): forward-only, appended never
+ * edited, and idempotent because the runner re-applies everything on every boot.
+ */
+describe("CLICKHOUSE_MIGRATIONS", () => {
+  it("has unique, sorted ids and idempotent statements", () => {
+    const ids = CLICKHOUSE_MIGRATIONS.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect([...ids].sort()).toEqual(ids);
+    for (const migration of CLICKHOUSE_MIGRATIONS) {
+      expect(migration.sql, migration.id).toMatch(/IF NOT EXISTS/);
+    }
+  });
+
+  it("adds the agent-scoped key columns and the audit table (#309)", () => {
+    const columns = CLICKHOUSE_MIGRATIONS.find((m) => m.id === "0009_api_keys_capabilities");
+    for (const column of ["capabilities", "label", "rate_limit_max", "rate_limit_window_ms"]) {
+      expect(columns?.sql, column).toContain(`ADD COLUMN IF NOT EXISTS ${column}`);
+    }
+    // ClickHouse backfills through the column's DEFAULT expression rather than
+    // an `ALTER … UPDATE`: migrations re-run on every boot and a mutation would
+    // be re-queued each time. Existing rows therefore read their legacy single
+    // capability as a one-element set, with no mutation at all.
+    expect(columns?.sql).toContain("capabilities          String DEFAULT capability");
+    for (const migration of CLICKHOUSE_MIGRATIONS) {
+      expect(migration.sql, migration.id).not.toMatch(/ALTER TABLE \w+\s+UPDATE/);
+    }
+
+    const audit = CLICKHOUSE_MIGRATIONS.find((m) => m.id === "0010_agent_audit");
+    expect(audit?.sql).toContain("CREATE TABLE IF NOT EXISTS agent_audit");
+    expect(audit?.sql).toContain("ORDER BY (project_id, at)");
   });
 });

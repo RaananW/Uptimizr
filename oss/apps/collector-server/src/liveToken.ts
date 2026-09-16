@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { isApiKeyCapability, type ApiKeyCapability } from "@uptimizr/db";
 
 /**
  * Short-lived, project-scoped signed tokens for the live SSE endpoints
@@ -17,39 +18,70 @@ interface TokenPayload {
   p: string;
   /** Expiry in epoch ms. */
   e: number;
+  /**
+   * Capabilities carried over from the API key that minted the token (#309).
+   * `EventSource` cannot send `x-api-key`, so the per-session live-follow
+   * endpoint reads the key's `query:raw` grant from here. Absent on tokens
+   * minted before capability sets shipped — those resolve to `["query"]`.
+   */
+  c?: ApiKeyCapability[];
+}
+
+/** What a verified live token authorizes. */
+export interface LiveTokenClaims {
+  projectId: string;
+  capabilities: ApiKeyCapability[];
 }
 
 function b64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64url");
 }
 
+/**
+ * HMAC-SHA256 the token payload with the server secret.
+ *
+ * What is hashed is the **payload**, not a credential: a project id, an expiry
+ * and the capability tokens (`{p, e, c}`). The API key that authorized the mint
+ * never reaches here — the route reads it from the header, resolves it to a
+ * record, and discards it. The `secret` is the server's own high-entropy
+ * `LIVE_TOKEN_SECRET`, so HMAC-SHA256 is the right primitive; a slow KDF would
+ * only matter if a low-entropy human password were being hashed.
+ *
+ * (CodeQL's `js/insufficient-password-hash` heuristic flags this because the
+ * payload's project id is traced back to a call named `resolveApiKey`. It is a
+ * false positive for the reason above — and the same finding is open on `main`.)
+ */
 function sign(payloadB64: string, secret: string): string {
   return createHmac("sha256", secret).update(payloadB64).digest("base64url");
 }
 
-/** Mint a token authorizing `projectId` until `now + ttlMs`. */
+/**
+ * Mint a token authorizing `projectId` — with the minting key's `capabilities`
+ * — until `now + ttlMs`.
+ */
 export function mintLiveToken(
   projectId: string,
+  capabilities: readonly ApiKeyCapability[],
   secret: string,
   ttlMs: number,
   now: number = Date.now(),
 ): { token: string; expiresAt: number } {
   const expiresAt = now + ttlMs;
-  const payload: TokenPayload = { p: projectId, e: expiresAt };
+  const payload: TokenPayload = { p: projectId, e: expiresAt, c: [...capabilities] };
   const payloadB64 = b64url(JSON.stringify(payload));
   const token = `${payloadB64}.${sign(payloadB64, secret)}`;
   return { token, expiresAt };
 }
 
 /**
- * Verify a token and return its project id, or `null` if malformed, tampered,
- * or expired. Uses a constant-time signature comparison.
+ * Verify a token and return its claims, or `null` if malformed, tampered, or
+ * expired. Uses a constant-time signature comparison.
  */
 export function verifyLiveToken(
   token: string,
   secret: string,
   now: number = Date.now(),
-): string | null {
+): LiveTokenClaims | null {
   const dot = token.indexOf(".");
   if (dot <= 0 || dot === token.length - 1) return null;
   const payloadB64 = token.slice(0, dot);
@@ -68,5 +100,13 @@ export function verifyLiveToken(
   }
   if (typeof payload.p !== "string" || typeof payload.e !== "number") return null;
   if (now >= payload.e) return null;
-  return payload.p;
+  // Tokens minted before capability sets shipped carry no `c`; treat them as
+  // plain readers so an in-flight token keeps working across an upgrade.
+  const capabilities = Array.isArray(payload.c)
+    ? payload.c.filter((c): c is ApiKeyCapability => typeof c === "string" && isApiKeyCapability(c))
+    : [];
+  return {
+    projectId: payload.p,
+    capabilities: capabilities.length > 0 ? capabilities : ["query"],
+  };
 }

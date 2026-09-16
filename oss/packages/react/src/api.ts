@@ -826,14 +826,35 @@ export interface LiveSessionOptions {
 }
 
 /**
+ * What kind of client is calling, sent as `x-uptimizr-client` on every request.
+ *
+ * The collector's agent audit log (ADR 0051 §7) skips `"dashboard"` so an
+ * agent's activity is not buried under a dashboard's panel refreshes; every
+ * other value is recorded. It is a volume filter, not a security boundary —
+ * anyone holding the key could send any value, and anyone holding the key can
+ * already do everything the key allows.
+ */
+export type CollectorClientKind = "dashboard" | "assistant" | "agent";
+
+/**
  * Thin, dependency-free client over the collector query API. Construct one per
  * `(baseUrl, apiKey)` pair; methods map one-to-one to query endpoints.
+ *
+ * `client` identifies the caller to the collector's audit log and defaults to
+ * `"dashboard"` — the UI case this class exists for. Agent-shaped callers (the
+ * in-browser assistant) pass their own kind so their reads are audited.
  */
 export class CollectorApi {
   constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string,
+    private readonly client: CollectorClientKind = "dashboard",
   ) {}
+
+  /** Auth + client-identity headers sent on every request. */
+  private headers(): Record<string, string> {
+    return { "x-api-key": this.apiKey, "x-uptimizr-client": this.client };
+  }
 
   private async get<T>(path: string, params: QueryParams = {}): Promise<T> {
     const url = new URL(path, ensureTrailingSlash(this.baseUrl));
@@ -841,7 +862,7 @@ export class CollectorApi {
       if (value != null) url.searchParams.set(key, String(value));
     }
     const res = await fetch(url, {
-      headers: { "x-api-key": this.apiKey },
+      headers: this.headers(),
       cache: "no-store",
     });
     if (!res.ok) {
@@ -1684,7 +1705,7 @@ export class CollectorApi {
     const url = new URL("api/v1/live/token", ensureTrailingSlash(this.baseUrl));
     const res = await fetch(url, {
       method: "POST",
-      headers: { "x-api-key": this.apiKey },
+      headers: this.headers(),
       cache: "no-store",
     });
     if (!res.ok) {

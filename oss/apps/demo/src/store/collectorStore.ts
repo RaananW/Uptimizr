@@ -192,6 +192,11 @@ type BuilderRoute = (pid: string, opts: DemoOpts, sp: URLSearchParams) => QueryS
  * below.
  */
 export const DEMO_SPECIAL_GET_ROUTES = [
+  // Key identity + agent audit (#309). The demo is keyless and single-tenant, so
+  // `whoami` describes the one demo project and the audit trail is always empty
+  // — there is no key whose activity could be attributed.
+  "/api/v1/whoami",
+  "/api/v1/audit",
   "/api/v1/sessions/:sessionId/trajectory",
   "/api/v1/sessions/:id/events",
   "/api/v1/sessions/:id/meta",
@@ -443,6 +448,21 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
   const pid = DEMO_PROJECT_ID;
 
   if (path === "/health") return ok({ status: "ok" });
+
+  // Key identity (#309). The demo has no keys — every request resolves to the
+  // single public demo project — so `whoami` reports a read-only identity and
+  // the audit trail is always empty.
+  if (req.method === "GET" && path === "/api/v1/whoami") {
+    return ok({
+      projectId: pid,
+      keyId: "demo",
+      capabilities: ["query"],
+      label: "demo",
+      rateLimit: null,
+      rateLimitSource: "default",
+    });
+  }
+  if (req.method === "GET" && path === "/api/v1/audit") return ok([]);
 
   if (req.method === "POST" && path === "/api/v1/collect") {
     return handleCollect(db, req.body);

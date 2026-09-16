@@ -42,13 +42,20 @@ function makeConfig(): CollectorConfig {
     trustProxy: false,
     bodyLimit: 1_048_576,
     cspMode: "strict",
+    auditRetentionDays: 30,
+    auditDashboardRequests: false,
     dashboardDir,
   };
 }
 
-// buildApp does not touch the store at registration time; the static-serving
-// tests never reach a query/collect handler, so a bare stub is enough.
-const store = {} as unknown as CollectorStore;
+// buildApp does not touch the store at registration time beyond the audit
+// retention sweep; the static-serving tests never reach a query/collect handler,
+// so a stub with the audit surface is enough.
+const store = {
+  pruneAudit: async () => {},
+  recordAudit: async () => {},
+  listAudit: async () => [],
+} as unknown as CollectorStore;
 
 describe("static dashboard serving", () => {
   it("serves index.html at the root", async () => {

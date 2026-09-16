@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
+import type { ResolvedApiKey } from "@uptimizr/db";
 import { mintLiveToken } from "../liveToken.js";
 
 const baseConfig: CollectorConfig = {
@@ -25,17 +26,42 @@ const baseConfig: CollectorConfig = {
   trustProxy: false,
   bodyLimit: 1_048_576,
   cspMode: "strict",
+  auditRetentionDays: 30,
+  auditDashboardRequests: false,
+};
+
+/** `raw-key` additionally holds `query:raw` (#309); `valid-key` is a plain reader. */
+const KEYS: Record<string, ResolvedApiKey> = {
+  "valid-key": {
+    projectId: "p1",
+    keyId: "k-query",
+    capabilities: ["query"],
+    label: null,
+    rateLimit: null,
+  },
+  "raw-key": {
+    projectId: "p1",
+    keyId: "k-raw",
+    capabilities: ["query", "query:raw"],
+    label: null,
+    rateLimit: null,
+  },
+  "ingest-key": {
+    projectId: "p1",
+    keyId: "k-ingest",
+    capabilities: ["ingest"],
+    label: null,
+    rateLimit: null,
+  },
 };
 
 function makeStore(): CollectorStore {
   return {
-    resolveApiKey: async (key) =>
-      key === "valid-key"
-        ? { projectId: "p1", capability: "query" }
-        : key === "ingest-key"
-          ? { projectId: "p1", capability: "ingest" }
-          : null,
-    projectExists: async (id) => id === "p1",
+    resolveApiKey: async (key: string) => KEYS[key] ?? null,
+    recordAudit: async () => {},
+    listAudit: async () => [],
+    pruneAudit: async () => {},
+    projectExists: async (id: string) => id === "p1",
     insertEvents: async () => {},
   } as unknown as CollectorStore;
 }
@@ -175,7 +201,12 @@ describe("live SSE auth gates", () => {
 
   it("blocks live-follow when raw retention is disabled", async () => {
     const app = await buildApp({ store: makeStore(), config: baseConfig });
-    const { token } = mintLiveToken("p1", baseConfig.liveTokenSecret, 60_000);
+    const { token } = mintLiveToken(
+      "p1",
+      ["query", "query:raw"],
+      baseConfig.liveTokenSecret,
+      60_000,
+    );
     const res = await app.inject({
       method: "GET",
       url: `/api/v1/live/sessions/s1?token=${token}`,
@@ -188,7 +219,12 @@ describe("live SSE auth gates", () => {
 describe("live SSE streams", () => {
   it("pushes an initial presence snapshot", async () => {
     const { base } = await listen();
-    const { token } = mintLiveToken("p1", baseConfig.liveTokenSecret, 60_000);
+    const { token } = mintLiveToken(
+      "p1",
+      ["query", "query:raw"],
+      baseConfig.liveTokenSecret,
+      60_000,
+    );
     const { frames } = await readSse(`${base}/api/v1/live/presence?token=${token}`, 1);
     expect(frames[0].event).toBe("presence");
     const snap = JSON.parse(frames[0].data) as { activeSessions: number };
@@ -198,7 +234,12 @@ describe("live SSE streams", () => {
 
   it("streams ingested events on the project firehose", async () => {
     const { base } = await listen();
-    const { token } = mintLiveToken("p1", baseConfig.liveTokenSecret, 60_000);
+    const { token } = mintLiveToken(
+      "p1",
+      ["query", "query:raw"],
+      baseConfig.liveTokenSecret,
+      60_000,
+    );
 
     const streamPromise = readSse(`${base}/api/v1/live/stream?token=${token}`, 1);
     // Give the stream a tick to subscribe before ingesting.
@@ -217,7 +258,12 @@ describe("live SSE streams", () => {
 
   it("backfills and tails a session when retention is enabled", async () => {
     const { base } = await listen({ ...baseConfig, enableRawSessionRetention: true });
-    const { token } = mintLiveToken("p1", baseConfig.liveTokenSecret, 60_000);
+    const { token } = mintLiveToken(
+      "p1",
+      ["query", "query:raw"],
+      baseConfig.liveTokenSecret,
+      60_000,
+    );
 
     // Ingest one event first so the backfill ring has content.
     await fetch(`${base}/api/v1/collect`, {
@@ -240,7 +286,12 @@ describe("live SSE CORS", () => {
   it("reflects an allowed Origin on the SSE response", async () => {
     const origin = "http://dashboard.example";
     const { base } = await listen({ ...baseConfig, corsOrigins: [origin] });
-    const { token } = mintLiveToken("p1", baseConfig.liveTokenSecret, 60_000);
+    const { token } = mintLiveToken(
+      "p1",
+      ["query", "query:raw"],
+      baseConfig.liveTokenSecret,
+      60_000,
+    );
     const controller = new AbortController();
     const res = await fetch(`${base}/api/v1/live/presence?token=${token}`, {
       headers: { accept: "text/event-stream", origin },
@@ -254,7 +305,12 @@ describe("live SSE CORS", () => {
 
   it("omits the CORS header for a disallowed Origin", async () => {
     const { base } = await listen({ ...baseConfig, corsOrigins: ["http://allowed.example"] });
-    const { token } = mintLiveToken("p1", baseConfig.liveTokenSecret, 60_000);
+    const { token } = mintLiveToken(
+      "p1",
+      ["query", "query:raw"],
+      baseConfig.liveTokenSecret,
+      60_000,
+    );
     const controller = new AbortController();
     const res = await fetch(`${base}/api/v1/live/presence?token=${token}`, {
       headers: { accept: "text/event-stream", origin: "http://evil.example" },

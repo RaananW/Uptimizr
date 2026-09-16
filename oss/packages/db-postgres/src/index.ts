@@ -32,6 +32,8 @@ export {
 } from "./projects.js";
 export type { Project, ApiKeyRecord } from "./projects.js";
 
+export { recordAudit, listAudit, pruneAudit } from "./audit.js";
+
 export {
   upsertSceneProxy,
   getSceneRepresentation,

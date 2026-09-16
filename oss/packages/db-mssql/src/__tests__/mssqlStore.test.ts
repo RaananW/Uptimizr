@@ -26,6 +26,7 @@ import {
   diffParity,
   duckdbDialect,
   duckdbInsertEvents,
+  hashApiKey,
   migrateDuckdb,
   mssqlDialect,
   readDbSettings,
@@ -39,6 +40,7 @@ import type { MssqlClient } from "../client.js";
 import { migrateMssql } from "../migrations.js";
 import { getSessionEvents, getSessionMeta, insertEvents, streamSessionEvents } from "../events.js";
 import { createApiKey, createProject, getProject, resolveApiKey } from "../projects.js";
+import { listAudit, pruneAudit, recordAudit } from "../audit.js";
 import {
   getSceneRepresentation,
   listSceneRepresentations,
@@ -161,6 +163,7 @@ describe.skipIf(!available)("mssql store", () => {
        WHERE table_schema = N'dbo' ORDER BY table_name`,
     );
     expect(tables.map((t) => t.table_name)).toEqual([
+      "agent_audit",
       "api_keys",
       "events",
       "events_daily",
@@ -181,20 +184,107 @@ describe.skipIf(!available)("mssql store", () => {
 
     const { key, record } = await createApiKey(ms, project.id);
     expect(key.startsWith("utk_")).toBe(true);
-    expect(record).toMatchObject({ projectId: project.id, capability: "query", revokedAt: null });
+    expect(record).toMatchObject({
+      projectId: project.id,
+      capabilities: ["query"],
+      label: null,
+      rateLimit: null,
+      revokedAt: null,
+    });
     expect(record.keyPrefix).toBe(key.slice(0, record.keyPrefix.length));
 
     const stored = await ms.query<{ key_hash: string }>("SELECT key_hash FROM dbo.api_keys");
     expect(stored[0]?.key_hash).not.toBe(key);
 
-    expect(await resolveApiKey(ms, key)).toEqual({ projectId: project.id, capability: "query" });
+    expect(await resolveApiKey(ms, key)).toEqual({
+      projectId: project.id,
+      keyId: record.id,
+      capabilities: ["query"],
+      label: null,
+      rateLimit: null,
+    });
     expect(await resolveApiKey(ms, "utk_unknown")).toBeNull();
 
-    const ingest = await createApiKey(ms, project.id, "ingest");
-    expect(await resolveApiKey(ms, ingest.key)).toEqual({
-      projectId: project.id,
-      capability: "ingest",
+    const ingest = await createApiKey(ms, project.id, { capabilities: ["ingest"] });
+    expect(await resolveApiKey(ms, ingest.key)).toMatchObject({ capabilities: ["ingest"] });
+  });
+
+  it("issues an agent key with a capability set, label and per-key rate limit (#309)", async () => {
+    const project = await createProject(ms, "Demo");
+    const { key, record } = await createApiKey(ms, project.id, {
+      // Deliberately out of canonical order — normalized on the way in.
+      capabilities: ["annotate", "query:raw", "query"],
+      label: "weekly-report-agent",
+      rateLimit: { max: 60, windowMs: 60_000 },
     });
+    expect(record.capabilities).toEqual(["query", "annotate", "query:raw"]);
+    expect(await resolveApiKey(ms, key)).toEqual({
+      projectId: project.id,
+      keyId: record.id,
+      capabilities: ["query", "annotate", "query:raw"],
+      label: "weekly-report-agent",
+      rateLimit: { max: 60, windowMs: 60_000 },
+    });
+  });
+
+  it("grandfathers a legacy key that predates the capability set (#309)", async () => {
+    const project = await createProject(ms, "Demo");
+    // A row exactly as the pre-#309 code wrote it: singular `capability` only.
+    await ms.query(
+      `INSERT INTO dbo.api_keys (id, project_id, key_hash, key_prefix, capability)
+       VALUES (N'legacy-1', @p1, @p2, N'utk_legacy__', N'query')`,
+      [project.id, hashApiKey("utk_legacy_plaintext")],
+    );
+    expect(await resolveApiKey(ms, "utk_legacy_plaintext")).toEqual({
+      projectId: project.id,
+      keyId: "legacy-1",
+      capabilities: ["query"],
+      label: null,
+      rateLimit: null,
+    });
+
+    // The backfill is idempotent and never clobbers an explicit set.
+    await migrateMssql(ms);
+    const rows = await ms.query<{ capabilities: string }>(
+      `SELECT capabilities FROM dbo.api_keys WHERE id = N'legacy-1'`,
+    );
+    expect(rows[0]?.capabilities).toBe("query");
+  });
+
+  it("records, reads and expires agent audit rows (#309)", async () => {
+    const project = await createProject(ms, "Demo");
+    const { record } = await createApiKey(ms, project.id);
+    const base = Date.UTC(2026, 0, 1, 12, 0, 0);
+    for (let i = 0; i < 3; i += 1) {
+      await recordAudit(ms, {
+        projectId: project.id,
+        keyId: record.id,
+        surface: "http",
+        toolOrPath: "/api/v1/meshes/top",
+        params: `{"limit":${i}}`,
+        rowCount: i,
+        durationMs: 5 + i,
+        status: 200,
+        at: new Date(base + i * 60_000),
+      });
+    }
+
+    const all = await listAudit(ms, project.id);
+    expect(all.map((row) => row.params)).toEqual(['{"limit":2}', '{"limit":1}', '{"limit":0}']);
+    expect(all[0]).toMatchObject({ keyId: record.id, surface: "http", rowCount: 2, status: 200 });
+    expect(all[0]?.at.getTime()).toBe(base + 120_000);
+    expect(await listAudit(ms, project.id, { limit: 1 })).toHaveLength(1);
+    expect(
+      (await listAudit(ms, project.id, { since: base + 60_000, until: base + 120_000 })).map(
+        (row) => row.params,
+      ),
+    ).toEqual(['{"limit":1}']);
+
+    await pruneAudit(ms, base + 120_000);
+    expect(await listAudit(ms, project.id)).toHaveLength(1);
+    // Idempotent: a second sweep over the same cutoff changes nothing.
+    await pruneAudit(ms, base + 120_000);
+    expect(await listAudit(ms, project.id)).toHaveLength(1);
   });
 
   it("ingests events and lists sessions", async () => {

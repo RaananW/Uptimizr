@@ -88,7 +88,18 @@ function createProject(projectName, childEnv) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       "pnpm",
-      ["--filter", "@uptimizr/db", "run", "new-project", "--", projectName],
+      [
+        "--filter",
+        "@uptimizr/db",
+        "run",
+        "new-project",
+        "--",
+        // Local dev projects back the playground + dashboard, whose replay and
+        // live-follow read raw per-session streams (`query:raw`, #309).
+        "--capabilities",
+        "query,query:raw",
+        projectName,
+      ],
       { cwd: repoRoot, env: childEnv, stdio: ["ignore", "pipe", "inherit"] },
     );
     let out = "";

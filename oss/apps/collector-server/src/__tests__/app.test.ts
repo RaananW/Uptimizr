@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LIMITS } from "@uptimizr/schema";
 import type { AnyEvent } from "@uptimizr/schema";
+import type { AgentAuditEntry, ResolvedApiKey } from "@uptimizr/db";
 import { buildApp } from "../app.js";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
@@ -24,20 +25,87 @@ const config: CollectorConfig = {
   trustProxy: false,
   bodyLimit: 1_048_576,
   cspMode: "strict",
+  auditRetentionDays: 30,
+  auditDashboardRequests: false,
+};
+
+/**
+ * Keys the fake store resolves. `raw-key` additionally holds `query:raw`
+ * (#309), `limited-key` carries its own per-key rate limit, and `ingest-key`
+ * cannot read at all.
+ */
+const KEYS: Record<string, ResolvedApiKey> = {
+  "valid-key": {
+    projectId: "p1",
+    keyId: "k-query",
+    capabilities: ["query"],
+    label: null,
+    rateLimit: null,
+  },
+  "raw-key": {
+    projectId: "p1",
+    keyId: "k-raw",
+    capabilities: ["query", "query:raw"],
+    label: "replay-agent",
+    rateLimit: null,
+  },
+  "annotate-key": {
+    projectId: "p1",
+    keyId: "k-annotate",
+    capabilities: ["query", "annotate"],
+    label: null,
+    rateLimit: null,
+  },
+  "limited-key": {
+    projectId: "p1",
+    keyId: "k-limited",
+    capabilities: ["query"],
+    label: "throttled-agent",
+    rateLimit: { max: 2, windowMs: 60_000 },
+  },
+  "ingest-key": {
+    projectId: "p1",
+    keyId: "k-ingest",
+    capabilities: ["ingest"],
+    label: null,
+    rateLimit: null,
+  },
 };
 
 function makeStore(overrides: Partial<CollectorStore> = {}): CollectorStore & {
   inserted: AnyEvent[];
+  audit: AgentAuditEntry[];
 } {
   const inserted: AnyEvent[] = [];
+  const audit: AgentAuditEntry[] = [];
   return {
     inserted,
-    resolveApiKey: async (key) =>
-      key === "valid-key"
-        ? { projectId: "p1", capability: "query" }
-        : key === "ingest-key"
-          ? { projectId: "p1", capability: "ingest" }
-          : null,
+    audit,
+    resolveApiKey: async (key) => KEYS[key] ?? null,
+    recordAudit: async (entry) => {
+      audit.push({
+        id: `a${audit.length}`,
+        projectId: entry.projectId,
+        keyId: entry.keyId,
+        at: entry.at ?? new Date(),
+        surface: entry.surface,
+        toolOrPath: entry.toolOrPath,
+        params: entry.params,
+        rowCount: entry.rowCount ?? null,
+        durationMs: entry.durationMs,
+        status: entry.status,
+      });
+    },
+    listAudit: async (projectId, opts = {}) =>
+      audit
+        .filter((row) => row.projectId === projectId)
+        .slice(0, opts.limit ?? 100)
+        .reverse(),
+    pruneAudit: async (cutoffMs) => {
+      for (let i = audit.length - 1; i >= 0; i -= 1) {
+        if (audit[i]!.at.getTime() < cutoffMs) audit.splice(i, 1);
+      }
+    },
     projectExists: async (id) => id === "p1",
     insertEvents: async (events) => {
       inserted.push(...events);
@@ -2008,9 +2076,49 @@ describe("collector app", () => {
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/sessions/s1/events",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "raw-key" },
     });
     expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: "raw session retention is disabled" });
+    await app.close();
+  });
+
+  // The full retention x capability matrix for the raw session stream (#309,
+  // ADR 0051 §7). `query:raw` alone grants nothing when retention is off, and
+  // retention alone grants nothing to a plain `query` key — the tightening this
+  // issue introduces.
+  describe.each([
+    { retention: false, key: "valid-key", status: 403, why: "retention off, query only" },
+    { retention: false, key: "raw-key", status: 403, why: "retention off, query:raw" },
+    { retention: true, key: "valid-key", status: 403, why: "retention on, query only" },
+    { retention: true, key: "raw-key", status: 200, why: "retention on, query:raw" },
+  ])("raw session stream ($why)", ({ retention, key, status }) => {
+    it(`answers ${status}`, async () => {
+      const app = await buildApp({
+        store: makeStore(),
+        config: { ...config, enableRawSessionRetention: retention },
+      });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/sessions/s1/events",
+        headers: { "x-api-key": key },
+      });
+      expect(res.statusCode).toBe(status);
+      await app.close();
+    });
+  });
+
+  it("still 401s the raw session stream for an unknown key, whatever retention says", async () => {
+    const app = await buildApp({
+      store: makeStore(),
+      config: { ...config, enableRawSessionRetention: true },
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/sessions/s1/events",
+      headers: { "x-api-key": "nope" },
+    });
+    expect(res.statusCode).toBe(401);
     await app.close();
   });
 
@@ -2022,7 +2130,7 @@ describe("collector app", () => {
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/sessions/s1/events",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "raw-key" },
     });
     expect(res.statusCode).toBe(200);
     await app.close();
@@ -2060,7 +2168,7 @@ describe("collector app", () => {
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/sessions/s1/events",
-      headers: { "x-api-key": "valid-key", accept: "application/x-ndjson" },
+      headers: { "x-api-key": "raw-key", accept: "application/x-ndjson" },
     });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toContain("application/x-ndjson");

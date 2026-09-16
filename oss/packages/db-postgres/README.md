@@ -98,7 +98,8 @@ selectPrefix: "SELECT TOP 1", selectSuffix: "" }`.
 | `client.ts`        | Pooled `pg` wrapper (UTC session, schema search path, plain-JS values). |
 | `migrations.ts`    | Forward-only DDL (events, node_samples, metadata, query-time views).    |
 | `events.ts`        | Batched multi-row inserts + replay-complete session reads.              |
-| `projects.ts`      | Project + API-key metadata (SHA-256 hashes).                            |
+| `projects.ts`      | Project + API-key metadata (SHA-256 hashes, capability sets).           |
+| `audit.ts`         | Agent audit log: record / list / prune (`agent_audit`).                 |
 | `sceneRegistry.ts` | Per-`(project, scene)` representation upserts/reads (`ON CONFLICT`).    |
 | `sceneRegions.ts`  | Named scene regions: replace-the-set writes in one transaction.         |
 | `queries.ts`       | `runPostgresQuery` — executes a rendered `QuerySpec`.                   |

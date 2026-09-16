@@ -218,7 +218,32 @@ describe("MSSQL_MIGRATIONS", () => {
     const perfDaily = MSSQL_MIGRATIONS.find((m) => m.id === "0009_perf_daily_view");
     expect(perfDaily?.sql).toContain("dbo.uptimizr_quantile(STRING_AGG(");
     for (const migration of MSSQL_MIGRATIONS) {
-      expect(migration.sql, migration.id).toMatch(/IF (NOT EXISTS|OBJECT_ID)|CREATE OR ALTER/);
+      // T-SQL has no `IF NOT EXISTS` on DDL, so each statement carries its own
+      // existence guard: `IF OBJECT_ID` (tables/views), `IF NOT EXISTS` over
+      // sys.indexes, `IF COL_LENGTH` (added columns and the backfill that
+      // follows them), or `CREATE OR ALTER` (views/functions).
+      expect(migration.sql, migration.id).toMatch(
+        /IF (NOT EXISTS|OBJECT_ID|COL_LENGTH)|CREATE OR ALTER/,
+      );
+    }
+  });
+
+  it("adds the agent-scoped key columns, the idempotent backfill and the audit table (#309)", () => {
+    const columns = MSSQL_MIGRATIONS.find((m) => m.id === "0011_api_keys_capabilities");
+    expect(columns?.sql).toContain("ADD capabilities");
+    expect(columns?.sql).toContain("ADD label");
+    expect(columns?.sql).toContain("ADD rate_limit_max");
+    expect(columns?.sql).toContain("ADD rate_limit_window_ms");
+
+    // The backfill must be guarded so re-running it on every boot is a no-op
+    // and never clobbers a key already carrying a capability set.
+    const backfill = MSSQL_MIGRATIONS.find((m) => m.id === "0012_api_keys_capabilities_backfill");
+    expect(backfill?.sql).toContain("WHERE capabilities IS NULL");
+
+    const audit = MSSQL_MIGRATIONS.find((m) => m.id === "0013_agent_audit");
+    expect(audit?.sql).toContain("CREATE TABLE dbo.agent_audit");
+    for (const column of ["project_id", "key_id", "surface", "tool_or_path", "params"]) {
+      expect(audit?.sql, column).toContain(column);
     }
   });
 });

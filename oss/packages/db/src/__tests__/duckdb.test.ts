@@ -50,6 +50,8 @@ import {
   streamSessionEvents,
 } from "../duckdb/events.js";
 import { createApiKey, createProject, resolveApiKey } from "../duckdb/projects.js";
+import { listAudit, pruneAudit, recordAudit } from "../duckdb/audit.js";
+import { hashApiKey } from "../metadata.js";
 import {
   getSceneRepresentation,
   listSceneRepresentations,
@@ -112,21 +114,135 @@ describe("duckdb store", () => {
     const { key, record } = await createApiKey(db, project.id);
     expect(key).toMatch(/^utk_/);
     // Keys default to the `query` read capability.
-    expect(record.capability).toBe("query");
+    expect(record.capabilities).toEqual(["query"]);
+    expect(record.label).toBeNull();
+    expect(record.rateLimit).toBeNull();
     expect(await resolveApiKey(db, key)).toEqual({
       projectId: project.id,
-      capability: "query",
+      keyId: record.id,
+      capabilities: ["query"],
+      label: null,
+      rateLimit: null,
     });
     expect(await resolveApiKey(db, "utk_unknown")).toBeNull();
   });
 
   it("issues an ingest-capability key when requested", async () => {
     const project = await createProject(db, "Demo");
-    const { key } = await createApiKey(db, project.id, "ingest");
+    const { key, record } = await createApiKey(db, project.id, { capabilities: ["ingest"] });
     expect(await resolveApiKey(db, key)).toEqual({
       projectId: project.id,
-      capability: "ingest",
+      keyId: record.id,
+      capabilities: ["ingest"],
+      label: null,
+      rateLimit: null,
     });
+  });
+
+  it("issues an agent key with a capability set, label and per-key rate limit (#309)", async () => {
+    const project = await createProject(db, "Demo");
+    const { key, record } = await createApiKey(db, project.id, {
+      // Deliberately out of canonical order — it is normalized on the way in.
+      capabilities: ["annotate", "query:raw", "query"],
+      label: "weekly-report-agent",
+      rateLimit: { max: 60, windowMs: 60_000 },
+    });
+    expect(record.capabilities).toEqual(["query", "annotate", "query:raw"]);
+    expect(await resolveApiKey(db, key)).toEqual({
+      projectId: project.id,
+      keyId: record.id,
+      capabilities: ["query", "annotate", "query:raw"],
+      label: "weekly-report-agent",
+      rateLimit: { max: 60, windowMs: 60_000 },
+    });
+  });
+
+  it("grandfathers a legacy key that predates the capability set (#309)", async () => {
+    const project = await createProject(db, "Demo");
+    // A row exactly as the pre-#309 code wrote it: singular `capability`, no
+    // `capabilities`, no label, no per-key rate limit. The migration backfill
+    // does not reach rows inserted after it ran, so the read path must fall back.
+    await db.run(
+      `INSERT INTO api_keys (id, project_id, key_hash, key_prefix, capability)
+       VALUES ('legacy-1', $projectId, $keyHash, 'utk_legacy__', 'query')`,
+      { projectId: project.id, keyHash: hashApiKey("utk_legacy_plaintext") },
+    );
+    expect(await resolveApiKey(db, "utk_legacy_plaintext")).toEqual({
+      projectId: project.id,
+      keyId: "legacy-1",
+      capabilities: ["query"],
+      label: null,
+      rateLimit: null,
+    });
+  });
+
+  it("backfills `capabilities` from the legacy column, idempotently (#309)", async () => {
+    const project = await createProject(db, "Demo");
+    await db.run(
+      `INSERT INTO api_keys (id, project_id, key_hash, key_prefix, capability)
+       VALUES ('legacy-2', $projectId, $keyHash, 'utk_legacy__', 'ingest')`,
+      { projectId: project.id, keyHash: hashApiKey("utk_legacy_ingest") },
+    );
+    // Re-running the migrations is what happens on every boot.
+    await migrateDuckdb(db);
+    const rows = await db.all<{ capabilities: string }>(
+      `SELECT capabilities FROM api_keys WHERE id = 'legacy-2'`,
+    );
+    expect(rows[0]?.capabilities).toBe("ingest");
+    expect(await resolveApiKey(db, "utk_legacy_ingest")).toMatchObject({
+      capabilities: ["ingest"],
+    });
+
+    // A second pass must not clobber a key that already carries a set.
+    const { key } = await createApiKey(db, project.id, { capabilities: ["query", "annotate"] });
+    await migrateDuckdb(db);
+    expect(await resolveApiKey(db, key)).toMatchObject({ capabilities: ["query", "annotate"] });
+  });
+
+  it("records, reads and expires agent audit rows (#309)", async () => {
+    const project = await createProject(db, "Demo");
+    const { record } = await createApiKey(db, project.id, { capabilities: ["query"] });
+    const base = Date.UTC(2026, 0, 1, 12, 0, 0);
+    for (let i = 0; i < 3; i += 1) {
+      await recordAudit(db, {
+        projectId: project.id,
+        keyId: record.id,
+        surface: "http",
+        toolOrPath: `/api/v1/meshes/top`,
+        params: `{"limit":${i}}`,
+        rowCount: i,
+        durationMs: 5 + i,
+        status: 200,
+        at: new Date(base + i * 60_000),
+      });
+    }
+
+    // Newest first, bounded by `limit`.
+    const all = await listAudit(db, project.id);
+    expect(all.map((row) => row.params)).toEqual(['{"limit":2}', '{"limit":1}', '{"limit":0}']);
+    expect(all[0]).toMatchObject({
+      projectId: project.id,
+      keyId: record.id,
+      surface: "http",
+      toolOrPath: "/api/v1/meshes/top",
+      rowCount: 2,
+      status: 200,
+    });
+    expect(await listAudit(db, project.id, { limit: 1 })).toHaveLength(1);
+
+    // Range filters: `since` inclusive, `until` exclusive.
+    const ranged = await listAudit(db, project.id, { since: base + 60_000, until: base + 120_000 });
+    expect(ranged.map((row) => row.params)).toEqual(['{"limit":1}']);
+
+    // Another project never sees these rows.
+    const other = await createProject(db, "Other");
+    expect(await listAudit(db, other.id)).toEqual([]);
+
+    // Retention: drop everything older than the cutoff, idempotently.
+    await pruneAudit(db, base + 120_000);
+    expect(await listAudit(db, project.id)).toHaveLength(1);
+    await pruneAudit(db, base + 120_000);
+    expect(await listAudit(db, project.id)).toHaveLength(1);
   });
 
   it("ingests events and lists sessions", async () => {
