@@ -1,7 +1,7 @@
 /**
  * Registry ↔ query-route contract (ADR 0051 §1, design sketch §A.3).
  *
- * The metric registry in `@uptimizr/db/registry` claims an endpoint and a set of
+ * The metric registry in `@uptimizr/metrics` claims an endpoint and a set of
  * filters for almost every aggregation. This suite proves those claims against
  * the routes the collector actually serves: it registers the real `queryRoutes`
  * plugin on a bare Fastify instance, collects each route's path and Zod
@@ -20,7 +20,7 @@ import { describe, expect, it, beforeAll } from "vitest";
 import Fastify from "fastify";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { allMetrics, type MetricDefinition } from "@uptimizr/db/registry";
+import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import { queryRoutes } from "../routes/query.js";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";

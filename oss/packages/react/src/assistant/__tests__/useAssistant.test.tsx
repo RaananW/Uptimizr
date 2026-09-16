@@ -234,6 +234,47 @@ describe("useAssistant", () => {
     expect(hosted.lastToolCount()).toBe(readTools.length);
   });
 
+  it("honours an explicit tools list over the per-backend default", async () => {
+    let names: string[] = [];
+    nextProvider = {
+      complete: vi.fn(async (req: { tools?: { name: string }[] }) => {
+        names = (req.tools ?? []).map((t) => t.name);
+        return { kind: "final", content: "ok" } as ProviderResponse;
+      }),
+    };
+    const { result, unmount } = renderHook(() =>
+      // Two tools, one of them outside the local default's core subset.
+      useAssistant({
+        api: fakeApi(),
+        backend: { backend: "local", webllm: { model: "X" } },
+        tools: ["perf_summary", "dead_clicks", "not_a_tool"],
+      }),
+    );
+    await act(async () => {
+      await result.current.send("dead clicks?");
+    });
+    expect(names).toEqual(["dead_clicks", "perf_summary"]);
+    unmount();
+  });
+
+  it("falls back to the per-backend default when the tools list matches nothing", async () => {
+    let count = -1;
+    nextProvider = {
+      complete: vi.fn(async (req: { tools?: unknown[] }) => {
+        count = req.tools?.length ?? -1;
+        return { kind: "final", content: "ok" } as ProviderResponse;
+      }),
+    };
+    const { result, unmount } = renderHook(() =>
+      useAssistant({ api: fakeApi(), backend: HOSTED, tools: ["nope"] }),
+    );
+    await act(async () => {
+      await result.current.send("hi");
+    });
+    expect(count).toBe(readTools.length);
+    unmount();
+  });
+
   it("switches backend and persists the choice", () => {
     const { result } = renderHook(() => useAssistant({ api: fakeApi(), backend: HOSTED }));
     expect(result.current.backend).toEqual(HOSTED);

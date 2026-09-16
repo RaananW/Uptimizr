@@ -15,7 +15,13 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PARITY_CASES, PARITY_EVENTS, clickhouseDialect, diffParity } from "@uptimizr/db";
+import {
+  PARITY_CASES,
+  PARITY_EVENTS,
+  clickhouseDialect,
+  diffParity,
+  numericColumnsForSpec,
+} from "@uptimizr/db";
 import { createClickhouseClient, type ClickhouseClient } from "../client.js";
 import { migrateClickhouse } from "../migrations.js";
 import { insertEvents } from "../events.js";
@@ -160,13 +166,15 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
 
   for (const parityCase of PARITY_CASES) {
     it(`matches golden: ${parityCase.name}`, async () => {
-      const rows = await runClickhouseQuery<Record<string, unknown>>(
-        ch,
-        parityCase.build(clickhouseDialect),
-      );
+      const spec = parityCase.build(clickhouseDialect);
+      const rows = await runClickhouseQuery<Record<string, unknown>>(ch, spec);
       const errors = diffParity(rows, parityCase.golden, {
         sortKeys: parityCase.sortKeys,
         ignoreColumns: parityCase.ignoreColumns,
+        // Tolerance rule 5 (ADR 0051 §2): ClickHouse is the engine that renders
+        // 64-bit integers and decimals as JSON strings over HTTP, so this is the
+        // suite that most needs to prove `runClickhouseQuery` coerces at the edge.
+        numericColumns: numericColumnsForSpec(spec),
       });
       expect(errors, errors.join("\n")).toEqual([]);
     });

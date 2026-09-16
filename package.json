@@ -23,6 +23,8 @@
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
+    "gen:docs": "node scripts/gen-registry-docs.mjs",
+    "gen:docs:check": "node scripts/gen-registry-docs.mjs --check",
     "clean": "turbo run clean && node scripts/clean-node-modules.mjs",
     "stack:up": "docker compose --env-file .env -f infra/docker/docker-compose.yml up -d",
     "stack:down": "docker compose --env-file .env -f infra/docker/docker-compose.yml down",

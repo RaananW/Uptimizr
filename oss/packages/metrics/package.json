@@ -1,0 +1,65 @@
+{
+  "name": "@uptimizr/metrics",
+  "version": "0.0.0",
+  "description": "The Uptimizr semantic metric registry — one machine-readable definition per analytics metric (row schema, units, filters, endpoint, limits, interpretation). Dependency-free and browser-safe.",
+  "keywords": [
+    "uptimizr",
+    "analytics",
+    "3d",
+    "metrics",
+    "registry",
+    "zod",
+    "openapi",
+    "mcp"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/Uptimizr.git",
+    "directory": "oss/packages/metrics"
+  },
+  "bugs": {
+    "url": "https://github.com/RaananW/Uptimizr/issues"
+  },
+  "homepage": "https://uptimizr.com/docs/api/query/",
+  "author": "Raanan Weber (https://github.com/RaananW)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md",
+    "llms.txt"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "clean": "rimraf -g dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@uptimizr/schema": "workspace:*",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

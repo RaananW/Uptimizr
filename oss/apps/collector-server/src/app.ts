@@ -16,6 +16,7 @@ import { registerAuditHooks, startAuditRetention } from "./audit.js";
 import { buildDashboardCsp } from "./csp.js";
 import { collectRoutes } from "./routes/collect.js";
 import { liveRoutes } from "./routes/live.js";
+import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
 import { queryRoutes } from "./routes/query.js";
 
 export interface BuildAppDeps {
@@ -128,11 +129,19 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   const stopAuditRetention = startAuditRetention(app, store, config);
   app.addHook("onClose", async () => stopAuditRetention());
 
+  // Record every route's Zod schemas as they are registered, so the generated
+  // OpenAPI document describes each parameter with the *same* schema that
+  // validates the request (ADR 0051 §1). The hook must be installed before the
+  // route plugins below; the array it fills is complete once `app.ready()` has
+  // resolved, which is always before `metaRoutes` serves its first request.
+  const routeSchemas = collectRouteSchemas(app);
+
   app.get("/health", async () => ({ status: "ok" }));
 
   await app.register(collectRoutes, { store, config, liveBus });
   await app.register(liveRoutes, { store, config, liveBus });
   await app.register(queryRoutes, { store, config });
+  await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API
   // routes above (`/health`, `/api/v1/*`) are matched first; everything else

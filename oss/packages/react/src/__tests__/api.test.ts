@@ -534,3 +534,39 @@ describe("CollectorApi live (ADR 0032)", () => {
     expect(session.searchParams.get("token")).toBe("tok");
   });
 });
+
+/**
+ * The collector's own contract after ADR 0051 §2 (#298): every store coerces
+ * numeric columns at its edge, and every query route serialises through the
+ * metric registry's row schema, so aggregate columns arrive as JSON numbers.
+ * `CollectorApi` therefore no longer *needs* to coerce — these tests pin that a
+ * current collector's rows pass through untouched, while the tests above pin
+ * that the retained back-compat shim still rescues an older collector's strings.
+ */
+describe("CollectorApi against a current collector (numbers on the wire)", () => {
+  it("passes numeric aggregate columns through unchanged", async () => {
+    vi.stubGlobal("fetch", mockFetch([{ session_id: "s1", visitor_id: "v1", events: 42 }]));
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.sessions();
+    expect(rows[0]?.events).toBe(42);
+    expect(typeof rows[0]?.events).toBe("number");
+  });
+
+  it("turns a null aggregate into a chartable zero without inventing data", async () => {
+    // `perf_summary` over an empty range: SQL answers "no samples" with nulls.
+    vi.stubGlobal(
+      "fetch",
+      mockFetch([{ samples: 0, avg_fps: null, min_fps: null, p50_fps: null }]),
+    );
+    const api = new CollectorApi("http://localhost:4318", "k");
+    expect(await api.perf()).toEqual({ samples: 0, avg_fps: 0, min_fps: 0, p50_fps: 0 });
+  });
+
+  it("returns numbers for a voxel heatmap without re-parsing them", async () => {
+    vi.stubGlobal("fetch", mockFetch([{ vx: 1, vy: 2, vz: 3, count: 7 }]));
+    const api = new CollectorApi("http://localhost:4318", "k");
+    const rows = await api.worldHeatmap();
+    expect(rows[0]).toEqual({ vx: 1, vy: 2, vz: 3, count: 7 });
+    for (const value of Object.values(rows[0]!)) expect(typeof value).toBe("number");
+  });
+});
