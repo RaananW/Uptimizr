@@ -51,11 +51,17 @@ async function loadRegistry() {
 
 // --- rendering helpers ----------------------------------------------------
 
-/** Make a value safe to place in one Markdown table cell. */
+/**
+ * Make a value safe to place in one Markdown table cell: collapse newlines, then
+ * backslash-escape the cell delimiter. The backslash itself is escaped in the
+ * same pass — escaping only `|` would turn a registry string ending in `\` into
+ * `\\|`, which Markdown renders as a literal backslash followed by a *column
+ * break*, silently shifting the rest of the row.
+ */
 function cell(value) {
   return String(value)
     .replace(/\s*\n\s*/g, " ")
-    .replace(/\|/g, "\\|")
+    .replace(/[\\|]/g, (char) => `\\${char}`)
     .trim();
 }
 
