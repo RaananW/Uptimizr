@@ -9,7 +9,17 @@ import {
   funnelStepsSchema,
   funnelStepSchema,
 } from "@uptimizr/schema";
-import { defaultCellSizeForBounds, type WorldAabb } from "@uptimizr/db";
+import {
+  defaultCellSizeForBounds,
+  resultEnvelopeSchema,
+  resultFormatSchema,
+  summarizeRows,
+  tableResult,
+  type ResultFormat,
+  type SummaryContext,
+  type WorldAabb,
+} from "@uptimizr/db";
+import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
 import { requireCapability } from "../auth.js";
@@ -40,6 +50,20 @@ const sessionFilter = z.string().min(1).max(128).optional();
  * {@link cameraTypeForMode} before it reaches the aggregation layer.
  */
 const cameraModeFilter = z.enum(["viewer", "first-person"]).optional();
+
+/**
+ * Result envelope (ADR 0051 §2, design sketch §B.1). Accepted by every
+ * registry-served aggregate endpoint, and declared as the `format` filter on
+ * each of their registry entries — the registry-route contract test asserts the
+ * two stay in step.
+ *
+ * Omitted or `full` means the response is the bare rows, byte-for-byte what the
+ * endpoint has always returned: the dashboard never sends `format`, so it cannot
+ * be affected by this. `table` and `summary` are shaped by a single
+ * `preSerialization` hook at the bottom of this plugin, so no handler has to
+ * know the envelope exists.
+ */
+const formatFilter = resultFormatSchema.optional();
 
 /** Map the dashboard camera-mode toggle to the stored `cameraType` value. */
 function cameraTypeForMode(mode: "viewer" | "first-person" | undefined): string | undefined {
@@ -163,6 +187,31 @@ async function resolveSpatialCellSize(
   store: CollectorStore,
   projectId: string,
   opts: { cellSize?: number; scene?: string; region?: WorldAabb },
+  request?: FastifyRequest,
+): Promise<number | undefined> {
+  const resolved = await computeSpatialCellSize(store, projectId, opts);
+  if (request != null && resolved != null) resolvedCellSizes.set(request, resolved);
+  return resolved;
+}
+
+/**
+ * Cell sizes a spatial route resolved for the request in flight.
+ *
+ * The `format=summary` hook runs after the handler and needs the **effective**
+ * cell size to turn a cluster's grid extent into a world-space `region` drill
+ * hint (ADR 0040 §1/§4). The handler is the only place that knows it — it may
+ * have been derived from the scene's registered bounds — so it is recorded here
+ * on the way past. A `WeakMap` rather than a request decorator keeps this an
+ * implementation detail of this plugin and cannot leak: the entry dies with the
+ * request object.
+ */
+const resolvedCellSizes = new WeakMap<FastifyRequest, number>();
+
+/** The resolution rule itself; see {@link resolveSpatialCellSize}. */
+async function computeSpatialCellSize(
+  store: CollectorStore,
+  projectId: string,
+  opts: { cellSize?: number; scene?: string; region?: WorldAabb },
 ): Promise<number | undefined> {
   if (opts.cellSize != null) return opts.cellSize;
   if (opts.region != null) return defaultCellSizeForBounds(opts.region) ?? undefined;
@@ -179,6 +228,7 @@ const rangeQuery = z.object({
   until: z.coerce.number().int().optional(),
   bins: z.coerce.number().int().positive().max(500).optional(),
   limit: z.coerce.number().int().positive().max(1000).optional(),
+  format: formatFilter,
 });
 
 /** Sessions-list params: a time range, result cap, and camera-mode filter. */
@@ -261,6 +311,7 @@ const worldHeatmapQueryParams = z.object({
   source: sourceFilter,
   cameraMode: cameraModeFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /** World heatmap totals params (ADR 0040 §3): same filters as the world heatmap, no `limit`. */
@@ -272,6 +323,7 @@ const worldStatsQueryParams = z.object({
   source: sourceFilter,
   cameraMode: cameraModeFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -288,6 +340,7 @@ const boundaryHeatmapQueryParams = z.object({
   scene: sceneFilter,
   session: sessionFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /** Boundary-touch heatmap totals params (ADR 0040 §3): boundary filters, no `limit`. */
@@ -298,6 +351,7 @@ const boundaryStatsQueryParams = z.object({
   scene: sceneFilter,
   session: sessionFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -314,6 +368,7 @@ const gazeHeatmapQueryParams = z.object({
   session: sessionFilter,
   cameraMode: cameraModeFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /** Gaze heatmap totals params (ADR 0040 §3): same filters as the gaze heatmap, no `limit`. */
@@ -325,6 +380,7 @@ const gazeStatsQueryParams = z.object({
   session: sessionFilter,
   cameraMode: cameraModeFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -340,6 +396,7 @@ const cameraPositionQueryParams = z.object({
   session: sessionFilter,
   cameraMode: cameraModeFilter,
   region: regionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -354,6 +411,7 @@ const aggregatePathQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(50000).optional(),
   scene: sceneFilter,
   cameraMode: cameraModeFilter,
+  format: formatFilter,
 });
 
 /** Session-trajectory params: a time range, scene filter, and point cap. */
@@ -362,6 +420,7 @@ const trajectoryQueryParams = z.object({
   until: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().positive().max(10000).optional(),
   scene: sceneFilter,
+  format: formatFilter,
 });
 
 /** Path param for a single session's trajectory. */
@@ -378,6 +437,7 @@ const clickRayQueryParams = z.object({
   scene: sceneFilter,
   source: sourceFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -401,6 +461,7 @@ const scenesQueryParams = z.object({
   since: z.coerce.number().int().optional(),
   until: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().positive().max(1000).optional(),
+  format: formatFilter,
 });
 
 /** Time-series params: range + scene + optional event-type filter + bucket interval (seconds). */
@@ -413,6 +474,7 @@ const timeseriesQueryParams = z.object({
     .string()
     .regex(/^[a-z_]{1,40}$/)
     .optional(),
+  format: formatFilter,
 });
 
 /** Event-type-counts params: range + optional scene filter. */
@@ -420,6 +482,7 @@ const eventCountsQueryParams = z.object({
   since: z.coerce.number().int().optional(),
   until: z.coerce.number().int().optional(),
   scene: sceneFilter,
+  format: formatFilter,
 });
 
 /**
@@ -435,6 +498,7 @@ const funnelQueryParams = z.object({
   scene: sceneFilter,
   cameraMode: cameraModeFilter,
   steps: z.string().min(1).max(8192),
+  format: formatFilter,
 });
 
 /**
@@ -446,6 +510,7 @@ const sceneRetentionQueryParams = z.object({
   since: z.coerce.number().int().optional(),
   until: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().positive().max(10000).optional(),
+  format: formatFilter,
 });
 
 /**
@@ -478,6 +543,7 @@ const loadBounceQueryParams = z.object({
       }
       return parts;
     }),
+  format: formatFilter,
 });
 
 /**
@@ -496,6 +562,7 @@ const variantLeaderboardQueryParams = z.object({
   variant: z.string().min(1).max(2048).optional(),
   conversion: z.string().min(1).max(2048).optional(),
   limit: z.coerce.number().int().positive().max(500).optional(),
+  format: formatFilter,
 });
 
 /** Scene-coverage params: voxel `cellSize` + scene/session filters + result cap. */
@@ -506,6 +573,7 @@ const coverageQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(10000).optional(),
   scene: sceneFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /**
@@ -531,6 +599,7 @@ const errorHeatmapQueryParams = z.object({
   severity: z.string().min(1).max(64).optional(),
   category: z.string().min(1).max(64).optional(),
   errorKind: z.string().min(1).max(64).optional(),
+  format: formatFilter,
 });
 
 /** Camera-distance params: reference `center` (3 coords) + `bucketSize` + filters. */
@@ -544,6 +613,7 @@ const cameraDistanceQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(1000).optional(),
   scene: sceneFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /** Navigation-stats params: idle/active `moveThreshold` + scene/session filters. */
@@ -554,6 +624,7 @@ const navigationQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(1000).optional(),
   scene: sceneFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /** Backtrack-ratio params: coarse-grid `cellSize` + scene/session filters. */
@@ -564,6 +635,7 @@ const backtrackQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(1000).optional(),
   scene: sceneFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /** XR rotation-rate params: `rapidTurn` (rad) threshold + scene/session filters. */
@@ -574,6 +646,7 @@ const xrRotationQueryParams = z.object({
   limit: z.coerce.number().int().positive().max(1000).optional(),
   scene: sceneFilter,
   session: sessionFilter,
+  format: formatFilter,
 });
 
 /** Path param for a single scene's representation. */
@@ -586,6 +659,142 @@ const putRepresentationBody = z.object({
   proxy: sceneProxySchema,
   label: z.string().max(200).optional(),
 });
+
+// --- Response schemas, from the metric registry ---------------------------
+//
+// Every canned read endpoint is a registry metric (ADR 0051 §1), and the registry
+// already declares its output `row` — the same schema the agent tool catalog and
+// the generated OpenAPI document are derived from. Attaching it here as the 200
+// response schema makes the Zod type provider serialise through it, so the shape
+// the docs promise and the shape the wire carries cannot drift apart.
+//
+// Two consequences worth knowing before adding a route:
+//
+// - `z.object()` **strips** keys it does not declare, so a column a handler
+//   returns but the registry does not describe would vanish. The test
+//   `__tests__/queryResponseSchemas.test.ts` calls every one of these endpoints
+//   against a seeded DuckDB store and asserts the serialised body is deep-equal
+//   to what the store produced, so a missing declaration fails the build rather
+//   than a dashboard panel.
+// - Serialisation is strict, so a `null` in a column the registry declares
+//   non-nullable is a 500. The same test also runs every endpoint against an
+//   **empty** project, which is where SQL's "aggregate over no rows is NULL"
+//   shows up.
+//
+// Since ADR 0051 §2 each schema is the **union** of the three `format` envelopes
+// (`resultEnvelopeSchema`), with the untouched `full` shape first — so a request
+// that does not ask for an envelope is parsed by exactly the schema it was
+// parsed by before, and its bytes cannot drift.
+
+/** Registry metrics indexed by the collector path that serves them. */
+const METRIC_BY_PATH = new Map(
+  allMetrics()
+    .filter((metric): metric is MetricDefinition & { endpoint: { path: string } } =>
+      Boolean(metric.endpoint),
+    )
+    .map((metric) => [metric.endpoint.path, metric] as const),
+);
+
+/** The registry row schema for the metric served on `path`. */
+function rowFor(path: string): z.ZodObject {
+  const metric = METRIC_BY_PATH.get(path);
+  if (!metric) {
+    // Startup-time failure: a route claiming to serve a metric must have one.
+    throw new Error(`no registry metric is registered for ${path}`);
+  }
+  return metric.row;
+}
+
+/**
+ * 200 response schema for a metric that returns a list of rows.
+ *
+ * Typed as `z.ZodType<unknown[]>` rather than `z.ZodArray<z.ZodObject>`: a bare
+ * `ZodObject` infers `Record<string, unknown>`, and the hand-written row
+ * *interfaces* in `@uptimizr/db` (`MeshCountRow`, …) have no index signature, so
+ * the provider would reject every handler that returns one. Widening keeps the
+ * runtime schema — which is what serialises — exactly as declared; the
+ * handler-shape check is done for real, against real rows, by
+ * `__tests__/queryResponseSchemas.test.ts`.
+ */
+function rowsFor(path: string): z.ZodType<unknown[]> {
+  const row = rowFor(path);
+  return resultEnvelopeSchema(z.array(row), row) as unknown as z.ZodType<unknown[]>;
+}
+
+/**
+ * 200 response schema for the three spatial `stats` routes, which return the metric's
+ * single row plus the **effective** `cellSize` the collector resolved for the
+ * request (ADR 0040 §1) so the caller can label its own grid. The echo is a
+ * property of the route, not of the aggregation, so it is added here rather than
+ * put in the registry row.
+ */
+function statsRowFor(path: string): z.ZodType<unknown> {
+  const row = rowFor(path).extend({ cellSize: z.number() });
+  return resultEnvelopeSchema(row, row) as unknown as z.ZodType<unknown>;
+}
+
+/**
+ * 200 response schema for the two **resource** metrics, which return a single
+ * record rather than a list of aggregate rows. Widened for the same reason as
+ * {@link rowsFor}: `SessionMeta` / `SceneRepresentation` are declared interfaces
+ * with no index signature.
+ */
+function singleRowFor(path: string): z.ZodType<unknown> {
+  return rowFor(path) as unknown as z.ZodType<unknown>;
+}
+
+/**
+ * Filters carried in the path rather than the querystring, keyed by the filter
+ * ids the registry declares for them (`endpoint.pathParams`, in `:` order) — so
+ * a session trajectory's `:sessionId` is echoed back as `session`, the name the
+ * rest of the query surface uses.
+ */
+function pathFilters(metric: MetricDefinition, request: FastifyRequest): Record<string, unknown> {
+  const params = (request.params ?? {}) as Record<string, unknown>;
+  const segments = (metric.endpoint?.path ?? "")
+    .split("/")
+    .filter((segment) => segment.startsWith(":"))
+    .map((segment) => segment.slice(1));
+  const ids = metric.endpoint?.pathParams ?? [];
+  const filters: Record<string, unknown> = {};
+  segments.forEach((segment, index) => {
+    const id = ids[index];
+    const value = params[segment];
+    if (id != null && value != null) filters[id] = value;
+  });
+  return filters;
+}
+
+/**
+ * Everything the summariser needs to know about the request that produced the
+ * rows: the window and filters to echo, the row cap that was in force (so
+ * `truncated` is honest), and the effective spatial `cellSize` — the resolved
+ * one where a handler derived it from the scene bounds, else whatever the caller
+ * pinned.
+ */
+function summaryContextFor(metric: MetricDefinition, request: FastifyRequest): SummaryContext {
+  const query = (request.query ?? {}) as Record<string, unknown>;
+  const cellSize = resolvedCellSizes.get(request) ?? query.cellSize;
+  return {
+    range: {
+      since: typeof query.since === "number" ? query.since : null,
+      until: typeof query.until === "number" ? query.until : null,
+    },
+    filters: { ...query, ...pathFilters(metric, request) },
+    limit: typeof query.limit === "number" ? query.limit : undefined,
+    cellSize: typeof cellSize === "number" ? cellSize : undefined,
+  };
+}
+
+/** `{ error }` body the read routes send for a miss. Declared so `reply.code(404)` stays typed. */
+const notFoundResponse = z.object({ error: z.string() });
+
+/**
+ * `{ error, details? }` body sent when a JSON-encoded query parameter (a funnel
+ * or variant predicate) fails its schema. Declared alongside the 200 so
+ * `reply.code(400)` stays typed once a route has a response schema.
+ */
+const badRequestResponse = z.object({ error: z.string(), details: z.unknown().optional() });
 
 /**
  * Body for declaring a scene's regions (ADR 0051 §2): the scene's whole set.
@@ -629,6 +838,51 @@ const auditQueryParams = z.object({
 export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, config }) => {
   const r = app.withTypeProvider<ZodTypeProvider>();
 
+  // --- format=table | summary (ADR 0051 §2, design sketch §B.1) ------------
+  //
+  // The whole envelope feature lives in this one hook. It runs after a handler
+  // has produced its rows and before the response schema serialises them, which
+  // is the only place that can see *every* registry endpoint's result without
+  // any of the 67 handlers knowing the feature exists — exactly the "keep the
+  // Fastify layer thin" rule (ADR 0005). The shaping itself is
+  // `@uptimizr/db`'s: `tableResult` / `summarizeRows` are pure, registry-driven
+  // functions with no store or request in sight.
+  //
+  // Four conditions have to hold before anything is touched, and the first of
+  // them is the promise that this feature is invisible by default: no `format`,
+  // or `format=full`, returns the payload untouched, so the dashboard — which
+  // never sends the parameter — cannot be affected. The non-metric routes below
+  // (`/whoami`, `/audit`) describe the *calling key* rather than project
+  // telemetry; they are not in `METRIC_BY_PATH`, so the hook passes their
+  // payloads straight through (asserted in `resultFormat.test.ts`).
+  app.addHook("preSerialization", async (request, reply, payload: unknown) => {
+    if (reply.statusCode !== 200) return payload;
+    const format = (request.query as { format?: ResultFormat } | undefined)?.format;
+    if (format == null || format === "full") return payload;
+    const metric = METRIC_BY_PATH.get(request.routeOptions.url ?? "");
+    // Not a registry metric (the raw event stream, which has carried its own
+    // `format=json|ndjson` since long before this; `/whoami`; `/audit`), or one
+    // of the two **resource** reads. A resource is a single stored record rather
+    // than an aggregation: it declares no filters, no querystring schema — so a
+    // stray `?format=` would arrive unvalidated — and has nothing to summarise.
+    if (metric == null || metric.builder == null) return payload;
+
+    // A single-row endpoint (the spatial `stats` routes) still summarises as a
+    // one-row result; `null` never happens on a 200 but costs nothing to guard.
+    const rows = (Array.isArray(payload) ? payload : payload == null ? [] : [payload]) as Record<
+      string,
+      unknown
+    >[];
+    const context = summaryContextFor(metric, request);
+    const shaped =
+      format === "table"
+        ? tableResult(metric, rows, context)
+        : summarizeRows(metric, rows, context);
+    // `null` only comes back for an unknown metric, which `METRIC_BY_PATH`
+    // already excluded — fall back to the raw rows rather than fail the request.
+    return shaped ?? payload;
+  });
+
   // --- Key identity + audit (#309, ADR 0051 §7) ----------------------------
 
   // What is this key allowed to do? Agent clients (and the MCP server) call it
@@ -663,7 +917,9 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
 
   r.get(
     "/api/v1/sessions",
-    { schema: { querystring: sessionsQueryParams } },
+    {
+      schema: { querystring: sessionsQueryParams, response: { 200: rowsFor("/api/v1/sessions") } },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -674,7 +930,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
 
   r.get(
     "/api/v1/heatmaps/pointer",
-    { schema: { querystring: pointerHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: pointerHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/heatmaps/pointer") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -698,18 +959,28 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
 
   r.get(
     "/api/v1/heatmaps/world",
-    { schema: { querystring: worldHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: worldHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/heatmaps/world"), 400: badRequestResponse },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { cameraMode, region: regionParam, cellSize, ...rest } = req.query;
       const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
       if (isRegionError(region)) return reply.code(400).send(region);
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       return store.worldHeatmap(projectId, {
         ...rest,
         region,
@@ -725,18 +996,28 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // cellSize so the caller can label its own grid.
   r.get(
     "/api/v1/heatmaps/world/stats",
-    { schema: { querystring: worldStatsQueryParams } },
+    {
+      schema: {
+        querystring: worldStatsQueryParams,
+        response: { 200: statsRowFor("/api/v1/heatmaps/world/stats"), 400: badRequestResponse },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { cameraMode, region: regionParam, cellSize, ...rest } = req.query;
       const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
       if (isRegionError(region)) return reply.code(400).send(region);
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       const stats = await store.worldHeatmapStats(projectId, {
         ...rest,
         region,
@@ -751,18 +1032,28 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // sibling of the world (click) heatmap: voxel-binned `camera_sample` gaze hits.
   r.get(
     "/api/v1/heatmaps/gaze",
-    { schema: { querystring: gazeHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: gazeHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/heatmaps/gaze"), 400: badRequestResponse },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { cameraMode, region: regionParam, cellSize, ...rest } = req.query;
       const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
       if (isRegionError(region)) return reply.code(400).send(region);
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       return store.gazeHeatmap(projectId, {
         ...rest,
         region,
@@ -775,18 +1066,28 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // Gaze heatmap totals (ADR 0040 §3) — gaze sibling of the world stats route.
   r.get(
     "/api/v1/heatmaps/gaze/stats",
-    { schema: { querystring: gazeStatsQueryParams } },
+    {
+      schema: {
+        querystring: gazeStatsQueryParams,
+        response: { 200: statsRowFor("/api/v1/heatmaps/gaze/stats"), 400: badRequestResponse },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { cameraMode, region: regionParam, cellSize, ...rest } = req.query;
       const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
       if (isRegionError(region)) return reply.code(400).send(region);
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       const stats = await store.gazeHeatmapStats(projectId, {
         ...rest,
         region,
@@ -799,7 +1100,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
 
   r.get(
     "/api/v1/heatmaps/camera",
-    { schema: { querystring: cameraHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: cameraHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/heatmaps/camera") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -814,7 +1120,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // change. Shares the camera-heatmap params (bins + scene/session + cameraMode).
   r.get(
     "/api/v1/coverage/view-histogram",
-    { schema: { querystring: cameraHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: cameraHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/coverage/view-histogram") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -830,7 +1141,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // the 2D pointer heatmap: where visitors stand/dwell on the X/Z ground plane.
   r.get(
     "/api/v1/heatmaps/position",
-    { schema: { querystring: cameraPositionQueryParams } },
+    {
+      schema: {
+        querystring: cameraPositionQueryParams,
+        response: { 200: rowsFor("/api/v1/heatmaps/position"), 400: badRequestResponse },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -848,7 +1164,13 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // One session's ordered walked path (ADR 0026) — camera positions, oldest first.
   r.get(
     "/api/v1/sessions/:sessionId/trajectory",
-    { schema: { params: sessionPathParams, querystring: trajectoryQueryParams } },
+    {
+      schema: {
+        params: sessionPathParams,
+        querystring: trajectoryQueryParams,
+        response: { 200: rowsFor("/api/v1/sessions/:sessionId/trajectory") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -861,7 +1183,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // dashboard overlays many low-opacity poly-lines into a crowd-level route map.
   r.get(
     "/api/v1/paths",
-    { schema: { querystring: aggregatePathQueryParams } },
+    {
+      schema: {
+        querystring: aggregatePathQueryParams,
+        response: { 200: rowsFor("/api/v1/paths") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -876,7 +1203,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // View-gated click rays (design §7.2/§7.3) — camera-origin → hit rays per voxel/mesh.
   r.get(
     "/api/v1/heatmaps/click-rays",
-    { schema: { querystring: clickRayQueryParams } },
+    {
+      schema: {
+        querystring: clickRayQueryParams,
+        response: { 200: rowsFor("/api/v1/heatmaps/click-rays") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -888,7 +1220,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // Position-aware mode (§7.8): a standpoint voxel dimension for walkable scenes.
   r.get(
     "/api/v1/heatmaps/flow",
-    { schema: { querystring: flowHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: flowHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/heatmaps/flow") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -906,7 +1243,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
 
   r.get(
     "/api/v1/meshes/top",
-    { schema: { querystring: sessionScopedRangeQuery } },
+    {
+      schema: {
+        querystring: sessionScopedRangeQuery,
+        response: { 200: rowsFor("/api/v1/meshes/top") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -919,7 +1261,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // rank (sum across sources) and the per-row breakdown from this one query.
   r.get(
     "/api/v1/meshes/sources",
-    { schema: { querystring: pointerHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: pointerHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/meshes/sources") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -932,7 +1279,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // sparkline and a rising/falling delta over the active range.
   r.get(
     "/api/v1/meshes/trend",
-    { schema: { querystring: meshTrendQueryParams } },
+    {
+      schema: {
+        querystring: meshTrendQueryParams,
+        response: { 200: rowsFor("/api/v1/meshes/trend") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -944,7 +1296,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // summaries (total visible/centered time, peak screen fraction).
   r.get(
     "/api/v1/meshes/dwell",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/meshes/dwell") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -958,7 +1315,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // most-interacted / part-popularity leaderboards).
   r.get(
     "/api/v1/meshes/blind-spots",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/meshes/blind-spots") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -971,7 +1333,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // events; how an audience acts on objects, not just which ones draw attention.
   r.get(
     "/api/v1/meshes/kinds",
-    { schema: { querystring: pointerHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: pointerHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/meshes/kinds") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -984,7 +1351,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // `camera_sample`). Far bands flag meshes/UI reached from an uncomfortable range.
   r.get(
     "/api/v1/meshes/reachability",
-    { schema: { querystring: reachabilityQueryParams } },
+    {
+      schema: {
+        querystring: reachabilityQueryParams,
+        response: { 200: rowsFor("/api/v1/meshes/reachability") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -996,7 +1368,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // discoverability signal. The consumer derives the rate from the two counts.
   r.get(
     "/api/v1/clicks/dead",
-    { schema: { querystring: pointerHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: pointerHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/clicks/dead") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1008,7 +1385,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // window; a frustration signal derived from the click stream.
   r.get(
     "/api/v1/clicks/rage",
-    { schema: { querystring: rageClickQueryParams } },
+    {
+      schema: {
+        querystring: rageClickQueryParams,
+        response: { 200: rowsFor("/api/v1/clicks/rage") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1020,7 +1402,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // clicking it; flags things that look interactive but aren't.
   r.get(
     "/api/v1/hover/dwell",
-    { schema: { querystring: pointerHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: pointerHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/hover/dwell") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1032,7 +1419,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // felt first-interaction jank that `frame_perf` averages away.
   r.get(
     "/api/v1/perf/compile-stalls",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/perf/compile-stalls") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1055,7 +1447,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
 
   r.get(
     "/api/v1/ar/placement/attempts",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/ar/placement/attempts") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1075,7 +1472,9 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
 
   r.get(
     "/api/v1/perf",
-    { schema: { querystring: sessionScopedRangeQuery } },
+    {
+      schema: { querystring: sessionScopedRangeQuery, response: { 200: rowsFor("/api/v1/perf") } },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1088,7 +1487,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // the render scale an adaptive renderer bought it with.
   r.get(
     "/api/v1/perf/render-scale",
-    { schema: { querystring: sessionScopedRangeQuery } },
+    {
+      schema: {
+        querystring: sessionScopedRangeQuery,
+        response: { 200: rowsFor("/api/v1/perf/render-scale") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1100,7 +1504,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // geometry bytes, triangles/vertices, JS heap) the scene asked of the device.
   r.get(
     "/api/v1/perf/resources",
-    { schema: { querystring: sessionScopedRangeQuery } },
+    {
+      schema: {
+        querystring: sessionScopedRangeQuery,
+        response: { 200: rowsFor("/api/v1/perf/resources") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1113,7 +1522,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // replaces the volume-chart mean.
   r.get(
     "/api/v1/perf/distribution",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/perf/distribution") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1125,7 +1539,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // `bucket`-wide bins; one session = one data point.
   r.get(
     "/api/v1/perf/fps-histogram",
-    { schema: { querystring: fpsHistogramQueryParams } },
+    {
+      schema: {
+        querystring: fpsHistogramQueryParams,
+        response: { 200: rowsFor("/api/v1/perf/fps-histogram") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1137,7 +1556,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // worst-window p95 (ms), summarized across sessions.
   r.get(
     "/api/v1/perf/frame-time",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/perf/frame-time") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1149,7 +1573,9 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // reported as the median and worst-decile session.
   r.get(
     "/api/v1/perf/jank",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: { querystring: heatmapQueryParams, response: { 200: rowsFor("/api/v1/perf/jank") } },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1162,7 +1588,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // attributed. Does a stutter actually cost sessions?
   r.get(
     "/api/v1/perf/churn",
-    { schema: { querystring: perfChurnQueryParams } },
+    {
+      schema: {
+        querystring: perfChurnQueryParams,
+        response: { 200: rowsFor("/api/v1/perf/churn") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1175,7 +1606,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // renderer) plus the coarse browser/OS derived from the User-Agent at ingestion.
   r.get(
     "/api/v1/perf/by-device",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/perf/by-device") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1186,7 +1622,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // FPS by scene (#82, ADR 0028 §1) — per-session median FPS grouped by scene.
   r.get(
     "/api/v1/perf/by-scene",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/perf/by-scene") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1198,7 +1639,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // heap, texture bytes, and triangle count, summarized across sessions.
   r.get(
     "/api/v1/perf/resource-percentiles",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/perf/resource-percentiles") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1210,7 +1656,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // range; the hard failures `frame_perf` cannot show.
   r.get(
     "/api/v1/perf/stability",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/perf/stability") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1224,7 +1675,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // Capture is off by default, so an empty result is the common (clean) case.
   r.get(
     "/api/v1/graphics-diagnostics",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/graphics-diagnostics") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1239,7 +1695,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // errors. Only events carrying a best-effort position participate.
   r.get(
     "/api/v1/heatmaps/errors",
-    { schema: { querystring: errorHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: errorHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/heatmaps/errors"), 400: badRequestResponse },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1259,18 +1720,28 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // bounds when unset so the stats endpoint can echo it.
   r.get(
     "/api/v1/heatmaps/boundary",
-    { schema: { querystring: boundaryHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: boundaryHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/heatmaps/boundary"), 400: badRequestResponse },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { region: regionParam, cellSize, ...rest } = req.query;
       const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
       if (isRegionError(region)) return reply.code(400).send(region);
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       return store.boundaryHeatmap(projectId, { ...rest, region, cellSize: resolved });
     },
   );
@@ -1279,18 +1750,28 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // counts behind the truncated top-N voxels, echoing the effective cellSize.
   r.get(
     "/api/v1/heatmaps/boundary/stats",
-    { schema: { querystring: boundaryStatsQueryParams } },
+    {
+      schema: {
+        querystring: boundaryStatsQueryParams,
+        response: { 200: statsRowFor("/api/v1/heatmaps/boundary/stats"), 400: badRequestResponse },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       const { region: regionParam, cellSize, ...rest } = req.query;
       const region = await resolveRegionFilter(store, projectId, rest.scene, regionParam);
       if (isRegionError(region)) return reply.code(400).send(region);
-      const resolved = await resolveSpatialCellSize(store, projectId, {
-        cellSize,
-        scene: rest.scene,
-        region,
-      });
+      const resolved = await resolveSpatialCellSize(
+        store,
+        projectId,
+        {
+          cellSize,
+          scene: rest.scene,
+          region,
+        },
+        req,
+      );
       const stats = await store.boundaryHeatmapStats(projectId, {
         ...rest,
         region,
@@ -1306,7 +1787,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // result is the common case.
   r.get(
     "/api/v1/rendering-technology",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/rendering-technology") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1319,7 +1805,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // variance across the user base. App-reported via reportCapabilityChange.
   r.get(
     "/api/v1/capabilities",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/capabilities") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1332,7 +1823,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // object selection; reveals how an audience explores the scene.
   r.get(
     "/api/v1/camera-gestures",
-    { schema: { querystring: pointerHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: pointerHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/camera-gestures") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1344,7 +1840,9 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // camera-position voxels; coverage % is layered in against the scene AABB.
   r.get(
     "/api/v1/coverage",
-    { schema: { querystring: coverageQueryParams } },
+    {
+      schema: { querystring: coverageQueryParams, response: { 200: rowsFor("/api/v1/coverage") } },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1356,7 +1854,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // samples voxel-binned by their captured camera position (avg/min FPS per cell).
   r.get(
     "/api/v1/heatmaps/perf",
-    { schema: { querystring: perfHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: perfHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/heatmaps/perf") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1368,7 +1871,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // camera-to-center distance. The center defaults to the origin when omitted.
   r.get(
     "/api/v1/camera/distance",
-    { schema: { querystring: cameraDistanceQueryParams } },
+    {
+      schema: {
+        querystring: cameraDistanceQueryParams,
+        response: { 200: rowsFor("/api/v1/camera/distance") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1385,7 +1893,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // distance with active-vs-idle segmentation.
   r.get(
     "/api/v1/navigation",
-    { schema: { querystring: navigationQueryParams } },
+    {
+      schema: {
+        querystring: navigationQueryParams,
+        response: { 200: rowsFor("/api/v1/navigation") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1398,7 +1911,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // derived from the same camera-position stream as desire lines.
   r.get(
     "/api/v1/backtrack",
-    { schema: { querystring: backtrackQueryParams } },
+    {
+      schema: {
+        querystring: backtrackQueryParams,
+        response: { 200: rowsFor("/api/v1/backtrack") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1410,7 +1928,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // rotation rate over the camera pose stream; rapid rotation flags discomfort.
   r.get(
     "/api/v1/xr/rotation",
-    { schema: { querystring: xrRotationQueryParams } },
+    {
+      schema: {
+        querystring: xrRotationQueryParams,
+        response: { 200: rowsFor("/api/v1/xr/rotation") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1422,7 +1945,9 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // gaze) split read from `source` on the interaction events.
   r.get(
     "/api/v1/xr/sources",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: { querystring: heatmapQueryParams, response: { 200: rowsFor("/api/v1/xr/sources") } },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1434,7 +1959,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // bounds and event/interaction counts; a short span signals headset drop-off.
   r.get(
     "/api/v1/xr/abandonment",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/xr/abandonment") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1447,7 +1977,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // locomotion can be correlated with early exits (a discomfort proxy).
   r.get(
     "/api/v1/xr/locomotion",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/xr/locomotion") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1462,7 +1997,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // from `xr_boundary_proximity` (one event per approach) — no room geometry.
   r.get(
     "/api/v1/xr/boundary-contacts",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/xr/boundary-contacts") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1475,7 +2015,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // spatial tracking, split by hand vs. controller (a tracking-quality timeline).
   r.get(
     "/api/v1/xr/tracking",
-    { schema: { querystring: heatmapQueryParams } },
+    {
+      schema: {
+        querystring: heatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/xr/tracking") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1488,7 +2033,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // hand / …) and across how many sessions. Turns `source` into an insight.
   r.get(
     "/api/v1/interactions/sources",
-    { schema: { querystring: pointerHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: pointerHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/interactions/sources") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1501,7 +2051,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // Pairs with the input-source breakdown for the input-modality panel.
   r.get(
     "/api/v1/input-actions/top",
-    { schema: { querystring: pointerHeatmapQueryParams } },
+    {
+      schema: {
+        querystring: pointerHeatmapQueryParams,
+        response: { 200: rowsFor("/api/v1/input-actions/top") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1519,7 +2074,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // Event-volume time-series (the 4th dimension) — bucketed event counts + FPS.
   r.get(
     "/api/v1/timeseries",
-    { schema: { querystring: timeseriesQueryParams } },
+    {
+      schema: {
+        querystring: timeseriesQueryParams,
+        response: { 200: rowsFor("/api/v1/timeseries") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1530,7 +2090,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // Per-event-type counts over the range — powers the scene health panel.
   r.get(
     "/api/v1/event-counts",
-    { schema: { querystring: eventCountsQueryParams } },
+    {
+      schema: {
+        querystring: eventCountsQueryParams,
+        response: { 200: rowsFor("/api/v1/event-counts") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1543,35 +2108,51 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // of step predicates, validated against the shared `funnelStepsSchema`; the
   // OSS dashboard is a passive viewer, so steps are supplied by the caller
   // (CLI / hosted), never authored or persisted here.
-  r.get("/api/v1/funnel", { schema: { querystring: funnelQueryParams } }, async (req, reply) => {
-    const projectId = await authProject(req, reply, store);
-    if (!projectId) return reply;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(req.query.steps);
-    } catch {
-      return reply.code(400).send({ error: "steps must be a JSON array" });
-    }
-    const result = funnelStepsSchema.safeParse(parsed);
-    if (!result.success) {
-      return reply.code(400).send({ error: "invalid funnel steps", details: result.error.issues });
-    }
-    const { since, until, scene, cameraMode } = req.query;
-    return store.funnel(projectId, {
-      since,
-      until,
-      scene,
-      cameraType: cameraTypeForMode(cameraMode),
-      steps: result.data,
-    });
-  });
+  r.get(
+    "/api/v1/funnel",
+    {
+      schema: {
+        querystring: funnelQueryParams,
+        response: { 200: rowsFor("/api/v1/funnel"), 400: badRequestResponse },
+      },
+    },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(req.query.steps);
+      } catch {
+        return reply.code(400).send({ error: "steps must be a JSON array" });
+      }
+      const result = funnelStepsSchema.safeParse(parsed);
+      if (!result.success) {
+        return reply
+          .code(400)
+          .send({ error: "invalid funnel steps", details: result.error.issues });
+      }
+      const { since, until, scene, cameraMode } = req.query;
+      return store.funnel(projectId, {
+        since,
+        until,
+        scene,
+        cameraType: cameraTypeForMode(cameraMode),
+        steps: result.data,
+      });
+    },
+  );
 
   // Canned scene/level retention funnel (#147) — session counts flowing scene →
   // scene in observed order, built directly from `scene_change` markers with no
   // caller-authored steps (the zero-config complement to `/api/v1/funnel`).
   r.get(
     "/api/v1/scene-retention",
-    { schema: { querystring: sceneRetentionQueryParams } },
+    {
+      schema: {
+        querystring: sceneRetentionQueryParams,
+        response: { 200: rowsFor("/api/v1/scene-retention") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1587,7 +2168,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // schema change.
   r.get(
     "/api/v1/load-bounce",
-    { schema: { querystring: loadBounceQueryParams } },
+    {
+      schema: {
+        querystring: loadBounceQueryParams,
+        response: { 200: rowsFor("/api/v1/load-bounce") },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1604,7 +2190,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // OSS is a passive viewer and the caller supplies them (ADR 0038).
   r.get(
     "/api/v1/variant-leaderboard",
-    { schema: { querystring: variantLeaderboardQueryParams } },
+    {
+      schema: {
+        querystring: variantLeaderboardQueryParams,
+        response: { 200: rowsFor("/api/v1/variant-leaderboard"), 400: badRequestResponse },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1696,7 +2287,12 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // is not gated by raw-session retention.
   r.get(
     "/api/v1/sessions/:id/meta",
-    { schema: { params: z.object({ id: z.string().min(1) }) } },
+    {
+      schema: {
+        params: z.object({ id: z.string().min(1) }),
+        response: { 200: singleRowFor("/api/v1/sessions/:id/meta"), 404: notFoundResponse },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
@@ -1733,7 +2329,15 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
   // Fetch one scene's representation (including the proxy blob), or 404.
   r.get(
     "/api/v1/scenes/:sceneId/representation",
-    { schema: { params: sceneParams } },
+    {
+      schema: {
+        params: sceneParams,
+        response: {
+          200: singleRowFor("/api/v1/scenes/:sceneId/representation"),
+          404: notFoundResponse,
+        },
+      },
+    },
     async (req, reply) => {
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;

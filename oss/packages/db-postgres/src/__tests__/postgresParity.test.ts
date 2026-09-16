@@ -24,6 +24,7 @@ import {
   duckdbDialect,
   duckdbInsertEvents,
   migrateDuckdb,
+  numericColumnsForSpec,
   postgresDialect,
   readDbSettings,
   runDuckdbQuery,
@@ -143,22 +144,22 @@ describe.skipIf(!available)("postgres parity (vs golden, vs duckdb)", () => {
 
   for (const parityCase of PARITY_CASES) {
     it(`matches golden: ${parityCase.name}`, async () => {
-      const rows = await runPostgresQuery<Record<string, unknown>>(
-        pg,
-        parityCase.build(postgresDialect),
-      );
+      const spec = parityCase.build(postgresDialect);
+      const rows = await runPostgresQuery<Record<string, unknown>>(pg, spec);
       const errors = diffParity(rows, parityCase.golden, {
         sortKeys: parityCase.sortKeys,
         ignoreColumns: parityCase.ignoreColumns,
+        // Tolerance rule 5 (ADR 0051 §2): `pg` hands back int8/numeric as strings
+        // unless a type parser is registered, so this asserts the store's runner
+        // coerces at its edge rather than relying on the client's parser set.
+        numericColumns: numericColumnsForSpec(spec),
       });
       expect(errors, errors.join("\n")).toEqual([]);
     });
 
     it(`matches duckdb: ${parityCase.name}`, async () => {
-      const pgRows = await runPostgresQuery<Record<string, unknown>>(
-        pg,
-        parityCase.build(postgresDialect),
-      );
+      const spec = parityCase.build(postgresDialect);
+      const pgRows = await runPostgresQuery<Record<string, unknown>>(pg, spec);
       const duckRows = await runDuckdbQuery<Record<string, unknown>>(
         duck,
         parityCase.build(duckdbDialect),
@@ -166,6 +167,7 @@ describe.skipIf(!available)("postgres parity (vs golden, vs duckdb)", () => {
       const errors = diffParity(pgRows, duckRows, {
         sortKeys: parityCase.sortKeys,
         ignoreColumns: parityCase.ignoreColumns,
+        numericColumns: numericColumnsForSpec(spec),
       });
       expect(errors, errors.join("\n")).toEqual([]);
     });

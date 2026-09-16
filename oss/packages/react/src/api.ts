@@ -777,6 +777,29 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Numeric back-compatibility shim for aggregate columns.
+ *
+ * **The collector no longer needs this.** Since ADR 0051 §2 (#298) every store
+ * coerces numeric columns at the point rows leave its driver, and every query
+ * route serialises through the metric registry's row schema, so a numeric column
+ * arrives here as a JSON number on DuckDB, ClickHouse, Postgres and SQL Server
+ * alike. The old pitfall — "ClickHouse returns `count()` as `"42"`" — is gone.
+ *
+ * It is kept, in one documented place instead of ~165 unexplained casts, because
+ * `@uptimizr/react` is published independently of the collector: a dashboard
+ * (including the redistributable static export) can legitimately be pointed at
+ * an **older** collector that still emits strings, and silently summing strings
+ * there would be a worse failure than a redundant cast here. Call sites also use
+ * it with `?? 0` to turn a `null` aggregate — SQL's answer for "no samples" —
+ * into a chartable zero, which is a display decision, not a wire-format one.
+ *
+ * Semantics are exactly `Number(value)`; when the collector is current, every
+ * call is already a no-op on a number. Drop this once the supported collector
+ * range no longer includes a pre-#298 release.
+ */
+const num = (value: unknown): number => (typeof value === "number" ? value : Number(value));
+
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 15_000;
 
@@ -886,7 +909,7 @@ export class CollectorApi {
 
   sessions(params?: QueryParams): Promise<SessionSummary[]> {
     return this.get<SessionSummary[]>("api/v1/sessions", params).then((rows) =>
-      rows.map((r) => ({ ...r, events: Number(r.events) })),
+      rows.map((r) => ({ ...r, events: num(r.events) })),
     );
   }
 
@@ -906,14 +929,13 @@ export class CollectorApi {
   /** 360° view-coverage histogram: sessions bucketed by how much of the object they saw (#146). */
   viewCoverageHistogram(params?: QueryParams): Promise<ViewCoverageBin[]> {
     return this.get<Record<string, unknown>[]>("api/v1/coverage/view-histogram", params).then(
-      (rows) =>
-        rows.map((r) => ({ bucket: Number(r.bucket ?? 0), sessions: Number(r.sessions ?? 0) })),
+      (rows) => rows.map((r) => ({ bucket: num(r.bucket ?? 0), sessions: num(r.sessions ?? 0) })),
     );
   }
 
   topMeshes(params?: QueryParams): Promise<MeshCount[]> {
     return this.get<MeshCount[]>("api/v1/meshes/top", params).then((rows) =>
-      rows.map((r) => ({ ...r, count: Number(r.count) })),
+      rows.map((r) => ({ ...r, count: num(r.count) })),
     );
   }
 
@@ -927,11 +949,11 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/meshes/blind-spots", params).then((rows) =>
       rows.map((r) => ({
         mesh: String(r.mesh ?? ""),
-        visible_ms: Number(r.visible_ms ?? 0),
-        vis_samples: Number(r.vis_samples ?? 0),
-        interactions: Number(r.interactions ?? 0),
-        hover_ms: Number(r.hover_ms ?? 0),
-        hover_episodes: Number(r.hover_episodes ?? 0),
+        visible_ms: num(r.visible_ms ?? 0),
+        vis_samples: num(r.vis_samples ?? 0),
+        interactions: num(r.interactions ?? 0),
+        hover_ms: num(r.hover_ms ?? 0),
+        hover_episodes: num(r.hover_episodes ?? 0),
       })),
     );
   }
@@ -942,7 +964,7 @@ export class CollectorApi {
       rows.map((r) => ({
         mesh: String(r.mesh ?? ""),
         kind: String(r.kind ?? ""),
-        count: Number(r.count ?? 0),
+        count: num(r.count ?? 0),
       })),
     );
   }
@@ -956,9 +978,9 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/meshes/reachability", params).then((rows) =>
       rows.map((r) => ({
         mesh: String(r.mesh ?? ""),
-        bucket: Number(r.bucket ?? 0),
-        count: Number(r.count ?? 0),
-        avg_distance: Number(r.avg_distance ?? 0),
+        bucket: num(r.bucket ?? 0),
+        count: num(r.count ?? 0),
+        avg_distance: num(r.avg_distance ?? 0),
       })),
     );
   }
@@ -973,7 +995,7 @@ export class CollectorApi {
       rows.map((r) => ({
         mesh: String(r.mesh ?? ""),
         source: String(r.source ?? ""),
-        count: Number(r.count ?? 0),
+        count: num(r.count ?? 0),
       })),
     );
   }
@@ -987,8 +1009,8 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/meshes/trend", params).then((rows) =>
       rows.map((r) => ({
         mesh: String(r.mesh ?? ""),
-        bucket: Number(r.bucket ?? 0),
-        count: Number(r.count ?? 0),
+        bucket: num(r.bucket ?? 0),
+        count: num(r.count ?? 0),
       })),
     );
   }
@@ -1003,7 +1025,7 @@ export class CollectorApi {
       rows.map((r) => ({
         action: String(r.action ?? ""),
         source: String(r.source ?? ""),
-        count: Number(r.count ?? 0),
+        count: num(r.count ?? 0),
       })),
     );
   }
@@ -1021,10 +1043,10 @@ export class CollectorApi {
     ).then((raw) => {
       const row = (Array.isArray(raw) ? raw[0] : raw) ?? {};
       return {
-        samples: Number(row.samples ?? 0),
-        avg_fps: Number(row.avg_fps ?? 0),
-        min_fps: Number(row.min_fps ?? 0),
-        p50_fps: Number(row.p50_fps ?? 0),
+        samples: num(row.samples ?? 0),
+        avg_fps: num(row.avg_fps ?? 0),
+        min_fps: num(row.min_fps ?? 0),
+        p50_fps: num(row.p50_fps ?? 0),
       };
     });
   }
@@ -1037,14 +1059,14 @@ export class CollectorApi {
   renderScale(params?: QueryParams): Promise<RenderScaleTruth> {
     return this.get<Record<string, unknown>[]>("api/v1/perf/render-scale", params).then((rows) => {
       const r = rows[0] ?? {};
-      const downscaled = Number(r.downscaled_samples ?? 0);
-      const scaled = Number(r.scale_samples ?? 0);
+      const downscaled = num(r.downscaled_samples ?? 0);
+      const scaled = num(r.scale_samples ?? 0);
       return {
-        samples: Number(r.samples ?? 0),
-        avg_fps: Number(r.avg_fps ?? 0),
-        p50_fps: Number(r.p50_fps ?? 0),
-        avg_render_scale: Number(r.avg_render_scale ?? 0),
-        p50_render_scale: Number(r.p50_render_scale ?? 0),
+        samples: num(r.samples ?? 0),
+        avg_fps: num(r.avg_fps ?? 0),
+        p50_fps: num(r.p50_fps ?? 0),
+        avg_render_scale: num(r.avg_render_scale ?? 0),
+        p50_render_scale: num(r.p50_render_scale ?? 0),
         downscaled_samples: downscaled,
         scale_samples: scaled,
         downscaled_share: scaled > 0 ? downscaled / scaled : 0,
@@ -1057,11 +1079,11 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/perf/distribution", params).then((rows) => {
       const r = rows[0] ?? {};
       return {
-        sessions: Number(r.sessions ?? 0),
-        samples: Number(r.samples ?? 0),
-        p05_fps: Number(r.p05_fps ?? 0),
-        p50_fps: Number(r.p50_fps ?? 0),
-        p95_fps: Number(r.p95_fps ?? 0),
+        sessions: num(r.sessions ?? 0),
+        samples: num(r.samples ?? 0),
+        p05_fps: num(r.p05_fps ?? 0),
+        p50_fps: num(r.p50_fps ?? 0),
+        p95_fps: num(r.p95_fps ?? 0),
       };
     });
   }
@@ -1069,7 +1091,7 @@ export class CollectorApi {
   /** Histogram of per-session median FPS, bucketed into `bucket`-wide bins (#81). */
   fpsHistogram(params?: QueryParams): Promise<FpsHistogramBin[]> {
     return this.get<Record<string, unknown>[]>("api/v1/perf/fps-histogram", params).then((rows) =>
-      rows.map((r) => ({ bucket: Number(r.bucket ?? 0), sessions: Number(r.sessions ?? 0) })),
+      rows.map((r) => ({ bucket: num(r.bucket ?? 0), sessions: num(r.sessions ?? 0) })),
     );
   }
 
@@ -1082,8 +1104,8 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/ar/placement/time-to-place", params).then(
       (rows) =>
         rows.map((r) => ({
-          bucket: Number(r.bucket ?? 0),
-          placements: Number(r.placements ?? 0),
+          bucket: num(r.bucket ?? 0),
+          placements: num(r.placements ?? 0),
         })),
     );
   }
@@ -1096,8 +1118,8 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/ar/placement/attempts", params).then(
       (rows) =>
         rows.map((r) => ({
-          attempts: Number(r.attempts ?? 0),
-          placements: Number(r.placements ?? 0),
+          attempts: num(r.attempts ?? 0),
+          placements: num(r.placements ?? 0),
         })),
     );
   }
@@ -1112,8 +1134,8 @@ export class CollectorApi {
       (rows) =>
         rows.map((r) => ({
           surface: String(r.surface ?? "unknown"),
-          placements: Number(r.placements ?? 0),
-          avg_scale: Number(r.avg_scale ?? 0),
+          placements: num(r.placements ?? 0),
+          avg_scale: num(r.avg_scale ?? 0),
         })),
     );
   }
@@ -1123,10 +1145,10 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/perf/frame-time", params).then((rows) => {
       const r = rows[0] ?? {};
       return {
-        sessions: Number(r.sessions ?? 0),
-        samples: Number(r.samples ?? 0),
-        p50_ms: Number(r.p50_ms ?? 0),
-        p95_ms: Number(r.p95_ms ?? 0),
+        sessions: num(r.sessions ?? 0),
+        samples: num(r.samples ?? 0),
+        p50_ms: num(r.p50_ms ?? 0),
+        p95_ms: num(r.p95_ms ?? 0),
       };
     });
   }
@@ -1136,10 +1158,10 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/perf/jank", params).then((rows) => {
       const r = rows[0] ?? {};
       return {
-        sessions: Number(r.sessions ?? 0),
-        total_long_frames: Number(r.total_long_frames ?? 0),
-        median_rate: Number(r.median_rate ?? 0),
-        worst_decile_rate: Number(r.worst_decile_rate ?? 0),
+        sessions: num(r.sessions ?? 0),
+        total_long_frames: num(r.total_long_frames ?? 0),
+        median_rate: num(r.median_rate ?? 0),
+        worst_decile_rate: num(r.worst_decile_rate ?? 0),
       };
     });
   }
@@ -1149,10 +1171,10 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/perf/churn", params).then((rows) => {
       const r = rows[0] ?? {};
       return {
-        sessions: Number(r.sessions ?? 0),
-        churn_sessions: Number(r.churn_sessions ?? 0),
-        fps_churn_sessions: Number(r.fps_churn_sessions ?? 0),
-        stall_churn_sessions: Number(r.stall_churn_sessions ?? 0),
+        sessions: num(r.sessions ?? 0),
+        churn_sessions: num(r.churn_sessions ?? 0),
+        fps_churn_sessions: num(r.fps_churn_sessions ?? 0),
+        stall_churn_sessions: num(r.stall_churn_sessions ?? 0),
       };
     });
   }
@@ -1166,9 +1188,9 @@ export class CollectorApi {
         renderer: String(r.renderer ?? ""),
         browser: String(r.browser ?? ""),
         os: String(r.os ?? ""),
-        sessions: Number(r.sessions ?? 0),
-        samples: Number(r.samples ?? 0),
-        p50_fps: Number(r.p50_fps ?? 0),
+        sessions: num(r.sessions ?? 0),
+        samples: num(r.samples ?? 0),
+        p50_fps: num(r.p50_fps ?? 0),
       })),
     );
   }
@@ -1178,9 +1200,9 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/perf/by-scene", params).then((rows) =>
       rows.map((r) => ({
         scene_id: String(r.scene_id ?? ""),
-        sessions: Number(r.sessions ?? 0),
-        samples: Number(r.samples ?? 0),
-        p50_fps: Number(r.p50_fps ?? 0),
+        sessions: num(r.sessions ?? 0),
+        samples: num(r.samples ?? 0),
+        p50_fps: num(r.p50_fps ?? 0),
       })),
     );
   }
@@ -1191,14 +1213,14 @@ export class CollectorApi {
       (rows) => {
         const r = rows[0] ?? {};
         return {
-          sessions: Number(r.sessions ?? 0),
-          samples: Number(r.samples ?? 0),
-          p50_js_heap_bytes: Number(r.p50_js_heap_bytes ?? 0),
-          p95_js_heap_bytes: Number(r.p95_js_heap_bytes ?? 0),
-          p50_texture_bytes: Number(r.p50_texture_bytes ?? 0),
-          p95_texture_bytes: Number(r.p95_texture_bytes ?? 0),
-          p50_triangles: Number(r.p50_triangles ?? 0),
-          p95_triangles: Number(r.p95_triangles ?? 0),
+          sessions: num(r.sessions ?? 0),
+          samples: num(r.samples ?? 0),
+          p50_js_heap_bytes: num(r.p50_js_heap_bytes ?? 0),
+          p95_js_heap_bytes: num(r.p95_js_heap_bytes ?? 0),
+          p50_texture_bytes: num(r.p50_texture_bytes ?? 0),
+          p95_texture_bytes: num(r.p95_texture_bytes ?? 0),
+          p50_triangles: num(r.p50_triangles ?? 0),
+          p95_triangles: num(r.p95_triangles ?? 0),
         };
       },
     );
@@ -1209,9 +1231,9 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/perf/stability", params).then((rows) => {
       const r = rows[0] ?? {};
       return {
-        context_losses: Number(r.context_losses ?? 0),
-        compile_stalls: Number(r.compile_stalls ?? 0),
-        incidents: Number(r.incidents ?? 0),
+        context_losses: num(r.context_losses ?? 0),
+        compile_stalls: num(r.compile_stalls ?? 0),
+        incidents: num(r.incidents ?? 0),
       };
     });
   }
@@ -1227,7 +1249,7 @@ export class CollectorApi {
         severity: String(r.severity ?? ""),
         category: String(r.category ?? ""),
         backend: String(r.backend ?? ""),
-        incidents: Number(r.incidents ?? 0),
+        incidents: num(r.incidents ?? 0),
       })),
     );
   }
@@ -1244,7 +1266,7 @@ export class CollectorApi {
         backend: String(r.backend ?? ""),
         apiVersion: String(r.api_version ?? ""),
         shadingLanguage: String(r.shading_language ?? ""),
-        sessions: Number(r.sessions ?? 0),
+        sessions: num(r.sessions ?? 0),
       })),
     );
   }
@@ -1253,10 +1275,10 @@ export class CollectorApi {
   worldHeatmap(params?: QueryParams): Promise<WorldHeatmapBin[]> {
     return this.get<WorldHeatmapBin[]>("api/v1/heatmaps/world", params).then((rows) =>
       rows.map((r) => ({
-        vx: Number(r.vx),
-        vy: Number(r.vy),
-        vz: Number(r.vz),
-        count: Number(r.count),
+        vx: num(r.vx),
+        vy: num(r.vy),
+        vz: num(r.vz),
+        count: num(r.count),
       })),
     );
   }
@@ -1265,10 +1287,10 @@ export class CollectorApi {
   gazeHeatmap(params?: QueryParams): Promise<WorldHeatmapBin[]> {
     return this.get<WorldHeatmapBin[]>("api/v1/heatmaps/gaze", params).then((rows) =>
       rows.map((r) => ({
-        vx: Number(r.vx),
-        vy: Number(r.vy),
-        vz: Number(r.vz),
-        count: Number(r.count),
+        vx: num(r.vx),
+        vy: num(r.vy),
+        vz: num(r.vz),
+        count: num(r.count),
       })),
     );
   }
@@ -1282,10 +1304,10 @@ export class CollectorApi {
   errorHeatmap(params?: QueryParams): Promise<WorldHeatmapBin[]> {
     return this.get<WorldHeatmapBin[]>("api/v1/heatmaps/errors", params).then((rows) =>
       rows.map((r) => ({
-        vx: Number(r.vx),
-        vy: Number(r.vy),
-        vz: Number(r.vz),
-        count: Number(r.count),
+        vx: num(r.vx),
+        vy: num(r.vy),
+        vz: num(r.vz),
+        count: num(r.count),
       })),
     );
   }
@@ -1299,10 +1321,10 @@ export class CollectorApi {
   boundaryHeatmap(params?: QueryParams): Promise<WorldHeatmapBin[]> {
     return this.get<WorldHeatmapBin[]>("api/v1/heatmaps/boundary", params).then((rows) =>
       rows.map((r) => ({
-        vx: Number(r.vx),
-        vy: Number(r.vy),
-        vz: Number(r.vz),
-        count: Number(r.count),
+        vx: num(r.vx),
+        vy: num(r.vy),
+        vz: num(r.vz),
+        count: num(r.count),
       })),
     );
   }
@@ -1311,9 +1333,9 @@ export class CollectorApi {
   boundaryHeatmapStats(params?: QueryParams): Promise<SpatialStats> {
     return this.get<Record<string, unknown>>("api/v1/heatmaps/boundary/stats", params).then(
       (r) => ({
-        cellSize: Number(r.cellSize ?? 0),
-        cells: Number(r.cells ?? 0),
-        hits: Number(r.hits ?? 0),
+        cellSize: num(r.cellSize ?? 0),
+        cells: num(r.cells ?? 0),
+        hits: num(r.hits ?? 0),
       }),
     );
   }
@@ -1325,18 +1347,18 @@ export class CollectorApi {
    */
   worldHeatmapStats(params?: QueryParams): Promise<SpatialStats> {
     return this.get<Record<string, unknown>>("api/v1/heatmaps/world/stats", params).then((r) => ({
-      cellSize: Number(r.cellSize ?? 0),
-      cells: Number(r.cells ?? 0),
-      hits: Number(r.hits ?? 0),
+      cellSize: num(r.cellSize ?? 0),
+      cells: num(r.cells ?? 0),
+      hits: num(r.hits ?? 0),
     }));
   }
 
   /** Gaze heatmap totals (ADR 0040 §3): the gaze sibling of {@link worldHeatmapStats}. */
   gazeHeatmapStats(params?: QueryParams): Promise<SpatialStats> {
     return this.get<Record<string, unknown>>("api/v1/heatmaps/gaze/stats", params).then((r) => ({
-      cellSize: Number(r.cellSize ?? 0),
-      cells: Number(r.cells ?? 0),
-      hits: Number(r.hits ?? 0),
+      cellSize: num(r.cellSize ?? 0),
+      cells: num(r.cells ?? 0),
+      hits: num(r.hits ?? 0),
     }));
   }
 
@@ -1344,10 +1366,10 @@ export class CollectorApi {
   cameraPositionHeatmap(params?: QueryParams): Promise<PositionBin[]> {
     return this.get<Record<string, unknown>[]>("api/v1/heatmaps/position", params).then((rows) =>
       rows.map((r) => ({
-        gx: Number(r.gx),
-        gz: Number(r.gz),
-        avg_y: Number(r.avg_y ?? 0),
-        count: Number(r.count ?? 0),
+        gx: num(r.gx),
+        gz: num(r.gz),
+        avg_y: num(r.avg_y ?? 0),
+        count: num(r.count ?? 0),
       })),
     );
   }
@@ -1359,10 +1381,10 @@ export class CollectorApi {
       params,
     ).then((rows) =>
       rows.map((r) => ({
-        ts: Number(r.ts),
-        x: Number(r.x),
-        y: Number(r.y),
-        z: Number(r.z),
+        ts: num(r.ts),
+        x: num(r.x),
+        y: num(r.y),
+        z: num(r.z),
       })),
     );
   }
@@ -1376,9 +1398,9 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/paths", params).then((rows) =>
       rows.map((r) => ({
         session_id: String(r.session_id ?? ""),
-        ts: Number(r.ts),
-        gx: Number(r.gx),
-        gz: Number(r.gz),
+        ts: num(r.ts),
+        gx: num(r.gx),
+        gz: num(r.gz),
       })),
     );
   }
@@ -1387,12 +1409,12 @@ export class CollectorApi {
   clickRays(params?: QueryParams): Promise<ClickRay[]> {
     return this.get<Record<string, unknown>[]>("api/v1/heatmaps/click-rays", params).then((rows) =>
       rows.map((r): ClickRay => ({
-        camVoxel: [Number(r.cam_vx), Number(r.cam_vy), Number(r.cam_vz)],
-        origin: [Number(r.origin_x), Number(r.origin_y), Number(r.origin_z)],
-        hitVoxel: [Number(r.hit_vx), Number(r.hit_vy), Number(r.hit_vz)],
-        hit: [Number(r.hit_x), Number(r.hit_y), Number(r.hit_z)],
+        camVoxel: [num(r.cam_vx), num(r.cam_vy), num(r.cam_vz)],
+        origin: [num(r.origin_x), num(r.origin_y), num(r.origin_z)],
+        hitVoxel: [num(r.hit_vx), num(r.hit_vy), num(r.hit_vz)],
+        hit: [num(r.hit_x), num(r.hit_y), num(r.hit_z)],
         mesh: String(r.mesh ?? ""),
-        count: Number(r.count),
+        count: num(r.count),
       })),
     );
   }
@@ -1405,14 +1427,14 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/heatmaps/flow", params).then((rows) =>
       rows.map((r) => {
         const link: FlowLink = {
-          azimuth_bin: Number(r.azimuth_bin),
-          elevation_bin: Number(r.elevation_bin),
+          azimuth_bin: num(r.azimuth_bin),
+          elevation_bin: num(r.elevation_bin),
           mesh: String(r.mesh ?? ""),
-          count: Number(r.count),
+          count: num(r.count),
         };
         if (r.origin_vx != null) {
-          link.originVoxel = [Number(r.origin_vx), Number(r.origin_vy), Number(r.origin_vz)];
-          link.origin = [Number(r.origin_x), Number(r.origin_y), Number(r.origin_z)];
+          link.originVoxel = [num(r.origin_vx), num(r.origin_vy), num(r.origin_vz)];
+          link.origin = [num(r.origin_x), num(r.origin_y), num(r.origin_z)];
         }
         return link;
       }),
@@ -1422,7 +1444,7 @@ export class CollectorApi {
   /** Distinct scenes (+ activity) for the scene selector (ADR 0010). */
   scenes(params?: QueryParams): Promise<SceneInfo[]> {
     return this.get<SceneInfo[]>("api/v1/scenes", params).then((rows) =>
-      rows.map((r) => ({ ...r, events: Number(r.events) })),
+      rows.map((r) => ({ ...r, events: num(r.events) })),
     );
   }
 
@@ -1430,9 +1452,9 @@ export class CollectorApi {
   timeseries(params?: QueryParams): Promise<TimeseriesBucket[]> {
     return this.get<Record<string, unknown>[]>("api/v1/timeseries", params).then((rows) =>
       rows.map((r) => ({
-        bucket: Number(r.bucket),
-        events: Number(r.events ?? 0),
-        avg_fps: Number(r.avg_fps ?? 0),
+        bucket: num(r.bucket),
+        events: num(r.events ?? 0),
+        avg_fps: num(r.avg_fps ?? 0),
       })),
     );
   }
@@ -1440,7 +1462,7 @@ export class CollectorApi {
   /** Per-event-type counts over the active range (powers the health panel). */
   eventCounts(params?: QueryParams): Promise<EventTypeCount[]> {
     return this.get<Record<string, unknown>[]>("api/v1/event-counts", params).then((rows) =>
-      rows.map((r) => ({ event_type: String(r.event_type), count: Number(r.count ?? 0) })),
+      rows.map((r) => ({ event_type: String(r.event_type), count: num(r.count ?? 0) })),
     );
   }
 
@@ -1455,9 +1477,7 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/funnel", {
       ...params,
       steps: JSON.stringify(steps),
-    }).then((rows) =>
-      rows.map((r) => ({ step: Number(r.step), sessions: Number(r.sessions ?? 0) })),
-    );
+    }).then((rows) => rows.map((r) => ({ step: num(r.step), sessions: num(r.sessions ?? 0) })));
   }
 
   /**
@@ -1472,7 +1492,7 @@ export class CollectorApi {
       rows.map((r) => ({
         from: String(r.from_scene ?? ""),
         to: String(r.to_scene ?? ""),
-        sessions: Number(r.sessions ?? 0),
+        sessions: num(r.sessions ?? 0),
       })),
     );
   }
@@ -1492,9 +1512,9 @@ export class CollectorApi {
       ...(bands != null && bands.length > 0 ? { bands: bands.join(",") } : {}),
     }).then((rows) =>
       rows.map((r) => ({
-        band: Number(r.band ?? 0),
-        sessions: Number(r.sessions ?? 0),
-        bounced: Number(r.bounced ?? 0),
+        band: num(r.band ?? 0),
+        sessions: num(r.sessions ?? 0),
+        bounced: num(r.bounced ?? 0),
       })),
     );
   }
@@ -1517,14 +1537,14 @@ export class CollectorApi {
       conversion: opts.conversion ? JSON.stringify(opts.conversion) : undefined,
     }).then((rows) =>
       rows.map((r) => {
-        const sessions = Number(r.sessions ?? 0);
-        const conversions = Number(r.conversions ?? 0);
+        const sessions = num(r.sessions ?? 0);
+        const conversions = num(r.conversions ?? 0);
         return {
           variant: String(r.variant),
-          views: Number(r.views ?? 0),
+          views: num(r.views ?? 0),
           sessions,
           conversions,
-          avgDwellMs: Number(r.avg_dwell_ms ?? 0),
+          avgDwellMs: num(r.avg_dwell_ms ?? 0),
           conversionRate: sessions > 0 ? conversions / sessions : 0,
         };
       }),
@@ -1535,10 +1555,10 @@ export class CollectorApi {
   coverage(params?: QueryParams): Promise<CoverageVoxel[]> {
     return this.get<Record<string, unknown>[]>("api/v1/coverage", params).then((rows) =>
       rows.map((r) => ({
-        vx: Number(r.vx),
-        vy: Number(r.vy),
-        vz: Number(r.vz),
-        count: Number(r.count ?? 0),
+        vx: num(r.vx),
+        vy: num(r.vy),
+        vz: num(r.vz),
+        count: num(r.count ?? 0),
       })),
     );
   }
@@ -1547,12 +1567,12 @@ export class CollectorApi {
   perfHeatmap(params?: QueryParams): Promise<PerfHeatmapVoxel[]> {
     return this.get<Record<string, unknown>[]>("api/v1/heatmaps/perf", params).then((rows) =>
       rows.map((r) => ({
-        vx: Number(r.vx),
-        vy: Number(r.vy),
-        vz: Number(r.vz),
-        samples: Number(r.samples ?? 0),
-        avgFps: Number(r.avg_fps ?? 0),
-        minFps: Number(r.min_fps ?? 0),
+        vx: num(r.vx),
+        vy: num(r.vy),
+        vz: num(r.vz),
+        samples: num(r.samples ?? 0),
+        avgFps: num(r.avg_fps ?? 0),
+        minFps: num(r.min_fps ?? 0),
       })),
     );
   }
@@ -1560,7 +1580,7 @@ export class CollectorApi {
   /** Camera-to-center distance histogram for zoom / distance distribution (#39). */
   cameraDistance(params?: QueryParams): Promise<CameraDistanceBucket[]> {
     return this.get<Record<string, unknown>[]>("api/v1/camera/distance", params).then((rows) =>
-      rows.map((r) => ({ bucket: Number(r.bucket), count: Number(r.count ?? 0) })),
+      rows.map((r) => ({ bucket: num(r.bucket), count: num(r.count ?? 0) })),
     );
   }
 
@@ -1569,10 +1589,10 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/navigation", params).then((rows) =>
       rows.map((r) => ({
         session_id: String(r.session_id ?? ""),
-        segments: Number(r.segments ?? 0),
-        total_distance: Number(r.total_distance ?? 0),
-        active_segments: Number(r.active_segments ?? 0),
-        active_distance: Number(r.active_distance ?? 0),
+        segments: num(r.segments ?? 0),
+        total_distance: num(r.total_distance ?? 0),
+        active_segments: num(r.active_segments ?? 0),
+        active_distance: num(r.active_distance ?? 0),
       })),
     );
   }
@@ -1586,10 +1606,10 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/backtrack", params).then((rows) =>
       rows.map((r) => ({
         scene: String(r.scene ?? ""),
-        sessions: Number(r.sessions ?? 0),
-        entries: Number(r.entries ?? 0),
-        revisits: Number(r.revisits ?? 0),
-        backtrack_ratio: Number(r.backtrack_ratio ?? 0),
+        sessions: num(r.sessions ?? 0),
+        entries: num(r.entries ?? 0),
+        revisits: num(r.revisits ?? 0),
+        backtrack_ratio: num(r.backtrack_ratio ?? 0),
       })),
     );
   }
@@ -1603,10 +1623,10 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/camera-gestures", params).then((rows) =>
       rows.map((r) => ({
         kind: String(r.kind ?? ""),
-        gestures: Number(r.gestures ?? 0),
-        total_ms: Number(r.total_ms ?? 0),
-        avg_ms: Number(r.avg_ms ?? 0),
-        max_ms: Number(r.max_ms ?? 0),
+        gestures: num(r.gestures ?? 0),
+        total_ms: num(r.total_ms ?? 0),
+        avg_ms: num(r.avg_ms ?? 0),
+        max_ms: num(r.max_ms ?? 0),
       })),
     );
   }
@@ -1617,8 +1637,8 @@ export class CollectorApi {
       rows.map((r) => ({
         event_type: String(r.event_type ?? ""),
         source: String(r.source ?? ""),
-        count: Number(r.count ?? 0),
-        sessions: Number(r.sessions ?? 0),
+        count: num(r.count ?? 0),
+        sessions: num(r.sessions ?? 0),
       })),
     );
   }
@@ -1632,10 +1652,10 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/xr/locomotion", params).then((rows) =>
       rows.map((r) => ({
         session_id: String(r.session_id ?? ""),
-        fly_gestures: Number(r.fly_gestures ?? 0),
-        navigate_gestures: Number(r.navigate_gestures ?? 0),
-        teleports: Number(r.teleports ?? 0),
-        locomotion_ms: Number(r.locomotion_ms ?? 0),
+        fly_gestures: num(r.fly_gestures ?? 0),
+        navigate_gestures: num(r.navigate_gestures ?? 0),
+        teleports: num(r.teleports ?? 0),
+        locomotion_ms: num(r.locomotion_ms ?? 0),
         started_at: String(r.started_at ?? ""),
         ended_at: String(r.ended_at ?? ""),
       })),
@@ -1651,8 +1671,8 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/xr/boundary-contacts", params).then((rows) =>
       rows.map((r) => ({
         session_id: String(r.session_id ?? ""),
-        contacts: Number(r.contacts ?? 0),
-        near_ms: Number(r.near_ms ?? 0),
+        contacts: num(r.contacts ?? 0),
+        near_ms: num(r.near_ms ?? 0),
       })),
     );
   }
@@ -1666,10 +1686,10 @@ export class CollectorApi {
     return this.get<Record<string, unknown>[]>("api/v1/xr/tracking", params).then((rows) =>
       rows.map((r) => ({
         session_id: String(r.session_id ?? ""),
-        degraded_ms: Number(r.degraded_ms ?? 0),
-        hand_degraded_ms: Number(r.hand_degraded_ms ?? 0),
-        controller_degraded_ms: Number(r.controller_degraded_ms ?? 0),
-        degraded_episodes: Number(r.degraded_episodes ?? 0),
+        degraded_ms: num(r.degraded_ms ?? 0),
+        hand_degraded_ms: num(r.hand_degraded_ms ?? 0),
+        controller_degraded_ms: num(r.controller_degraded_ms ?? 0),
+        degraded_episodes: num(r.degraded_episodes ?? 0),
         started_at: String(r.started_at ?? ""),
         ended_at: String(r.ended_at ?? ""),
       })),

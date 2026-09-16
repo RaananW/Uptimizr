@@ -34,11 +34,14 @@ values are rejected with `400`, not clamped):
 | `source`   | enum                  | Input-source filter: `mouse`, `touch`, `stylus`, `pen`, `xr-controller`, `hand`, `gaze`, `transient`, `other`. |
 | `session`  | id                    | Scope an aggregate to a single session.                           |
 | `cameraMode` | `viewer` \| `first-person` | Restrict to orbit (`viewer`) or free/walkable (`first-person`) camera sessions. |
+| `format`   | `full` \| `table` \| `summary` | Result envelope, not a filter. `full` (the default) is the bare rows; see [result formats](/docs/api/query/#result-formats). |
 
 :::caution[Common pitfalls]
 - **`since`/`until` are milliseconds; `interval` is seconds.** Mixing units is the most common
   "empty result" cause.
-- **Aggregate columns come back as JSON strings** (e.g. `"42"`). Coerce to numbers before doing math.
+- **Aggregate columns are JSON numbers on every store** — no client-side coercion needed. But a
+  `null` means "no samples", not `0`: a one-row summary is still returned over a range that matched
+  nothing, with its aggregate columns `null`.
 - **Empty (200 + no rows) is not an error** — usually the time window or a filter excluded
   everything. Widen `since`/`until` and drop filters to confirm data exists, then narrow.
 :::

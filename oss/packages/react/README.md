@@ -158,6 +158,10 @@ import { useAssistant } from "@uptimizr/react/assistant";
 const { messages, send, status, setBackend, backend } = useAssistant({
   collectorUrl: "http://localhost:4318",
   apiKey: "proj_…",
+  // Optional: pin the read tools this assistant may call. Omit to let the hook
+  // choose — the local (WebGPU) backend gets agent-core's focused core subset,
+  // a hosted backend the full ~69-tool catalog.
+  tools: ["perf_summary", "jank_rate", "perf_by_device"],
 });
 ```
 

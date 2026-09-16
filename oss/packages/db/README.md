@@ -70,39 +70,94 @@ CLIs all share one canonical file regardless of which package they run from. The
 its backend with `COLLECTOR_STORE` (`duckdb` by default; `clickhouse` and `memory` are also wired in
 `@uptimizr/collector-server`).
 
-## Metric registry (`@uptimizr/db/registry`)
+## Metric registry (`@uptimizr/metrics`)
 
-`src/query/registry.ts` describes **what every aggregation means**. It is a
-`Readonly<Record<MetricId, MetricDefinition>>` with one entry per exported `build*` aggregation
-(plus two builder-less "resource" entries for the session descriptor and the scene
-representation), declaring the metric's id, title, agent-facing description, the builder behind
-it, its collector endpoint, result `grain`, group-by `dimensions`, accepted `filters`, the output
-`row` schema (Zod), per-column semantics (unit, measure, label, `rateOf`), row `limits`, how to
-read the result (`interpretation`), the `caveats` that make it untrustworthy, the capture channels
-that feed it (`sourceChannels`, ADR 0012), `related` metrics and comparison semantics. `DimensionId`
-and `FilterId` are closed unions declared once, and `FILTER_TARGETS` maps each filter to the option
-field in `query/types.ts` it drives. (ADR 0051 §1.)
+The semantic layer over these aggregations — **what every aggregation means** — lives in its own
+package, [`@uptimizr/metrics`](../metrics). It is a `Readonly<Record<MetricId, MetricDefinition>>`
+with one entry per exported `build*` aggregation (plus two builder-less "resource" entries for the
+session descriptor and the scene representation), declaring the metric's id, title, agent-facing
+description, the builder behind it, its collector endpoint, result `grain`, group-by `dimensions`,
+accepted `filters`, the output `row` schema (Zod), per-column semantics (unit, measure, label,
+`rateOf`), row `limits`, how to read the result (`interpretation`), the `caveats` that make it
+untrustworthy, the capture channels that feed it (`sourceChannels`, ADR 0012), `related` metrics
+and comparison semantics. `DimensionId` and `FilterId` are closed unions declared once, and
+`FILTER_TARGETS` maps each filter to the option field in `query/types.ts` it drives. (ADR 0051 §1.)
 
 ```ts
-import { METRIC_REGISTRY, getMetric, allMetrics } from "@uptimizr/db/registry";
+import { METRIC_REGISTRY, getMetric, allMetrics } from "@uptimizr/metrics";
 
 const metric = getMetric("top_meshes");
 metric?.endpoint; // { method: "GET", path: "/api/v1/meshes/top" }
-metric?.row.parse(row); // validates + coerces one result row
+metric?.row.parse(row); // validates one result row
 ```
 
-It is published on its **own subpath** because the package root is Node-only: the registry imports
-nothing but `zod` plus _type-only_ declarations from `./aggregations.js` and `@uptimizr/schema`, so
-it is pure data with no I/O and safe to bundle for the browser. Every numeric column is
-`z.coerce.number()` — DuckDB, Postgres and SQL Server return JS numbers, but ClickHouse renders
-64-bit integers and decimals as strings over HTTP, and one schema has to validate all four.
+It is a **separate package**, not a subpath of this one, because this package depends on
+`@duckdb/node-api` — a ~37 MB native binding — while the registry's consumers
+(`@uptimizr/agent-core`, `@uptimizr/mcp`, `@uptimizr/react`) run in a browser or over `npx` and
+can never use a database driver. `@uptimizr/metrics` imports nothing but `zod` and a _type-only_
+declaration from `@uptimizr/schema`, so it is pure data with no I/O.
 
-> **A new aggregation is not done until it has a registry entry.** `registry.ts` carries a
-> compile-time guard (`NoUnregisteredAggregations`) that fails to typecheck and names the missing
-> builder, `src/__tests__/registry.test.ts` re-checks it at runtime and parses every `row` schema
-> against real DuckDB output over the parity fixtures, and the collector's
+### Numbers are numbers (ADR 0051 §2)
+
+Every numeric column in a `row` schema is a strict `z.number()`, because that is what the collector
+actually emits. Engines disagree about the wire — ClickHouse renders 64-bit integers and decimals
+as JSON **strings** over HTTP, `pg` returns `int8`/`numeric` as strings without a type parser — so
+each store's query runner normalises them at the single point rows leave its driver:
+
+```ts
+import { coerceRows, numericColumns } from "@uptimizr/db";
+
+coerceRows("top_meshes", [{ mesh: "box", count: "42" }]); // [{ mesh: "box", count: 42 }]
+numericColumns(getMetric("top_meshes")!.row); // ["count"]
+```
+
+`build*` aggregations tag their `QuerySpec` with the metric id, so `runDuckdbQuery`,
+`runClickhouseQuery`, `runPostgresQuery` and `runMssqlQuery` each apply `coerceRows` with no work
+at the call site. `null` stays `null` — an aggregate over an empty set is "no samples", never `0`.
+A value that is neither a number, `null`, nor a finite numeric string **throws** under a test runner
+and is left untouched with a one-per-column warning in production; pass `{ strict }` to pin either.
+The parity suites assert `typeof === "number"` for every registry-numeric column on every engine.
+
+> **A new aggregation is not done until it has a registry entry.** Add the `build*` name to
+> `AGGREGATION_BUILDER_NAMES` and a `MetricDefinition` to `METRIC_REGISTRY` in
+> `@uptimizr/metrics`; its `NoUnregisteredAggregations` guard fails to typecheck and names the
+> missing builder. This package's `src/__tests__/registry.test.ts` then asserts at runtime that
+> `AGGREGATION_BUILDER_NAMES` is exactly the set of `build*` exports, and parses every `row`
+> schema against real DuckDB output over the parity fixtures; the collector's
 > `registryRoutes.test.ts` asserts that every `endpoint.path` is served and that its Zod
 > querystring keys equal the registry `filters`.
+
+### Result envelopes (`@uptimizr/db/summary`, ADR 0051 §2)
+
+The registry knows enough about a metric to **summarise** it, so the collector's
+`format=table | summary` envelopes are built here rather than in a route handler. Pure, browser-safe
+functions with no store and no I/O — published on their own subpath for the same reason the registry
+is, and re-exported from the package root for Node consumers:
+
+```ts
+import { summarizeRows, tableResult, clusterCells } from "@uptimizr/db/summary";
+
+tableResult("top_meshes", rows, { range, filters, limit });
+// { meta: { metric, range, filters, sampleSize, rows, truncated, limits }, rows }
+
+summarizeRows("top_meshes", rows, { range, filters });
+// { kind: "ranked", total, measure, top: [{ label, value, share, … }], rest, reading, caveats, … }
+```
+
+The metric's `grain` picks the shape: `ranked` top rows for a leaderboard, a `series`
+(first/last/min/max/trend/slope over the column flagged `axis`) for a time bucket, merged `clusters`
+for a `bin`/`voxel` grid (`clusterCells` — a deterministic greedy merge of adjacent occupied cells
+above a density threshold, 8-neighbourhood in 2D and 26 in 3D), and the `record` itself plus its
+`rateOf` rates for a single-row metric. Everything is capped at `limits.maxSummaryRows`.
+
+Two invariants worth knowing before extending it:
+
+- **`reading` is templated, not generated.** It is assembled from `ColumnSemantics` alone, so the
+  same rows always produce the same sentence. Every number goes through total formatters — a
+  `reading` containing `undefined` or `NaN` is a test failure.
+- **Shares are only claimed where they are true.** `total`, `share` and the Wilson `confidence` note
+  appear only when the measure's unit is additive; an FPS or ratio measure reports `null` and says
+  so in the `reading` rather than summing values that cannot be summed.
 
 ## Extending
 

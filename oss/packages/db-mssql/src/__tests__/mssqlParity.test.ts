@@ -25,6 +25,7 @@ import {
   duckdbInsertEvents,
   migrateDuckdb,
   mssqlDialect,
+  numericColumnsForSpec,
   readDbSettings,
   runDuckdbQuery,
   type DuckdbClient,
@@ -135,19 +136,22 @@ describe.skipIf(!available)("mssql parity (vs golden, vs duckdb)", () => {
 
   for (const parityCase of PARITY_CASES) {
     it(`matches golden: ${parityCase.name}`, async () => {
-      const rows = await runMssqlQuery<Record<string, unknown>>(ms, parityCase.build(mssqlDialect));
+      const spec = parityCase.build(mssqlDialect);
+      const rows = await runMssqlQuery<Record<string, unknown>>(ms, spec);
       const errors = diffParity(rows, parityCase.golden, {
         sortKeys: parityCase.sortKeys,
         ignoreColumns: parityCase.ignoreColumns,
+        // Tolerance rule 5 (ADR 0051 §2): the `mssql` driver's bigint/decimal
+        // handling is type-map-driven, so this asserts the store's runner
+        // coerces at its edge for every metric, not per column type.
+        numericColumns: numericColumnsForSpec(spec),
       });
       expect(errors, errors.join("\n")).toEqual([]);
     });
 
     it(`matches duckdb: ${parityCase.name}`, async () => {
-      const msRows = await runMssqlQuery<Record<string, unknown>>(
-        ms,
-        parityCase.build(mssqlDialect),
-      );
+      const spec = parityCase.build(mssqlDialect);
+      const msRows = await runMssqlQuery<Record<string, unknown>>(ms, spec);
       const duckRows = await runDuckdbQuery<Record<string, unknown>>(
         duck,
         parityCase.build(duckdbDialect),
@@ -155,6 +159,7 @@ describe.skipIf(!available)("mssql parity (vs golden, vs duckdb)", () => {
       const errors = diffParity(msRows, duckRows, {
         sortKeys: parityCase.sortKeys,
         ignoreColumns: parityCase.ignoreColumns,
+        numericColumns: numericColumnsForSpec(spec),
       });
       expect(errors, errors.join("\n")).toEqual([]);
     });

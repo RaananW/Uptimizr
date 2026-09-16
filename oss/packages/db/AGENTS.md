@@ -86,34 +86,91 @@ every tool (collector + CLIs) shares one canonical file regardless of cwd.
 
 ## Metric registry (ADR 0051 §1)
 
-`@uptimizr/db/registry` is the semantic layer over the aggregations: one `MetricDefinition` per
-exported `build*` (plus two builder-less resource entries — `session_meta`, `scene_representation`)
-declaring id, title, agent-facing description, builder, collector endpoint, `grain`, `dimensions`,
-`filters`, the output `row` Zod schema, per-column semantics (unit / measure / label / `rateOf`),
-row `limits`, `interpretation`, `caveats`, `sourceChannels` (the ADR 0012 capture dials that must
-be on for the metric to have data), `related` metrics, `comparable` semantics and a `category`.
-`DimensionId` / `FilterId` are closed unions declared once; `FILTER_TARGETS` maps each filter to
-the `query/types.ts` option field it drives.
+[`@uptimizr/metrics`](../metrics) is the semantic layer over the aggregations: one
+`MetricDefinition` per exported `build*` (plus two builder-less resource entries — `session_meta`,
+`scene_representation`) declaring id, title, agent-facing description, builder, collector endpoint,
+`grain`, `dimensions`, `filters`, the output `row` Zod schema, per-column semantics (unit /
+measure / label / axis / `rateOf`), row `limits`, `interpretation`, `caveats`, `sourceChannels`
+(the ADR 0012 capture dials that must be on for the metric to have data), `related` metrics,
+`comparable` semantics and a `category`. `DimensionId` / `FilterId` are closed unions declared
+once; `FILTER_TARGETS` maps each filter to the `query/types.ts` option field it drives.
 
 ```ts
-import { getMetric, allMetrics, METRIC_IDS } from "@uptimizr/db/registry";
+import { getMetric, allMetrics, METRIC_IDS } from "@uptimizr/metrics";
 ```
 
-Its own subpath, because the package root is Node-only. The registry imports **only** `zod` plus
-type-only declarations, performs no I/O and holds no store or dialect reference, so it is safe to
-bundle into a browser consumer. Numeric columns are `z.coerce.number()` so one schema validates
-DuckDB / Postgres / SQL Server numbers _and_ ClickHouse's string-encoded 64-bit integers.
+Its own **package**, not a subpath here, because this one depends on the ~37 MB
+`@duckdb/node-api` native binding and the registry's consumers (`@uptimizr/agent-core`,
+`@uptimizr/mcp`, `@uptimizr/react`) can never use a database driver. `@uptimizr/metrics` imports
+**only** `zod` plus a type-only `@uptimizr/schema` declaration, performs no I/O and holds no store
+or dialect reference.
+
+### Numeric coercion at the store edge (ADR 0051 §2)
+
+Numeric columns are strict `z.number()` — the schema describes the API, not the wire. Every
+`build*` tags its `QuerySpec` with the metric id, and each store's runner (`runDuckdbQuery`,
+`runClickhouseQuery`, `runPostgresQuery`, `runMssqlQuery`) calls `coerceRows(spec.metric, rows)` at
+the one point rows leave the driver, so a string-encoded 64-bit integer or decimal becomes a number
+before any consumer sees it. `null` passes through — an aggregate over an empty set is "no
+samples", not `0`, which is why nine perf/resource metrics declare nullable columns.
+
+- **Do not** reintroduce `z.coerce.number()` in `registry.ts`: a registry test proves that
+  string-encoded rows _fail_ the strict schema and _pass_ after `coerceRows`, which is what pins
+  the work to the edge.
+- A new store must call `coerceRows` in its runner; the parity suite asserts
+  `typeof === "number"` for every registry-numeric column on every engine (`numericColumnsForSpec`).
+- Junk in a numeric column throws under a test runner and is left untouched with a one-per-column
+  warning in production (`coerceRows(..., { strict })` pins either).
 
 **Rules for agents:**
 
-- Adding a `build*` aggregation without a registry entry is a **compile error**
-  (`NoUnregisteredAggregations` in `registry.ts` names the missing builder).
+- A `build*` aggregation added here must also be added to `AGGREGATION_BUILDER_NAMES` in
+  `@uptimizr/metrics`, and given a registry entry. Missing the entry is a **compile error**
+  (`NoUnregisteredAggregations` names the missing builder); missing the list entry fails this
+  package's `registry.test.ts` at runtime and names it too.
+- **Never import `@uptimizr/db` from `@uptimizr/metrics`.** The dependency runs one way only —
+  that is the whole point of the split. The builder-name list is literal data for that reason.
 - The 20 ids that are already `@uptimizr/agent-core` tool names (`top_meshes`, `perf_summary`,
   `list_sessions`, …) are frozen — renaming one breaks every MCP client.
-- `row` must match what the SQL actually projects, not what `types.ts` declares. Three tests
-  enforce this: `db`'s `registry.test.ts` (coverage, internal consistency, `row` parsing against
-  real DuckDB output over the parity fixtures, plus the string-encoded ClickHouse shape) and the
-  collector's `registryRoutes.test.ts` (endpoint exists; querystring keys === `filters`).
+- `row` must match what the SQL actually projects, not what `types.ts` declares. It is also the
+  collector's **response schema**, so an undeclared column is stripped from the API and a `null` in
+  a non-nullable one is a 500. Four suites enforce this: `@uptimizr/metrics`' `registry.test.ts`
+  (coverage, internal consistency), this package's `registry.test.ts` (the builder link, plus `row`
+  parsing against real DuckDB output over the parity fixtures and the string-encoded ClickHouse
+  shape through `coerceRows`), the collector's `registryRoutes.test.ts` (endpoint exists;
+  querystring keys === `filters`) and its `queryResponseSchemas.test.ts` (every endpoint, against a
+  seeded store, an empty one, and the in-memory store).
+
+### Result envelopes (ADR 0051 §2, `@uptimizr/db/summary`)
+
+`summarizeRows(metric, rows, ctx)` and `tableResult(metric, rows, ctx)` build the collector's
+`format=table | summary` envelopes. Pure, registry-driven, browser-safe; the collector calls them
+from one `preSerialization` hook, so no route handler knows they exist.
+
+```ts
+import { summarizeRows, tableResult, clusterCells, wilsonInterval } from "@uptimizr/db/summary";
+```
+
+The `grain` selects the shape — `ranked` (top rows + `rest`), `series` (first/last/min/max/trend/
+slope over the `axis` column), `clusters` (`clusterCells`: deterministic greedy merge of adjacent
+occupied cells above a density threshold, 8-neighbourhood in 2D / 26 in 3D), or `record` (the single
+row plus its `rateOf` rates). Everything is bounded by `limits.maxSummaryRows`.
+
+**Rules for agents:**
+
+- A metric's summary comes from its **column semantics**, never from a per-metric special case. If a
+  metric summarises badly, fix its `unit` / `measure` / `label` / `axis` / `rateOf` declarations.
+- A `bucket`-grain metric must declare exactly one `axis: true` column, and no other grain may
+  declare one (`@uptimizr/metrics`' `registry.test.ts`). `label` cannot stand in — `mesh_trend`
+  labels rows by mesh.
+- **`reading` is templated, never model-written**, and must never contain `undefined` or `NaN`; run
+  every value through `format.ts`'s total formatters.
+- Report `total`/`share` only for an **additive** unit. Summing FPS, a ratio or a percentile across
+  rows is meaningless, and a share derived from it is worse than none.
+- Clustering must stay a pure function of the cell _set_: accumulate in sorted coordinate order so a
+  reordered input is bit-identical (`summary.test.ts` rotates every fixture).
+- Adding `format` to a metric's `filters` and to the collector's querystring is one change — the
+  collector's `registryRoutes.test.ts` fails if they drift.
 
 ## Cross-engine parity (ADR 0020)
 

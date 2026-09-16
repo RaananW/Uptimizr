@@ -1,44 +1,130 @@
 /**
  * The semantic **metric registry** (ADR 0051 §1, design sketch §A).
  *
- * One {@link MetricDefinition} per `build*` aggregation in `aggregations.ts`,
- * declaring what the metric measures, what one row *is*, the unit and semantics
- * of every column, the filters it accepts, the collector endpoint it is served
- * on, the capture channels that must be enabled for it to have data, and how to
- * read the result. Downstream consumers (the agent tool catalog, OpenAPI, the
- * MCP capabilities resource, the docs tables) are meant to be **derived** from
- * this file rather than hand-maintained, so coverage cannot drift.
+ * One {@link MetricDefinition} per `build*` aggregation in `@uptimizr/db`'s
+ * `query/aggregations.ts`, declaring what the metric measures, what one row *is*,
+ * the unit and semantics of every column, the filters it accepts, the collector
+ * endpoint it is served on, the capture channels that must be enabled for it to
+ * have data, and how to read the result. Downstream consumers (the agent tool
+ * catalog, OpenAPI, the MCP capabilities resource, the docs tables) are meant to
+ * be **derived** from this file rather than hand-maintained, so coverage cannot
+ * drift.
  *
- * **This module is pure data.** It imports `zod` and *type-only* declarations
- * from `./aggregations.js` and `@uptimizr/schema`; it performs no I/O, touches
- * no `node:` built-in and holds no reference to a store or a dialect. That is
- * deliberate: `@uptimizr/db`'s root barrel is Node-only, so the registry is
- * published on its own `@uptimizr/db/registry` subpath and can be imported from
- * a browser bundle (e.g. `@uptimizr/agent-core`) without dragging the DuckDB
- * driver in.
+ * **This module is pure data.** It imports `zod` and a *type-only* declaration
+ * from `@uptimizr/schema`; it performs no I/O, touches no `node:` built-in and
+ * holds no reference to a store, a dialect or a database driver. That is the
+ * whole reason this package exists: `@uptimizr/db` depends on `@duckdb/node-api`
+ * (a ~37 MB native binding), and the browser/CLI consumers of the registry
+ * (`@uptimizr/agent-core`, `@uptimizr/mcp`, `@uptimizr/react`) can never use a
+ * DuckDB driver — so the registry lives here, in a package whose only runtime
+ * dependencies are `zod` and `@uptimizr/schema`.
  *
- * **Numbers are coerced.** Every numeric column is `z.coerce.number()`: DuckDB,
- * Postgres and SQL Server return JS numbers, but ClickHouse renders 64-bit
- * integers and decimals as *strings* over HTTP. Coercing in the row schema makes
- * one schema valid for every engine today; moving the coercion to the store edge
- * is tracked separately (ADR 0051 §2 "numbers are numbers").
+ * **Numbers are numbers.** Every numeric column is a strict `z.number()`, so a
+ * `row` schema describes exactly what the collector emits. The engines that
+ * string-encode 64-bit integers or decimals (ClickHouse over HTTP) are
+ * normalised by `coerceRows` in every store's query runner, at the one point
+ * rows leave the driver (ADR 0051 §2, `query/coerce.ts`) — the schema is the
+ * contract, the store edge is what upholds it.
  *
  * The invariant this file exists to enforce: **a new aggregation is not done
- * until it has a registry entry.** `src/__tests__/registry.test.ts` fails the
- * build when a `build*` export has no entry, and the collector's
+ * until it has a registry entry.** This package's `src/__tests__/registry.test.ts`
+ * fails the build when a name in {@link AGGREGATION_BUILDER_NAMES} has no entry;
+ * `@uptimizr/db`'s own `src/__tests__/registry.test.ts` fails when that list and
+ * the `build*` exports of `aggregations.ts` disagree; and the collector's
  * `registryRoutes.test.ts` fails when an entry's endpoint or filters drift from
  * the Zod querystring that actually serves it.
  */
 
 import { z } from "zod";
 import type { EventType } from "@uptimizr/schema";
-// Type-only namespace import: erased at compile time (`verbatimModuleSyntax`),
-// so the registry keeps no runtime dependency on the (much larger) SQL builders
-// while still deriving the closed set of builder names from them.
-import type * as aggregations from "./aggregations.js";
+
+/**
+ * Every exported `build*` aggregation name in `@uptimizr/db`'s
+ * `query/aggregations.ts`. The registry must cover them all.
+ *
+ * Declared here as literal data rather than derived with
+ * `keyof typeof aggregations`, because deriving it would make this package
+ * depend on `@uptimizr/db` — exactly the edge (and the ~37 MB native DuckDB
+ * binding behind it) that this package exists to break. The link is not lost,
+ * only moved from the compiler to CI: `@uptimizr/db`'s `registry.test.ts`
+ * asserts at runtime that the set of its `build*` exports is exactly this list,
+ * so adding, renaming or deleting an aggregation without updating this list
+ * fails the build and names the offender.
+ */
+export const AGGREGATION_BUILDER_NAMES = [
+  "buildAggregateTrajectories",
+  "buildArPlacementAttempts",
+  "buildArPlacementSurfaces",
+  "buildArPlacementTimeToPlace",
+  "buildBacktrackRatio",
+  "buildBoundaryContacts",
+  "buildBoundaryHeatmap",
+  "buildBoundaryHeatmapStats",
+  "buildCameraDirectionHeatmap",
+  "buildCameraDistance",
+  "buildCameraGestures",
+  "buildCameraPositionHeatmap",
+  "buildCapabilityChanges",
+  "buildClickGazeRay",
+  "buildCompileStalls",
+  "buildDeadClicks",
+  "buildDistinctScenes",
+  "buildErrorHeatmap",
+  "buildEventTypeCounts",
+  "buildEventsDaily",
+  "buildFlowHeatmap",
+  "buildFpsHistogram",
+  "buildFrameTimePercentiles",
+  "buildFunnel",
+  "buildGazeHeatmap",
+  "buildGazeHeatmapStats",
+  "buildGraphicsDiagnosticCounts",
+  "buildHoverDwell",
+  "buildInteractionsBySource",
+  "buildJankRate",
+  "buildListSessions",
+  "buildLoadBounceFunnel",
+  "buildMeshBlindSpots",
+  "buildMeshDwell",
+  "buildMeshInteractionKinds",
+  "buildMeshUvHeatmap",
+  "buildNavigationStats",
+  "buildPerfByDevice",
+  "buildPerfByScene",
+  "buildPerfChurn",
+  "buildPerfDaily",
+  "buildPerfDistribution",
+  "buildPerfHeatmap",
+  "buildPerfSummary",
+  "buildPointerHeatmap",
+  "buildRageClicks",
+  "buildReachability",
+  "buildRenderScaleTruth",
+  "buildRenderingTechnology",
+  "buildResourcePercentiles",
+  "buildResourceSummary",
+  "buildSceneCoverage",
+  "buildSceneRetention",
+  "buildSessionTrajectory",
+  "buildStabilityCounts",
+  "buildTimeseries",
+  "buildTopInputActions",
+  "buildTopMeshes",
+  "buildTopMeshesBySource",
+  "buildTopMeshesTrend",
+  "buildTrackingQuality",
+  "buildVariantLeaderboard",
+  "buildViewCoverageHistogram",
+  "buildWorldHeatmap",
+  "buildWorldHeatmapStats",
+  "buildXrAbandonment",
+  "buildXrLocomotionComfort",
+  "buildXrRotationRate",
+  "buildXrSourceUsage",
+] as const;
 
 /** Every exported `build*` aggregation name. The registry must cover them all. */
-export type AggregationBuilderName = Extract<keyof typeof aggregations, `build${string}`>;
+export type AggregationBuilderName = (typeof AGGREGATION_BUILDER_NAMES)[number];
 
 /**
  * Group-by dimensions a metric's rows can be keyed by. Closed union, declared
@@ -116,7 +202,12 @@ export type FilterId =
   | "steps"
   | "bands"
   | "variant"
-  | "conversion";
+  | "conversion"
+  // Cross-cutting result shaping (ADR 0051 §2, design sketch §B.1). Unlike every
+  // other filter this one narrows nothing: it selects the *envelope* the
+  // collector wraps the rows in, and is consumed by the response layer rather
+  // than by an aggregation option.
+  | "format";
 
 /**
  * The option interface (in `types.ts`) a {@link FilterId} feeds. `BuilderOptions`
@@ -136,7 +227,13 @@ export type FilterOptionInterface =
   | "FunnelOptions"
   | "LoadBounceFunnelOptions"
   | "VariantLeaderboardOptions"
-  | "BuilderOptions";
+  | "BuilderOptions"
+  /**
+   * Not an aggregation option at all: the parameter is consumed by the
+   * collector's response layer and never reaches a builder. Only `format`
+   * (design sketch §B.1) uses it.
+   */
+  | "ResultEnvelope";
 
 /** How one request parameter reaches the aggregation layer. */
 export interface FilterTarget {
@@ -334,6 +431,14 @@ export const FILTER_TARGETS: Readonly<Record<FilterId, FilterTarget>> = {
     field: "conversion",
     description: "JSON funnel-step predicate for the success event. Omit to report views only.",
   },
+  format: {
+    option: "ResultEnvelope",
+    field: "(response layer)",
+    description:
+      "Result envelope: `full` (default — the bare rows, unchanged), `table` (the same rows plus " +
+      "a `meta` envelope), or `summary` (a bounded, self-describing digest: top rows or clusters " +
+      "or a trend, with shares, a sample size, a templated reading and the caveats).",
+  },
 };
 
 /** Physical meaning of a column's values. */
@@ -362,6 +467,17 @@ export interface ColumnSemantics {
   measure?: boolean;
   /** For summaries: the column that names the row (mesh, scene, bucket…). */
   label?: boolean;
+  /**
+   * For summaries of a `bucket`-grain metric: the **ordered** column the rows
+   * advance along (the time bucket, the day, the histogram bin, the funnel
+   * step). Exactly one per `bucket`-grain metric, and never set on any other
+   * grain — asserted in `src/__tests__/registry.test.ts`.
+   *
+   * It exists because `label` cannot double as the axis: `mesh_trend` is one row
+   * per (mesh, bucket) and labels its rows by `mesh`, so ordering by `label`
+   * would interleave series instead of walking time.
+   */
+  axis?: boolean;
   /** Denominator column when this column is a rate/share. */
   rateOf?: string;
 }
@@ -540,16 +656,35 @@ export type MetricId =
 
 // --- Row-schema building blocks ------------------------------------------
 //
-// `num`/`int` coerce because ClickHouse renders 64-bit integers and decimals as
-// strings over HTTP while DuckDB / Postgres / SQL Server return JS numbers. One
-// schema therefore validates every engine's output (see the module doc).
+// Numeric columns are **strict** `z.number()`: they describe what the collector
+// actually emits. Engines that string-encode 64-bit integers or decimals (notably
+// ClickHouse over HTTP) are normalised by `coerceRows` in every store's query
+// runner, at the single point rows leave the driver (ADR 0051 §2) — so by the
+// time a row reaches a consumer, a numeric column *is* a number. Do not
+// reintroduce `z.coerce.number()` here: that would make the schema describe a
+// wire format rather than the API contract, and would let a store regression
+// pass unnoticed.
 
 /** A numeric column (integer or fractional). */
-const num = z.coerce.number();
+const num = z.number();
 /** A whole-number column: a `count(*)`, a distinct count, or a `floor()` bin. */
-const int = z.coerce.number().int();
-/** A nullable numeric column (a metric an engine/connector may not report). */
-const numOrNull = z.coerce.number().nullable();
+const int = z.number().int();
+/**
+ * A nullable numeric column. Two things make a column nullable:
+ *
+ * 1. the metric is one an engine or connector may not report at all
+ *    (`avg_render_scale` on a renderer with no dynamic resolution); or
+ * 2. it is an aggregate over a set that can be **empty** — `sum`, `avg`, `max`
+ *    and `quantile` are SQL-`NULL` over no rows, and a summary metric with no
+ *    `GROUP BY` still returns its one row when the range or filter matched
+ *    nothing. A brand-new project reads `null`, not `0`.
+ *
+ * `null` means "no samples" and is never `0`-filled: a zero average is a claim
+ * about the data, absence is not.
+ */
+const numOrNull = z.number().nullable();
+/** A nullable whole-number column — see {@link numOrNull} for when null occurs. */
+const intOrNull = z.number().int().nullable();
 /** An identifier or label column; `''` means "unknown"/"unattributed". */
 const text = z.string();
 /**
@@ -585,6 +720,16 @@ const POINTER_SAMPLED =
 const GAZE_OPT_IN =
   "Requires the gaze raycast capture option (`capture.gaze`, **off by default**, ADR 0030 / " +
   "ADR 0012). Without it `camera_sample` carries no `hitPoint` and this metric is empty.";
+
+/**
+ * Aggregates over an empty set are SQL-NULL, and a single-row summary still
+ * returns its row when nothing matched. Shared by every metric whose columns can
+ * therefore come back `null` on a fresh project or an over-narrow filter.
+ */
+const EMPTY_SET_NULLS =
+  "Over a range or filter that matched no samples the row is still returned, with every " +
+  "aggregate column `null` rather than `0` (only the plain counts stay numeric). Read `null` " +
+  "as 'no data' — do not sum it as zero.";
 
 /** Small-sample warning shared by per-row leaderboards. */
 const SMALL_SAMPLE =
@@ -635,7 +780,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/sessions" },
     grain: "session",
     dimensions: ["session"],
-    filters: ["since", "until", "bins", "limit", "cameraMode"],
+    filters: ["since", "until", "bins", "limit", "cameraMode", "format"],
     row: z.object({
       session_id: text,
       visitor_id: text,
@@ -800,7 +945,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/scenes" },
     grain: "scene",
     dimensions: ["scene"],
-    filters: ["since", "until", "limit"],
+    filters: ["since", "until", "limit", "format"],
     row: z.object({ scene_id: text, events: int, last_seen: ts }),
     columns: {
       scene_id: { description: "Developer-assigned scene id.", unit: "id", label: true },
@@ -835,10 +980,15 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/timeseries" },
     grain: "bucket",
     dimensions: ["scene", "event_type"],
-    filters: ["since", "until", "interval", "scene", "type"],
+    filters: ["since", "until", "interval", "scene", "type", "format"],
     row: z.object({ bucket: int, events: int, avg_fps: num }),
     columns: {
-      bucket: { description: "Bucket start as epoch milliseconds.", unit: "epoch-ms", label: true },
+      bucket: {
+        description: "Bucket start as epoch milliseconds.",
+        unit: "epoch-ms",
+        label: true,
+        axis: true,
+      },
       events: { description: "Events in the bucket.", unit: "count", measure: true },
       avg_fps: {
         description:
@@ -871,7 +1021,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/event-counts" },
     grain: "row",
     dimensions: ["event_type", "scene"],
-    filters: ["since", "until", "scene"],
+    filters: ["since", "until", "scene", "format"],
     row: z.object({ event_type: text, count: int }),
     columns: {
       event_type: {
@@ -908,7 +1058,12 @@ export const METRIC_REGISTRY = {
     filters: [],
     row: z.object({ day: day, event_type: text, events: int }),
     columns: {
-      day: { description: "Calendar day (UTC) as `YYYY-MM-DD`.", unit: "label", label: true },
+      day: {
+        description: "Calendar day (UTC) as `YYYY-MM-DD`.",
+        unit: "label",
+        label: true,
+        axis: true,
+      },
       event_type: { description: "Event type identifier.", unit: "label" },
       events: { description: "Events of that type on that day.", unit: "count", measure: true },
     },
@@ -941,7 +1096,17 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/pointer" },
     grain: "bin",
     dimensions: ["scene", "session", "source", "cameraMode"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "source", "cameraMode"],
+    filters: [
+      "since",
+      "until",
+      "bins",
+      "limit",
+      "scene",
+      "session",
+      "source",
+      "cameraMode",
+      "format",
+    ],
     row: heatmapBinRow,
     columns: {
       gx: { description: "Horizontal cell index, `0 .. bins-1`.", unit: "index", label: true },
@@ -974,7 +1139,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/mesh-uv" },
     grain: "bin",
     dimensions: ["scene", "session", "source", "mesh"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "source", "mesh"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "source", "mesh", "format"],
     row: heatmapBinRow,
     columns: {
       gx: { description: "U cell index, `0 .. bins-1`.", unit: "index", label: true },
@@ -1006,7 +1171,17 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/world" },
     grain: "voxel",
     dimensions: ["scene", "source", "cameraMode"],
-    filters: ["since", "until", "cellSize", "limit", "scene", "source", "cameraMode", "region"],
+    filters: [
+      "since",
+      "until",
+      "cellSize",
+      "limit",
+      "scene",
+      "source",
+      "cameraMode",
+      "region",
+      "format",
+    ],
     row: voxelCountRow,
     columns: {
       vx: { description: "Voxel X index (`floor(x / cellSize)`).", unit: "index", label: true },
@@ -1035,7 +1210,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/world/stats" },
     grain: "project",
     dimensions: ["scene", "source", "cameraMode"],
-    filters: ["since", "until", "cellSize", "scene", "source", "cameraMode", "region"],
+    filters: ["since", "until", "cellSize", "scene", "source", "cameraMode", "region", "format"],
     row: spatialStatsRow,
     columns: {
       cells: { description: "Occupied voxels across the whole scene or region.", unit: "count" },
@@ -1068,7 +1243,17 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/gaze" },
     grain: "voxel",
     dimensions: ["scene", "session", "cameraMode"],
-    filters: ["since", "until", "cellSize", "limit", "scene", "session", "cameraMode", "region"],
+    filters: [
+      "since",
+      "until",
+      "cellSize",
+      "limit",
+      "scene",
+      "session",
+      "cameraMode",
+      "region",
+      "format",
+    ],
     row: voxelCountRow,
     columns: {
       vx: { description: "Voxel X index.", unit: "index", label: true },
@@ -1102,7 +1287,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/gaze/stats" },
     grain: "project",
     dimensions: ["scene", "session", "cameraMode"],
-    filters: ["since", "until", "cellSize", "scene", "session", "cameraMode", "region"],
+    filters: ["since", "until", "cellSize", "scene", "session", "cameraMode", "region", "format"],
     row: spatialStatsRow,
     columns: {
       cells: {
@@ -1135,7 +1320,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/camera" },
     grain: "bin",
     dimensions: ["scene", "session", "cameraMode"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "cameraMode"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "cameraMode", "format"],
     row: z.object({ azimuth_bin: int, elevation_bin: int, count: int }),
     columns: {
       azimuth_bin: {
@@ -1174,7 +1359,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/coverage/view-histogram" },
     grain: "bucket",
     dimensions: ["scene", "session", "cameraMode"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "cameraMode"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "cameraMode", "format"],
     row: z.object({ bucket: int, sessions: int }),
     columns: {
       bucket: {
@@ -1182,6 +1367,7 @@ export const METRIC_REGISTRY = {
           "Inclusive lower bound of the coverage band in percent (`0`, `25`, `50`, `75`).",
         unit: "percent",
         label: true,
+        axis: true,
       },
       sessions: {
         description: "Sessions whose coverage fell in the band.",
@@ -1215,7 +1401,17 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/position" },
     grain: "bin",
     dimensions: ["scene", "session", "cameraMode"],
-    filters: ["since", "until", "cellSize", "limit", "scene", "session", "cameraMode", "region"],
+    filters: [
+      "since",
+      "until",
+      "cellSize",
+      "limit",
+      "scene",
+      "session",
+      "cameraMode",
+      "region",
+      "format",
+    ],
     row: z.object({ gx: int, gz: int, avg_y: num, count: int }),
     columns: {
       gx: { description: "Ground cell X index.", unit: "index", label: true },
@@ -1252,7 +1448,7 @@ export const METRIC_REGISTRY = {
     },
     grain: "row",
     dimensions: ["session", "scene"],
-    filters: ["since", "until", "limit", "scene"],
+    filters: ["since", "until", "limit", "scene", "format"],
     row: z.object({ ts: int, x: num, y: num, z: num }),
     columns: {
       ts: {
@@ -1289,7 +1485,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/paths" },
     grain: "row",
     dimensions: ["session", "scene", "cameraMode"],
-    filters: ["since", "until", "cellSize", "limit", "scene", "cameraMode"],
+    filters: ["since", "until", "cellSize", "limit", "scene", "cameraMode", "format"],
     row: z.object({ session_id: text, ts: int, gx: int, gz: int }),
     columns: {
       session_id: { description: "Session the point belongs to.", unit: "id", label: true },
@@ -1326,7 +1522,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/coverage" },
     grain: "voxel",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "cellSize", "limit", "scene", "session"],
+    filters: ["since", "until", "cellSize", "limit", "scene", "session", "format"],
     row: voxelCountRow,
     columns: {
       vx: { description: "Voxel X index.", unit: "index", label: true },
@@ -1370,6 +1566,7 @@ export const METRIC_REGISTRY = {
       "limit",
       "scene",
       "session",
+      "format",
     ],
     row: z.object({ bucket: int, count: int }),
     columns: {
@@ -1378,6 +1575,7 @@ export const METRIC_REGISTRY = {
           "Band index; the band covers `bucket * bucketSize` to `(bucket+1) * bucketSize`.",
         unit: "index",
         label: true,
+        axis: true,
       },
       count: { description: "Camera samples in the band.", unit: "count", measure: true },
     },
@@ -1405,7 +1603,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/click-rays" },
     grain: "voxel",
     dimensions: ["scene", "session", "source", "mesh"],
-    filters: ["since", "until", "cellSize", "limit", "scene", "source", "session"],
+    filters: ["since", "until", "cellSize", "limit", "scene", "source", "session", "format"],
     row: z.object({
       cam_vx: int,
       cam_vy: int,
@@ -1476,6 +1674,7 @@ export const METRIC_REGISTRY = {
       "cellSize",
       "groupByOrigin",
       "originVoxel",
+      "format",
     ],
     row: z.object({
       azimuth_bin: int,
@@ -1548,7 +1747,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/meshes/top" },
     grain: "mesh",
     dimensions: ["mesh", "session"],
-    filters: ["since", "until", "bins", "limit", "session"],
+    filters: ["since", "until", "bins", "limit", "session", "format"],
     row: z.object({ mesh: text, count: int }),
     columns: {
       mesh: { description: "Mesh / object name.", unit: "label", label: true },
@@ -1581,7 +1780,17 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/meshes/sources" },
     grain: "mesh",
     dimensions: ["mesh", "source", "scene", "session", "cameraMode"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "source", "cameraMode"],
+    filters: [
+      "since",
+      "until",
+      "bins",
+      "limit",
+      "scene",
+      "session",
+      "source",
+      "cameraMode",
+      "format",
+    ],
     row: z.object({ mesh: text, source: text, count: int }),
     columns: {
       mesh: { description: "Mesh / object name.", unit: "label", label: true },
@@ -1624,11 +1833,12 @@ export const METRIC_REGISTRY = {
       "source",
       "cameraMode",
       "interval",
+      "format",
     ],
     row: z.object({ mesh: text, bucket: int, count: int }),
     columns: {
       mesh: { description: "Mesh / object name.", unit: "label", label: true },
-      bucket: { description: "Window start as epoch milliseconds.", unit: "epoch-ms" },
+      bucket: { description: "Window start as epoch milliseconds.", unit: "epoch-ms", axis: true },
       count: { description: "Active interactions in the window.", unit: "count", measure: true },
     },
     limits: { maxRows: 2000, maxSummaryRows: 10 },
@@ -1657,7 +1867,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/meshes/dwell" },
     grain: "mesh",
     dimensions: ["mesh", "scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       mesh: text,
       visible_ms: num,
@@ -1708,7 +1918,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/meshes/blind-spots" },
     grain: "mesh",
     dimensions: ["mesh", "scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       mesh: text,
       visible_ms: num,
@@ -1755,7 +1965,17 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/meshes/kinds" },
     grain: "mesh",
     dimensions: ["mesh", "name", "scene", "session", "source", "cameraMode"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "source", "cameraMode"],
+    filters: [
+      "since",
+      "until",
+      "bins",
+      "limit",
+      "scene",
+      "session",
+      "source",
+      "cameraMode",
+      "format",
+    ],
     row: z.object({ mesh: text, kind: text, count: int }),
     columns: {
       mesh: { description: "Mesh / object name.", unit: "label", label: true },
@@ -1802,6 +2022,7 @@ export const METRIC_REGISTRY = {
       "source",
       "cameraMode",
       "bucketSize",
+      "format",
     ],
     row: z.object({ mesh: text, bucket: int, count: int, avg_distance: num }),
     columns: {
@@ -1843,8 +2064,18 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/clicks/dead" },
     grain: "project",
     dimensions: ["scene", "session", "source", "cameraMode"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "source", "cameraMode"],
-    row: z.object({ total_clicks: int, dead_clicks: int }),
+    filters: [
+      "since",
+      "until",
+      "bins",
+      "limit",
+      "scene",
+      "session",
+      "source",
+      "cameraMode",
+      "format",
+    ],
+    row: z.object({ total_clicks: int, dead_clicks: intOrNull }),
     columns: {
       total_clicks: { description: "Clicks in scope.", unit: "count" },
       dead_clicks: {
@@ -1860,6 +2091,7 @@ export const METRIC_REGISTRY = {
       "scene (people click empty space to deselect); the signal is a *change* in the rate or an " +
       "unusually high rate in a scene meant to be clicked.",
     caveats: [
+      EMPTY_SET_NULLS,
       "Clicks are never sampled, so this rate is exact for the captured sessions.",
       "A scene with no pickable geometry registered will report a 100% dead rate — check `top_meshes` is non-empty first.",
       "Fewer than ~50 clicks makes the rate too noisy to act on.",
@@ -1891,6 +2123,7 @@ export const METRIC_REGISTRY = {
       "cameraMode",
       "interval",
       "minRepeats",
+      "format",
     ],
     row: z.object({ session_id: text, mesh: text, bucket: int, clicks: int }),
     columns: {
@@ -1928,7 +2161,17 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/hover/dwell" },
     grain: "mesh",
     dimensions: ["mesh", "scene", "session", "source", "cameraMode"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "source", "cameraMode"],
+    filters: [
+      "since",
+      "until",
+      "bins",
+      "limit",
+      "scene",
+      "session",
+      "source",
+      "cameraMode",
+      "format",
+    ],
     row: z.object({ mesh: text, dwell_ms: num, max_dwell_ms: num, episodes: int }),
     columns: {
       mesh: { description: "Mesh / object name.", unit: "label", label: true },
@@ -1961,7 +2204,17 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/interactions/sources" },
     grain: "row",
     dimensions: ["event_type", "source", "scene", "session", "cameraMode"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "source", "cameraMode"],
+    filters: [
+      "since",
+      "until",
+      "bins",
+      "limit",
+      "scene",
+      "session",
+      "source",
+      "cameraMode",
+      "format",
+    ],
     row: z.object({ event_type: text, source: text, count: int, sessions: int }),
     columns: {
       event_type: { description: "The interaction event type.", unit: "label" },
@@ -1993,7 +2246,17 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/input-actions/top" },
     grain: "row",
     dimensions: ["name", "source", "scene", "session", "cameraMode"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "source", "cameraMode"],
+    filters: [
+      "since",
+      "until",
+      "bins",
+      "limit",
+      "scene",
+      "session",
+      "source",
+      "cameraMode",
+      "format",
+    ],
     row: z.object({ action: text, source: text, count: int }),
     columns: {
       action: {
@@ -2029,7 +2292,17 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/camera-gestures" },
     grain: "row",
     dimensions: ["name", "scene", "session", "source", "cameraMode"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "source", "cameraMode"],
+    filters: [
+      "since",
+      "until",
+      "bins",
+      "limit",
+      "scene",
+      "session",
+      "source",
+      "cameraMode",
+      "format",
+    ],
     row: z.object({ kind: text, gestures: int, total_ms: num, avg_ms: num, max_ms: num }),
     columns: {
       kind: { description: "Gesture class.", unit: "label", label: true },
@@ -2063,7 +2336,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/navigation" },
     grain: "session",
     dimensions: ["session", "scene"],
-    filters: ["since", "until", "moveThreshold", "limit", "scene", "session"],
+    filters: ["since", "until", "moveThreshold", "limit", "scene", "session", "format"],
     row: z.object({
       session_id: text,
       segments: int,
@@ -2110,7 +2383,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/backtrack" },
     grain: "scene",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "cellSize", "limit", "scene", "session"],
+    filters: ["since", "until", "cellSize", "limit", "scene", "session", "format"],
     row: z.object({
       scene: text,
       sessions: int,
@@ -2170,8 +2443,8 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf" },
     grain: "project",
     dimensions: ["session"],
-    filters: ["since", "until", "bins", "limit", "session"],
-    row: z.object({ samples: int, avg_fps: num, min_fps: num, p50_fps: num }),
+    filters: ["since", "until", "bins", "limit", "session", "format"],
+    row: z.object({ samples: int, avg_fps: numOrNull, min_fps: numOrNull, p50_fps: numOrNull }),
     columns: {
       samples: { description: "`frame_perf` samples in scope.", unit: "count" },
       avg_fps: { description: "Mean FPS across samples.", unit: "fps", measure: true },
@@ -2184,6 +2457,7 @@ export const METRIC_REGISTRY = {
       "each visitor equally, use `perf_distribution`; for the resolution behind the number, " +
       "`render_scale_truth`.",
     caveats: [
+      EMPTY_SET_NULLS,
       "`frame_perf` is a sampled channel (`samplePerfMs`, 2 s by default, ADR 0012); `min_fps` is the worst *sampled* frame, not the worst frame.",
       "No scene filter on this builder — scope by session or use `perf_by_scene`.",
       "A healthy average can hide adaptive down-scaling; check `render_scale_truth`.",
@@ -2205,15 +2479,15 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/render-scale" },
     grain: "project",
     dimensions: ["session"],
-    filters: ["since", "until", "bins", "limit", "session"],
+    filters: ["since", "until", "bins", "limit", "session", "format"],
     row: z.object({
       samples: int,
-      avg_fps: num,
-      p50_fps: num,
+      avg_fps: numOrNull,
+      p50_fps: numOrNull,
       avg_render_scale: numOrNull,
       p50_render_scale: numOrNull,
-      downscaled_samples: int,
-      scale_samples: int,
+      downscaled_samples: intOrNull,
+      scale_samples: intOrNull,
     }),
     columns: {
       samples: { description: "`frame_perf` samples in scope.", unit: "count" },
@@ -2240,6 +2514,7 @@ export const METRIC_REGISTRY = {
       "the caller so it stays integer-exact across engines. A high share next to a good FPS means " +
       "the frame rate was bought with pixels.",
     caveats: [
+      EMPTY_SET_NULLS,
       "`scale_samples` is 0 when no connector reported a render scale; both scale columns are then `null` and the share is undefined.",
       "`frame_perf` is a sampled channel (ADR 0012).",
       "No scene filter on this builder.",
@@ -2260,8 +2535,14 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/distribution" },
     grain: "project",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
-    row: z.object({ sessions: int, samples: int, p05_fps: num, p50_fps: num, p95_fps: num }),
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
+    row: z.object({
+      sessions: int,
+      samples: intOrNull,
+      p05_fps: numOrNull,
+      p50_fps: numOrNull,
+      p95_fps: numOrNull,
+    }),
     columns: {
       sessions: { description: "Sessions contributing a percentile.", unit: "sessions" },
       samples: { description: "Total `frame_perf` samples behind them.", unit: "count" },
@@ -2279,6 +2560,7 @@ export const METRIC_REGISTRY = {
       "experience. A wide p05→p95 spread means inconsistent frame pacing, which reads worse than a " +
       "steadily lower frame rate.",
     caveats: [
+      EMPTY_SET_NULLS,
       PER_SESSION_THEN_AGGREGATE,
       "These are medians of per-session percentiles, not global percentiles — they do not describe the worst sessions. Use `jank_rate`'s worst-decile for that.",
       "Fewer than ~20 sessions makes the medians unstable.",
@@ -2300,10 +2582,15 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/fps-histogram" },
     grain: "bucket",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "bucket"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "bucket", "format"],
     row: z.object({ bucket: int, sessions: int }),
     columns: {
-      bucket: { description: "Inclusive lower bound of the FPS bin.", unit: "fps", label: true },
+      bucket: {
+        description: "Inclusive lower bound of the FPS bin.",
+        unit: "fps",
+        label: true,
+        axis: true,
+      },
       sessions: {
         description: "Sessions whose median FPS fell in the bin.",
         unit: "sessions",
@@ -2335,8 +2622,8 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/frame-time" },
     grain: "project",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
-    row: z.object({ sessions: int, samples: int, p50_ms: num, p95_ms: num }),
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
+    row: z.object({ sessions: int, samples: intOrNull, p50_ms: numOrNull, p95_ms: numOrNull }),
     columns: {
       sessions: { description: "Sessions contributing a percentile.", unit: "sessions" },
       samples: { description: "Total `frame_perf` samples behind them.", unit: "count" },
@@ -2355,6 +2642,7 @@ export const METRIC_REGISTRY = {
       "16.7 ms is the 60 Hz budget and 11.1 ms the 90 Hz XR budget. `p95_ms` is what makes a scene " +
       "feel janky even when `p50_ms` looks fine.",
     caveats: [
+      EMPTY_SET_NULLS,
       "`p95_ms` is read from the SDK's per-window p95, not re-derived from window means, so it is a tail of tails.",
       "Samples that never reported frame-time detail are excluded rather than counted as zero.",
       PER_SESSION_THEN_AGGREGATE,
@@ -2375,12 +2663,12 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/jank" },
     grain: "project",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       sessions: int,
-      total_long_frames: num,
-      median_rate: num,
-      worst_decile_rate: num,
+      total_long_frames: numOrNull,
+      median_rate: numOrNull,
+      worst_decile_rate: numOrNull,
     }),
     columns: {
       sessions: { description: "Sessions contributing a rate.", unit: "sessions" },
@@ -2403,6 +2691,7 @@ export const METRIC_REGISTRY = {
       "A `median_rate` near zero with a high `worst_decile_rate` is the signature of a device-class " +
       "problem: most visitors are fine, a tenth are not. Follow it into `perf_by_device`.",
     caveats: [
+      EMPTY_SET_NULLS,
       "A 'long frame' is defined by the SDK's `jankFrameMs` threshold (50 ms by default); apps that retune it are not comparable.",
       "Rates are per sample *window*, not per frame, so they scale with `samplePerfMs`.",
       PER_SESSION_THEN_AGGREGATE,
@@ -2433,12 +2722,13 @@ export const METRIC_REGISTRY = {
       "windowMs",
       "fpsThreshold",
       "stallMs",
+      "format",
     ],
     row: z.object({
       sessions: int,
       churn_sessions: int,
-      fps_churn_sessions: int,
-      stall_churn_sessions: int,
+      fps_churn_sessions: intOrNull,
+      stall_churn_sessions: intOrNull,
     }),
     columns: {
       sessions: {
@@ -2465,6 +2755,7 @@ export const METRIC_REGISTRY = {
       "This is correlation, not causation — a session that ends after a dip may have ended anyway. " +
       "Compare the churn rate against a period with fewer dips before acting.",
     caveats: [
+      EMPTY_SET_NULLS,
       "A session counted in both cause columns is counted once in `churn_sessions`, so the cause columns can sum to more than the total.",
       "Sessions with no `session_end` (a hard tab close that never flushed) are outside the denominator entirely.",
       "Every number moves with `windowMs` / `fpsThreshold` / `stallMs`; report the thresholds with the result.",
@@ -2494,7 +2785,7 @@ export const METRIC_REGISTRY = {
       "scene",
       "session",
     ],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       engine: text,
       is_mobile: text,
@@ -2551,7 +2842,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/by-scene" },
     grain: "scene",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ scene_id: text, sessions: int, samples: int, p50_fps: num }),
     columns: {
       scene_id: { description: "Developer-assigned scene id.", unit: "id", label: true },
@@ -2588,7 +2879,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/perf" },
     grain: "voxel",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "cellSize", "limit", "scene", "session"],
+    filters: ["since", "until", "cellSize", "limit", "scene", "session", "format"],
     row: z.object({ vx: int, vy: int, vz: int, samples: int, avg_fps: num, min_fps: num }),
     columns: {
       vx: { description: "Voxel X index.", unit: "index", label: true },
@@ -2625,7 +2916,12 @@ export const METRIC_REGISTRY = {
     filters: [],
     row: z.object({ day: day, samples: int, avg_fps: num, min_fps: num, p50_fps: num }),
     columns: {
-      day: { description: "Calendar day (UTC) as `YYYY-MM-DD`.", unit: "label", label: true },
+      day: {
+        description: "Calendar day (UTC) as `YYYY-MM-DD`.",
+        unit: "label",
+        label: true,
+        axis: true,
+      },
       samples: { description: "`frame_perf` samples on that day.", unit: "count" },
       avg_fps: { description: "Mean FPS across the day's samples.", unit: "fps", measure: true },
       min_fps: { description: "Worst single sample of the day.", unit: "fps" },
@@ -2656,7 +2952,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/compile-stalls" },
     grain: "row",
     dimensions: ["name", "scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ phase: text, stalls: int, total_ms: num, avg_ms: num, max_ms: num }),
     columns: {
       phase: {
@@ -2699,19 +2995,19 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/resources" },
     grain: "project",
     dimensions: ["session"],
-    filters: ["since", "until", "bins", "limit", "session"],
+    filters: ["since", "until", "bins", "limit", "session", "format"],
     row: z.object({
       samples: int,
-      avg_js_heap_bytes: num,
-      max_js_heap_bytes: num,
-      avg_triangles: num,
-      max_triangles: num,
-      avg_vertices: num,
-      max_vertices: num,
-      avg_texture_bytes: num,
-      max_texture_bytes: num,
-      avg_geometry_bytes: num,
-      max_geometry_bytes: num,
+      avg_js_heap_bytes: numOrNull,
+      max_js_heap_bytes: numOrNull,
+      avg_triangles: numOrNull,
+      max_triangles: numOrNull,
+      avg_vertices: numOrNull,
+      max_vertices: numOrNull,
+      avg_texture_bytes: numOrNull,
+      max_texture_bytes: numOrNull,
+      avg_geometry_bytes: numOrNull,
+      max_geometry_bytes: numOrNull,
     }),
     columns: {
       samples: { description: "Footprint samples in the range.", unit: "count" },
@@ -2731,6 +3027,7 @@ export const METRIC_REGISTRY = {
       "Peaks matter more than averages here: a device runs out of memory at the peak. Read it " +
       "against the device caps in `session_meta`, not against an absolute budget.",
     caveats: [
+      EMPTY_SET_NULLS,
       "Requires the footprint capture option (`capture.resourceSample`, **off by default**, ADR 0012); without it the result is empty.",
       "Unreported metrics are stored as `0` and excluded from the averages, so a metric one engine omits does not dilute another's.",
       "JS heap is only available where the browser exposes it (Chromium-family); elsewhere it reads as unreported.",
@@ -2752,16 +3049,16 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/resource-percentiles" },
     grain: "project",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       sessions: int,
-      samples: int,
-      p50_js_heap_bytes: num,
-      p95_js_heap_bytes: num,
-      p50_texture_bytes: num,
-      p95_texture_bytes: num,
-      p50_triangles: num,
-      p95_triangles: num,
+      samples: intOrNull,
+      p50_js_heap_bytes: numOrNull,
+      p95_js_heap_bytes: numOrNull,
+      p50_texture_bytes: numOrNull,
+      p95_texture_bytes: numOrNull,
+      p50_triangles: numOrNull,
+      p95_triangles: numOrNull,
     }),
     columns: {
       sessions: { description: "Sessions contributing a percentile.", unit: "sessions" },
@@ -2785,6 +3082,7 @@ export const METRIC_REGISTRY = {
       "The distribution-honest companion to `resource_summary`: a single heavy session no longer " +
       "sets the headline footprint.",
     caveats: [
+      EMPTY_SET_NULLS,
       "Requires the footprint capture option (`capture.resourceSample`, **off by default**, ADR 0012).",
       "Unreported metrics (stored `0`) are excluded rather than counted as zero.",
       PER_SESSION_THEN_AGGREGATE,
@@ -2810,7 +3108,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/stability" },
     grain: "project",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ context_losses: int, compile_stalls: int, incidents: int }),
     columns: {
       context_losses: { description: "`context_lost` events in scope.", unit: "count" },
@@ -2842,7 +3140,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/graphics-diagnostics" },
     grain: "row",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ severity: text, category: text, backend: text, incidents: int }),
     columns: {
       severity: {
@@ -2901,6 +3199,7 @@ export const METRIC_REGISTRY = {
       "severity",
       "category",
       "errorKind",
+      "format",
     ],
     row: voxelCountRow,
     columns: {
@@ -2935,7 +3234,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/rendering-technology" },
     grain: "row",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       api: text,
       backend: text,
@@ -2980,7 +3279,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/capabilities" },
     grain: "row",
     dimensions: ["name", "scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ kind: text, from: text, to: text, changes: int }),
     columns: {
       kind: {
@@ -3028,7 +3327,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/rotation" },
     grain: "session",
     dimensions: ["session", "scene"],
-    filters: ["since", "until", "rapidTurn", "limit", "scene", "session"],
+    filters: ["since", "until", "rapidTurn", "limit", "scene", "session", "format"],
     row: z.object({
       session_id: text,
       samples: int,
@@ -3082,7 +3381,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/sources" },
     grain: "row",
     dimensions: ["source", "scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ source: text, interactions: int, sessions: int }),
     columns: {
       source: { description: "XR input source.", unit: "label", label: true },
@@ -3114,7 +3413,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/abandonment" },
     grain: "session",
     dimensions: ["session", "scene"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       session_id: text,
       events: int,
@@ -3159,7 +3458,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/locomotion" },
     grain: "session",
     dimensions: ["session", "scene"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       session_id: text,
       fly_gestures: int,
@@ -3216,7 +3515,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/tracking" },
     grain: "session",
     dimensions: ["session", "scene", "source"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       session_id: text,
       degraded_ms: num,
@@ -3268,7 +3567,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/boundary" },
     grain: "voxel",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "cellSize", "limit", "scene", "session", "region"],
+    filters: ["since", "until", "cellSize", "limit", "scene", "session", "region", "format"],
     row: voxelCountRow,
     columns: {
       vx: { description: "Voxel X index.", unit: "index", label: true },
@@ -3307,7 +3606,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/boundary/stats" },
     grain: "project",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "cellSize", "scene", "session", "region"],
+    filters: ["since", "until", "cellSize", "scene", "session", "region", "format"],
     row: spatialStatsRow,
     columns: {
       cells: { description: "Occupied boundary voxels across the scene or region.", unit: "count" },
@@ -3337,7 +3636,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/boundary-contacts" },
     grain: "session",
     dimensions: ["session", "scene"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ session_id: text, contacts: int, near_ms: num }),
     columns: {
       session_id: { description: "Session identifier.", unit: "id", label: true },
@@ -3373,13 +3672,14 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/ar/placement/time-to-place" },
     grain: "bucket",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session", "bucketMs"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "bucketMs", "format"],
     row: z.object({ bucket: int, placements: int }),
     columns: {
       bucket: {
         description: "Inclusive lower bound of the time-to-place bin.",
         unit: "ms",
         label: true,
+        axis: true,
       },
       placements: { description: "Placement settles in the bin.", unit: "count", measure: true },
     },
@@ -3408,13 +3708,14 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/ar/placement/attempts" },
     grain: "bucket",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ attempts: int, placements: int }),
     columns: {
       attempts: {
         description: "Place / re-place actions before the settle.",
         unit: "count",
         label: true,
+        axis: true,
       },
       placements: {
         description: "Settles that took exactly that many attempts.",
@@ -3447,7 +3748,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/ar/placement/surfaces" },
     grain: "row",
     dimensions: ["scene", "session"],
-    filters: ["since", "until", "bins", "limit", "scene", "session"],
+    filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ surface: text, placements: int, avg_scale: num }),
     columns: {
       surface: {
@@ -3490,13 +3791,14 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/funnel" },
     grain: "bucket",
     dimensions: ["scene", "cameraMode"],
-    filters: ["since", "until", "scene", "cameraMode", "steps"],
+    filters: ["since", "until", "scene", "cameraMode", "steps", "format"],
     row: z.object({ step: int, sessions: int }),
     columns: {
       step: {
         description: "0-based step index, in the order the caller supplied.",
         unit: "index",
         label: true,
+        axis: true,
       },
       sessions: {
         description: "Sessions that reached the step in order.",
@@ -3530,7 +3832,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/scene-retention" },
     grain: "row",
     dimensions: ["scene"],
-    filters: ["since", "until", "limit"],
+    filters: ["since", "until", "limit", "format"],
     row: z.object({ from_scene: text, to_scene: text, sessions: int }),
     columns: {
       from_scene: { description: "Scene the session moved from.", unit: "id", label: true },
@@ -3567,13 +3869,14 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/load-bounce" },
     grain: "bucket",
     dimensions: ["scene"],
-    filters: ["since", "until", "scene", "bands"],
+    filters: ["since", "until", "scene", "bands", "format"],
     row: z.object({ band: int, sessions: int, bounced: int }),
     columns: {
       band: {
         description: "0-based band index, ordered by ascending load time.",
         unit: "index",
         label: true,
+        axis: true,
       },
       sessions: { description: "Sessions whose initial load fell in the band.", unit: "sessions" },
       bounced: {
@@ -3609,7 +3912,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/variant-leaderboard" },
     grain: "row",
     dimensions: ["name", "scene", "cameraMode"],
-    filters: ["since", "until", "scene", "cameraMode", "variant", "conversion", "limit"],
+    filters: ["since", "until", "scene", "cameraMode", "variant", "conversion", "limit", "format"],
     row: z.object({
       variant: text,
       views: int,
@@ -3666,7 +3969,9 @@ type RegisteredBuilderName = {
   [K in MetricId]: MetricRegistry[K] extends { builder: infer B extends string } ? B : never;
 }[MetricId];
 
-/** Aggregations exported by `aggregations.ts` that no registry entry claims. */
+/**
+ * Names in {@link AGGREGATION_BUILDER_NAMES} that no registry entry claims.
+ */
 export type UnregisteredAggregation = Exclude<AggregationBuilderName, RegisteredBuilderName>;
 
 /** Fails to compile unless `T` is `never`; the error names the offending member. */
@@ -3674,9 +3979,11 @@ type AssertNever<T extends never> = T;
 
 /**
  * **Compile-time coverage guard (design sketch §A.3).** If you add a `build*`
- * aggregation without a registry entry, this line fails to typecheck and names
- * the missing builder. Add the entry — a new aggregation is not done until it
- * has one. The runtime companion lives in `src/__tests__/registry.test.ts`.
+ * aggregation to {@link AGGREGATION_BUILDER_NAMES} without a registry entry,
+ * this line fails to typecheck and names the missing builder. Add the entry — a
+ * new aggregation is not done until it has one. The runtime companions are this
+ * package's `src/__tests__/registry.test.ts` (entry ↔ list) and `@uptimizr/db`'s
+ * `src/__tests__/registry.test.ts` (list ↔ the real `build*` exports).
  */
 export type NoUnregisteredAggregations = AssertNever<UnregisteredAggregation>;
 
@@ -3699,11 +4006,30 @@ export function allMetrics(): readonly MetricDefinition[] {
 }
 
 /**
+ * Reverse lookup: aggregation builder name → the metric that claims it.
+ *
+ * `MetricDefinition.builder` is the forward direction (a metric names its
+ * builder); this is the direction the *store edge* needs — a `QuerySpec` knows
+ * which aggregation produced it, and numeric coercion has to find that
+ * aggregation's row schema (ADR 0051 §2). Built once, at module load: the
+ * compile-time coverage guard below makes the mapping total over every exported
+ * `build*`, and every builder is claimed by exactly one metric (asserted in
+ * `src/__tests__/registry.test.ts`).
+ */
+export const METRIC_BY_BUILDER: ReadonlyMap<AggregationBuilderName, MetricDefinition> = new Map(
+  METRIC_IDS.map((id) => METRIC_REGISTRY[id] as MetricDefinition)
+    .filter((metric): metric is MetricDefinition & { builder: AggregationBuilderName } =>
+      Boolean(metric.builder),
+    )
+    .map((metric) => [metric.builder, metric] as const),
+);
+
+/**
  * The registry entry that claims a given aggregation builder, or `undefined` for
  * the (currently empty) set of unclaimed builders.
  */
 export function metricForBuilder(builder: AggregationBuilderName): MetricDefinition | undefined {
-  return allMetrics().find((metric) => metric.builder === builder);
+  return METRIC_BY_BUILDER.get(builder);
 }
 
 /**

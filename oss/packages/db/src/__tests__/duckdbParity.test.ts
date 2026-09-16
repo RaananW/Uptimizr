@@ -10,7 +10,13 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PARITY_CASES, PARITY_EVENTS, diffParity, duckdbDialect } from "../index.js";
+import {
+  PARITY_CASES,
+  PARITY_EVENTS,
+  diffParity,
+  duckdbDialect,
+  numericColumnsForSpec,
+} from "../index.js";
 import { createDuckdbClient, type DuckdbClient } from "../duckdb/client.js";
 import { migrateDuckdb } from "../duckdb/migrations.js";
 import { insertEvents } from "../duckdb/events.js";
@@ -104,13 +110,15 @@ describe("duckdb parity (vs golden)", () => {
 
   for (const parityCase of PARITY_CASES) {
     it(`matches golden: ${parityCase.name}`, async () => {
-      const rows = await runDuckdbQuery<Record<string, unknown>>(
-        db,
-        parityCase.build(duckdbDialect),
-      );
+      const spec = parityCase.build(duckdbDialect);
+      const rows = await runDuckdbQuery<Record<string, unknown>>(db, spec);
       const errors = diffParity(rows, parityCase.golden, {
         sortKeys: parityCase.sortKeys,
         ignoreColumns: parityCase.ignoreColumns,
+        // Tolerance rule 5 (ADR 0051 §2): every column the registry declares
+        // numeric must be a JS number, not a string — the store's runner is
+        // responsible for that, and this is where it is proven per engine.
+        numericColumns: numericColumnsForSpec(spec),
       });
       expect(errors, errors.join("\n")).toEqual([]);
     });
