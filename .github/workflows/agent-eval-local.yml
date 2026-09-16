@@ -1,0 +1,52 @@
+name: Agent eval (local model)
+
+# The weekly local-model leg of the evaluation harness (ADR 0051 §8): the
+# curated WebLLM models need WebGPU, so they can only run in a browser, and they
+# are far too slow to sit in a PR gate.
+#
+# The job is **scaffolded, not measuring**: GitHub-hosted runners expose no
+# WebGPU adapter, so `scripts/webllm-eval.ts` reports what is missing and exits
+# 0 rather than pretending to have run a model. It is wired up now so that
+# pointing it at a GPU-capable runner is a one-line change instead of a new
+# workflow. See the module comment in `oss/packages/agent-eval/scripts/webllm-eval.ts`.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Sundays at 05:00 UTC, after the weekly Renovate batch has settled.
+    - cron: "0 5 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  local-model:
+    name: Agent eval (WebLLM, weekly)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the harness dependencies
+        run: pnpm --filter @uptimizr/agent-eval... build
+
+      # Sanity-check the harness itself on the schedule too: if the bank or the
+      # scoring has rotted, the weekly run should say so even while the local
+      # model leg is still a stub.
+      - name: Question bank + scoring suites
+        run: pnpm --filter @uptimizr/agent-eval test
+
+      - name: Local-model eval
+        run: pnpm --filter @uptimizr/agent-eval run eval:local

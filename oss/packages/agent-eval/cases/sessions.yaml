@@ -1,0 +1,79 @@
+# Sessions, scenes and the raw event mix — the "what is in this project at all?"
+# questions every other investigation starts from.
+#
+# Every number here is derived from the seeded fixtures:
+#   pnpm --filter @uptimizr/agent-eval derive list_sessions
+
+- id: sessions_recorded
+  category: sessions
+  question: How many sessions were recorded in this project, and which one produced the most events?
+  expectedTools:
+    - [list_sessions]
+  expectedAnswer:
+    numbers:
+      - { value: 22, label: events in the busiest session }
+    phrases: ["s4"]
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: sessions_scenes_active
+  category: sessions
+  question: Which scenes saw activity, and which one had the most events?
+  expectedTools:
+    - [list_scenes]
+  expectedAnswer:
+    numbers:
+      - { value: 27, label: events in gallery }
+      - { value: 9, label: events in arena }
+    phrases: ["gallery", "lobby", "arena"]
+    forbiddenPhrases: ["no data"]
+
+- id: sessions_event_mix
+  category: sessions
+  question: What kinds of events were captured, and how many of each?
+  expectedTools:
+    - [event_counts]
+  expectedAnswer:
+    numbers:
+      - { value: 9, label: camera_sample events }
+      - { value: 7, label: pointer_click events }
+    phrases: ["camera_sample", "pointer_click", "frame_perf"]
+    forbiddenPhrases: ["no data"]
+
+- id: sessions_volume_over_time
+  category: sessions
+  question: How did event volume and average frame rate move over the captured window?
+  expectedTools:
+    - [timeseries]
+  expectedAnswer:
+    numbers:
+      - { value: 59, label: events in the bucket }
+      - { value: 42.2, tolerance: 0.05, label: average FPS }
+    forbiddenPhrases: ["no data"]
+
+- id: sessions_one_session_detail
+  category: sessions
+  context:
+    session: s1
+  question: What device, graphics engine and camera type did that session use?
+  expectedTools:
+    - [session_meta]
+  expectedArgs:
+    session_meta: { sessionId: s1 }
+  expectedAnswer:
+    phrases: ["webgpu", "arc-rotate"]
+    forbiddenPhrases: ["no data", "webgl2"]
+
+- id: sessions_scene_geometry
+  category: sessions
+  context:
+    scene: lobby
+  question: What does that scene actually contain — how large is it and which meshes are registered?
+  expectedTools:
+    - [scene_representation]
+  expectedArgs:
+    scene_representation: { sceneId: lobby }
+  expectedAnswer:
+    numbers:
+      - { value: 3, label: registered meshes }
+    phrases: ["box", "sphere", "door"]
+    forbiddenPhrases: ["not found"]

@@ -148,6 +148,12 @@ The assistant is tuned for that reality:
   additionally serves a bounded [`format=summary` envelope](/docs/api/query/#result-formats) — top
   rows, a trend or merged spatial clusters, with shares and a templated reading — which the tool
   catalog will adopt as its default ([#299](https://github.com/RaananW/Uptimizr/issues/299)).
+- **An evaluated tool catalog.** The tools the assistant hands your model are not just generated —
+  they are measured. A bank of ~48 real analytics questions is run against a deterministic fixture
+  set through this same catalog whenever it changes, and each answer is scored on tool selection,
+  argument correctness and accuracy, so a tool description that makes a model pick badly shows up as
+  a failed case. The harness is in the repository at
+  [`oss/packages/agent-eval`](https://github.com/RaananW/Uptimizr/tree/main/oss/packages/agent-eval).
 
 > **Local mode is for quick, single-metric answers.** Use it for _"top meshes this week"_, _"average
 > FPS"_, or _"events in the last 24h"_. For deeper, multi-step analysis, switch to a

@@ -1,0 +1,66 @@
+# How people move through the scene — standpoints, paths, distance travelled,
+# backtracking and camera handling.
+
+- id: navigation_standpoints
+  category: navigation
+  question: Where do people stand or place the camera, and how much of the space do they reach?
+  expectedTools:
+    - [position_heatmap]
+    - [scene_coverage]
+  expectedAnswer:
+    numbers:
+      - { value: 4, label: samples in the busiest floor cell }
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: navigation_one_trajectory
+  category: navigation
+  context:
+    session: s4
+  question: Trace the path that session took through the scene.
+  expectedTools:
+    - [session_trajectory]
+  expectedArgs:
+    session_trajectory: { sessionId: s4 }
+  expectedAnswer:
+    numbers:
+      - { value: 1.6, tolerance: 0.01, label: eye height }
+      - { value: 4, label: furthest x reached }
+    forbiddenPhrases: ["no data"]
+
+- id: navigation_distance_travelled
+  category: navigation
+  question: How far did each session travel, and which one covered the most ground?
+  expectedTools:
+    - [navigation_stats]
+  expectedAnswer:
+    numbers:
+      - { value: 10, label: s1 total distance }
+      - { value: 9.41, tolerance: 0.02, label: s4 total distance }
+    phrases: ["s1", "s4"]
+    forbiddenPhrases: ["no data"]
+
+- id: navigation_backtracking
+  category: navigation
+  question: Are people walking back over ground they already covered? Which scene is worst?
+  expectedTools:
+    - [backtrack_ratio]
+  expectedAnswer:
+    numbers:
+      - { value: 0.2, tolerance: 0.001, label: lobby backtrack ratio }
+      - { value: 5, label: lobby cell entries }
+    phrases: ["lobby"]
+    forbiddenPhrases: ["no data"]
+
+- id: navigation_camera_handling
+  category: navigation
+  question: How are people driving the camera, how far from the origin do they sit, and what do the aggregate paths look like?
+  expectedTools:
+    - [camera_gestures]
+    - [camera_distance]
+    - [aggregate_paths]
+  expectedAnswer:
+    numbers:
+      - { value: 2000, label: fly gesture milliseconds }
+      - { value: 1000, label: navigate gesture milliseconds }
+    phrases: ["fly", "navigate"]
+    forbiddenPhrases: ["no data"]
