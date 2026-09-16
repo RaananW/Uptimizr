@@ -1,0 +1,661 @@
+{
+  "list_sessions": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "limit": {
+        "description": "Maximum rows to return.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      }
+    },
+    "additionalProperties": false
+  },
+  "pointer_heatmap": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "bins": {
+        "description": "Grid resolution per axis.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 500
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "source": {
+        "description": "Restrict a pointer/world heatmap to one input source.",
+        "type": "string",
+        "enum": [
+          "mouse",
+          "touch",
+          "stylus",
+          "pen",
+          "xr-controller",
+          "hand",
+          "gaze",
+          "transient",
+          "other"
+        ]
+      },
+      "session": {
+        "description": "Scope the aggregate to a single session id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "world_heatmap": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "cellSize": {
+        "description": "Voxel size in world units.",
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "limit": {
+        "description": "Maximum rows to return.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "source": {
+        "description": "Restrict a pointer/world heatmap to one input source.",
+        "type": "string",
+        "enum": [
+          "mouse",
+          "touch",
+          "stylus",
+          "pen",
+          "xr-controller",
+          "hand",
+          "gaze",
+          "transient",
+          "other"
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "camera_heatmap": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "bins": {
+        "description": "Grid resolution per axis.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 500
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "session": {
+        "description": "Scope the aggregate to a single session id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "click_rays": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "cellSize": {
+        "description": "Voxel size in world units.",
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "limit": {
+        "description": "Maximum rows to return.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "source": {
+        "description": "Restrict a pointer/world heatmap to one input source.",
+        "type": "string",
+        "enum": [
+          "mouse",
+          "touch",
+          "stylus",
+          "pen",
+          "xr-controller",
+          "hand",
+          "gaze",
+          "transient",
+          "other"
+        ]
+      },
+      "session": {
+        "description": "Scope the aggregate to a single session id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "flow_links": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "bins": {
+        "description": "Grid resolution per axis.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 500
+      },
+      "limit": {
+        "description": "Maximum rows to return.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "session": {
+        "description": "Scope the aggregate to a single session id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "top_meshes": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "limit": {
+        "description": "Maximum rows to return.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "session": {
+        "description": "Scope the aggregate to a single session id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "perf_summary": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "session": {
+        "description": "Scope the aggregate to a single session id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "list_scenes": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "limit": {
+        "description": "Maximum rows to return.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      }
+    },
+    "additionalProperties": false
+  },
+  "timeseries": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "interval": {
+        "description": "Time-series bucket width, seconds.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "type": {
+        "description": "Restrict to a single event type, e.g. pointer_click.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "event_counts": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "session_meta": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "sessionId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The session id to describe."
+      }
+    },
+    "required": [
+      "sessionId"
+    ],
+    "additionalProperties": false
+  },
+  "scene_representation": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "sceneId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The scene id to fetch."
+      }
+    },
+    "required": [
+      "sceneId"
+    ],
+    "additionalProperties": false
+  },
+  "funnel": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "cameraMode": {
+        "description": "Camera navigation mode to scope to: 'viewer' (orbit) or 'first-person' (walkable).",
+        "type": "string",
+        "enum": [
+          "viewer",
+          "first-person"
+        ]
+      },
+      "steps": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Funnel steps as a JSON-encoded array of ordered step predicates (ADR 0038). Required. Each step is `{ \"type\": <event_type>, ... }`; e.g. `[{\"type\":\"scene_change\",\"to\":\"lobby\"},{\"type\":\"mesh_interaction\",\"mesh\":\"buy\"}]`."
+      }
+    },
+    "required": [
+      "steps"
+    ],
+    "additionalProperties": false
+  },
+  "aggregate_paths": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "cellSize": {
+        "description": "Voxel size in world units.",
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "limit": {
+        "description": "Maximum rows to return.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "cameraMode": {
+        "description": "Camera navigation mode to scope to: 'viewer' (orbit) or 'first-person' (walkable).",
+        "type": "string",
+        "enum": [
+          "viewer",
+          "first-person"
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "rendering_technology": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "session": {
+        "description": "Scope the aggregate to a single session id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "xr_rotation": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "rapidTurn": {
+        "description": "Rapid-turn threshold in radians (0..π); view turns above this flag motion-sickness risk.",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 3.141592653589793
+      },
+      "limit": {
+        "description": "Maximum rows to return.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "session": {
+        "description": "Scope the aggregate to a single session id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "xr_sources": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "limit": {
+        "description": "Maximum rows to return.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "session": {
+        "description": "Scope the aggregate to a single session id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "xr_abandonment": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "limit": {
+        "description": "Maximum rows to return.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "session": {
+        "description": "Scope the aggregate to a single session id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "xr_locomotion": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "since": {
+        "description": "Start of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "until": {
+        "description": "End of the time range, epoch milliseconds.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "limit": {
+        "description": "Maximum rows to return.",
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 1000
+      },
+      "scene": {
+        "description": "Restrict to one developer-assigned scene id.",
+        "type": "string"
+      },
+      "session": {
+        "description": "Scope the aggregate to a single session id.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  }
+}

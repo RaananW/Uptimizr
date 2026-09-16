@@ -18,6 +18,16 @@ export interface ReadTool {
   title: string;
   description: string;
   inputSchema: z.ZodRawShape;
+  /**
+   * Zod raw shape describing what the tool **returns**, derived from the metric
+   * registry's `row` schema (ADR 0051 §1). It is always the single-key envelope
+   * `{ rows: Row[] }`: a single-object result (a session descriptor, a one-row
+   * summary) is reported as a one-element array so every tool has the same
+   * shape. Consumers that speak MCP register it as the tool's `outputSchema`
+   * and return matching `structuredContent`; consumers that do not can ignore
+   * it. Optional so a hand-built tool stays valid.
+   */
+  outputSchema?: z.ZodRawShape;
   buildRequest: (args: Record<string, unknown>) => ReadToolRequest;
 }
 
