@@ -27,7 +27,19 @@
  *    analytics, and their string rendering differs by engine; list them in a
  *    case's `ignoreColumns`. Date-granular `day` strings (`YYYY-MM-DD`) render
  *    identically in both engines and are compared.
+ * 5. **Numeric columns must be JS numbers.** Parity is not only about *values*:
+ *    a store that returns `"42"` where another returns `42` is not in parity,
+ *    because every consumer then has to coerce (ADR 0051 §2). Pass
+ *    {@link ParityCompareOptions.numericColumns} — normally
+ *    {@link numericColumnsForSpec}, which reads the registry `row` schema of the
+ *    metric the query was tagged with — and every one of those columns is
+ *    asserted `typeof === "number"` (or `null`, for a column the registry
+ *    declares nullable). This is what proves each store's runner coerces at its
+ *    edge rather than leaving it to the caller.
  */
+
+import { numericColumnsOfMetric } from "../query/coerce.js";
+import type { QuerySpec } from "../query/types.js";
 
 /** Absolute tolerance for floating-point column comparison. */
 export const PARITY_ABS_TOLERANCE = 1e-6;
@@ -42,6 +54,21 @@ export interface ParityCompareOptions {
   readonly sortKeys: readonly string[];
   /** Columns ignored entirely (engine-specific temporal renderings). */
   readonly ignoreColumns?: readonly string[];
+  /**
+   * Columns the registry declares numeric. Each is asserted to be a JS `number`
+   * (or `null`) in every *actual* row — see tolerance rule 5. Usually supplied by
+   * {@link numericColumnsForSpec}; omit to skip the type assertion.
+   */
+  readonly numericColumns?: readonly string[];
+}
+
+/**
+ * The numeric columns of the metric a {@link QuerySpec} was tagged with, ready to
+ * hand to {@link diffParity} as `numericColumns`. An untagged or unregistered
+ * spec yields `[]` (no assertion), so this is always safe to call.
+ */
+export function numericColumnsForSpec(spec: QuerySpec): readonly string[] {
+  return numericColumnsOfMetric(spec.metric);
 }
 
 function numbersClose(a: number, b: number): boolean {
@@ -86,6 +113,20 @@ export function diffParity(
 ): string[] {
   const errors: string[] = [];
   const ignore = new Set(options.ignoreColumns ?? []);
+
+  // Type parity (rule 5), checked before value parity so a store that hands back
+  // string-encoded aggregates is named as such rather than as a value mismatch.
+  for (const column of options.numericColumns ?? []) {
+    if (ignore.has(column)) continue;
+    for (let i = 0; i < actual.length; i++) {
+      const value = actual[i]![column];
+      if (value === undefined || value === null || typeof value === "number") continue;
+      errors.push(
+        `row ${i} column "${column}": expected a JS number (the store must coerce at its ` +
+          `edge), got ${typeof value} ${JSON.stringify(value)}`,
+      );
+    }
+  }
 
   if (actual.length !== golden.length) {
     errors.push(`row count: expected ${golden.length}, got ${actual.length}`);

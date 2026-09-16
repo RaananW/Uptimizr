@@ -142,6 +142,12 @@ The assistant is tuned for that reality:
   top meshes this week?"_, _"How's my average FPS?"_) in the empty conversation; each maps to a
   single core tool. Clicking one sends it — a reliable first-run path that also demonstrates the
   agent working.
+- **Keep tool results small.** A tool hands the model the endpoint's rows as they are, and a big
+  heatmap can fill a local model's whole context on its own. Prefer questions that map to a small
+  result, and pass `limit` / `scene` / a tight range when you call the tools yourself. The collector
+  additionally serves a bounded [`format=summary` envelope](/docs/api/query/#result-formats) — top
+  rows, a trend or merged spatial clusters, with shares and a templated reading — which the tool
+  catalog will adopt as its default ([#299](https://github.com/RaananW/Uptimizr/issues/299)).
 - **An evaluated tool catalog.** The tools the assistant hands your model are not just generated —
   they are measured. A bank of ~48 real analytics questions is run against a deterministic fixture
   set through this same catalog whenever it changes, and each answer is scored on tool selection,

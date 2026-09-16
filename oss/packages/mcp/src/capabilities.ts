@@ -1,11 +1,27 @@
 import { EVENT_TYPES, SCHEMA_VERSION, type EventType } from "@uptimizr/schema";
-import { readTools } from "@uptimizr/agent-core";
+import { z } from "zod";
+import {
+  FILTER_TARGETS,
+  allMetrics,
+  isResourceMetric,
+  type ColumnSemantics,
+  type DimensionId,
+  type FilterId,
+  type MetricCategory,
+  type MetricComparison,
+  type MetricDefinition,
+  type MetricGrain,
+} from "@uptimizr/metrics";
 
 /**
  * One tool the server exposes, described for self-discovery: its name, a human
- * title, what it returns, and the parameter names it accepts. Sourced directly
- * from the shared `@uptimizr/agent-core` catalog so it can never drift from the
- * tools actually registered (ADR 0050 §7).
+ * title, what it returns, and the parameter names it accepts.
+ *
+ * Derived from the **semantic metric registry** (`@uptimizr/metrics`, ADR
+ * 0051 §1) rather than restated here, so the catalog cannot drift from the
+ * metrics the collector can actually compute. `params` are the request
+ * parameters of the underlying query endpoint — the definitive *input schema*
+ * of a registered MCP tool is the one returned by `tools/list`.
  */
 export interface CapabilityToolDescriptor {
   name: string;
@@ -21,10 +37,51 @@ export interface CapabilityParamDescriptor {
 }
 
 /**
+ * One registry metric, serialised for an agent: everything in the registry
+ * entry except the SQL `builder` (an implementation detail with no meaning
+ * outside `@uptimizr/db`), with the Zod `row` schema replaced by its JSON
+ * Schema so a client with no Zod can still validate or shape a result.
+ */
+export interface CapabilityMetricDescriptor {
+  id: string;
+  title: string;
+  description: string;
+  category: MetricCategory;
+  /** What one row represents. */
+  grain: MetricGrain;
+  /** The collector route it is served on, when it has one. */
+  endpoint?: { method: "GET"; path: string; pathParams?: readonly FilterId[] };
+  /** Group-by dimensions the rows are keyed by. */
+  dimensions: readonly DimensionId[];
+  /** Accepted request parameters. */
+  filters: readonly FilterId[];
+  /** JSON Schema of one result row. */
+  row: Record<string, unknown>;
+  /** Per-column semantics: description, unit, which column is the measure/label. */
+  columns: Readonly<Record<string, ColumnSemantics>>;
+  /** Registry-declared caps, so no consumer asks for an unbounded payload. */
+  limits: { maxRows: number; maxSummaryRows: number };
+  /** How to read the result. */
+  interpretation: string;
+  /** Small-sample, capture-gating and sampling-rate warnings. */
+  caveats: readonly string[];
+  /** Capture channels (ADR 0012) that must be enabled for it to have data. */
+  sourceChannels: readonly EventType[];
+  related: readonly string[];
+  comparable?: MetricComparison;
+  /**
+   * `true` for a **resource** read (a single stored object such as a session
+   * descriptor) rather than an aggregation over the event stream.
+   */
+  resource: boolean;
+}
+
+/**
  * Machine-readable capabilities/schema descriptor an agent can read (via the
  * `uptimizr://capabilities` resource) to learn what it can ask before guessing.
  * It is strictly a description of the **read-only** surface — event types, the
- * tool catalog, and parameter semantics — and never itself queries any data.
+ * metric registry, the tool catalog, and parameter semantics — and never itself
+ * queries any data.
  */
 export interface CapabilitiesDescriptor {
   /** Wire-format version of the event schema (`@uptimizr/schema`). */
@@ -37,84 +94,70 @@ export interface CapabilitiesDescriptor {
   params: readonly CapabilityParamDescriptor[];
   /** The read-only tool catalog (each entry is one aggregate query endpoint). */
   tools: readonly CapabilityToolDescriptor[];
+  /**
+   * The full semantic metric registry: units, grain, dimensions, row schema,
+   * limits, interpretation and caveats per metric (ADR 0051 §1).
+   */
+  metrics: readonly CapabilityMetricDescriptor[];
   /** Human-oriented notes about scope and discovery. */
   notes: readonly string[];
 }
 
-/**
- * Semantics for every parameter used across the tool catalog. Kept in one place
- * so a param means the same thing everywhere; {@link buildCapabilities} only
- * surfaces the entries a tool actually uses, and a unit test asserts coverage.
- */
-const PARAM_SEMANTICS: Readonly<Record<string, string>> = {
-  since: "Start of the time range, epoch milliseconds (inclusive). Omit for all-time.",
-  until: "End of the time range, epoch milliseconds (exclusive). Omit for up-to-now.",
-  bins: "Grid resolution per axis for a binned heatmap (1–500).",
-  limit: "Maximum rows to return (1–1000).",
-  scene: "Restrict to one developer-assigned scene id (see the uptimizr://scenes resource).",
-  session: "Scope the aggregate to a single session id.",
-  cellSize: "Voxel edge length in world units for a spatial (world-space) aggregate.",
-  interval: "Time-series bucket width in seconds.",
-  type: "Restrict a time series to one event type (e.g. pointer_click).",
-  source:
-    "Input source filter: mouse, touch, stylus, pen, xr-controller, hand, gaze, transient, other.",
-  cameraMode: "Camera navigation mode: 'viewer' (orbit) or 'first-person' (walkable).",
-  rapidTurn: "Rapid-turn threshold in radians (0..π); XR view turns above this flag discomfort.",
-  steps: "Funnel steps as a JSON-encoded array of ordered step predicates (ADR 0038).",
-  sessionId: "The exact session id to describe.",
-  sceneId: "The exact scene id to fetch.",
-  // Parameters the generated catalog (ADR 0051 §1) surfaces for the metrics the
-  // hand-written catalog never exposed. Semantics mirror the registry's
-  // `FILTER_TARGETS`; #297 replaces this glossary with the registry itself.
-  mesh: "Restrict to one mesh/object name (required for the per-mesh UV heatmap).",
-  region:
-    "World-space drill-down box `minX,minY,minZ,maxX,maxY,maxZ`; omit for the whole scene (ADR 0040 §4).",
-  bucket: "Histogram bin width in FPS.",
-  bucketMs: "Histogram bin width in milliseconds.",
-  bucketSize: "Histogram bin width in world units.",
-  minRepeats: "Minimum clicks in a window before it counts as a rage cluster.",
-  windowMs: "How long before a session's end a performance dip still counts as correlated.",
-  fpsThreshold: "A frame-perf sample below this FPS counts as a dip.",
-  stallMs: "A shader-compile stall at least this long (ms) counts as a dip.",
-  moveThreshold:
-    "Inter-sample distance in world units above which a segment counts as active travel.",
-  centerX: "X of the reference point camera distances are measured from.",
-  centerY: "Y of the reference point camera distances are measured from.",
-  centerZ: "Z of the reference point camera distances are measured from.",
-  severity:
-    "Graphics-diagnostic severity (info / warning / error / fatal); setting it excludes JS runtime errors.",
-  category:
-    "Graphics-diagnostic category (context-loss / validation / shader-compile / …); setting it excludes JS runtime errors.",
-  errorKind:
-    "Runtime-error kind (error / unhandledrejection); setting it excludes engine diagnostics.",
-  groupByOrigin: "Add the click-time standpoint voxel as a grouping dimension.",
-  originVoxel: "Restrict to clicks whose standpoint falls in this `vx,vy,vz` voxel.",
-  bands:
-    "Ascending, comma-separated load-time band boundaries in ms; omit for the default 1000,3000,5000.",
-  variant:
-    "JSON funnel-step predicate selecting the variant events; omit to treat every custom event as a variant.",
-  conversion: "JSON funnel-step predicate for the success event; omit to report views only.",
-};
+/** Every request parameter a metric accepts: its path params, then its filters. */
+function paramsOf(metric: MetricDefinition): readonly FilterId[] {
+  return [...(metric.endpoint?.pathParams ?? []), ...metric.filters];
+}
+
+/** Serialise one registry entry, dropping `builder` and unwrapping `row`. */
+function toMetricDescriptor(metric: MetricDefinition): CapabilityMetricDescriptor {
+  const row = z.toJSONSchema(metric.row, {
+    io: "output",
+    unrepresentable: "any",
+  }) as Record<string, unknown>;
+  delete row.$schema;
+  return {
+    id: metric.id,
+    title: metric.title,
+    description: metric.description,
+    category: metric.category,
+    grain: metric.grain,
+    ...(metric.endpoint ? { endpoint: metric.endpoint } : {}),
+    dimensions: metric.dimensions,
+    filters: metric.filters,
+    row,
+    columns: metric.columns,
+    limits: metric.limits,
+    interpretation: metric.interpretation,
+    caveats: metric.caveats,
+    sourceChannels: metric.sourceChannels,
+    related: metric.related,
+    ...(metric.comparable ? { comparable: metric.comparable } : {}),
+    resource: isResourceMetric(metric),
+  };
+}
 
 /**
- * Build the capabilities descriptor from the live tool catalog and the event
+ * Build the capabilities descriptor from the metric registry and the event
  * schema. Pure and synchronous — it introspects definitions only, never the
  * collector, so it is safe to serve as a static resource.
  */
 export function buildCapabilities(): CapabilitiesDescriptor {
-  const tools: CapabilityToolDescriptor[] = readTools.map((tool) => ({
-    name: tool.name,
-    title: tool.title,
-    description: tool.description,
-    params: Object.keys(tool.inputSchema),
+  const metrics = allMetrics();
+  const served = metrics.filter((metric) => metric.endpoint != null);
+
+  const tools: CapabilityToolDescriptor[] = served.map((metric) => ({
+    name: metric.id,
+    title: metric.title,
+    description: metric.description,
+    params: paramsOf(metric),
   }));
 
-  const usedParams = new Set<string>();
-  for (const tool of tools) for (const p of tool.params) usedParams.add(p);
+  const usedParams = new Set<FilterId>();
+  for (const metric of served) for (const param of paramsOf(metric)) usedParams.add(param);
 
   const params: CapabilityParamDescriptor[] = [...usedParams]
     .sort()
-    .map((name) => ({ name, description: PARAM_SEMANTICS[name] ?? "" }));
+    .map((name) => ({ name, description: FILTER_TARGETS[name].description }));
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -122,12 +165,26 @@ export function buildCapabilities(): CapabilitiesDescriptor {
     eventTypes: EVENT_TYPES,
     params,
     tools,
+    metrics: metrics.map(toMetricDescriptor),
     notes: [
       "This MCP surface is strictly read-only: aggregate, privacy-preserving queries only. " +
         "There are no ingestion, mutation, or raw per-session event tools (ADR 0003 / ADR 0017).",
+      "`metrics` is the collector's semantic metric registry (ADR 0051 §1): for each metric it " +
+        "gives the result `grain` (what one row is), the `columns` with their units, the JSON " +
+        "Schema of a row, `limits`, how to read it (`interpretation`) and how far to trust it " +
+        "(`caveats`). Read a metric's caveats before quoting its numbers.",
+      "`sourceChannels` names the capture channels (ADR 0012) that feed a metric. If a project " +
+        "has that channel disabled or sampled down, the metric is empty or proportional rather " +
+        "than exact — say so instead of reporting a zero as a finding.",
+      "`tools` lists the registry's served read surface and the request parameters of each " +
+        "underlying endpoint. It is exactly the set this server registers, because the tool " +
+        "catalog is generated from the same registry (ADR 0051 §1) — the authoritative input " +
+        "and output schemas of a registered tool are still the ones returned by `tools/list`.",
       "Enumerate the concrete scene ids for the `scene` parameter with the uptimizr://scenes " +
         "resource or the list_scenes tool; enumerate sessions with the list_sessions tool.",
       "All time ranges use epoch-millisecond `since`/`until`. Omit both for all-time.",
+      "The same registry drives the collector's OpenAPI document at GET /api/v1/openapi.json, " +
+        "which describes every endpoint below with its parameters and response schema.",
     ],
   };
 }

@@ -1,13 +1,13 @@
 /**
  * Browser-safety gate (ADR 0050 §1, AGENTS.md "Browser-safe").
  *
- * The catalog is generated from the metric registry, which lives in
- * `@uptimizr/db` — a package whose **root** barrel is Node-only (it owns the
- * DuckDB store). The registry ships on its own dependency-free
- * `@uptimizr/db/registry` subpath precisely so this package can read it without
- * dragging the driver in, and this test is what keeps that true: it bundles the
- * package entry points for the browser with esbuild and fails if a `node:`
- * built-in, the DuckDB driver, or any other Node-only module reaches the bundle.
+ * The catalog is generated from the metric registry, which lives in its own
+ * dependency-free package, `@uptimizr/metrics` — deliberately *not* in
+ * `@uptimizr/db`, which owns the DuckDB store and its ~37 MB native binding.
+ * This test is what keeps that true: it bundles the package entry points for the
+ * browser with esbuild and fails if a `node:` built-in, the DuckDB driver, or
+ * any other Node-only module reaches the bundle. Its companion,
+ * `dependencies.test.ts`, fails if `@uptimizr/db` reappears in the manifest.
  *
  * With `platform: "browser"` esbuild refuses to resolve a `node:` built-in at
  * all, so a successful bundle is itself the proof; the assertions then pin that
@@ -50,7 +50,7 @@ describe("browser safety", () => {
     expect(code).not.toContain("@duckdb/");
   }, 60_000);
 
-  it("pulls in the registry subpath, never the Node-only @uptimizr/db root", async () => {
+  it("pulls in @uptimizr/metrics, never the Node-only @uptimizr/db", async () => {
     const code = await bundleForBrowser("src/registryTools.ts");
     expect(code).not.toMatch(/from\s*["']node:/);
     expect(code).not.toContain("@duckdb/");

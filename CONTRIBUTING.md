@@ -58,7 +58,32 @@ pnpm typecheck   # tsc --noEmit per package
 pnpm test        # unit/integration tests
 pnpm test:e2e    # Playwright end-to-end tests (playground → collector → dashboard/replay)
 pnpm format      # prettier --write
+pnpm gen:docs    # re-render the generated metric tables (see below)
 ```
+
+### Generated metric tables — don't edit them by hand
+
+The collector's read endpoints and the agent tool catalog are declared once, in the **semantic
+metric registry** (`oss/packages/metrics/src/registry.ts`, ADR 0051). Several docs are rendered
+from it by `scripts/gen-registry-docs.mjs`:
+
+- the §"Query (read)" endpoint table in `docs/integration.md`;
+- the docs-site query reference (`oss/apps/docs/src/content/docs/api/query.mdx`);
+- the tool tables in `oss/packages/mcp/` and `oss/packages/agent-core/`
+  (`README.md`, `AGENTS.md`, `llms.txt`).
+
+Only the text between the `generated:<block>:start` / `:end` markers is replaced — the prose around
+each table is hand-written and stays. After changing the registry run:
+
+```bash
+pnpm build --filter @uptimizr/db...   # the generator reads the built registry
+pnpm gen:docs                         # re-render, then commit the result
+```
+
+`pnpm gen:docs:check` is the staleness gate; CI runs it after `pnpm build` and fails when a
+committed table has drifted from the registry. The same registry also drives
+`GET /api/v1/openapi.json` and the MCP `uptimizr://capabilities` resource, which are generated at
+runtime and need no commit step.
 
 ## Monorepo boundaries (important)
 
@@ -97,7 +122,7 @@ redistribution-compatible.
   before a release. Patch advisories in transitive (build/dev) deps via `overrides` in
   `pnpm-workspace.yaml`, with a comment linking the advisory; revisit when the parent ships a fix.
   CI runs `pnpm audit --prod --audit-level=high`, and a self-hosted Renovate opens a grouped update PR
-  on Mondays and Thursdays (security fixes on its next run). Its PRs skip the changeset
+  every Sunday, security fixes included. Its PRs skip the changeset
   check; add one by hand if an update changes a published package's dependency range.
 
 ## Pull requests

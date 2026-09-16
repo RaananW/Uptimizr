@@ -22,18 +22,15 @@ function toRows(data: unknown): unknown[] {
  * Validate the rows against the tool's registry-derived output schema and
  * return the **parsed** result as the structured payload.
  *
- * Parsing is not just a check: the registry declares numeric columns with
- * `z.coerce.number()` because ClickHouse renders 64-bit integers and decimals as
- * strings over HTTP, so this normalises those strings to JSON numbers before
- * they reach the client — the ADR 0051 §2 "numbers are numbers" promise, kept at
- * the MCP edge until the collector coerces at the store edge. It matters in
- * practice: an MCP client that has read `tools/list` validates
- * `structuredContent` against the advertised JSON Schema and would reject a
- * string where the schema says number.
+ * The registry's numeric columns are strict `z.number()`: since ADR 0051 §2 the
+ * *collector* guarantees numbers, coercing each dialect's wire format
+ * (ClickHouse's string-encoded 64-bit integers, `pg`'s `int8`) at the single
+ * point rows leave its driver. So this is a check, not a repair — the advertised
+ * schema describes the API, and normalising here would hide a store regression.
  *
- * If the rows genuinely do not match the schema (registry drift, which
- * `@uptimizr/db`'s own suite gates against), the raw rows are passed through
- * rather than failing a call that would otherwise have answered.
+ * If the rows do not match the schema the raw rows are passed through; the SDK's
+ * own output validation then reports the offending column by name, which is the
+ * honest outcome for a collector that is out of contract.
  */
 function structuredRows(outputSchema: z.ZodRawShape, data: unknown): { rows: unknown[] } {
   const rows = toRows(data);

@@ -94,16 +94,18 @@ describe("tools/call", () => {
     expect((result.content as { text: string }[])[0]?.text).toBe('[{"mesh":"buy","count":12}]');
   });
 
-  it("normalises a dialect's string-encoded numbers into the structured result", async () => {
-    // ClickHouse renders 64-bit integers as strings over HTTP. The registry row
-    // schemas coerce, and the server parses with them, so the client is handed
-    // real JSON numbers — which is also what the advertised schema promises.
+  it("reports a string-encoded number rather than silently repairing it", async () => {
+    // ClickHouse renders 64-bit integers as strings over HTTP, but since
+    // ADR 0051 §2 every store coerces at its own edge (`coerceRows`), so the
+    // collector's contract is that a numeric column *is* a number. The registry
+    // row schemas are strict `z.number()` accordingly, and they are what this
+    // server advertises as each tool's `outputSchema`. A collector that still
+    // string-encodes is therefore out of contract, and the SDK's output
+    // validation says so by name instead of the edge quietly papering over it.
     respond = () => [{ mesh: "buy", count: "12" }];
     const result = await client.callTool({ name: "top_meshes", arguments: {} });
-    expect(result.isError).toBeFalsy();
-    expect(result.structuredContent).toEqual({ rows: [{ mesh: "buy", count: 12 }] });
-    // The text payload is still exactly what the collector said.
-    expect((result.content as { text: string }[])[0]?.text).toBe('[{"mesh":"buy","count":"12"}]');
+    expect(result.isError).toBe(true);
+    expect((result.content as { text: string }[])[0]?.text).toContain("rows[0].count");
   });
 
   it("accepts a null measure — an aggregate over a range with no samples", async () => {

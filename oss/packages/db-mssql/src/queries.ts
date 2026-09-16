@@ -1,4 +1,4 @@
-import { toPositionalParams, toTsql, type QuerySpec } from "@uptimizr/db";
+import { coerceRows, toPositionalParams, toTsql, type QuerySpec } from "@uptimizr/db";
 import type { MssqlClient } from "./client.js";
 
 /**
@@ -14,6 +14,12 @@ import type { MssqlClient } from "./client.js";
  * The client normalizes driver values (bigint strings → numbers, temporal
  * columns → naive-UTC text), so rows match the shapes produced by the DuckDB
  * `runDuckdbQuery`.
+ *
+ * This is the single point where rows leave the `mssql` driver, so it is where
+ * {@link coerceRows} runs (ADR 0051 §2): the client's bigint normalisation is
+ * driven by the driver's type map, and `DECIMAL`/`MONEY`-typed expressions can
+ * still arrive as strings, so the guarantee that a numeric column *is* a number
+ * is upheld here for every metric rather than per column type.
  */
 export async function runMssqlQuery<T>(client: MssqlClient, spec: QuerySpec): Promise<T[]> {
   const { sql, values } = toPositionalParams(
@@ -21,5 +27,6 @@ export async function runMssqlQuery<T>(client: MssqlClient, spec: QuerySpec): Pr
     spec.query_params,
     (i) => `@p${i}`,
   );
-  return client.query<T>(sql, values);
+  const rows = await client.query<T>(sql, values);
+  return coerceRows(spec.metric, rows);
 }

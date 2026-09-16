@@ -8,6 +8,14 @@
  *
  * Invariant: no multi-tenant concepts here. Filtering is by `project_id` and the
  * optional scene/source/session dimensions only.
+ *
+ * Every builder tags its `QuerySpec` with the registry `metric` id it computes
+ * (ADR 0051 §1). That tag is what lets each store's query runner apply numeric
+ * coercion at the single point rows leave the driver (`query/coerce.ts`) without
+ * the store call sites having to name the metric. The tag and the registry's
+ * `builder` field are two halves of one mapping — `src/__tests__/registry.test.ts`
+ * fails if they disagree, so a new aggregation still is not done until it has a
+ * registry entry.
  */
 
 import {
@@ -90,6 +98,7 @@ export function buildListSessions(
       ORDER BY started_at DESC
       LIMIT ${limit}
     `,
+    metric: "list_sessions",
     query_params: bag.values,
   };
 }
@@ -128,6 +137,7 @@ export function buildPointerHeatmap(
       GROUP BY gx, gy
       ORDER BY count DESC
     `,
+    metric: "pointer_heatmap",
     query_params: bag.values,
   };
 }
@@ -179,6 +189,7 @@ export function buildMeshUvHeatmap(
       GROUP BY gx, gy
       ORDER BY count DESC
     `,
+    metric: "mesh_uv_heatmap",
     query_params: bag.values,
   };
 }
@@ -221,6 +232,7 @@ export function buildWorldHeatmap(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "world_heatmap",
     query_params: bag.values,
   };
 }
@@ -265,6 +277,7 @@ export function buildWorldHeatmapStats(
         GROUP BY vx, vy, vz
       ) t
     `,
+    metric: "world_heatmap_stats",
     query_params: bag.values,
   };
 }
@@ -312,6 +325,7 @@ export function buildGazeHeatmap(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "gaze_heatmap",
     query_params: bag.values,
   };
 }
@@ -354,6 +368,7 @@ export function buildGazeHeatmapStats(
         GROUP BY vx, vy, vz
       ) t
     `,
+    metric: "gaze_heatmap_stats",
     query_params: bag.values,
   };
 }
@@ -387,6 +402,7 @@ export function buildCameraDirectionHeatmap(
       GROUP BY azimuth_bin, elevation_bin
       ORDER BY count DESC
     `,
+    metric: "camera_heatmap",
     query_params: bag.values,
   };
 }
@@ -441,6 +457,7 @@ export function buildViewCoverageHistogram(
       GROUP BY bucket
       ORDER BY bucket ASC
     `,
+    metric: "view_coverage_histogram",
     query_params: bag.values,
   };
 }
@@ -484,6 +501,7 @@ export function buildCameraPositionHeatmap(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "position_heatmap",
     query_params: bag.values,
   };
 }
@@ -519,6 +537,7 @@ export function buildSessionTrajectory(
       ORDER BY ts ASC
       LIMIT ${limit}
     `,
+    metric: "session_trajectory",
     query_params: bag.values,
   };
 }
@@ -561,6 +580,7 @@ export function buildAggregateTrajectories(
       ORDER BY session_id ASC, ts ASC
       LIMIT ${limit}
     `,
+    metric: "aggregate_paths",
     query_params: bag.values,
   };
 }
@@ -698,6 +718,7 @@ export function buildClickGazeRay(
       ORDER BY count DESC
       LIMIT ${bag.add("limit", "u32", opts.limit ?? 500)}
     `,
+    metric: "click_rays",
     query_params: bag.values,
   };
 }
@@ -779,6 +800,7 @@ export function buildFlowHeatmap(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+      metric: "flow_links",
       query_params: bag.values,
     };
   }
@@ -846,6 +868,7 @@ export function buildFlowHeatmap(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "flow_links",
     query_params: bag.values,
   };
 }
@@ -870,6 +893,7 @@ export function buildTopMeshes(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "top_meshes",
     query_params: bag.values,
   };
 }
@@ -906,6 +930,7 @@ export function buildTopMeshesBySource(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "mesh_sources",
     query_params: bag.values,
   };
 }
@@ -949,6 +974,7 @@ export function buildTopMeshesTrend(
       ORDER BY bucket ASC
       LIMIT ${limit}
     `,
+    metric: "mesh_trend",
     query_params: bag.values,
   };
 }
@@ -983,6 +1009,7 @@ export function buildMeshDwell(
       ORDER BY sum(visible_ms) DESC
       LIMIT ${limit}
     `,
+    metric: "mesh_dwell",
     query_params: bag.values,
   };
 }
@@ -1041,6 +1068,7 @@ export function buildMeshBlindSpots(
         sum(CASE WHEN event_type = 'mesh_visibility' THEN visible_ms ELSE 0 END) DESC
       LIMIT ${limit}
     `,
+    metric: "mesh_blind_spots",
     query_params: bag.values,
   };
 }
@@ -1078,6 +1106,7 @@ export function buildMeshInteractionKinds(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "mesh_interaction_kinds",
     query_params: bag.values,
   };
 }
@@ -1160,6 +1189,7 @@ export function buildReachability(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "mesh_reachability",
     query_params: bag.values,
   };
 }
@@ -1189,6 +1219,7 @@ export function buildDeadClicks(
       FROM events
       WHERE project_id = ${pid} AND event_type = 'pointer_click'${range}${scene}${source}${session}
     `,
+    metric: "dead_clicks",
     query_params: bag.values,
   };
 }
@@ -1233,6 +1264,7 @@ export function buildRageClicks(
       ORDER BY clicks DESC
       LIMIT ${limit}
     `,
+    metric: "rage_clicks",
     query_params: bag.values,
   };
 }
@@ -1270,6 +1302,7 @@ export function buildHoverDwell(
       ORDER BY dwell_ms DESC
       LIMIT ${limit}
     `,
+    metric: "hover_dwell",
     query_params: bag.values,
   };
 }
@@ -1307,6 +1340,7 @@ export function buildCompileStalls(
       ORDER BY total_ms DESC
       LIMIT ${limit}
     `,
+    metric: "compile_stalls",
     query_params: bag.values,
   };
 }
@@ -1344,6 +1378,7 @@ export function buildResourceSummary(
       FROM events
       WHERE project_id = ${pid} AND event_type = 'resource_sample'${range}${session}
     `,
+    metric: "resource_summary",
     query_params: bag.values,
   };
 }
@@ -1393,6 +1428,7 @@ export function buildResourcePercentiles(
         GROUP BY session_id
       ) per_session
     `,
+    metric: "resource_percentiles",
     query_params: bag.values,
   };
 }
@@ -1423,6 +1459,7 @@ export function buildStabilityCounts(
       FROM events
       WHERE project_id = ${pid} AND event_type IN ('context_lost', 'compile_stall')${range}${scene}${session}
     `,
+    metric: "stability_counts",
     query_params: bag.values,
   };
 }
@@ -1470,6 +1507,7 @@ export function buildGraphicsDiagnosticCounts(
       GROUP BY severity, category, backend
       ORDER BY incidents DESC
     `,
+    metric: "graphics_diagnostics",
     query_params: bag.values,
   };
 }
@@ -1541,6 +1579,7 @@ export function buildErrorHeatmap(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "error_heatmap",
     query_params: bag.values,
   };
 }
@@ -1591,6 +1630,7 @@ export function buildBoundaryHeatmap(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "boundary_heatmap",
     query_params: bag.values,
   };
 }
@@ -1630,6 +1670,7 @@ export function buildBoundaryHeatmapStats(
         GROUP BY vx, vy, vz
       ) t
     `,
+    metric: "boundary_heatmap_stats",
     query_params: bag.values,
   };
 }
@@ -1671,6 +1712,7 @@ export function buildBoundaryContacts(
       ORDER BY contacts DESC
       LIMIT ${limit}
     `,
+    metric: "xr_boundary_contacts",
     query_params: bag.values,
   };
 }
@@ -1714,6 +1756,7 @@ export function buildRenderingTechnology(
       GROUP BY api, backend, api_version, shading_language
       ORDER BY sessions DESC
     `,
+    metric: "rendering_technology",
     query_params: bag.values,
   };
 }
@@ -1749,6 +1792,7 @@ export function buildCapabilityChanges(
       ORDER BY changes DESC
       LIMIT ${limit}
     `,
+    metric: "capability_changes",
     query_params: bag.values,
   };
 }
@@ -1788,6 +1832,7 @@ export function buildCameraGestures(
       ORDER BY gestures DESC
       LIMIT ${limit}
     `,
+    metric: "camera_gestures",
     query_params: bag.values,
   };
 }
@@ -1812,6 +1857,7 @@ export function buildPerfSummary(
       FROM events
       WHERE project_id = ${pid} AND event_type = 'frame_perf'${range}${session}
     `,
+    metric: "perf_summary",
     query_params: bag.values,
   };
 }
@@ -1851,6 +1897,7 @@ export function buildRenderScaleTruth(
       FROM events
       WHERE project_id = ${pid} AND event_type = 'frame_perf'${range}${session}
     `,
+    metric: "render_scale_truth",
     query_params: bag.values,
   };
 }
@@ -1893,6 +1940,7 @@ export function buildPerfDistribution(
         GROUP BY session_id
       ) per_session
     `,
+    metric: "perf_distribution",
     query_params: bag.values,
   };
 }
@@ -1932,6 +1980,7 @@ export function buildFpsHistogram(
       GROUP BY bucket
       ORDER BY bucket ASC
     `,
+    metric: "fps_histogram",
     query_params: bag.values,
   };
 }
@@ -1973,6 +2022,7 @@ export function buildFrameTimePercentiles(
         GROUP BY session_id
       ) per_session
     `,
+    metric: "frame_time_percentiles",
     query_params: bag.values,
   };
 }
@@ -2012,6 +2062,7 @@ export function buildJankRate(
         GROUP BY session_id
       ) per_session
     `,
+    metric: "jank_rate",
     query_params: bag.values,
   };
 }
@@ -2099,6 +2150,7 @@ export function buildPerfChurn(
         sum(had_stall) AS stall_churn_sessions
       FROM correlated
     `,
+    metric: "perf_churn",
     query_params: bag.values,
   };
 }
@@ -2165,6 +2217,7 @@ export function buildPerfByDevice(
       GROUP BY engine, is_mobile, renderer, browser, os
       ORDER BY sessions DESC
     `,
+    metric: "perf_by_device",
     query_params: bag.values,
   };
 }
@@ -2206,6 +2259,7 @@ export function buildPerfByScene(
       GROUP BY scene_id
       ORDER BY sessions DESC
     `,
+    metric: "perf_by_scene",
     query_params: bag.values,
   };
 }
@@ -2237,6 +2291,7 @@ export function buildPerfDaily(
       ORDER BY day DESC
       LIMIT ${limit}
     `,
+    metric: "perf_daily",
     query_params: bag.values,
   };
 }
@@ -2266,6 +2321,7 @@ export function buildEventsDaily(
       ORDER BY day DESC, sum(events) DESC
       LIMIT ${limit}
     `,
+    metric: "events_daily",
     query_params: bag.values,
   };
 }
@@ -2295,6 +2351,7 @@ export function buildDistinctScenes(
       ORDER BY events DESC
       LIMIT ${limit}
     `,
+    metric: "list_scenes",
     query_params: bag.values,
   };
 }
@@ -2329,6 +2386,7 @@ export function buildTimeseries(
       GROUP BY bucket
       ORDER BY bucket ASC
     `,
+    metric: "timeseries",
     query_params: bag.values,
   };
 }
@@ -2354,6 +2412,7 @@ export function buildEventTypeCounts(
       GROUP BY event_type
       ORDER BY count DESC
     `,
+    metric: "event_counts",
     query_params: bag.values,
   };
 }
@@ -2393,6 +2452,7 @@ export function buildSceneCoverage(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "scene_coverage",
     query_params: bag.values,
   };
 }
@@ -2439,6 +2499,7 @@ export function buildPerfHeatmap(
       ORDER BY avg_fps ASC
       LIMIT ${limit}
     `,
+    metric: "perf_heatmap",
     query_params: bag.values,
   };
 }
@@ -2489,6 +2550,7 @@ export function buildCameraDistance(
       ORDER BY bucket ASC
       LIMIT ${limit}
     `,
+    metric: "camera_distance",
     query_params: bag.values,
   };
 }
@@ -2552,6 +2614,7 @@ export function buildNavigationStats(
       ORDER BY total_distance DESC
       LIMIT ${limit}
     `,
+    metric: "navigation_stats",
     query_params: bag.values,
   };
 }
@@ -2649,6 +2712,7 @@ export function buildBacktrackRatio(
       ORDER BY backtrack_ratio DESC, entries DESC
       LIMIT ${limit}
     `,
+    metric: "backtrack_ratio",
     query_params: bag.values,
   };
 }
@@ -2700,6 +2764,7 @@ export function buildInteractionsBySource(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "interaction_sources",
     query_params: bag.values,
   };
 }
@@ -2737,6 +2802,7 @@ export function buildTopInputActions(
       ORDER BY count DESC
       LIMIT ${limit}
     `,
+    metric: "top_input_actions",
     query_params: bag.values,
   };
 }
@@ -2803,6 +2869,7 @@ export function buildXrRotationRate(
       ORDER BY total_turn_rad DESC
       LIMIT ${limit}
     `,
+    metric: "xr_rotation",
     query_params: bag.values,
   };
 }
@@ -2838,6 +2905,7 @@ export function buildXrSourceUsage(
       ORDER BY interactions DESC
       LIMIT ${limit}
     `,
+    metric: "xr_sources",
     query_params: bag.values,
   };
 }
@@ -2881,6 +2949,7 @@ export function buildXrAbandonment(
       ORDER BY started_at DESC
       LIMIT ${limit}
     `,
+    metric: "xr_abandonment",
     query_params: bag.values,
   };
 }
@@ -2934,6 +3003,7 @@ export function buildXrLocomotionComfort(
       ORDER BY locomotion_ms DESC
       LIMIT ${limit}
     `,
+    metric: "xr_locomotion",
     query_params: bag.values,
   };
 }
@@ -2992,6 +3062,7 @@ export function buildTrackingQuality(
       ORDER BY degraded_ms DESC
       LIMIT ${limit}
     `,
+    metric: "xr_tracking_quality",
     query_params: bag.values,
   };
 }
@@ -3071,6 +3142,7 @@ export function buildArPlacementTimeToPlace(
       GROUP BY bucket
       ORDER BY bucket ASC
     `,
+    metric: "ar_placement_time_to_place",
     query_params: bag.values,
   };
 }
@@ -3106,6 +3178,7 @@ export function buildArPlacementAttempts(
       GROUP BY attempts
       ORDER BY attempts ASC
     `,
+    metric: "ar_placement_attempts",
     query_params: bag.values,
   };
 }
@@ -3144,6 +3217,7 @@ export function buildArPlacementSurfaces(
       GROUP BY surface
       ORDER BY placements DESC
     `,
+    metric: "ar_placement_surfaces",
     query_params: bag.values,
   };
 }
@@ -3190,6 +3264,7 @@ export function buildFunnel(projectId: string, opts: FunnelOptions, d: Dialect):
       ${counts}
       ORDER BY step ASC
     `,
+    metric: "funnel",
     query_params: bag.values,
   };
 }
@@ -3253,6 +3328,7 @@ export function buildSceneRetention(
       ORDER BY sessions DESC, from_scene ASC, to_scene ASC
       LIMIT ${limit}
     `,
+    metric: "scene_retention",
     query_params: bag.values,
   };
 }
@@ -3340,6 +3416,7 @@ export function buildLoadBounceFunnel(
       GROUP BY band
       ORDER BY band ASC
     `,
+    metric: "load_bounce_funnel",
     query_params: bag.values,
   };
 }
@@ -3506,6 +3583,7 @@ export function buildVariantLeaderboard(
       ORDER BY vc.views DESC, vc.variant ASC
       LIMIT ${limit}
     `,
+    metric: "variant_leaderboard",
     query_params: bag.values,
   };
 }

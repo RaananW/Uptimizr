@@ -46,6 +46,15 @@ coerced and bounded by Zod at the edge — out-of-range values are rejected with
   `xr-controller`, `hand`, `gaze`, `transient`, `other` (ADR 0011).
 - `session` — scope an aggregate to a single session id.
 - `type` — event-type filter on `timeseries` (lowercase/underscore event name).
+- `format` — `full` (default) | `table` | `summary`. Not a filter: it selects the result
+  **envelope** (ADR 0051 §2). `full` is the bare rows and never changes. `table` adds a `meta`
+  envelope (metric, range, applied filters, sample size, row count, `truncated`, limits). `summary`
+  returns a bounded digest capped at the metric's `maxSummaryRows` — ranked top rows, a
+  first/last/min/max/trend series, or merged spatial clusters, with shares, a sample size, the
+  registry caveats and a templated `reading` sentence. **Reach for `summary` first when you are an
+  agent**: a 500-bin heatmap in `full` is thousands of tokens of nothing. Cluster coordinates are
+  grid indices — multiply by the effective `cellSize`. `total`/`share` are `null` when the measure
+  cannot honestly be summed (FPS, ratios, percentiles).
 
 ## 3. The endpoints (what to call)
 
@@ -69,9 +78,13 @@ Read the full table in docs/integration.md; the high-frequency ones:
 
 ## 4. Pitfalls (where queries go wrong)
 
-- **Aggregate columns come back as JSON strings.** ClickHouse returns `count()` and similar as
-  strings (e.g. `"42"`). Coerce to numbers on the client before doing math. The dashboard's
-  `CollectorApi` already does this — mirror it; don't sum strings.
+- **Aggregate columns are JSON numbers — but `null` is not `0`.** Every store coerces numeric
+  columns at the point rows leave its driver and every query route serialises through the metric
+  registry's `row` schema (ADR 0051 §2), so `count()`, percentiles and sums arrive as numbers on
+  DuckDB, ClickHouse, Postgres and SQL Server alike — do not re-parse them. What you do have to
+  handle is `null`: a single-row summary (`/api/v1/perf`, `/api/v1/perf/jank`,
+  `/api/v1/perf/resources`, …) is still returned over a range that matched nothing, with its
+  aggregate columns `null`. That means "no samples", not zero — read the row's plain count first.
 - **`since`/`until` are milliseconds, `interval` is seconds.** Mixing the units is the most common
   "empty result" cause. A `400` means a param failed Zod validation (e.g. `bins > 500`,
   negative `cellSize`, a `scene`/`source` that doesn't match the allowed pattern/enum).
@@ -97,17 +110,23 @@ handled for you (ADR 0017).
 A new or changed query endpoint is a code change in `collector-server` + `db`, not just a skill
 edit. Follow the `work-on-issue` skill and keep four things in lockstep:
 
-1. the **metric registry**, `oss/packages/db/src/query/registry.ts` — the contract (see below),
+1. the **metric registry**, `oss/packages/metrics/src/registry.ts` — the contract (see below),
 2. the Zod querystring in `oss/apps/collector-server/src/routes/query.ts` (validate at the edge),
-3. the table in `docs/integration.md` §"Query (read)" (the published reference), and
+3. the **generated** tables — run `pnpm gen:docs` (after `pnpm build`) to re-render
+   `docs/integration.md` §"Query (read)", the docs-site `api/query` page and the packaged
+   `README`/`AGENTS.md`/`llms.txt` of `@uptimizr/mcp` and `@uptimizr/agent-core`; never hand-edit
+   the text between their `generated:*` markers, and
 4. the matching tool in `oss/packages/mcp` (so agents see it) and `CollectorApi` in the dashboard.
+
+`GET /api/v1/openapi.json` and the MCP `uptimizr://capabilities` resource are generated from the
+registry at runtime, so they need no follow-up edit — but check them when you change a row schema.
 
 Then update this skill if the workflow or a gotcha changed, and run the validation gate
 (`pnpm lint typecheck build test`).
 
 ### The registry is the contract (ADR 0051 §1)
 
-`@uptimizr/db/registry` holds one `MetricDefinition` per aggregation: its id (the same string the
+`@uptimizr/metrics` holds one `MetricDefinition` per aggregation: its id (the same string the
 agent tool uses), endpoint, result grain, group-by dimensions, accepted filters, the **output row
 schema** (Zod), per-column units and semantics, row limits, how to interpret the result, the
 caveats that make it untrustworthy, and the SDK capture channels (ADR 0012) that must be enabled
@@ -117,9 +136,19 @@ derived from.
 
 Two CI gates keep it honest, so treat them as part of the definition of done:
 
-- **A new aggregation is not done until it has a registry entry.** Adding a `build*` without one is
-  a compile error, and `oss/packages/db/src/__tests__/registry.test.ts` re-checks it at runtime and
-  parses every `row` schema against real DuckDB output.
+- **A new aggregation is not done until it has a registry entry.** Add the `build*` name to
+  `AGGREGATION_BUILDER_NAMES` in `oss/packages/metrics/src/registry.ts` and give it an entry;
+  missing the entry is a compile error, `oss/packages/metrics/src/__tests__/registry.test.ts`
+  re-checks coverage and consistency, and `oss/packages/db/src/__tests__/registry.test.ts` asserts
+  the builder-name list still equals the real `build*` exports and parses every `row` schema
+  against real DuckDB output.
 - **An endpoint's querystring keys must equal its registry `filters`**, asserted by
   `oss/apps/collector-server/src/__tests__/registryRoutes.test.ts`. Adding a query parameter without
   declaring it in the registry fails the build.
+- **The `row` schema is also the endpoint's response schema** (ADR 0051 §2). It is strict: a column
+  the handler returns but the registry does not declare is stripped from the API, and a `null` in a
+  column not declared nullable is a `500`. `queryResponseSchemas.test.ts` calls every registry
+  endpoint against a seeded store, an empty one and the in-memory store to catch both. Numeric
+  coercion belongs in the store runner (`coerceRows`), never back in the schema.
+- **The committed docs tables must match the registry**, asserted by `pnpm gen:docs:check` in CI and
+  by `oss/apps/collector-server/src/__tests__/genRegistryDocs.test.ts`. Run `pnpm gen:docs`.

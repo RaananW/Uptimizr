@@ -37,9 +37,9 @@
       "types": "./dist/query/index.d.ts",
       "import": "./dist/query/index.js"
     },
-    "./registry": {
-      "types": "./dist/query/registry.d.ts",
-      "import": "./dist/query/registry.js"
+    "./summary": {
+      "types": "./dist/query/summary/index.d.ts",
+      "import": "./dist/query/summary/index.js"
     }
   },
   "bin": {
@@ -67,6 +67,7 @@
   },
   "dependencies": {
     "@duckdb/node-api": "^1.5.5-r.4",
+    "@uptimizr/metrics": "workspace:*",
     "@uptimizr/schema": "workspace:*",
     "zod": "^4.5.4"
   },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { allMetrics, getMetric, type MetricDefinition } from "@uptimizr/db/registry";
+import { allMetrics, getMetric, type MetricDefinition } from "@uptimizr/metrics";
 import { describeMetric, metricToTool, registryToTools } from "../registryTools.js";
 
 const tools = registryToTools();
@@ -69,11 +69,15 @@ describe("registryToTools", () => {
       expect(tool.outputSchema, tool.name).toBeDefined();
       expect(Object.keys(tool.outputSchema ?? {})).toEqual(["rows"]);
     }
-    const parsed = z
-      .object(byName("top_meshes").outputSchema ?? {})
-      .parse({ rows: [{ mesh: "buy", count: "12" }] });
-    // Registry row schemas coerce, so a ClickHouse string-encoded count parses.
-    expect(parsed).toEqual({ rows: [{ mesh: "buy", count: 12 }] });
+    const schema = z.object(byName("top_meshes").outputSchema ?? {});
+    expect(schema.parse({ rows: [{ mesh: "buy", count: 12 }] })).toEqual({
+      rows: [{ mesh: "buy", count: 12 }],
+    });
+    // Registry row schemas are strict `z.number()` (ADR 0051 §2): the collector
+    // coerces at the store edge, so the advertised schema describes the API, not
+    // a dialect's wire format. A string-encoded count is a contract violation
+    // and must be rejected rather than silently repaired here.
+    expect(schema.safeParse({ rows: [{ mesh: "buy", count: "12" }] }).success).toBe(false);
   });
 
   it("keeps unknown columns rather than silently dropping them", () => {

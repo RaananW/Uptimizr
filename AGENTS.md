@@ -65,6 +65,7 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm format
+pnpm gen:docs    # re-render the metric tables generated from the registry
 ```
 
 Always run `pnpm lint typecheck build` (and `test` where applicable) before considering a change
@@ -80,6 +81,11 @@ complete.
 - **Tests:** Vitest for unit/integration. **Major / user-visible features also require a
   Playwright E2E** under `examples/playground/e2e/` that drives the real browser → SDK → collector
   → dashboard/replay round trip (`work-on-issue` skill, step 4).
+- **Generated metric tables:** the endpoint/tool tables in `docs/integration.md`, the docs-site
+  `api/query` page and the packaged `README`/`AGENTS.md`/`llms.txt` of `@uptimizr/mcp` and
+  `@uptimizr/agent-core` are **generated** from the metric registry (ADR 0051) by
+  `scripts/gen-registry-docs.mjs`. Never hand-edit the text between the `generated:*:start`/`:end`
+  markers — change the registry and run `pnpm gen:docs`. `pnpm gen:docs:check` is the CI gate.
 - **Changesets:** add a changeset (`pnpm changeset`) for any change to a publishable
   `@uptimizr/*` package — it drives the release/version bump.
 - **Pull requests:** fill out every section of `.github/PULL_REQUEST_TEMPLATE.md` (Summary, Linked
