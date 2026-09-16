@@ -39,6 +39,10 @@ beforeEach(async () => {
     client.connect(clientTransport),
     createMcpServer(stubCollector).connect(serverTransport),
   ]);
+  // Listing first is what a real client does, and it is what arms the SDK
+  // client's strict (Ajv) validation of `structuredContent` against each tool's
+  // advertised output schema — so every `tools/call` below is checked twice.
+  await client.listTools();
 });
 
 afterEach(async () => {
@@ -90,14 +94,31 @@ describe("tools/call", () => {
     expect((result.content as { text: string }[])[0]?.text).toBe('[{"mesh":"buy","count":12}]');
   });
 
-  it("accepts a dialect's string-encoded numbers (the registry rows coerce)", async () => {
-    // ClickHouse renders 64-bit integers as strings over HTTP. The row schemas
-    // coerce, so output validation passes; the payload itself is forwarded
-    // verbatim — the SDK validates structured content, it does not rewrite it.
+  it("normalises a dialect's string-encoded numbers into the structured result", async () => {
+    // ClickHouse renders 64-bit integers as strings over HTTP. The registry row
+    // schemas coerce, and the server parses with them, so the client is handed
+    // real JSON numbers — which is also what the advertised schema promises.
     respond = () => [{ mesh: "buy", count: "12" }];
     const result = await client.callTool({ name: "top_meshes", arguments: {} });
     expect(result.isError).toBeFalsy();
-    expect(result.structuredContent).toEqual({ rows: [{ mesh: "buy", count: "12" }] });
+    expect(result.structuredContent).toEqual({ rows: [{ mesh: "buy", count: 12 }] });
+    // The text payload is still exactly what the collector said.
+    expect((result.content as { text: string }[])[0]?.text).toBe('[{"mesh":"buy","count":"12"}]');
+  });
+
+  it("accepts a null measure — an aggregate over a range with no samples", async () => {
+    respond = () => [{ samples: 0, avg_fps: null, min_fps: null, p50_fps: null }];
+    const result = await client.callTool({ name: "perf_summary", arguments: {} });
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({
+      rows: [{ samples: 0, avg_fps: null, min_fps: null, p50_fps: null }],
+    });
+  });
+
+  it("passes through a column the route adds on top of the aggregation", async () => {
+    respond = () => ({ cellSize: 0.5, cells: 3, hits: 9 });
+    const result = await client.callTool({ name: "world_heatmap_stats", arguments: {} });
+    expect(result.structuredContent).toEqual({ rows: [{ cellSize: 0.5, cells: 3, hits: 9 }] });
   });
 
   it("serves a newly generated tool", async () => {

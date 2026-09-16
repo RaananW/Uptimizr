@@ -283,6 +283,37 @@ function filterField(metric: MetricDefinition, filter: FilterId): z.ZodType {
   return FILTER_FIELDS[filter];
 }
 
+/**
+ * The row schema a tool advertises, built from the registry's `row`.
+ *
+ * Two deliberate relaxations, both driven by what the collector really returns:
+ *
+ * - **Every column is nullable.** An aggregate over a range with no matching
+ *   samples projects SQL `NULL` for its measures (`resource_summary`,
+ *   `perf_churn`, … over an empty window). The registry's row schema describes
+ *   the populated shape; a consumer that validates the advertised JSON Schema
+ *   strictly — the MCP SDK's client does, with Ajv — would otherwise reject a
+ *   perfectly ordinary "no data yet" answer. The column set and its types stay
+ *   exactly as the registry declares them.
+ * - **Unknown columns are kept.** A few routes add a field of their own on top
+ *   of the aggregation (the `*_stats` endpoints echo the resolved `cellSize`),
+ *   and dropping it silently would be worse than passing it through.
+ *
+ * The schema still *coerces*: `@uptimizr/db` declares numeric columns with
+ * `z.coerce.number()` because ClickHouse renders 64-bit integers as strings over
+ * HTTP, so parsing a result with this schema normalises those strings to JSON
+ * numbers (ADR 0051 §2). `@uptimizr/mcp` parses with it before sending
+ * `structuredContent`, which is what makes the advertised schema true on every
+ * store engine.
+ */
+function outputRowSchema(metric: MetricDefinition): z.ZodType {
+  const shape: Record<string, z.ZodType> = {};
+  for (const [column, field] of Object.entries(metric.row.shape)) {
+    shape[column] = (field as z.ZodType).nullable();
+  }
+  return z.looseObject(shape);
+}
+
 /** `[":id"]` → the ordered `:param` placeholders of a Fastify path. */
 function pathPlaceholders(path: string): string[] {
   return path
@@ -353,7 +384,9 @@ export function metricToTool(metric: MetricDefinition): ReadTool | undefined {
   // object result (a session descriptor, a one-row summary) is reported as a
   // one-element `rows` array so the envelope is the same for every tool.
   const outputSchema: Record<string, z.ZodType> = {
-    rows: z.array(metric.row.loose()).describe(`Result rows (one row per ${metric.grain}).`),
+    rows: z
+      .array(outputRowSchema(metric))
+      .describe(`Result rows (one row per ${metric.grain}). A column is null when it has no data.`),
   };
 
   // The collector client strips a leading slash; keep paths root-relative so a

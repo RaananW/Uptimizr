@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 import { readTools, type CollectorClient } from "@uptimizr/agent-core";
 import { registerResources } from "./resources.js";
 import { registerPrompts } from "./prompts.js";
@@ -15,6 +16,29 @@ function toRows(data: unknown): unknown[] {
   if (Array.isArray(data)) return data;
   if (data == null) return [];
   return [data];
+}
+
+/**
+ * Validate the rows against the tool's registry-derived output schema and
+ * return the **parsed** result as the structured payload.
+ *
+ * Parsing is not just a check: the registry declares numeric columns with
+ * `z.coerce.number()` because ClickHouse renders 64-bit integers and decimals as
+ * strings over HTTP, so this normalises those strings to JSON numbers before
+ * they reach the client — the ADR 0051 §2 "numbers are numbers" promise, kept at
+ * the MCP edge until the collector coerces at the store edge. It matters in
+ * practice: an MCP client that has read `tools/list` validates
+ * `structuredContent` against the advertised JSON Schema and would reject a
+ * string where the schema says number.
+ *
+ * If the rows genuinely do not match the schema (registry drift, which
+ * `@uptimizr/db`'s own suite gates against), the raw rows are passed through
+ * rather than failing a call that would otherwise have answered.
+ */
+function structuredRows(outputSchema: z.ZodRawShape, data: unknown): { rows: unknown[] } {
+  const rows = toRows(data);
+  const parsed = z.object(outputSchema).safeParse({ rows });
+  return parsed.success ? (parsed.data as { rows: unknown[] }) : { rows };
 }
 
 /**
@@ -52,7 +76,10 @@ export function createMcpServer(client: CollectorClient): McpServer {
           const data = await client.get(path, params);
           const text = JSON.stringify(data);
           if (!tool.outputSchema) return { content: [{ type: "text", text }] };
-          return { content: [{ type: "text", text }], structuredContent: { rows: toRows(data) } };
+          return {
+            content: [{ type: "text", text }],
+            structuredContent: structuredRows(tool.outputSchema, data),
+          };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
