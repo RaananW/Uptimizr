@@ -1,0 +1,49 @@
+# Getting from arrival to the thing you wanted people to do: authored funnels,
+# scene-to-scene retention, load time versus bounce, and variant performance.
+
+- id: conversion_funnel
+  category: conversion
+  question: Of the sessions that started, how many went on to interact with an object?
+  expectedTools:
+    - [funnel]
+  expectedArgs:
+    funnel:
+      steps: '[{"type":"session_start"},{"type":"mesh_interaction"}]'
+  expectedAnswer:
+    numbers:
+      - { value: 4, label: sessions at step 0 }
+      - { value: 2, label: sessions at step 1 }
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: conversion_scene_retention
+  category: conversion
+  question: Which scene do people move to next, and how many make the trip?
+  expectedTools:
+    - [scene_retention]
+  expectedAnswer:
+    numbers:
+      - { value: 1, label: sessions making the transition }
+    phrases: ["lobby", "gallery"]
+    forbiddenPhrases: ["no data"]
+
+- id: conversion_load_bounce
+  category: conversion
+  question: Does a slow first load make people leave before they interact?
+  expectedTools:
+    - [load_bounce_funnel]
+  expectedAnswer:
+    numbers:
+      - { value: 1, label: sessions in the band }
+      - { value: 0, label: bounced sessions }
+    forbiddenPhrases: ["no data"]
+
+- id: conversion_variants
+  category: conversion
+  question: Which content variants were shown, and how did they perform?
+  expectedTools:
+    - [variant_leaderboard]
+  expectedAnswer:
+    numbers:
+      - { value: 1, label: sessions per variant }
+    phrases: ["variant_view", "purchase"]
+    forbiddenPhrases: ["no data"]

@@ -122,6 +122,13 @@ Most tools accept an optional time range (`since` / `until`, epoch ms) plus the 
 endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, `cameraMode`,
 `region`, …). `session_meta`, `session_trajectory` and `scene_representation` take a required id.
 
+The catalog is also **evaluated**, not just generated: a bank of ~48 real analytics questions is run
+against a deterministic fixture set through this exact tool surface on every change to it, and each
+answer is scored on tool selection, argument correctness and accuracy. That is what keeps the tool
+descriptions above honest — every metric the collector serves has at least one question an agent is
+measured on. The harness lives in the repository at
+[`oss/packages/agent-eval`](https://github.com/RaananW/Uptimizr/tree/main/oss/packages/agent-eval).
+
 ### Sessions & orientation
 
 | Tool                   | Endpoint                                 | Returns                 |

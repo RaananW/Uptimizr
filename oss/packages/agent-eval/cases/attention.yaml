@@ -1,0 +1,76 @@
+# Where people look and what holds their attention — screen-space clicks,
+# world/gaze voxels, view-direction coverage, and per-mesh dwell.
+
+- id: attention_pointer_hotspots
+  category: attention
+  question: Where on screen are people clicking — is there a hot spot?
+  expectedTools:
+    - [pointer_heatmap]
+  expectedAnswer:
+    numbers:
+      - { value: 3, label: clicks in the busiest screen bin }
+      - { value: 20, label: busiest bin index }
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: attention_world_hotspots
+  category: attention
+  question: Which parts of the world get the most attention, and how much of the scene is covered at all?
+  expectedTools:
+    - [world_heatmap]
+    - [world_heatmap_stats]
+  expectedAnswer:
+    numbers:
+      - { value: 3, label: occupied cells }
+      - { value: 7, label: total hits }
+      - { value: 5, label: hits in the busiest voxel }
+    forbiddenPhrases: ["no data"]
+
+- id: attention_gaze_hotspots
+  category: attention
+  question: Where does gaze actually land in the world, and across how many cells?
+  expectedTools:
+    - [gaze_heatmap]
+    - [gaze_heatmap_stats]
+  expectedAnswer:
+    numbers:
+      - { value: 6, label: gaze cells }
+      - { value: 9, label: gaze hits }
+    forbiddenPhrases: ["no data"]
+
+- id: attention_view_directions
+  category: attention
+  question: Which view directions dominate, and how much of the scene does a typical session see?
+  expectedTools:
+    - [camera_heatmap]
+    - [view_coverage_histogram]
+  expectedAnswer:
+    numbers:
+      - { value: 4, label: samples in the busiest direction bin }
+    forbiddenPhrases: ["no data"]
+
+- id: attention_mesh_dwell
+  category: attention
+  question: Which objects do people actually spend time looking at, and are any of them ignored despite being visible?
+  expectedTools:
+    - [mesh_dwell]
+    - [mesh_blind_spots]
+  expectedAnswer:
+    numbers:
+      - { value: 6000, label: statue visible ms }
+      - { value: 4000, label: box visible ms }
+    phrases: ["statue", "box", "sphere"]
+    forbiddenPhrases: ["no data"]
+
+- id: attention_hover_and_uv
+  category: attention
+  question: Which object holds the pointer or gaze longest, and where on the box's surface do clicks land?
+  expectedTools:
+    - [hover_dwell]
+    - [mesh_uv_heatmap]
+  expectedArgs:
+    mesh_uv_heatmap: { mesh: box }
+  expectedAnswer:
+    numbers:
+      - { value: 2500, label: statue dwell ms }
+    phrases: ["statue"]
+    forbiddenPhrases: ["no data"]
