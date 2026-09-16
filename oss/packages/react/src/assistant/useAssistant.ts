@@ -219,11 +219,15 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
 
   // An explicit, non-empty `tools` list wins; otherwise the backend decides
   // (small local models get the core subset, hosted models the full catalog).
+  // Keyed on the joined names, not the array identity, so a caller passing an
+  // inline literal does not re-derive the selection (and churn `send`) on every
+  // render.
+  const toolKey = toolNames?.join(",") ?? "";
   const pinnedTools = useMemo(() => {
-    if (!toolNames || toolNames.length === 0) return null;
-    const picked = filterReadTools(toolNames);
+    if (toolKey.length === 0) return null;
+    const picked = filterReadTools(toolKey.split(","));
     return picked.length > 0 ? picked : null;
-  }, [toolNames]);
+  }, [toolKey]);
 
   const ctx = useOptionalUptimizr();
   const api = useMemo<CollectorApi | null>(() => {
