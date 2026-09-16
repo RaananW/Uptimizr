@@ -15,6 +15,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { readTools } from "../tools.js";
 import { registryToTools } from "../registryTools.js";
 import { toToolSchemas } from "../loop.js";
 import shippedSchemas from "./fixtures/shippedToolSchemas.json" with { type: "json" };
@@ -75,13 +76,8 @@ describe("shipped tool compatibility", () => {
     for (const shipped of Object.keys(frozen)) expect(generated.has(shipped)).toBe(true);
   });
 
-  // Removed by the migration commit, once `readTools` IS the generated catalog:
-  // until then it proves the frozen fixture really is the hand-written array.
-  it("froze the hand-written catalog faithfully", async () => {
-    const { readTools } = await import("../tools.js");
-    const live = new Map(toToolSchemas(readTools).map((t) => [t.name, t.parameters]));
-    for (const [name, schema] of Object.entries(frozen)) expect(live.get(name)).toEqual(schema);
-    expect(live.size).toBe(Object.keys(frozen).length);
+  it("is the catalog the package actually exports", () => {
+    expect(readTools.map((tool) => tool.name)).toEqual([...generated.keys()]);
   });
 
   for (const [name, expected] of Object.entries(frozen)) {

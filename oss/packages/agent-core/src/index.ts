@@ -9,6 +9,7 @@ export {
   readTools,
   coreReadTools,
   selectReadTools,
+  filterReadTools,
   CORE_READ_TOOL_NAMES,
   type ReadTool,
   type ReadToolRequest,

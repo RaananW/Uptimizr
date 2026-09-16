@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  filterReadTools,
   runAgent,
   selectReadTools,
   type AgentMessage,
@@ -87,6 +88,20 @@ export interface UseAssistantOptions {
   /** Max provider turns per send (forwarded to `runAgent`). Defaults to
    *  {@link DEFAULT_ASSISTANT_MAX_STEPS}. */
   maxSteps?: number;
+  /**
+   * Which read tools to expose to the model, as catalog tool names.
+   *
+   * The catalog is generated from the metric registry (ADR 0051 §1) and is
+   * ~69 tools — every schema is folded into the model's function-calling prompt,
+   * which a small local model cannot carry. By default the hook picks for you:
+   * the **local** (WebLLM) backend gets agent-core's `coreReadTools` subset and
+   * a **hosted** backend gets the full catalog. Pass an explicit list to narrow
+   * the surface deliberately — for a focused panel, a token budget, or a model
+   * that does better with fewer choices. Names that are not in the catalog are
+   * ignored; an empty array falls back to the default selection rather than
+   * leaving the model with no tools.
+   */
+  tools?: readonly string[];
   /**
    * Consent gate for the local (WebLLM) backend, invoked once before weights
    * download. Return `false` to abort — nothing is downloaded.
@@ -198,8 +213,17 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     cachePolicy,
     onCacheEvicted,
     persistBackend = true,
+    tools: toolNames,
     now = () => Date.now(),
   } = options;
+
+  // An explicit, non-empty `tools` list wins; otherwise the backend decides
+  // (small local models get the core subset, hosted models the full catalog).
+  const pinnedTools = useMemo(() => {
+    if (!toolNames || toolNames.length === 0) return null;
+    const picked = filterReadTools(toolNames);
+    return picked.length > 0 ? picked : null;
+  }, [toolNames]);
 
   const ctx = useOptionalUptimizr();
   const api = useMemo<CollectorApi | null>(() => {
@@ -406,9 +430,10 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
           provider: trackingProvider,
           client: trackingClient,
           messages: outgoing,
-          // Small local models get the focused core tool subset; hosted/frontier
-          // models get the full catalog. Both are views of the same tool defs.
-          tools: selectReadTools(cfg.backend === "local" ? "core" : "full"),
+          // A caller-pinned list wins. Otherwise small local models get the
+          // focused core tool subset and hosted/frontier models the full
+          // catalog. All three are views of the same tool definitions.
+          tools: pinnedTools ?? selectReadTools(cfg.backend === "local" ? "core" : "full"),
           maxSteps,
           signal: controller.signal,
           // Live partial answer. A turn's accumulated text is shown as it
@@ -449,7 +474,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
         if (abortRef.current === controller) abortRef.current = null;
       }
     },
-    [api, systemPrompt, maxSteps, ensureProvider],
+    [api, systemPrompt, maxSteps, pinnedTools, ensureProvider],
   );
 
   const cancel = useCallback(() => {

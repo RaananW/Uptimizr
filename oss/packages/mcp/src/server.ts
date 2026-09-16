@@ -5,12 +5,31 @@ import { registerPrompts } from "./prompts.js";
 import { version } from "./version.js";
 
 /**
+ * Normalise a collector response into the `{ rows }` envelope every tool's
+ * `outputSchema` declares. Aggregate endpoints already return an array; the
+ * single-object reads (a session descriptor, a scene representation, a one-row
+ * summary) become a one-element array so a client can treat every tool's
+ * structured result the same way. A `204`-style empty body becomes no rows.
+ */
+function toRows(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  if (data == null) return [];
+  return [data];
+}
+
+/**
  * Build the Uptimizr MCP server: a read-only `McpServer` whose tools each wrap
  * one collector query endpoint via the injected `CollectorClient`. The server
  * holds no business logic — it forwards validated arguments and returns the
  * collector's JSON (ADR 0005 / ADR 0017). Alongside the tools it exposes
  * capability-discovery **resources** and curated analysis **prompts** so agents
  * can self-orient (ADR 0050 §7).
+ *
+ * The tool catalog is generated from the `@uptimizr/db` metric registry
+ * (ADR 0051 §1), so `tools/list` covers every metric the collector serves on an
+ * endpoint. Each tool advertises the registry-derived `outputSchema` and returns
+ * both `structuredContent` (the typed `{ rows }` envelope) and the `content`
+ * text a client without structured-output support still reads.
  */
 export function createMcpServer(client: CollectorClient): McpServer {
   const server = new McpServer(
@@ -25,12 +44,15 @@ export function createMcpServer(client: CollectorClient): McpServer {
         title: tool.title,
         description: tool.description,
         inputSchema: tool.inputSchema,
+        ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
       },
       async (args) => {
         try {
           const { path, params } = tool.buildRequest(args as Record<string, unknown>);
           const data = await client.get(path, params);
-          return { content: [{ type: "text", text: JSON.stringify(data) }] };
+          const text = JSON.stringify(data);
+          if (!tool.outputSchema) return { content: [{ type: "text", text }] };
+          return { content: [{ type: "text", text }], structuredContent: { rows: toRows(data) } };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };

@@ -391,9 +391,7 @@
         "description": "The session id to describe."
       }
     },
-    "required": [
-      "sessionId"
-    ],
+    "required": ["sessionId"],
     "additionalProperties": false
   },
   "scene_representation": {
@@ -406,9 +404,7 @@
         "description": "The scene id to fetch."
       }
     },
-    "required": [
-      "sceneId"
-    ],
+    "required": ["sceneId"],
     "additionalProperties": false
   },
   "funnel": {
@@ -434,10 +430,7 @@
       "cameraMode": {
         "description": "Camera navigation mode to scope to: 'viewer' (orbit) or 'first-person' (walkable).",
         "type": "string",
-        "enum": [
-          "viewer",
-          "first-person"
-        ]
+        "enum": ["viewer", "first-person"]
       },
       "steps": {
         "type": "string",
@@ -445,9 +438,7 @@
         "description": "Funnel steps as a JSON-encoded array of ordered step predicates (ADR 0038). Required. Each step is `{ \"type\": <event_type>, ... }`; e.g. `[{\"type\":\"scene_change\",\"to\":\"lobby\"},{\"type\":\"mesh_interaction\",\"mesh\":\"buy\"}]`."
       }
     },
-    "required": [
-      "steps"
-    ],
+    "required": ["steps"],
     "additionalProperties": false
   },
   "aggregate_paths": {
@@ -485,10 +476,7 @@
       "cameraMode": {
         "description": "Camera navigation mode to scope to: 'viewer' (orbit) or 'first-person' (walkable).",
         "type": "string",
-        "enum": [
-          "viewer",
-          "first-person"
-        ]
+        "enum": ["viewer", "first-person"]
       }
     },
     "additionalProperties": false

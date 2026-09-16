@@ -61,23 +61,47 @@ console.log(result.content); // the model's final answer
 
 ## Tool catalog (read-only)
 
-`list_sessions`, `pointer_heatmap`, `world_heatmap`, `camera_heatmap`, `click_rays`, `flow_links`,
-`top_meshes`, `perf_summary`, `list_scenes`, `timeseries`, `event_counts`, `session_meta`,
-`scene_representation`, `funnel`, `aggregate_paths`, `rendering_technology`, `xr_rotation`,
-`xr_sources`, `xr_abandonment`, `xr_locomotion`. Most accept `since`/`until` (epoch ms) plus
-endpoint-specific filters (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, `cameraMode`,
-`rapidTurn`, `steps`). Each maps one-to-one to a documented
-collector query endpoint (see the [integration guide](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md)).
+`readTools` is **generated** from the semantic metric registry in `@uptimizr/db`
+([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md) §1):
+one tool per metric the collector serves on a read endpoint — **69** today, covering sessions and
+scenes, pointer/world/gaze/camera heatmaps, mesh attention and blind spots, dead and rage clicks,
+navigation and desire lines, performance (FPS distribution, jank, compile stalls, per-device and
+per-scene), errors and stability, XR/AR comfort and placement, and conversion (funnel, scene
+retention, load→bounce, variant leaderboard). The full table is in the
+[MCP guide](https://uptimizr.com/docs/guides/mcp/).
+
+Each tool carries:
+
+- a **name** that is the registry metric id (the 20 names shipped before the registry are
+  unchanged, and so are their argument schemas — a frozen-fixture test pins that);
+- a **description** composed from the metric's description, how to read the result, and its
+  caveats (sample-size limits, which capture channel must be on);
+- an **input schema** built from the endpoint's filters — most accept `since`/`until` (epoch ms)
+  plus `scene`, `session`, `source`, `bins`, `cellSize`, `limit`, `cameraMode`, `region`, …;
+- an **output schema** (`{ rows: Row[] }`) derived from the metric's row schema, which
+  `@uptimizr/mcp` registers as the MCP `outputSchema`.
+
+The registry is imported through its dependency-free `@uptimizr/db/registry` subpath, so this
+package stays browser-safe — a bundle test asserts no `node:` built-in or DuckDB driver can reach a
+browser build.
 
 ## API
 
-| Export                         | Purpose                                                           |
-| ------------------------------ | ----------------------------------------------------------------- |
-| `readTools`                    | The read-only tool catalog (one entry per query endpoint).        |
-| `createCollectorClient(cfg)`   | Thin `GET`-only collector client (`fetch`-based, injectable).     |
-| `toToolSchemas(tools?)`        | Convert catalog tools to JSON-Schema tool descriptors for an LLM. |
-| `runAgent(options)`            | The headless tool-calling loop.                                   |
-| `LlmProvider` / `AgentMessage` | The provider-adapter interface and message types.                 |
+| Export                         | Purpose                                                              |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `readTools`                    | The read-only tool catalog (one entry per query endpoint).           |
+| `coreReadTools`                | Focused subset for small local models (a filtered view, not a copy). |
+| `selectReadTools(kind)`        | Pick `"core"` or `"full"`.                                           |
+| `filterReadTools(names)`       | Narrow the catalog to specific tool names, in catalog order.         |
+| `registryToTools(metrics?)`    | Generate the catalog from metric-registry definitions.               |
+| `createCollectorClient(cfg)`   | Thin `GET`-only collector client (`fetch`-based, injectable).        |
+| `toToolSchemas(tools?)`        | Convert catalog tools to JSON-Schema tool descriptors for an LLM.    |
+| `runAgent(options)`            | The headless tool-calling loop.                                      |
+| `LlmProvider` / `AgentMessage` | The provider-adapter interface and message types.                    |
+
+A 69-tool catalog is more than a small local model can hold in its function-calling prompt — use
+`coreReadTools` (what the `@uptimizr/react` assistant sends the WebLLM backend) or
+`filterReadTools([...])` to hand a run a deliberate subset.
 
 The loop stops when the provider returns a final answer or after `maxSteps` turns
 (`DEFAULT_MAX_STEPS`, default 8). Unknown tools and invalid arguments are surfaced back to the model
