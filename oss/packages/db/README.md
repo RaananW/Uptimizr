@@ -81,16 +81,35 @@ import { METRIC_REGISTRY, getMetric, allMetrics } from "@uptimizr/metrics";
 
 const metric = getMetric("top_meshes");
 metric?.endpoint; // { method: "GET", path: "/api/v1/meshes/top" }
-metric?.row.parse(row); // validates + coerces one result row
+metric?.row.parse(row); // validates one result row
 ```
 
 It is a **separate package**, not a subpath of this one, because this package depends on
 `@duckdb/node-api` — a ~37 MB native binding — while the registry's consumers
 (`@uptimizr/agent-core`, `@uptimizr/mcp`, `@uptimizr/react`) run in a browser or over `npx` and
 can never use a database driver. `@uptimizr/metrics` imports nothing but `zod` and a _type-only_
-declaration from `@uptimizr/schema`, so it is pure data with no I/O. Every numeric column is
-`z.coerce.number()` — DuckDB, Postgres and SQL Server return JS numbers, but ClickHouse renders
-64-bit integers and decimals as strings over HTTP, and one schema has to validate all four.
+declaration from `@uptimizr/schema`, so it is pure data with no I/O.
+
+### Numbers are numbers (ADR 0051 §2)
+
+Every numeric column in a `row` schema is a strict `z.number()`, because that is what the collector
+actually emits. Engines disagree about the wire — ClickHouse renders 64-bit integers and decimals
+as JSON **strings** over HTTP, `pg` returns `int8`/`numeric` as strings without a type parser — so
+each store's query runner normalises them at the single point rows leave its driver:
+
+```ts
+import { coerceRows, numericColumns } from "@uptimizr/db";
+
+coerceRows("top_meshes", [{ mesh: "box", count: "42" }]); // [{ mesh: "box", count: 42 }]
+numericColumns(getMetric("top_meshes")!.row); // ["count"]
+```
+
+`build*` aggregations tag their `QuerySpec` with the metric id, so `runDuckdbQuery`,
+`runClickhouseQuery`, `runPostgresQuery` and `runMssqlQuery` each apply `coerceRows` with no work
+at the call site. `null` stays `null` — an aggregate over an empty set is "no samples", never `0`.
+A value that is neither a number, `null`, nor a finite numeric string **throws** under a test runner
+and is left untouched with a one-per-column warning in production; pass `{ strict }` to pin either.
+The parity suites assert `typeof === "number"` for every registry-numeric column on every engine.
 
 > **A new aggregation is not done until it has a registry entry.** Add the `build*` name to
 > `AGGREGATION_BUILDER_NAMES` and a `MetricDefinition` to `METRIC_REGISTRY` in

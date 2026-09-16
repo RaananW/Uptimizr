@@ -91,8 +91,24 @@ Its own **package**, not a subpath here, because this one depends on the ~37 MB
 `@duckdb/node-api` native binding and the registry's consumers (`@uptimizr/agent-core`,
 `@uptimizr/mcp`, `@uptimizr/react`) can never use a database driver. `@uptimizr/metrics` imports
 **only** `zod` plus a type-only `@uptimizr/schema` declaration, performs no I/O and holds no store
-or dialect reference. Numeric columns are `z.coerce.number()` so one schema validates
-DuckDB / Postgres / SQL Server numbers _and_ ClickHouse's string-encoded 64-bit integers.
+or dialect reference.
+
+### Numeric coercion at the store edge (ADR 0051 §2)
+
+Numeric columns are strict `z.number()` — the schema describes the API, not the wire. Every
+`build*` tags its `QuerySpec` with the metric id, and each store's runner (`runDuckdbQuery`,
+`runClickhouseQuery`, `runPostgresQuery`, `runMssqlQuery`) calls `coerceRows(spec.metric, rows)` at
+the one point rows leave the driver, so a string-encoded 64-bit integer or decimal becomes a number
+before any consumer sees it. `null` passes through — an aggregate over an empty set is "no
+samples", not `0`, which is why nine perf/resource metrics declare nullable columns.
+
+- **Do not** reintroduce `z.coerce.number()` in `registry.ts`: a registry test proves that
+  string-encoded rows _fail_ the strict schema and _pass_ after `coerceRows`, which is what pins
+  the work to the edge.
+- A new store must call `coerceRows` in its runner; the parity suite asserts
+  `typeof === "number"` for every registry-numeric column on every engine (`numericColumnsForSpec`).
+- Junk in a numeric column throws under a test runner and is left untouched with a one-per-column
+  warning in production (`coerceRows(..., { strict })` pins either).
 
 **Rules for agents:**
 
@@ -104,11 +120,14 @@ DuckDB / Postgres / SQL Server numbers _and_ ClickHouse's string-encoded 64-bit 
   that is the whole point of the split. The builder-name list is literal data for that reason.
 - The 20 ids that are already `@uptimizr/agent-core` tool names (`top_meshes`, `perf_summary`,
   `list_sessions`, …) are frozen — renaming one breaks every MCP client.
-- `row` must match what the SQL actually projects, not what `types.ts` declares. Three suites
-  enforce this: `@uptimizr/metrics`' `registry.test.ts` (coverage, internal consistency), this
-  package's `registry.test.ts` (the builder link, plus `row` parsing against real DuckDB output
-  over the parity fixtures and the string-encoded ClickHouse shape) and the collector's
-  `registryRoutes.test.ts` (endpoint exists; querystring keys === `filters`).
+- `row` must match what the SQL actually projects, not what `types.ts` declares. It is also the
+  collector's **response schema**, so an undeclared column is stripped from the API and a `null` in
+  a non-nullable one is a 500. Four suites enforce this: `@uptimizr/metrics`' `registry.test.ts`
+  (coverage, internal consistency), this package's `registry.test.ts` (the builder link, plus `row`
+  parsing against real DuckDB output over the parity fixtures and the string-encoded ClickHouse
+  shape through `coerceRows`), the collector's `registryRoutes.test.ts` (endpoint exists;
+  querystring keys === `filters`) and its `queryResponseSchemas.test.ts` (every endpoint, against a
+  seeded store, an empty one, and the in-memory store).
 
 ## Cross-engine parity (ADR 0020)
 

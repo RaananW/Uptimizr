@@ -69,9 +69,13 @@ Read the full table in docs/integration.md; the high-frequency ones:
 
 ## 4. Pitfalls (where queries go wrong)
 
-- **Aggregate columns come back as JSON strings.** ClickHouse returns `count()` and similar as
-  strings (e.g. `"42"`). Coerce to numbers on the client before doing math. The dashboard's
-  `CollectorApi` already does this — mirror it; don't sum strings.
+- **Aggregate columns are JSON numbers — but `null` is not `0`.** Every store coerces numeric
+  columns at the point rows leave its driver and every query route serialises through the metric
+  registry's `row` schema (ADR 0051 §2), so `count()`, percentiles and sums arrive as numbers on
+  DuckDB, ClickHouse, Postgres and SQL Server alike — do not re-parse them. What you do have to
+  handle is `null`: a single-row summary (`/api/v1/perf`, `/api/v1/perf/jank`,
+  `/api/v1/perf/resources`, …) is still returned over a range that matched nothing, with its
+  aggregate columns `null`. That means "no samples", not zero — read the row's plain count first.
 - **`since`/`until` are milliseconds, `interval` is seconds.** Mixing the units is the most common
   "empty result" cause. A `400` means a param failed Zod validation (e.g. `bins > 500`,
   negative `cellSize`, a `scene`/`source` that doesn't match the allowed pattern/enum).
@@ -97,7 +101,7 @@ handled for you (ADR 0017).
 A new or changed query endpoint is a code change in `collector-server` + `db`, not just a skill
 edit. Follow the `work-on-issue` skill and keep four things in lockstep:
 
-1. the **metric registry**, `oss/packages/db/src/query/registry.ts` — the contract (see below),
+1. the **metric registry**, `oss/packages/metrics/src/registry.ts` — the contract (see below),
 2. the Zod querystring in `oss/apps/collector-server/src/routes/query.ts` (validate at the edge),
 3. the **generated** tables — run `pnpm gen:docs` (after `pnpm build`) to re-render
    `docs/integration.md` §"Query (read)", the docs-site `api/query` page and the packaged
@@ -132,5 +136,10 @@ Two CI gates keep it honest, so treat them as part of the definition of done:
 - **An endpoint's querystring keys must equal its registry `filters`**, asserted by
   `oss/apps/collector-server/src/__tests__/registryRoutes.test.ts`. Adding a query parameter without
   declaring it in the registry fails the build.
+- **The `row` schema is also the endpoint's response schema** (ADR 0051 §2). It is strict: a column
+  the handler returns but the registry does not declare is stripped from the API, and a `null` in a
+  column not declared nullable is a `500`. `queryResponseSchemas.test.ts` calls every registry
+  endpoint against a seeded store, an empty one and the in-memory store to catch both. Numeric
+  coercion belongs in the store runner (`coerceRows`), never back in the schema.
 - **The committed docs tables must match the registry**, asserted by `pnpm gen:docs:check` in CI and
   by `oss/apps/collector-server/src/__tests__/genRegistryDocs.test.ts`. Run `pnpm gen:docs`.
