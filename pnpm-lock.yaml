@@ -170,6 +170,9 @@ importers:
       '@uptimizr/db-postgres':
         specifier: workspace:*
         version: link:../../packages/db-postgres
+      '@uptimizr/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
       '@uptimizr/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -346,9 +349,9 @@ importers:
 
   oss/packages/agent-core:
     dependencies:
-      '@uptimizr/db':
+      '@uptimizr/metrics':
         specifier: workspace:*
-        version: link:../db
+        version: link:../metrics
       zod:
         specifier: ^4.5.4
         version: 4.5.4
@@ -377,6 +380,9 @@ importers:
       '@duckdb/node-api':
         specifier: ^1.5.5-r.4
         version: 1.5.5-r.4
+      '@uptimizr/metrics':
+        specifier: workspace:*
+        version: link:../metrics
       '@uptimizr/schema':
         specifier: workspace:*
         version: link:../schema
@@ -508,9 +514,9 @@ importers:
       '@uptimizr/agent-core':
         specifier: workspace:*
         version: link:../agent-core
-      '@uptimizr/db':
+      '@uptimizr/metrics':
         specifier: workspace:*
-        version: link:../db
+        version: link:../metrics
       '@uptimizr/schema':
         specifier: workspace:*
         version: link:../schema
@@ -524,6 +530,19 @@ importers:
       tsx:
         specifier: ^4.23.13
         version: 4.23.13
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@26.4.1)(happy-dom@20.14.0)(jsdom@30.0.1(canvas@3.2.3))(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+
+  oss/packages/metrics:
+    dependencies:
+      '@uptimizr/schema':
+        specifier: workspace:*
+        version: link:../schema
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+    devDependencies:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.4.1)(happy-dom@20.14.0)(jsdom@30.0.1(canvas@3.2.3))(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))

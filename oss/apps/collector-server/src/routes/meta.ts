@@ -4,7 +4,7 @@
  * `GET /api/v1/openapi.json` serves an **OpenAPI 3.1** document for the read
  * API, assembled from two sources that are already the truth:
  *
- * 1. the **metric registry** (`@uptimizr/db/registry`) — one path per registered
+ * 1. the **metric registry** (`@uptimizr/metrics`) — one path per registered
  *    `endpoint`, the operation's summary/description/tags, the `200` response
  *    schema (the registry `row` converted with `z.toJSONSchema`), per-column
  *    units and descriptions, and the semantics OpenAPI has no vocabulary for
@@ -37,7 +37,7 @@ import {
   isResourceMetric,
   type FilterId,
   type MetricDefinition,
-} from "@uptimizr/db/registry";
+} from "@uptimizr/metrics";
 
 /** A JSON Schema object, as produced by `z.toJSONSchema`. */
 type JsonSchema = Record<string, unknown>;

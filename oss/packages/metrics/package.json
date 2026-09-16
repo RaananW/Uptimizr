@@ -1,26 +1,27 @@
 {
-  "name": "@uptimizr/mcp",
-  "version": "1.0.1",
-  "description": "Read-only Model Context Protocol (MCP) server over an Uptimizr collector's query API — let an agent ask questions of your own 3D analytics, on your own infrastructure.",
+  "name": "@uptimizr/metrics",
+  "version": "0.0.0",
+  "description": "The Uptimizr semantic metric registry — one machine-readable definition per analytics metric (row schema, units, filters, endpoint, limits, interpretation). Dependency-free and browser-safe.",
   "keywords": [
     "uptimizr",
     "analytics",
-    "mcp",
-    "model-context-protocol",
-    "ai",
-    "agent",
-    "3d"
+    "3d",
+    "metrics",
+    "registry",
+    "zod",
+    "openapi",
+    "mcp"
   ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RaananW/Uptimizr.git",
-    "directory": "oss/packages/mcp"
+    "directory": "oss/packages/metrics"
   },
   "bugs": {
     "url": "https://github.com/RaananW/Uptimizr/issues"
   },
-  "homepage": "https://uptimizr.com/docs/guides/mcp/",
+  "homepage": "https://uptimizr.com/docs/api/query/",
   "author": "Raanan Weber (https://github.com/RaananW)",
   "publishConfig": {
     "access": "public"
@@ -35,9 +36,6 @@
       "import": "./dist/index.js"
     }
   },
-  "bin": {
-    "uptimizr-mcp": "./dist/bin.js"
-  },
   "files": [
     "dist",
     "README.md",
@@ -49,23 +47,16 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
-    "serve": "tsx src/bin.ts",
-    "start": "node dist/bin.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint .",
     "clean": "rimraf -g dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "@uptimizr/agent-core": "workspace:*",
-    "@uptimizr/metrics": "workspace:*",
     "@uptimizr/schema": "workspace:*",
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^26.4.1",
-    "tsx": "^4.23.13",
     "vitest": "^4.1.11"
   },
   "engines": {

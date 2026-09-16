@@ -74,34 +74,41 @@ every tool (collector + CLIs) shares one canonical file regardless of cwd.
 
 ## Metric registry (ADR 0051 §1)
 
-`@uptimizr/db/registry` is the semantic layer over the aggregations: one `MetricDefinition` per
-exported `build*` (plus two builder-less resource entries — `session_meta`, `scene_representation`)
-declaring id, title, agent-facing description, builder, collector endpoint, `grain`, `dimensions`,
-`filters`, the output `row` Zod schema, per-column semantics (unit / measure / label / `rateOf`),
-row `limits`, `interpretation`, `caveats`, `sourceChannels` (the ADR 0012 capture dials that must
-be on for the metric to have data), `related` metrics, `comparable` semantics and a `category`.
-`DimensionId` / `FilterId` are closed unions declared once; `FILTER_TARGETS` maps each filter to
-the `query/types.ts` option field it drives.
+[`@uptimizr/metrics`](../metrics) is the semantic layer over the aggregations: one
+`MetricDefinition` per exported `build*` (plus two builder-less resource entries — `session_meta`,
+`scene_representation`) declaring id, title, agent-facing description, builder, collector endpoint,
+`grain`, `dimensions`, `filters`, the output `row` Zod schema, per-column semantics (unit /
+measure / label / `rateOf`), row `limits`, `interpretation`, `caveats`, `sourceChannels` (the
+ADR 0012 capture dials that must be on for the metric to have data), `related` metrics,
+`comparable` semantics and a `category`. `DimensionId` / `FilterId` are closed unions declared
+once; `FILTER_TARGETS` maps each filter to the `query/types.ts` option field it drives.
 
 ```ts
-import { getMetric, allMetrics, METRIC_IDS } from "@uptimizr/db/registry";
+import { getMetric, allMetrics, METRIC_IDS } from "@uptimizr/metrics";
 ```
 
-Its own subpath, because the package root is Node-only. The registry imports **only** `zod` plus
-type-only declarations, performs no I/O and holds no store or dialect reference, so it is safe to
-bundle into a browser consumer. Numeric columns are `z.coerce.number()` so one schema validates
+Its own **package**, not a subpath here, because this one depends on the ~37 MB
+`@duckdb/node-api` native binding and the registry's consumers (`@uptimizr/agent-core`,
+`@uptimizr/mcp`, `@uptimizr/react`) can never use a database driver. `@uptimizr/metrics` imports
+**only** `zod` plus a type-only `@uptimizr/schema` declaration, performs no I/O and holds no store
+or dialect reference. Numeric columns are `z.coerce.number()` so one schema validates
 DuckDB / Postgres / SQL Server numbers _and_ ClickHouse's string-encoded 64-bit integers.
 
 **Rules for agents:**
 
-- Adding a `build*` aggregation without a registry entry is a **compile error**
-  (`NoUnregisteredAggregations` in `registry.ts` names the missing builder).
+- A `build*` aggregation added here must also be added to `AGGREGATION_BUILDER_NAMES` in
+  `@uptimizr/metrics`, and given a registry entry. Missing the entry is a **compile error**
+  (`NoUnregisteredAggregations` names the missing builder); missing the list entry fails this
+  package's `registry.test.ts` at runtime and names it too.
+- **Never import `@uptimizr/db` from `@uptimizr/metrics`.** The dependency runs one way only —
+  that is the whole point of the split. The builder-name list is literal data for that reason.
 - The 20 ids that are already `@uptimizr/agent-core` tool names (`top_meshes`, `perf_summary`,
   `list_sessions`, …) are frozen — renaming one breaks every MCP client.
-- `row` must match what the SQL actually projects, not what `types.ts` declares. Three tests
-  enforce this: `db`'s `registry.test.ts` (coverage, internal consistency, `row` parsing against
-  real DuckDB output over the parity fixtures, plus the string-encoded ClickHouse shape) and the
-  collector's `registryRoutes.test.ts` (endpoint exists; querystring keys === `filters`).
+- `row` must match what the SQL actually projects, not what `types.ts` declares. Three suites
+  enforce this: `@uptimizr/metrics`' `registry.test.ts` (coverage, internal consistency), this
+  package's `registry.test.ts` (the builder link, plus `row` parsing against real DuckDB output
+  over the parity fixtures and the string-encoded ClickHouse shape) and the collector's
+  `registryRoutes.test.ts` (endpoint exists; querystring keys === `filters`).
 
 ## Cross-engine parity (ADR 0020)
 

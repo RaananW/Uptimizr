@@ -113,7 +113,7 @@ Then update this skill if the workflow or a gotcha changed, and run the validati
 
 ### The registry is the contract (ADR 0051 §1)
 
-`@uptimizr/db/registry` holds one `MetricDefinition` per aggregation: its id (the same string the
+`@uptimizr/metrics` holds one `MetricDefinition` per aggregation: its id (the same string the
 agent tool uses), endpoint, result grain, group-by dimensions, accepted filters, the **output row
 schema** (Zod), per-column units and semantics, row limits, how to interpret the result, the
 caveats that make it untrustworthy, and the SDK capture channels (ADR 0012) that must be enabled
@@ -123,9 +123,12 @@ derived from.
 
 Two CI gates keep it honest, so treat them as part of the definition of done:
 
-- **A new aggregation is not done until it has a registry entry.** Adding a `build*` without one is
-  a compile error, and `oss/packages/db/src/__tests__/registry.test.ts` re-checks it at runtime and
-  parses every `row` schema against real DuckDB output.
+- **A new aggregation is not done until it has a registry entry.** Add the `build*` name to
+  `AGGREGATION_BUILDER_NAMES` in `oss/packages/metrics/src/registry.ts` and give it an entry;
+  missing the entry is a compile error, `oss/packages/metrics/src/__tests__/registry.test.ts`
+  re-checks coverage and consistency, and `oss/packages/db/src/__tests__/registry.test.ts` asserts
+  the builder-name list still equals the real `build*` exports and parses every `row` schema
+  against real DuckDB output.
 - **An endpoint's querystring keys must equal its registry `filters`**, asserted by
   `oss/apps/collector-server/src/__tests__/registryRoutes.test.ts`. Adding a query parameter without
   declaring it in the registry fails the build.

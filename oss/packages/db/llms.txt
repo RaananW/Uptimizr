@@ -16,7 +16,7 @@
 
 - DuckDB store: `createDuckdbClient`, `migrateDuckdb`, `duckdbInsertEvents`, `duckdbGetSessionEvents`, `duckdbResolveApiKey`, `runDuckdbQuery`.
 - Query layer: `buildX(projectId, opts, dialect)` builders, `duckdbDialect`, `Dialect`/`QuerySpec` types.
-- Metric registry (`@uptimizr/db/registry`, ADR 0051 §1): `METRIC_REGISTRY`, `getMetric`, `allMetrics`, `METRIC_IDS`, `FILTER_TARGETS` — one `MetricDefinition` per aggregation (unit, grain, dimensions, filters, Zod row schema, limits, interpretation, caveats, source channels). Pure data, browser-safe, no I/O. A new aggregation without a registry entry fails the build.
+- Metric registry: moved to its own dependency-free package, [`@uptimizr/metrics`](../metrics) (ADR 0051 §1) — `METRIC_REGISTRY`, `getMetric`, `allMetrics`, `METRIC_IDS`, `FILTER_TARGETS`, one `MetricDefinition` per aggregation. This package depends on it; a new aggregation without a registry entry fails the build.
 - Neutral helpers: `toEventRow`, `formatUtcTimestamp`, api-key helpers, `Project`/`ApiKeyRecord`/`SceneRepresentation*` types.
 - Parity: `PARITY_CASES`, `diffParity` (DuckDB-vs-ClickHouse cross-engine equality).
 - `readDbSettings()` — environment-driven DuckDB settings with a local-dev default (`DUCKDB_PATH`).

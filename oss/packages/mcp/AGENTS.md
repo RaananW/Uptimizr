@@ -41,7 +41,7 @@ UPTIMIZR_COLLECTOR_URL="https://collect.example.com" UPTIMIZR_API_KEY="utk_…" 
 
 <!-- generated:registry-tool-names:end -->
 
-**69 tools, generated** from the `@uptimizr/db` semantic metric registry (ADR 0051 §1) — one per
+**69 tools, generated** from the `@uptimizr/metrics` semantic metric registry (ADR 0051 §1) — one per
 metric the collector serves on a read endpoint. Names are the registry ids; the full table lives in
 [README.md](./README.md), and `uptimizr://capabilities` enumerates them at runtime with each tool's
 grain, column units and caveats.
@@ -71,9 +71,12 @@ small sample.
 - The server talks only to the configured collector with the consumer's `x-api-key`; never hardcode
   or log credentials.
 - Keep it a thin wrapper: the `readTools` catalog (defined in `@uptimizr/agent-core`) is
-  **generated** from the `@uptimizr/db` metric registry, so a new tool = a new registry entry for a
-  documented query endpoint — never a hand-written array entry here. Do not add
+  **generated** from the `@uptimizr/metrics` metric registry, so a new tool = a new registry entry
+  for a documented query endpoint — never a hand-written array entry here. Do not add
   aggregation/business logic — that lives in the collector.
+- **No database driver, ever.** This server talks to a collector over HTTP; it must stay installable
+  with `npx`. Never add `@uptimizr/db` (or any package with a native/optional binary dependency) to
+  `dependencies` — `src/__tests__/dependencies.test.ts` fails if you do.
 - Tool definitions are pure (`buildRequest`) and must stay unit-testable without a live collector.
 
 ## Programmatic API

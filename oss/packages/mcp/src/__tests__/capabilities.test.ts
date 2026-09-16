@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readTools } from "@uptimizr/agent-core";
-import { allMetrics, isResourceMetric } from "@uptimizr/db/registry";
+import { allMetrics, isResourceMetric } from "@uptimizr/metrics";
 import { buildCapabilities } from "../capabilities.js";
 
 describe("buildCapabilities", () => {

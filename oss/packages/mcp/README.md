@@ -75,7 +75,7 @@ For **GitHub Copilot CLI**, put the same entry in `~/.copilot/mcp-config.json` w
 
 ## Tools
 
-The catalog is **generated from the semantic metric registry** in `@uptimizr/db` (ADR 0051 §1):
+The catalog is **generated from the semantic metric registry** in `@uptimizr/metrics` (ADR 0051 §1):
 every aggregation the collector serves on a read endpoint is a tool — **69** of them. Each tool's
 description carries the metric's interpretation notes and caveats, and each declares an MCP
 `outputSchema` for the rows it returns (results come back as both `content` text and

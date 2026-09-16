@@ -55,6 +55,7 @@
     "@uptimizr/db-clickhouse": "workspace:*",
     "@uptimizr/db-mssql": "workspace:*",
     "@uptimizr/db-postgres": "workspace:*",
+    "@uptimizr/metrics": "workspace:*",
     "@uptimizr/schema": "workspace:*",
     "fastify": "^5.12.3",
     "fastify-type-provider-zod": "^7.0.0",

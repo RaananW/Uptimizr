@@ -101,7 +101,7 @@ week and how's the average FPS?"_ — the agent picks the right tools and answer
 
 ## Tools
 
-The catalog is **generated from the semantic metric registry** in `@uptimizr/db`
+The catalog is **generated from the semantic metric registry** in `@uptimizr/metrics`
 ([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md)):
 every aggregation the collector serves on a read endpoint is a tool — **69** of them — so an agent
 sees the whole read surface rather than a hand-picked subset. Each tool's description carries the

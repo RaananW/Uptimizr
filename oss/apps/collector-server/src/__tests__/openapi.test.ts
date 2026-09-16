@@ -12,7 +12,7 @@
 
 import { Validator } from "@seriousme/openapi-schema-validator";
 import { describe, expect, it, beforeAll } from "vitest";
-import { allMetrics, type MetricDefinition } from "@uptimizr/db/registry";
+import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import { buildApp } from "../app.js";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
