@@ -79,7 +79,11 @@ export async function registerRegions(
   if (typeof doFetch !== "function") {
     throw new Error("registerRegions needs a fetch implementation (pass options.fetchImpl).");
   }
-  const base = options.endpoint.replace(/\/+$/, "");
+  // Trim trailing slashes with a loop rather than a `/\/+$/` regex: the greedy
+  // quantifier backtracks from every position, so an endpoint of many slashes
+  // costs quadratic time (CodeQL `js/polynomial-redos`). This is linear.
+  let base = options.endpoint;
+  while (base.endsWith("/")) base = base.slice(0, -1);
   const url = `${base}/api/v1/scenes/${encodeURIComponent(sceneId)}/regions`;
   const response = await doFetch(url, {
     method: "PUT",
