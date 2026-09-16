@@ -104,6 +104,15 @@ week and how's the average FPS?"_ — the agent picks the right tools and answer
 All tools accept an optional time range (`since` / `until`, epoch ms) and the filters the underlying
 endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, …).
 
+A tool returns the endpoint's rows as they are. For a large result — a 500-bin heatmap, a voxel
+cloud, a thousand-row list — that is token-expensive and hard for a model to read, so the collector
+also serves a bounded [`format=summary` envelope](/docs/api/query/#result-formats): top rows, a
+trend, or merged spatial clusters, with shares, a sample size, the metric's caveats and a templated
+`reading` sentence. Today it is reachable over HTTP; the generated tool catalog exposes `format` on
+every aggregate tool (and defaults it to a bounded envelope) as a follow-up — see
+[#299](https://github.com/RaananW/Uptimizr/issues/299). Until then, keep results small with `limit`,
+`scene` and a tight `since`/`until`.
+
 | Tool                   | Endpoint                            | Returns                                                          |
 | ---------------------- | ----------------------------------- | ---------------------------------------------------------------- |
 | `list_sessions`        | `/api/v1/sessions`                  | Recent sessions.                                                 |

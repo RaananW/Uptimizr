@@ -7,6 +7,52 @@ All read endpoints take `x-api-key` and the [shared parameters](/docs/api/overvi
 scoped to the project resolved from the key. Below are the most-used endpoints, grouped by need; see
 the [overview](/docs/api/overview/) for auth and parameter units.
 
+## Result formats
+
+Every aggregate endpoint below accepts `format=full | table | summary`. It filters nothing — it
+picks the envelope the rows arrive in.
+
+| `format`  | Response                                                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `full`    | **Default.** The bare rows, unchanged. What the dashboard uses.                                                                              |
+| `table`   | `{ meta, rows }` — the same rows plus the metric, range, applied filters, sample size, row count, whether the cap truncated them, and limits. |
+| `summary` | A bounded digest: top rows, a trend or spatial clusters, with shares, a sample size, a templated `reading` sentence and the metric's caveats. |
+
+`summary` is the one to use from an assistant or an MCP client: it is capped at the metric's
+`maxSummaryRows`, so a 500-bin heatmap costs the same as a 5-bin one. Its shape follows what one row
+of the metric *is* — `ranked` top rows for a leaderboard, a `series` (first/last/min/max/trend/slope)
+for a time bucket, merged `clusters` for a binned or voxelised heatmap, and the `record` itself for a
+single-row metric.
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/meshes/top?since=$SINCE&format=summary"
+```
+
+```jsonc
+{
+  "kind": "ranked",
+  "metric": "top_meshes",
+  "sampleSize": { "sessions": null, "events": 9130 },
+  "total": 9130,
+  "top": [{ "label": "checkout_button", "value": 2210, "share": 0.242 }],
+  "rest": { "rows": 61, "value": 5430, "share": 0.595 },
+  "reading": "Most-interacted meshes: checkout_button leads on count with 2,210 (24.2% of 9,130)…",
+  "caveats": ["Rows backed by fewer than ~30 events are directional only — …"],
+}
+```
+
+:::note
+`reading` is templated from the metric registry's column semantics by pure code — no model is
+involved, so the same rows always produce the same sentence. Shares (and the Wilson `confidence`
+note) appear only where the measure can honestly be summed: a metric measured in FPS or as a ratio
+reports `total: null` and no shares. Cluster coordinates are **grid indices** — multiply by the
+effective `cellSize` to place them in world space.
+:::
+
+Unrelated older parameter, same name: `/api/v1/sessions/:id/events` takes `format=json|ndjson` to
+negotiate the raw replay stream. It is not an aggregate endpoint and is unaffected.
+
 ## Sessions & scenes
 
 | Method | Path                              | Purpose                                                | Extra params          |

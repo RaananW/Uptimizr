@@ -136,6 +136,12 @@ The assistant is tuned for that reality:
   top meshes this week?"_, _"How's my average FPS?"_) in the empty conversation; each maps to a
   single core tool. Clicking one sends it — a reliable first-run path that also demonstrates the
   agent working.
+- **Keep tool results small.** A tool hands the model the endpoint's rows as they are, and a big
+  heatmap can fill a local model's whole context on its own. Prefer questions that map to a small
+  result, and pass `limit` / `scene` / a tight range when you call the tools yourself. The collector
+  additionally serves a bounded [`format=summary` envelope](/docs/api/query/#result-formats) — top
+  rows, a trend or merged spatial clusters, with shares and a templated reading — which the tool
+  catalog will adopt as its default ([#299](https://github.com/RaananW/Uptimizr/issues/299)).
 
 > **Local mode is for quick, single-metric answers.** Use it for _"top meshes this week"_, _"average
 > FPS"_, or _"events in the last 24h"_. For deeper, multi-step analysis, switch to a

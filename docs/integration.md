@@ -1288,6 +1288,101 @@ totals behind the truncated top-N voxel list (so cold spots and coverage read
 correctly). The dashboard's 3D world heatmap also normalizes color/size to the
 95th-percentile cell, so a few hotspots no longer wash out the rest of the scene.
 
+#### Result formats (`format=full | table | summary`)
+
+Every aggregate endpoint in the table below accepts a shared `format` parameter
+(ADR 0051 §2). It narrows nothing — it selects the **envelope** the rows come
+back in. Omit it and nothing changes: `full` is the default and returns exactly
+the bare rows it always has, which is what the dashboard uses.
+
+`table` keeps the rows and adds a `meta` envelope, so a result is
+self-describing without a second lookup:
+
+```jsonc
+// GET /api/v1/meshes/top?since=…&format=table
+{
+  "meta": {
+    "metric": "top_meshes",
+    "range": { "since": 1757000000000, "until": 1757600000000 },
+    "filters": { "scene": "lobby", "limit": 50 },
+    "sampleSize": { "sessions": null, "events": 9130 },
+    "rows": 63,
+    "truncated": false,
+    "limits": { "maxRows": 1000, "maxSummaryRows": 10 },
+  },
+  "rows": [{ "mesh": "checkout_button", "count": 2210 }],
+}
+```
+
+`summary` is the one to reach for from an agent: a **bounded** digest capped at
+the metric's `limits.maxSummaryRows`, so a 500-bin heatmap costs the same number
+of tokens as a 5-bin one. Its shape follows the metric's grain:
+
+| Grain              | `kind`     | What you get                                                                    |
+| ------------------ | ---------- | ------------------------------------------------------------------------------- |
+| mesh/scene/session | `ranked`   | `top[]` (label, value, share, Wilson interval, drill hints) and a `rest` bucket |
+| `bucket`           | `series`   | `first` / `last` / `min` / `max` / `trend` / `slope` over the ordered axis      |
+| `bin`, `voxel`     | `clusters` | merged hotspots — centroid, extent, cells, weight, share                        |
+| `project`          | `record`   | the single row, plus every rate the registry declares via `rateOf`              |
+
+```jsonc
+// GET /api/v1/meshes/top?since=…&format=summary
+{
+  "kind": "ranked",
+  "metric": "top_meshes",
+  "range": { "since": 1757000000000, "until": 1757600000000 },
+  "filters": { "scene": "lobby" },
+  "sampleSize": { "sessions": null, "events": 9130 },
+  "total": 9130,
+  "measure": { "column": "count", "unit": "count", "additive": true },
+  "top": [
+    {
+      "label": "checkout_button",
+      "value": 2210,
+      "share": 0.242,
+      "shareInterval": { "low": 0.233, "high": 0.251 },
+    },
+    { "label": "door_left", "value": 1490, "share": 0.163 },
+  ],
+  "rest": { "rows": 61, "value": 5430, "share": 0.595 },
+  "confidence": {
+    "kind": "wilson",
+    "level": 0.95,
+    "note": "Shares are proportions of 9130 events; …",
+  },
+  "reading": "Most-interacted meshes: checkout_button leads on count with 2,210 (24.2% of 9,130), followed by door_left with 1,490 (16.3%). The remaining 61 meshes hold 59.5%. Sample: 9,130 events.",
+  "caveats": ["Rows backed by fewer than ~30 events are directional only — …"],
+}
+```
+
+Worth knowing before you build on it:
+
+- **`reading` is templated, never generated.** It is assembled from the metric's
+  registry column semantics (`unit`, `label`, `measure`, `rateOf`) by pure code in
+  `@uptimizr/db` — no model is involved, so the same rows always produce the same
+  sentence.
+- **`sampleSize` is derived from column units.** `sessions` is the row count when
+  one row _is_ a session, otherwise the sum of the first column declared
+  `unit: "sessions"` (an upper bound when rows can share a session); `events` is
+  the sum of the first column declared `unit: "count"`. Either is `null` when the
+  metric declares nothing that could answer the question — never `0`.
+- **Shares are only reported where they are true.** A measure in FPS, a ratio or a
+  percentile cannot be summed across rows, so `total` and every `share` come back
+  `null` and the `reading` says why. `confidence` (a 95% Wilson interval, which
+  stays inside `0..1` at the small counts a long tail produces) appears only when
+  the shares really are proportions of a count.
+- **Clusters are numeric, not named.** A `bin`/`voxel` summary merges adjacent
+  occupied cells whose weight clears a density threshold (the mean weight per
+  occupied cell; 8-neighbourhood for 2D bins, 26 for voxels) and ranks them by
+  summed weight. Coordinates are **grid indices** — multiply by the effective
+  `cellSize` to place them. Where the metric accepts `region`, each cluster also
+  carries a `drill.region` box you can send straight back.
+- **`drill` hints are actionable.** A hint only names a filter the metric itself
+  accepts, so re-issuing the query with it always narrows the result.
+- An unknown `format` is a `400`. Note that `GET /api/v1/sessions/:id/events`
+  has its own, older `format=json|ndjson` for the raw replay stream — that route
+  is not an aggregate and is unaffected.
+
 | Method | Path                                 | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Extra params                                                                                         |
 | ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | `GET`  | `/api/v1/sessions`                   | Recent sessions (id, visitor, event count, start/end).                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `limit`, `cameraMode`                                                                                |
