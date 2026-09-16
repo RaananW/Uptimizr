@@ -1,0 +1,140 @@
+name: Agent eval
+
+# Measures whether the analytics agent still answers real questions correctly
+# (ADR 0051 §8). Two legs:
+#
+#   * `scripted` — deterministic, no secret, no network. Runs on every PR that
+#     touches the agent surface, and is the gate: it must stay at its committed
+#     100% baseline.
+#   * `hosted`  — a real frontier model through the user-controlled hosted
+#     adapter. Gated on the `UPTIMIZR_EVAL_API_KEY` repository secret; when the
+#     secret is absent (forks, and before it is configured) the job emits a
+#     visible notice and passes, because a measurement nobody made must never be
+#     reported as a green result.
+#
+# Kept out of `pr.yml` so the eval's path filter is independent of the main gate
+# and a fork PR never fails for want of a secret it cannot have.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "oss/packages/agent-core/**"
+      - "oss/packages/agent-eval/**"
+      - "oss/packages/mcp/**"
+      - "oss/packages/db/src/query/**"
+      - "oss/packages/react/src/assistant/**"
+      - ".github/workflows/agent-eval.yml"
+
+concurrency:
+  group: agent-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  scripted:
+    name: Agent eval (scripted)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
+      # The harness imports the collector's built `app`, so the workspace has to
+      # be built before the eval can boot it in-process.
+      - name: Build the harness dependencies
+        run: pnpm --filter @uptimizr/agent-eval... build
+
+      - name: Question bank + scoring suites
+        run: pnpm --filter @uptimizr/agent-eval test
+
+      - name: Run the eval (scripted provider)
+        run: pnpm --filter @uptimizr/agent-eval run eval
+
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-eval-report-scripted
+          path: |
+            oss/packages/agent-eval/report.md
+            oss/packages/agent-eval/report.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  hosted:
+    name: Agent eval (hosted model)
+    runs-on: ubuntu-latest
+    # Secrets are not available to PRs from forks, so the job would always skip
+    # there; run it for same-repo PRs and manual dispatches only.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
+      - name: Build the harness dependencies
+        run: pnpm --filter @uptimizr/agent-eval... build
+
+      # `--skip-without-key` turns a missing secret into a notice and a zero exit.
+      # With the secret present the run is compared to the hosted baseline and
+      # fails the job when the pass rate drops below it minus its tolerance.
+      - name: Run the eval (hosted provider)
+        run: pnpm --filter @uptimizr/agent-eval run eval -- --provider hosted --skip-without-key
+        env:
+          UPTIMIZR_EVAL_API_KEY: ${{ secrets.UPTIMIZR_EVAL_API_KEY }}
+          UPTIMIZR_EVAL_PROVIDER: ${{ vars.UPTIMIZR_EVAL_PROVIDER }}
+          UPTIMIZR_EVAL_MODEL: ${{ vars.UPTIMIZR_EVAL_MODEL }}
+          UPTIMIZR_EVAL_ENDPOINT: ${{ vars.UPTIMIZR_EVAL_ENDPOINT }}
+
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-eval-report-hosted
+          path: |
+            oss/packages/agent-eval/report.md
+            oss/packages/agent-eval/report.json
+          if-no-files-found: ignore
+          retention-days: 14

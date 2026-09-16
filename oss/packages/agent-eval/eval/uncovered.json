@@ -1,0 +1,4 @@
+{
+  "$comment": "Served metrics deliberately absent from the question bank. `src/__tests__/coverage.test.ts` fails when a metric the collector serves is neither referenced by a case's expectedTools nor listed here, so a new metric cannot ship without either a case or a written reason. Keep this empty if you possibly can — every entry is a question an agent has never been measured on. Each key is a registry metric id; each value is why.",
+  "metrics": {}
+}

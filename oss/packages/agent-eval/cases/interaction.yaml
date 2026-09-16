@@ -1,0 +1,77 @@
+# What people touch — the objects, the input devices, the interaction kinds, and
+# the frustration signals (dead and rage clicks).
+
+- id: interaction_top_meshes
+  category: interaction
+  question: Which objects are interacted with most, and how does that break down over time?
+  expectedTools:
+    - [top_meshes]
+    - [mesh_trend]
+  expectedAnswer:
+    numbers:
+      - { value: 4, label: statue interactions }
+      - { value: 3, label: door interactions }
+    phrases: ["statue", "door"]
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: interaction_input_sources
+  category: interaction
+  question: Which input devices are people using, and does that differ per object?
+  expectedTools:
+    - [interaction_sources]
+    - [mesh_sources]
+  expectedAnswer:
+    numbers:
+      - { value: 4, label: touch clicks }
+    phrases: ["touch", "mouse", "keyboard"]
+    forbiddenPhrases: ["no data"]
+
+- id: interaction_kinds
+  category: interaction
+  question: What kinds of interaction are happening on each object — picks, selects, hovers, teleports?
+  expectedTools:
+    - [mesh_interaction_kinds]
+  expectedAnswer:
+    numbers:
+      - { value: 1, label: teleports on the portal }
+    phrases: ["teleport", "select", "hover", "portal"]
+    forbiddenPhrases: ["no data"]
+
+- id: interaction_frustration
+  category: interaction
+  question: Are people clicking on things that do not respond, or clicking the same thing over and over?
+  expectedTools:
+    - [dead_clicks]
+    - [rage_clicks]
+  expectedAnswer:
+    numbers:
+      - { value: 7, label: total clicks }
+      - { value: 1, label: dead clicks }
+      - { value: 3, label: clicks in the rage cluster }
+    phrases: ["door"]
+    forbiddenPhrases: ["no data"]
+
+- id: interaction_click_geometry
+  category: interaction
+  question: Where were people standing and looking when they clicked, and which objects does gaze flow into?
+  expectedTools:
+    - [click_rays]
+    - [flow_links]
+  expectedAnswer:
+    numbers:
+      - { value: 3, label: clicks on the door from one standpoint }
+    phrases: ["door", "box", "sphere", "floor"]
+    forbiddenPhrases: ["no data"]
+
+- id: interaction_reach_and_keys
+  category: interaction
+  question: How far away are people when they interact with an object, and which keyboard or controller actions fire most?
+  expectedTools:
+    - [mesh_reachability]
+    - [top_input_actions]
+  expectedAnswer:
+    numbers:
+      - { value: 2, label: move-forward presses }
+      - { value: 1.54, tolerance: 0.05, label: average interaction distance }
+    phrases: ["move-forward", "keyboard", "buy"]
+    forbiddenPhrases: ["no data"]

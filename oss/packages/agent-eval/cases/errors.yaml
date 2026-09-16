@@ -1,0 +1,37 @@
+# Stability: engine diagnostics, JS runtime errors, context loss, and the
+# capability transitions that quietly change what the renderer can do.
+
+- id: errors_stability_overview
+  category: errors
+  question: How stable is this project — any context losses or compile stalls?
+  expectedTools:
+    - [stability_counts]
+  expectedAnswer:
+    numbers:
+      - { value: 0, label: context losses }
+      - { value: 1, label: compile stalls }
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: errors_graphics_diagnostics
+  category: errors
+  question: What engine-level graphics problems were reported, and how severe were they?
+  expectedTools:
+    - [graphics_diagnostics]
+  expectedAnswer:
+    numbers:
+      - { value: 1, label: incidents per diagnostic }
+    phrases: ["shader-compile", "validation", "webgl2"]
+    forbiddenPhrases: ["no data"]
+
+- id: errors_where_and_capability
+  category: errors
+  question: Where in the scene do errors happen, and did the renderer's capabilities change mid-session?
+  expectedTools:
+    - [error_heatmap]
+    - [capability_changes]
+  expectedAnswer:
+    numbers:
+      - { value: 3, label: errors in the worst voxel }
+      - { value: 2, label: tracking transitions }
+    phrases: ["tracking", "degraded"]
+    forbiddenPhrases: ["no data"]

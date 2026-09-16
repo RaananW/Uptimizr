@@ -1,0 +1,100 @@
+# Frame rate, frame time, jank, resolution truth, GPU/memory footprint and the
+# rendering stack behind them.
+
+- id: perf_headline
+  category: performance
+  question: How is frame rate overall — average, worst and median?
+  expectedTools:
+    - [perf_summary]
+  expectedAnswer:
+    numbers:
+      - { value: 42.2, tolerance: 0.05, label: average FPS }
+      - { value: 24, label: minimum FPS }
+      - { value: 45, label: median FPS }
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: perf_percentiles
+  category: performance
+  question: What does the frame-rate distribution look like at the tails, and how long is a frame taking?
+  expectedTools:
+    - [perf_distribution]
+    - [frame_time_percentiles]
+  expectedAnswer:
+    numbers:
+      - { value: 38.25, tolerance: 0.01, label: p05 FPS }
+      - { value: 48.5, tolerance: 0.01, label: p95 FPS }
+      - { value: 23.25, tolerance: 0.01, label: p50 frame time ms }
+    forbiddenPhrases: ["no data"]
+
+- id: perf_jank
+  category: performance
+  question: How much jank are people seeing, and how are sessions spread across frame-rate bands?
+  expectedTools:
+    - [jank_rate]
+    - [fps_histogram]
+  expectedAnswer:
+    numbers:
+      - { value: 28, label: total long frames }
+      - { value: 2.5, tolerance: 0.01, label: median long-frame rate }
+    forbiddenPhrases: ["no data"]
+
+- id: perf_by_device_and_scene
+  category: performance
+  question: Which devices and which scenes are slowest?
+  expectedTools:
+    - [perf_by_device]
+    - [perf_by_scene]
+  expectedAnswer:
+    numbers:
+      - { value: 24, label: median FPS on the slowest device }
+      - { value: 52, label: median FPS on the fastest device }
+    phrases: ["Quest 3", "Safari", "gallery"]
+    forbiddenPhrases: ["no data"]
+
+- id: perf_spatial
+  category: performance
+  question: Is there a place in the scene where the frame rate collapses?
+  expectedTools:
+    - [perf_heatmap]
+  expectedAnswer:
+    numbers:
+      - { value: 24, label: worst average FPS in a voxel }
+      - { value: 52, label: best average FPS in a voxel }
+    forbiddenPhrases: ["no data"]
+
+- id: perf_memory_footprint
+  category: performance
+  question: How heavy is the scene — JS heap, triangle count and texture memory?
+  expectedTools:
+    - [resource_summary]
+    - [resource_percentiles]
+  expectedAnswer:
+    numbers:
+      - { value: 120000000, label: peak JS heap bytes }
+      - { value: 900000, label: peak triangles }
+    forbiddenPhrases: ["no data"]
+
+- id: perf_stalls_and_render_scale
+  category: performance
+  question: Are shader compiles stalling the first frames, and is the renderer quietly downscaling resolution?
+  expectedTools:
+    - [compile_stalls]
+    - [render_scale_truth]
+  expectedAnswer:
+    numbers:
+      - { value: 250, label: total stall milliseconds }
+      - { value: 2, label: downscaled samples }
+    phrases: ["shader"]
+    forbiddenPhrases: ["no data"]
+
+- id: perf_churn_and_stack
+  category: performance
+  question: Did any session end right after a performance dip, and which graphics stacks are in play?
+  expectedTools:
+    - [perf_churn]
+    - [rendering_technology]
+  expectedAnswer:
+    numbers:
+      - { value: 1, label: churned sessions }
+    phrases: ["webgpu", "webgl2", "wgsl"]
+    forbiddenPhrases: ["no data"]
