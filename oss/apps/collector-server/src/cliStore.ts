@@ -8,6 +8,7 @@ import {
   duckdbPutSceneRegions,
   migrateDuckdb,
   readDbSettings,
+  type ApiKeyCapability,
   type ApiKeyRecord,
   type CreateApiKeyOptions,
   type SceneRegionRecord,
@@ -62,7 +63,8 @@ export interface CliStore {
   createProject(name: string): Promise<{ id: string; name: string }>;
   /**
    * Issue an API key; the plaintext is returned exactly once. Defaults to the
-   * `query` (read-only) capability when no options are given.
+   * `query` (read-only) capability when no options are given; `init` and
+   * `new-project` pass {@link OWNER_KEY_CAPABILITIES} instead.
    */
   createApiKey(
     projectId: string,
@@ -82,6 +84,46 @@ export interface CliStore {
   /** Read a scene's regions — the CLI's `regions get`. */
   getSceneRegions(projectId: string, sceneId: string): Promise<SceneRegionRecord[]>;
   close(): Promise<void>;
+}
+
+/**
+ * The capability set `init` and `new-project` mint their **first** key with.
+ *
+ * That key is the operator's own — it goes into the dashboard, not into an
+ * agent — so it carries everything the operator's own surfaces need:
+ *
+ * - `query` — the aggregate analytics API.
+ * - `query:raw` — session replay and the live per-session follow. Inert on its
+ *   own: those routes are gated twice and also need `ENABLE_RAW_SESSION_RETENTION`
+ *   on the collector (ADR 0003), so granting it here turns nothing on. Without
+ *   it, switching retention on later made replay answer `403` until a second key
+ *   was minted and swapped into the dashboard.
+ * - `annotate` — the project metadata write path (scene regions today).
+ *
+ * Narrower keys stay deliberate: `uptimizr new-key` still defaults to `query`
+ * alone, which is what an agent or MCP client should be handed (ADR 0051 §7).
+ */
+export const OWNER_KEY_CAPABILITIES: readonly ApiKeyCapability[] = [
+  "query",
+  "query:raw",
+  "annotate",
+] as const;
+
+/** Label written on the first key, so `whoami` and the audit log can name it. */
+export const OWNER_KEY_LABEL = "owner";
+
+/**
+ * Mint the operator's first key on a freshly created project — the single key
+ * `init` and `new-project` issue.
+ */
+export function createOwnerApiKey(
+  store: CliStore,
+  projectId: string,
+): Promise<{ key: string; record: ApiKeyRecord }> {
+  return store.createApiKey(projectId, {
+    capabilities: OWNER_KEY_CAPABILITIES,
+    label: OWNER_KEY_LABEL,
+  });
 }
 
 /**

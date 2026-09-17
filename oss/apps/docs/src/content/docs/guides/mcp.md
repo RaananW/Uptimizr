@@ -32,16 +32,21 @@ project's** aggregated data — no cross-project access, no raw events, no PII (
 ## Get an API key
 
 The MCP server needs a project API key (`utk_…`) holding the **`query`** capability — and nothing
-else. Mint one with the collector CLI; `query` is the default, so no `--capabilities` flag is
-strictly required, but naming it keeps the intent in the shell history:
+else. Mint a **dedicated** one with the collector CLI; `query` is `new-key`'s default, so the
+`--capabilities` flag is not strictly required, but naming it keeps the intent in the shell
+history:
 
 ```bash
 npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
   --capabilities query --label "mcp-agent"
 ```
 
-The key is printed **once** — store it where you keep secrets, not in a repo. Give the agent its own
-key with its own label rather than reusing the dashboard's: the
+Do **not** reuse the key `uptimizr init` printed. That one is the operator's
+[owner key](/docs/deploy/collector/#api-keys-and-capabilities) — it also holds `query:raw` (raw
+per-session streams) and `annotate` (metadata writes), neither of which an MCP client needs.
+
+The key is printed **once** — store it where you keep secrets, not in a repo. Giving the agent its
+own labelled key is also what makes its activity legible: the
 [audit log](/docs/api/overview/#agent-audit-log) records activity per key id, so a labelled key is
 what makes "what did the agent ask for?" answerable, and a per-key budget
 (`--rate-limit-max 120 --rate-limit-window-ms 60000`) keeps an agent from spending the dashboard's

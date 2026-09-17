@@ -323,11 +323,18 @@ than "can read everything":
 | `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events — events stay append-only.  |
 | `ingest`    | Reserved for server-side write paths. Public ingestion is keyless by design, so issued keys are normally read keys.                |
 
-Keys default to `query` (read-only), including those minted by `uptimizr init` and
-`uptimizr new-project`. Mint a scoped key with `uptimizr new-key`:
+**The first key is the operator's own.** `uptimizr init` and `uptimizr new-project` mint a single
+key holding `query`, `query:raw` and `annotate`, labelled `owner` — everything the operator's own
+surfaces need: the dashboard, session replay, the live per-session follow and scene regions.
+`query:raw` grants nothing on its own (the raw routes also need `ENABLE_RAW_SESSION_RETENTION`), so
+having it up front turns nothing on. It only means that switching retention on later does not make
+replay answer `403` until a second key is minted and swapped into the dashboard.
+
+**Every other key is narrow by default.** `uptimizr new-key` still issues `query` (read-only)
+unless you say otherwise — that is the key an agent or MCP client should hold:
 
 ```bash
-# Read-only (the default)
+# Read-only (the default) — the right key for an agent or MCP client
 npx -p @uptimizr/collector-server uptimizr new-key <projectId> --label "weekly-report"
 
 # An agent that may also write metadata, with its own request budget
@@ -349,6 +356,10 @@ and any `query` key could read it.
 Existing keys keep working for every aggregate endpoint and need no migration. A key that drives
 **session replay** or the **live per-session follow** must be re-minted with `query:raw` (or a
 second key issued alongside it) — otherwise those two endpoints answer `403`.
+
+Keys minted by `uptimizr init` / `uptimizr new-project` already carry `query:raw`, so a fresh
+self-host needs no second key: switch `ENABLE_RAW_SESSION_RETENTION` on and replay works. Only
+keys issued before this release, or narrowed deliberately with `new-key`, need re-minting.
 :::
 
 **Per-key rate limits.** `--rate-limit-max` / `--rate-limit-window-ms` give a key its own budget,

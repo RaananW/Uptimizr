@@ -129,7 +129,12 @@ only a `query` key. The **ordered raw event stream** that powers
 2. the API key must hold the `query:raw`
    [capability](/docs/deploy/collector/#api-keys-and-capabilities).
 
-Either half missing answers `403`. Mint a replay-capable key with:
+Either half missing answers `403`.
+
+The key `uptimizr init` / `uptimizr new-project` already minted holds `query:raw` — it is the
+operator's [owner key](/docs/deploy/collector/#api-keys-and-capabilities) (`query`, `query:raw`,
+`annotate`) — so on a fresh self-host only the retention half is left to switch on. To give a
+**separate** key the same reach (a standalone replay tool, an agent you trust with raw streams):
 
 ```bash
 npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
@@ -138,6 +143,6 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 
 :::caution[Breaking change]
 Retention alone used to be enough: any `query` key could read the raw stream once retention was
-on. Aggregate endpoints are unaffected and existing keys need no migration, but a key used for
-replay or live-follow must be re-minted with `query:raw`.
+on. Aggregate endpoints are unaffected and existing keys need no migration, but a key issued
+before this change and used for replay or live-follow must be re-minted with `query:raw`.
 :::

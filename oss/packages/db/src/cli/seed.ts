@@ -172,13 +172,15 @@ async function main(): Promise<void> {
   await migrateDuckdb(db);
 
   // Local development seed: the demo projects back the playground + dashboard,
-  // whose session replay and live-follow read raw per-session streams. Those
-  // need `query:raw` alongside `query` (#309, ADR 0051 §7) — the collector still
-  // only honours it when `ENABLE_RAW_SESSION_RETENTION` is on, which the repo's
-  // `.env.example` sets for local dev. Production keys keep the read-only
-  // `query` default (`uptimizr init` / `new-project`); grant `query:raw`
-  // deliberately with `uptimizr new-key --capabilities query,query:raw`.
-  const devCapabilities = { capabilities: ["query", "query:raw"] } as const;
+  // whose session replay and live-follow read raw per-session streams
+  // (`query:raw`, #309, ADR 0051 §7) and whose "Register scene regions" button is
+  // a metadata write (`annotate`). The collector still only honours `query:raw`
+  // when `ENABLE_RAW_SESSION_RETENTION` is on, which the repo's `.env.example`
+  // sets for local dev. This is the same owner set `uptimizr init` /
+  // `uptimizr new-project` mint, and the one `scripts/playground-new.mjs` and
+  // `scripts/scene-new.mjs` already ask for. Narrower, agent-scoped keys come
+  // from `uptimizr new-key`, which still defaults to `query` alone.
+  const devCapabilities = { capabilities: ["query", "query:raw", "annotate"] } as const;
   const viewer = await createProject(db, `${baseName} (Viewer)`);
   const viewerKey = (await createApiKey(db, viewer.id, devCapabilities)).key;
   const walkable = await createProject(db, `${baseName} (Walkable)`);

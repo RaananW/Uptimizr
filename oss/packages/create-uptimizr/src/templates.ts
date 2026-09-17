@@ -116,8 +116,9 @@ export function renderPackageJson(
   extras: ScaffoldExtras = {},
 ): string {
   const scripts: Record<string, string> = {
-    // First-run setup: mint the first project + API key and ensure the store
-    // is migrated. The generated .env already holds the visitor-hash secret.
+    // First-run setup: mint the first project + the operator's owner API key
+    // (`query`, `query:raw`, `annotate`) and ensure the store is migrated. The
+    // generated .env already holds the visitor-hash secret.
     setup: `uptimizr init ${JSON.stringify(projectName)}`,
     // Run the ingestion + query API (reads the generated .env).
     start: "uptimizr serve",
@@ -540,7 +541,7 @@ running, then:
 }
 \`\`\`bash
 npm install      # install the collector
-npm run setup    # mint your first project + API key (printed once)
+npm run setup    # mint your first project + owner API key (printed once)
 npm start        # ingestion + query API on ${endpoint}
 \`\`\`
 
@@ -549,19 +550,28 @@ npm start        # ingestion + query API on ${endpoint}
 [\`client-snippet.${engine}.ts\`](./client-snippet.${engine}.ts)); use the API
 key (\`x-api-key\`) for the query routes / dashboard.
 
-That first key carries the **\`query\`** capability only — the aggregate query
-routes, which is also all an agent or MCP client needs. Session replay and the
-live per-session follow additionally need \`query:raw\`, so mint a second key
-for them with \`npx uptimizr new-key <projectId> --capabilities query,query:raw\`
-(see [API keys and capabilities](https://uptimizr.com/docs/deploy/collector/#api-keys-and-capabilities)).
+That first key is your **owner key**: it holds \`query\`, \`query:raw\` and
+\`annotate\` — the dashboard, session replay, the live per-session follow and
+scene regions, with nothing left to re-mint later. (\`query:raw\` grants nothing
+until you also switch \`ENABLE_RAW_SESSION_RETENTION\` on in \`.env\`; both halves
+are required.) Keep it for yourself.
+
+Agents and MCP clients get their **own, narrower** key — \`query\` alone is all
+they need, and a labelled key is what makes the audit log answerable:
+
+\`\`\`bash
+npx uptimizr new-key <projectId> --capabilities query --label "mcp-agent"
+\`\`\`
+
+See [API keys and capabilities](https://uptimizr.com/docs/deploy/collector/#api-keys-and-capabilities).
 
 ## Commands
 
 | Command                          | What it does                                  |
 | -------------------------------- | --------------------------------------------- |
-| \`npm run setup\`                | Create the store + first project (run once).  |
+| \`npm run setup\`                | Create the store + first project + owner key. |
 | \`npm start\`                    | Run the ingestion + query API.                |
-| \`npm run new-project -- "Name"\`| Mint another project + API key.               |
+| \`npm run new-project -- "Name"\`| Mint another project + owner API key.         |
 | \`npm run migrate\`              | Apply store migrations.                       |${suiteRows ? `\n${suiteRows}` : ""}
 ${suiteSection}
 ## Notes

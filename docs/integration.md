@@ -1231,8 +1231,15 @@ A key carries a **set of capabilities** (ADR 0051 §7), not a single role:
 | `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events — events stay read-only.     |
 | `ingest`    | Reserved for server-side write paths. Public ingestion is keyless (see below), so issued keys are normally read keys.               |
 
-Mint a key with the collector CLI (`uptimizr`, ADR 0029). The default is
-read-only, matching `uptimizr init` and `uptimizr new-project`:
+`uptimizr init` and `uptimizr new-project` mint one key, the operator's **owner**
+key: `query`, `query:raw` and `annotate`, labelled `owner`. That is the key the
+dashboard, session replay, the live per-session follow and scene-region authoring
+all run on, so none of them needs a second key later. `query:raw` is inert until
+`ENABLE_RAW_SESSION_RETENTION` is also on (both halves of the gate are required),
+so granting it up front turns nothing on.
+
+Every other key comes from `uptimizr new-key` (ADR 0029), which stays read-only
+(`query`) by default — the key to hand an agent or MCP client:
 
 ```bash
 # A read-only key (the default)
@@ -1254,8 +1261,9 @@ uptimizr new-key <projectId> --capabilities query,query:raw --label "replay"
 > Previously, retention alone was enough and any `query` key could read the raw
 > stream. **Existing keys keep working for every aggregate endpoint**, but a key
 > that drives session replay or live-follow must be re-minted with `query:raw`
-> (or a new one issued alongside it). `pnpm db:seed` and the repo's local
-> provisioning scripts already grant it to the demo projects.
+> (or a new one issued alongside it). Keys minted by `uptimizr init` /
+> `uptimizr new-project`, `pnpm db:seed` and the repo's local provisioning
+> scripts already carry it.
 
 **Per-key rate limits.** `--rate-limit-max` / `--rate-limit-window-ms` give a key
 its own budget, bucketed on the key id rather than the client IP. Keys without
