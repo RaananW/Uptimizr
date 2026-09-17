@@ -29,8 +29,10 @@ can be scoped to exactly what that agent needs (ADR 0051 §7).
 | `annotate`  | The project **metadata** write path (today: [`PUT /api/v1/scenes/:sceneId/regions`](/docs/api/query/#scene-regions)). Never events — events stay append-only. |
 | `ingest`    | Reserved for server-side write paths. Public ingestion is keyless by design, so issued keys are normally read keys.                  |
 
-Keys default to `query` (read-only), including those minted by `uptimizr init` and
-`uptimizr new-project`. Mint a narrower or wider one with the collector CLI:
+`uptimizr init` and `uptimizr new-project` mint one **owner** key — `query`, `query:raw` and
+`annotate` — because it is the operator's own key, driving the dashboard, replay, live follow and
+scene regions. Every other key comes from `uptimizr new-key`, which defaults to `query`
+(read-only) — the key to hand an agent or MCP client:
 
 ```bash
 npx -p @uptimizr/collector-server uptimizr new-key <projectId> \

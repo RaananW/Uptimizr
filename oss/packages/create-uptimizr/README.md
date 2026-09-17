@@ -32,7 +32,7 @@ Then:
 ```bash
 cd my-analytics
 npm install
-npm run setup     # mints your first project + API key (printed once)
+npm run setup     # mints your first project + owner API key (printed once)
 npm start         # ingestion + query API on http://localhost:4318
 ```
 

@@ -13,8 +13,8 @@ created and migrated automatically.
 
 ```bash
 # 1. One-time setup: generates a visitor-hash secret, creates + migrates the
-#    store (DuckDB by default), mints a first project + API key, and writes a
-#    local .env.
+#    store (DuckDB by default), mints a first project + owner API key, and
+#    writes a local .env.
 npx -p @uptimizr/collector-server uptimizr init "My Project"
 
 # 2. Start the ingestion + query API (reads the generated .env; 0.0.0.0:4318).
@@ -24,7 +24,10 @@ npx -p @uptimizr/collector-server uptimizr serve
 `init` prints a **`projectId`** and a one-time **API key**. Give the `projectId`
 and this server's URL (the **`endpoint`**) to your client SDK (e.g.
 `@uptimizr/babylon`); use the **API key** (`x-api-key`) for the query routes /
-dashboard. Mint more projects later with
+dashboard. That first key is the operator's **owner** key — `query`, `query:raw`
+and `annotate` — so the dashboard, session replay, the live per-session follow
+and scene regions all work off it; hand agents and MCP clients a narrower key of
+their own with `uptimizr new-key`. Mint more projects later with
 `npx -p @uptimizr/collector-server uptimizr new-project "<name>"`, or add a key
 to an existing project with
 `npx -p @uptimizr/collector-server uptimizr new-key <projectId> [--capabilities …] [--label …]`
@@ -232,17 +235,29 @@ A key carries a **set of capabilities** (ADR 0051 §7), not a single role:
 | `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events.   |
 | `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys. |
 
-Keys default to `query`, including those from `uptimizr init` / `uptimizr new-project`:
+`uptimizr init` / `uptimizr new-project` mint the operator's **owner** key —
+`query`, `query:raw` and `annotate`, labelled `owner` — because that key drives the dashboard,
+session replay, the live follow and scene regions. `query:raw` is inert on its own: the raw routes
+also need `ENABLE_RAW_SESSION_RETENTION`, so granting it up front turns nothing on and only saves
+re-minting the key when retention is switched on later.
+
+`uptimizr new-key` is how every **other** key is issued, and it still defaults to `query` alone —
+what an agent or MCP client should hold:
 
 ```bash
-uptimizr new-key <projectId> --capabilities query,annotate \
-  --label "weekly-report-agent" --rate-limit-max 120 --rate-limit-window-ms 60000
+# An agent's own key: read-only aggregates (the default), labelled and budgeted
+uptimizr new-key <projectId> --capabilities query --label "mcp-agent" \
+  --rate-limit-max 120 --rate-limit-window-ms 60000
+
+# An agent that may also write metadata
+uptimizr new-key <projectId> --capabilities query,annotate --label "weekly-report-agent"
 ```
 
 > **Breaking change.** `query:raw` is new, and the raw per-session endpoints now require **both**
 > `ENABLE_RAW_SESSION_RETENTION` **and** `query:raw` — previously retention alone was enough for
 > any `query` key. Existing keys keep working for every aggregate endpoint; a key that drives
-> session replay or live-follow must be re-minted with `--capabilities query,query:raw`.
+> session replay or live-follow must be re-minted with `--capabilities query,query:raw`. Keys minted
+> by `init` / `new-project` already carry it.
 
 `--rate-limit-max` / `--rate-limit-window-ms` give a key its own request budget, bucketed on the
 key id rather than the client IP; keys without one fall back to `COLLECTOR_RATE_LIMIT_*`.

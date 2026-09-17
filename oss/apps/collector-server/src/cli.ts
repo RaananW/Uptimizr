@@ -4,7 +4,13 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import { resolve } from "node:path";
 import { parseCapabilityList } from "@uptimizr/db";
 import { sceneIdSchema, sceneRegionsSchema, type SceneRegion } from "@uptimizr/schema";
-import { type CliStoreKind, openCliStore, renderEnv, resolveCliStoreKind } from "./cliStore.js";
+import {
+  createOwnerApiKey,
+  openCliStore,
+  renderEnv,
+  resolveCliStoreKind,
+  type CliStoreKind,
+} from "./cliStore.js";
 
 /**
  * Unified `uptimizr` CLI (ADR 0029) — collapses the multi-step npm self-host
@@ -13,9 +19,10 @@ import { type CliStoreKind, openCliStore, renderEnv, resolveCliStoreKind } from 
  *
  * Subcommands:
  * - `init`               — generate a visitor-hash secret, create + migrate the
- *                          store, mint a first project + API key, and write `.env`.
+ *                          store, mint a first project + owner API key, and
+ *                          write `.env`.
  * - `serve` (default)    — run the ingestion + query API (see {@link serve}).
- * - `new-project <name>` — mint an additional project + API key.
+ * - `new-project <name>` — mint an additional project + owner API key.
  * - `new-key <id>`       — mint an additional API key on an existing project,
  *                          with an explicit capability set, label and per-key
  *                          rate limit (#309, ADR 0051 §7).
@@ -30,6 +37,14 @@ import { type CliStoreKind, openCliStore, renderEnv, resolveCliStoreKind } from 
  */
 
 const ENV_FILE = resolve(process.cwd(), ".env");
+
+/**
+ * Printed next to every owner key so the narrower key an agent should get is one
+ * copy-paste away, rather than the operator's own key being pasted into an MCP
+ * client (ADR 0051 §7).
+ */
+const AGENT_KEY_HINT =
+  "Give agents/MCP clients a narrower key: uptimizr new-key <projectId> --capabilities query";
 
 /** Load a local `.env` (Node 22 built-in) so `serve`/`migrate` see config without a wrapper. */
 function loadLocalEnv(): void {
@@ -118,7 +133,7 @@ async function cmdInit(name: string): Promise<void> {
   const store = resolveCliStoreKind();
   const db = await openCliStore();
   const project = await db.createProject(name);
-  const { key } = await db.createApiKey(project.id);
+  const { key, record } = await createOwnerApiKey(db, project.id);
   await db.close();
 
   ensureSecretPersisted(secret, generated, store);
@@ -128,7 +143,9 @@ async function cmdInit(name: string): Promise<void> {
   console.error(`  Store:    ${store}`);
   console.error(`  Project:  ${project.id} (${project.name})`);
   console.error(`  API key:  ${key}  (shown once — put it in your app config)`);
+  console.error(`  Grants:   ${record.capabilities.join(", ")}  (label: ${record.label})`);
   console.error(`  Endpoint: http://localhost:${port}/api/v1`);
+  console.error(`\n${AGENT_KEY_HINT}`);
   console.error("\nNext: uptimizr serve");
 }
 
@@ -136,13 +153,21 @@ async function cmdNewProject(name: string): Promise<void> {
   loadLocalEnv();
   const db = await openCliStore();
   const project = await db.createProject(name);
-  const { key } = await db.createApiKey(project.id);
+  const { key, record } = await createOwnerApiKey(db, project.id);
   await db.close();
 
   console.error(`✓ project created: ${project.id} (${project.name})`);
   console.error(`  API key (shown once): ${key}`);
+  console.error(`  Grants: ${record.capabilities.join(", ")} (label: ${record.label})`);
+  console.error(AGENT_KEY_HINT);
   process.stdout.write(
-    `${JSON.stringify({ projectId: project.id, name: project.name, apiKey: key })}\n`,
+    `${JSON.stringify({
+      projectId: project.id,
+      name: project.name,
+      apiKey: key,
+      capabilities: record.capabilities,
+      label: record.label,
+    })}\n`,
   );
 }
 
@@ -154,9 +179,11 @@ async function cmdNewProject(name: string): Promise<void> {
  * uptimizr new-key <projectId> --capabilities query,annotate --label "weekly-report-agent"
  * ```
  *
- * Capabilities default to `query` (read-only), matching `init` / `new-project`.
- * `query:raw` additionally needs `ENABLE_RAW_SESSION_RETENTION` on the collector
- * before it grants anything (ADR 0003).
+ * Capabilities default to `query` (read-only) — the narrow key an agent or MCP
+ * client should hold, and deliberately narrower than the owner key `init` /
+ * `new-project` mint. `query:raw` additionally needs
+ * `ENABLE_RAW_SESSION_RETENTION` on the collector before it grants anything
+ * (ADR 0003).
  */
 async function cmdNewKey(args: string[]): Promise<void> {
   loadLocalEnv();
@@ -384,9 +411,9 @@ function printUsage(): void {
       "uptimizr — self-host the OSS 3D-analytics collector (DuckDB by default, no Docker).",
       "",
       "Usage:",
-      "  uptimizr init [name]          generate a secret, create the store, mint a project + key, write .env",
+      "  uptimizr init [name]          generate a secret, create the store, mint a project + owner key, write .env",
       "  uptimizr serve                run the ingestion + query API (default)",
-      "  uptimizr new-project <name>   mint an additional project + API key",
+      "  uptimizr new-project <name>   mint an additional project + owner API key",
       "  uptimizr new-key <projectId>  mint an additional API key on an existing project",
       "  uptimizr migrate              apply store migrations",
       "  uptimizr regions set <sceneId> --file <regions.json>",
@@ -394,6 +421,10 @@ function printUsage(): void {
       "  uptimizr regions get <sceneId>",
       "                                print a scene's named regions as JSON",
       "  uptimizr help                 show this help",
+      "",
+      "`init` / `new-project` mint the operator's own key with query, query:raw and annotate —",
+      "the dashboard, session replay, live follow and scene regions. Agents and MCP clients get a",
+      "narrower key of their own from `new-key` (default: query).",
       "",
       "new-key options:",
       "  --capabilities <list>         comma-separated: ingest, query, annotate, query:raw",

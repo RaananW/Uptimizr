@@ -28,7 +28,7 @@
 ## Key facts
 
 - **CLI:** `uptimizr init | serve | new-project <name> | new-key <projectId> | migrate | regions set|get <sceneId> | help`. `new-key` takes `--capabilities`, `--label`, `--rate-limit-max`, `--rate-limit-window-ms`. Every command targets `COLLECTOR_STORE`.
-- **Capabilities:** `ingest` (server-side writes), `query` (aggregates, scene registry, live token, audit), `annotate` (project metadata writes), `query:raw` (raw per-session + live-follow streams). Default `query`.
+- **Capabilities:** `ingest` (server-side writes), `query` (aggregates, scene registry, live token, audit), `annotate` (project metadata writes), `query:raw` (raw per-session + live-follow streams). `new-key` defaults to `query`; `init` / `new-project` mint one **owner** key (label `owner`) holding `query,query:raw,annotate`.
 - **Raw data is gated twice:** `ENABLE_RAW_SESSION_RETENTION` **and** a `query:raw` key, or `403`.
 - **Result envelopes:** `format=full | table | summary` on every aggregate endpoint (ADR 0051 §2) — `summary` is the bounded, LLM-affordable digest.
 - **Filters:** `since`, `until`, `bins`, `limit`, `scene`, `session`, `cameraMode`, `source`, `cellSize`, and `region=<id>` to drill a spatial query into a named place.

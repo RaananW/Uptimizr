@@ -181,7 +181,7 @@ async function main(): Promise<void> {
     console.log(`  # edit .env so the ${result.store} connection settings point at your server`);
   }
   console.log("  npm install");
-  console.log("  npm run setup     # mints your first project + API key (query-only)");
+  console.log("  npm run setup     # mints your first project + owner API key");
   console.log("  npm start         # ingestion + query API");
   if (result.withDemo) {
     console.log("  npm run demo      # demo scene — paste the projectId, then interact");
@@ -190,10 +190,11 @@ async function main(): Promise<void> {
     console.log("  npm run dashboard # analytics UI — point it at the collector");
   }
   console.log(
-    "\nThat first key is query-only — all the dashboard, or an agent or MCP client," +
-      " needs. Give an agent its own with:" +
-      "\n  uptimizr new-key <projectId> --capabilities query" +
-      "\nSession replay and live-follow also need --capabilities query,query:raw",
+    "\nThat first key is your owner key: query, query:raw and annotate — the dashboard," +
+      "\nsession replay, live follow and scene regions. Keep it for yourself." +
+      "\n(query:raw also needs ENABLE_RAW_SESSION_RETENTION=true in .env.)" +
+      "\n\nGive agents/MCP clients a narrower key of their own:" +
+      '\n  uptimizr new-key <projectId> --capabilities query --label "mcp-agent"',
   );
   console.log("");
 }

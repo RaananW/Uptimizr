@@ -30,7 +30,7 @@ Then:
 ```bash
 cd my-analytics
 npm install
-npm run setup     # uptimizr init — mints your first project + API key (printed once)
+npm run setup     # uptimizr init — mints your first project + owner API key (printed once)
 npm start         # uptimizr serve — ingestion + query API on http://localhost:4318
 ```
 
@@ -90,7 +90,9 @@ project + API key there, because the `uptimizr` CLI honours `COLLECTOR_STORE` fo
   Never commit a generated `.env`, and never place a real connection string or API key in a
   template — external-store settings are local-server placeholders by design.
 - The API key is minted by `npm run setup` (`uptimizr init`) and printed **once**; the scaffolder
-  never creates or stores one.
+  never creates or stores one. It is the operator's **owner** key — `query`, `query:raw` and
+  `annotate` — so the dashboard, replay, live follow and scene regions all work off it. Agents and
+  MCP clients get a narrower `query` key from `uptimizr new-key`.
 - Keep the generated scripts thin wrappers over the `uptimizr` CLI. A new collector capability is a
   CLI change, not a scaffolder change.
 - Store choices must stay in step with the collector's `COLLECTOR_STORE` values

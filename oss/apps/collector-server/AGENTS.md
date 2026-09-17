@@ -17,7 +17,7 @@ and your own agents all read through this HTTP API, never the database.
 
 ```bash
 # 1. One-time setup: generate a visitor-hash secret, create + migrate the store,
-#    mint a first project + API key, write a local .env.
+#    mint a first project + owner API key, write a local .env.
 npx -p @uptimizr/collector-server uptimizr init "My Project"
 
 # 2. Start the ingestion + query API (reads the generated .env; 0.0.0.0:4318).
@@ -25,15 +25,17 @@ npx -p @uptimizr/collector-server uptimizr serve
 ```
 
 `init` prints a **`projectId`** (public — give it to your client SDK along with this server's URL)
-and a one-time **API key** (secret — `x-api-key` for the query routes).
+and a one-time **API key** (secret — `x-api-key` for the query routes). That key is the operator's
+**owner** key: `query`, `query:raw` and `annotate`, labelled `owner`. Do not hand it to an agent —
+mint one with `uptimizr new-key <projectId> --capabilities query` instead.
 
 ### CLI (ADR 0029)
 
 | Command                        | What it does                                                         |
 | ------------------------------ | -------------------------------------------------------------------- |
-| `uptimizr init [name]`         | Secret + store + migrations + first project/key + `.env`.            |
+| `uptimizr init [name]`         | Secret + store + migrations + first project/owner key + `.env`.      |
 | `uptimizr serve`               | Run the ingestion + query API. The default when no command is given. |
-| `uptimizr new-project <name>`  | Mint an additional project + API key.                                |
+| `uptimizr new-project <name>`  | Mint an additional project + owner API key.                          |
 | `uptimizr new-key <projectId>` | Mint an additional key on an existing project (see the flags below). |
 | `uptimizr migrate`             | Apply store migrations.                                              |
 | `uptimizr regions set <scene>` | Replace a scene's named regions from `--file <regions.json>`.        |
@@ -60,7 +62,8 @@ Installed as a dependency, the package exposes the `uptimizr` CLI plus the legac
 
 ## API keys and capabilities (ADR 0051 §7)
 
-A key carries a **set of capabilities**, not a single role. Keys default to `query`.
+A key carries a **set of capabilities**, not a single role. `new-key` defaults to `query`;
+`init` / `new-project` mint their single key with `query`, `query:raw` and `annotate`.
 
 | Capability  | Unlocks                                                                                                   |
 | ----------- | --------------------------------------------------------------------------------------------------------- |

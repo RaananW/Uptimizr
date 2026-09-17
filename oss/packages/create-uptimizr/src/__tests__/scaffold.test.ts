@@ -182,11 +182,20 @@ describe("scaffold", () => {
     expect(readFileSync(join(dir, ".env"), "utf8")).toContain("http://localhost:3000");
   });
 
-  it("tells the reader the first key is query-only and how to mint a raw one", () => {
+  it("tells the reader the first key is the owner key and agents get a narrower one", () => {
     const { dir } = scaffold({ targetDir: join(root, "keys"), engine: "babylon" });
     const readme = readFileSync(join(dir, "README.md"), "utf8");
-    expect(readme).toContain("capability only");
-    expect(readme).toContain("uptimizr new-key <projectId> --capabilities query,query:raw");
+    // The first key is the operator's own — everything their surfaces need, so
+    // switching retention on later never costs them a second key.
+    expect(readme).toContain("**owner key**");
+    for (const capability of ["`query`", "`query:raw`", "`annotate`"]) {
+      expect(readme).toContain(capability);
+    }
+    expect(readme).toContain("ENABLE_RAW_SESSION_RETENTION");
+    // …and agents/MCP clients get the narrow key instead.
+    expect(readme).toContain(
+      'npx uptimizr new-key <projectId> --capabilities query --label "mcp-agent"',
+    );
     expect(readme).toContain(
       "https://uptimizr.com/docs/deploy/collector/#api-keys-and-capabilities",
     );
