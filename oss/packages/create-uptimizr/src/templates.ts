@@ -48,13 +48,25 @@ export const STORE_PACKAGE: Record<Store, string | undefined> = {
 };
 
 /**
- * `@uptimizr/collector-server` range the scaffold depends on. The store-aware
- * `uptimizr` CLI (`init` / `new-project` / `migrate` honouring `COLLECTOR_STORE`)
- * shipped in 1.1.0, which a non-DuckDB scaffold relies on for `npm run setup`.
+ * `@uptimizr/collector-server` range the scaffold depends on. 2.0.0 is the floor
+ * because it is the first release carrying the whole ADR 0051 agent layer a
+ * fresh project should start on: the registry-generated
+ * `GET /api/v1/openapi.json` self-description, the `format=full|table|summary`
+ * envelope on every aggregate endpoint, capability-scoped API keys with per-key
+ * rate limits, `GET /api/v1/whoami`, the agent audit trail, and the scene-region
+ * registry. It still carries the store-aware `uptimizr` CLI (`init` /
+ * `new-project` / `migrate` honouring `COLLECTOR_STORE`) that a non-DuckDB
+ * scaffold relies on for `npm run setup`, which shipped in 1.1.0.
  */
-const COLLECTOR_SERVER_RANGE = "^1.1.0";
-/** Range for the optional `@uptimizr/db-*` store package. */
-const STORE_PACKAGE_RANGE = "^1.0.0";
+const COLLECTOR_SERVER_RANGE = "^2.0.0";
+/**
+ * Range for the optional `@uptimizr/db-*` store package. It has to track the
+ * collector major: `@uptimizr/db` 2.0.0 is where `ApiKeyRecord` swapped the
+ * singular `capability` field for a `capabilities` array and the store packages
+ * gained the `agent_audit` table plus `recordAudit` / `listAudit` /
+ * `pruneAudit`, so a 1.x store package cannot serve a 2.x collector.
+ */
+const STORE_PACKAGE_RANGE = "^2.0.0";
 
 const DEFAULT_PORT = 4318;
 
@@ -66,7 +78,8 @@ export const DEMO_PORT = 5173;
 
 /** Pinned versions used by the browser-side demo (loaded from a CDN, no bundler). */
 const BABYLON_CDN_RANGE = "9";
-const UPTIMIZR_BABYLON_VERSION = "1.0.0";
+/** Latest published `@uptimizr/babylon`, pinned exactly so the CDN URL is reproducible. */
+const UPTIMIZR_BABYLON_VERSION = "1.0.2";
 
 /** Optional extras a developer can fold into the scaffold. */
 export interface ScaffoldExtras {
@@ -123,7 +136,11 @@ export function renderPackageJson(
   }
   if (extras.withDashboard) {
     // The dashboard ships its own zero-dep static server (`uptimizr-dashboard`).
-    dependencies["@uptimizr/dashboard"] = "^1.0.0";
+    // 1.1.2 is the floor: it is the first build whose `@uptimizr/react` (1.2.0)
+    // tags query traffic with `x-uptimizr-client`, so the 2.x collector's agent
+    // audit log tells dashboard panel refreshes apart from agent calls. The
+    // in-browser analytics assistant has shipped since 0.4.0, so it comes along.
+    dependencies["@uptimizr/dashboard"] = "^1.1.2";
     scripts.dashboard = `uptimizr-dashboard --port ${DASHBOARD_PORT}`;
   }
   if (extras.withDemo) {
@@ -531,6 +548,12 @@ npm start        # ingestion + query API on ${endpoint}
 **endpoint**. Give the projectId + endpoint to your app's connector (see
 [\`client-snippet.${engine}.ts\`](./client-snippet.${engine}.ts)); use the API
 key (\`x-api-key\`) for the query routes / dashboard.
+
+That first key carries the **\`query\`** capability only — the aggregate query
+routes, which is also all an agent or MCP client needs. Session replay and the
+live per-session follow additionally need \`query:raw\`, so mint a second key
+for them with \`npx uptimizr new-key <projectId> --capabilities query,query:raw\`
+(see [API keys and capabilities](https://uptimizr.com/docs/deploy/collector/#api-keys-and-capabilities)).
 
 ## Commands
 

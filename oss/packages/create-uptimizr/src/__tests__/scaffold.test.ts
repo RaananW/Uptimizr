@@ -54,7 +54,9 @@ describe("scaffold", () => {
     const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
     expect(pkg.scripts.setup).toBe('uptimizr init "My Game"');
     expect(pkg.scripts.start).toBe("uptimizr serve");
-    expect(pkg.dependencies["@uptimizr/collector-server"]).toBeDefined();
+    // The 2.x line is the floor: it is the first collector carrying the ADR 0051
+    // agent layer (OpenAPI self-description, format= envelope, capability keys).
+    expect(pkg.dependencies["@uptimizr/collector-server"]).toBe("^2.0.0");
   });
 
   it("emits a correct client snippet per engine", () => {
@@ -132,8 +134,10 @@ describe("scaffold", () => {
       expect(env, store).not.toContain("DUCKDB_PATH");
 
       const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
-      expect(pkg.dependencies["@uptimizr/collector-server"], store).toBeDefined();
-      expect(pkg.dependencies[expected.pkg], store).toBeDefined();
+      expect(pkg.dependencies["@uptimizr/collector-server"], store).toBe("^2.0.0");
+      // The store package has to track the collector major (@uptimizr/db 2.0.0
+      // changed the API-key metadata contract).
+      expect(pkg.dependencies[expected.pkg], store).toBe("^2.0.0");
       expect(pkg.description, store).toContain(expected.label);
 
       const readme = readFileSync(join(dir, "README.md"), "utf8");
@@ -173,9 +177,19 @@ describe("scaffold", () => {
     });
     expect(withDashboard).toBe(true);
     const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
-    expect(pkg.dependencies["@uptimizr/dashboard"]).toBeDefined();
+    expect(pkg.dependencies["@uptimizr/dashboard"]).toBe("^1.1.2");
     expect(pkg.scripts.dashboard).toContain("uptimizr-dashboard");
     expect(readFileSync(join(dir, ".env"), "utf8")).toContain("http://localhost:3000");
+  });
+
+  it("tells the reader the first key is query-only and how to mint a raw one", () => {
+    const { dir } = scaffold({ targetDir: join(root, "keys"), engine: "babylon" });
+    const readme = readFileSync(join(dir, "README.md"), "utf8");
+    expect(readme).toContain("capability only");
+    expect(readme).toContain("uptimizr new-key <projectId> --capabilities query,query:raw");
+    expect(readme).toContain(
+      "https://uptimizr.com/docs/deploy/collector/#api-keys-and-capabilities",
+    );
   });
 
   it("writes a runnable demo scene and script when requested", () => {
@@ -188,7 +202,7 @@ describe("scaffold", () => {
     const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
     expect(pkg.scripts.demo).toBe("node demo/serve.mjs");
     const html = readFileSync(join(dir, "demo", "index.html"), "utf8");
-    expect(html).toContain("@uptimizr/babylon");
+    expect(html).toContain("@uptimizr/babylon@1.0.2");
     expect(html).toContain("trackScene(scene");
     expect(html).toContain("http://localhost:4318");
     const server = readFileSync(join(dir, "demo", "serve.mjs"), "utf8");

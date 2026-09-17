@@ -1,6 +1,6 @@
 {
   "name": "create-uptimizr",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Scaffold a self-host of the Uptimizr OSS 3D-analytics collector — Docker-free, single-file DuckDB by default, or backed by Postgres / ClickHouse / SQL Server. Run with `npm create uptimizr@latest`.",
   "keywords": [
     "uptimizr",
