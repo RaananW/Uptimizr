@@ -1,5 +1,14 @@
 # @uptimizr/agent-core
 
+## 1.1.1
+
+### Patch Changes
+
+- 9ec59db: Packaged agent docs now cover the `format=full|table|summary` result envelope (and when to prefer
+  each), and `@uptimizr/mcp`'s `AGENTS.md`/`llms.txt` additionally document the `uptimizr://scenes`
+  resource, the three curated prompts, and the single key capability the server needs (`query`;
+  `query:raw` is deliberately not required).
+
 ## 1.1.0
 
 ### Minor Changes

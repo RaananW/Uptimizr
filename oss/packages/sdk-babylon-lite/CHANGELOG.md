@@ -1,5 +1,11 @@
 # @uptimizr/babylon-lite
 
+## 1.0.3
+
+### Patch Changes
+
+- 1123bfe: Ship AGENTS.md and llms.txt in the tarball (ADR 0017)
+
 ## 1.0.2
 
 ### Patch Changes

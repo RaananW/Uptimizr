@@ -1,5 +1,13 @@
 # @uptimizr/aframe
 
+## 1.0.3
+
+### Patch Changes
+
+- 1123bfe: Ship AGENTS.md and llms.txt in the tarball (ADR 0017)
+- Updated dependencies [1123bfe]
+  - @uptimizr/three@1.0.3
+
 ## 1.0.2
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @uptimizr/godot
 
+## 0.2.3
+
+### Patch Changes
+
+- 1123bfe: Ship AGENTS.md and llms.txt in the tarball (ADR 0017)
+- Updated dependencies [1123bfe]
+  - @uptimizr/web-export@0.2.3
+
 ## 0.2.2
 
 ### Patch Changes

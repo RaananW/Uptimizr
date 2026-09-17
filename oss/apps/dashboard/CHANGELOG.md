@@ -1,5 +1,13 @@
 # @uptimizr/dashboard
 
+## 1.1.3
+
+### Patch Changes
+
+- 1123bfe: Ship AGENTS.md and llms.txt in the tarball (ADR 0017)
+- Updated dependencies [1123bfe]
+  - @uptimizr/react@1.2.1
+
 ## 1.1.2
 
 ### Patch Changes
