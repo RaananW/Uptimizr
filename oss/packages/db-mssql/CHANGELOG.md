@@ -1,5 +1,12 @@
 # @uptimizr/db-mssql
 
+## 2.0.2
+
+### Patch Changes
+
+- Updated dependencies [3215c56]
+  - @uptimizr/db@2.0.1
+
 ## 2.0.1
 
 ### Patch Changes
