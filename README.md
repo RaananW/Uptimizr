@@ -56,11 +56,15 @@ wipes everything. From source, run it with `pnpm dev:web` (demo on `http://local
 oss/        Open-source product (Apache-2.0)
   apps/       collector-server (Fastify), dashboard (Next.js), demo (in-browser test drive),
               docs (documentation site), web (landing site)
-  packages/   schema, sdk-core, replay, react (embeddable panels), heatmap, mcp (query server),
-              create-uptimizr (scaffolder), db (DuckDB store + contracts), db-postgres, db-mssql and
-              db-clickhouse (optional stores), and the connectors: sdk-babylon, sdk-babylon-lite,
-              sdk-three, sdk-r3f, sdk-playcanvas, sdk-aframe, plus the web-export tier
-              (web-export foundation + unity, godot, unreal)
+  packages/   schema, sdk-core, replay, react (embeddable panels), heatmap,
+              create-uptimizr (scaffolder);
+              the agent layer: metrics (semantic metric registry), agent-core (generated read-tool
+              catalog + agent loop), mcp (read-only MCP server), agent-eval (private evaluation
+              harness, not published);
+              the stores: db (DuckDB + dialect-agnostic contracts), db-postgres, db-mssql and
+              db-clickhouse (optional);
+              and the connectors: sdk-babylon, sdk-babylon-lite, sdk-three, sdk-r3f, sdk-playcanvas,
+              sdk-aframe, plus the web-export tier (web-export foundation + unity, godot, unreal)
 examples/   playground — multi-engine demo scene for end-to-end testing
 infra/      docker-compose for the optional ClickHouse, Postgres and SQL Server engines
 docs/       architecture, phase plans, and ADRs

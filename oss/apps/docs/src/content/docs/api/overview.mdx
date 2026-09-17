@@ -17,6 +17,83 @@ curl -s -H "x-api-key: $KEY" "$BASE/api/v1/sessions?limit=20"
 - There is no cross-project query — a caller can only ever read its own data.
 - Do **not** add a `projectId` query param to "widen" a query; it is ignored.
 
+## API keys and capabilities
+
+A key is not "all or nothing": it carries a **set of capabilities**, so a key you hand to an agent
+can be scoped to exactly what that agent needs (ADR 0051 §7).
+
+| Capability  | Grants                                                                                                                              |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `query`     | The aggregate analytics API — every endpoint on the [query reference](/docs/api/query/) — plus the scene registry reads, the live token exchange, `whoami` and the audit trail. |
+| `query:raw` | Raw **per-session** streams only: `GET /api/v1/sessions/:id/events` and the live per-session follow `GET /api/v1/live/sessions/:id`. |
+| `annotate`  | The project **metadata** write path (today: [`PUT /api/v1/scenes/:sceneId/regions`](/docs/api/query/#scene-regions)). Never events — events stay append-only. |
+| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless by design, so issued keys are normally read keys.                  |
+
+Keys default to `query` (read-only), including those minted by `uptimizr init` and
+`uptimizr new-project`. Mint a narrower or wider one with the collector CLI:
+
+```bash
+npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
+  --capabilities query --label "mcp-agent"
+```
+
+- A key that is authenticated but **lacks** the capability a route requires → `403`, not `401`. The
+  body names the missing permission (`api key not permitted to read raw session data`, …).
+- `query:raw` is honoured only when the collector also runs with `ENABLE_RAW_SESSION_RETENTION`;
+  both halves are required, and either one missing is a `403`.
+
+### `GET /api/v1/whoami`
+
+Ask what the calling key actually holds, so an agent can register only the tools its capabilities
+permit instead of discovering a `403` mid-conversation. It needs `query` and reports the key's
+**id**, never the key itself:
+
+```jsonc
+{
+  "projectId": "3f2a…",
+  "keyId": "9c41…",
+  "capabilities": ["query", "query:raw"],
+  "label": "replay",
+  "rateLimit": { "max": 600, "windowMs": 60000 },
+  "rateLimitSource": "default", // or "key" when the key carries its own budget
+}
+```
+
+### Per-key rate limits
+
+`uptimizr new-key … --rate-limit-max 120 --rate-limit-window-ms 60000` gives a key its own request
+budget, bucketed on the **key id** rather than the client IP — so one busy agent cannot spend
+another's allowance. Keys without one fall back to the collector's `COLLECTOR_RATE_LIMIT_MAX` /
+`COLLECTOR_RATE_LIMIT_WINDOW_MS` defaults (600 requests / 60 s). `whoami` always reports the budget
+actually in force. Ingestion is untouched: it is keyless and keeps its own
+`COLLECTOR_INGEST_RATE_LIMIT_*` budget.
+
+### Agent audit log
+
+Every authenticated request made with a key that is not the dashboard's own session is recorded —
+`{ id, projectId, keyId, at, surface, toolOrPath, params, rowCount, durationMs, status }` — and
+`GET /api/v1/audit` (a `query` key, newest first, `since` / `until` / `limit`) reads it back.
+Refusals are recorded too, which is precisely what a project owner wants to see. Rows carry the
+route **pattern** rather than the URL, bounded and credential-redacted params, and never any key
+material. Writes happen after the response is flushed, so the log can never block or fail a request.
+Rows older than `AUDIT_RETENTION_DAYS` (default `30`) are swept.
+
+The dashboard identifies itself with `x-uptimizr-client: dashboard` and is skipped by default so its
+panel refreshes do not bury agent activity; `AUDIT_DASHBOARD_REQUESTS=1` records everything. That is
+a volume filter, not a security boundary.
+
+### Machine-readable description
+
+```bash
+curl https://collect.example.com/api/v1/openapi.json
+```
+
+`GET /api/v1/openapi.json` serves an **OpenAPI 3.1** document for the whole read API — no key
+required, because it is documentation and contains no project data. It is generated from the same
+semantic metric registry the endpoints are, so it lists exactly the aggregations *that* collector can
+compute, with the schema that actually validates each parameter and the `apiKey` security scheme
+declared. See the [MCP guide](/docs/guides/mcp/#openapi).
+
 ## Shared parameters
 
 Binned and aggregate endpoints accept these (coerced and bounded by Zod at the edge — out-of-range

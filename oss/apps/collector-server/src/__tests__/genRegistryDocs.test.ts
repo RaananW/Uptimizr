@@ -35,6 +35,7 @@ const GENERATOR = path.join(REPO_ROOT, "scripts", "gen-registry-docs.mjs");
 const GENERATED_FILES = [
   "docs/integration.md",
   "oss/apps/docs/src/content/docs/api/query.mdx",
+  "oss/apps/docs/src/content/docs/guides/mcp.md",
   "oss/packages/mcp/README.md",
   "oss/packages/mcp/AGENTS.md",
   "oss/packages/mcp/llms.txt",

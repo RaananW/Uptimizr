@@ -1,0 +1,218 @@
+---
+title: Building agents on Uptimizr
+description: The AI-first analytics layer end to end — the semantic metric registry, capability discovery, OpenAPI, the MCP server, the in-browser assistant, agent-shaped result formats, scoped keys and the evaluation harness.
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+Uptimizr treats an **agent as a first-class consumer of the data**, alongside the dashboard
+([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md)).
+That is a concrete claim, not a slogan: every read the collector serves is declared once in a
+semantic registry, and the tool catalog, the OpenAPI document, the capability descriptor and the
+docs tables are all *generated* from it — so an agent sees the whole read surface, with units and
+caveats attached, and it cannot drift from what the collector actually computes.
+
+This page is the map. Each section links to the reference for that piece.
+
+<CardGrid>
+	<Card title="Read the catalog" icon="open-book">
+		Start at `uptimizr://capabilities` or `/api/v1/openapi.json` — both list every metric with its
+		grain, units and caveats.
+	</Card>
+	<Card title="Connect" icon="puzzle">
+		Run [`@uptimizr/mcp`](/docs/guides/mcp/) over stdio, or embed the
+		[in-browser assistant](/docs/guides/assistant/).
+	</Card>
+	<Card title="Ask for `format=summary`" icon="seti:json">
+		Bounded digests with shares, caveats and a templated reading — not a thousand raw rows.
+	</Card>
+	<Card title="Scope the key" icon="approve-check">
+		A labelled `query`-only key, its own rate budget, and every request in the audit log.
+	</Card>
+</CardGrid>
+
+## 1. The semantic metric registry
+
+`@uptimizr/metrics` is a dependency-light package (`zod` + `@uptimizr/schema`, no database driver)
+holding **71 metric definitions**, 69 of which the collector serves on a read endpoint. Each one
+declares, as data:
+
+| Field                    | What it gives an agent                                                                                                                |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `grain`                  | What **one row is** — a project, a scene, a session, a mesh, a bin, a voxel, a time bucket.                                            |
+| `columns`                | Per-column description and **unit** (`ms`, `fps`, `count`, `ratio`, `world-units`, …), plus which column is the measure and which names the row. |
+| `row`                    | The **JSON Schema** of a result row, so a client with no Zod can validate or shape it.                                                 |
+| `filters` / `dimensions` | The parameters it accepts and the dimensions its rows are keyed by.                                                                    |
+| `limits`                 | `maxRows` and `maxSummaryRows` — nothing can ask for an unbounded payload.                                                             |
+| `interpretation`         | How to read the result: what a high or low value actually means.                                                                       |
+| `caveats`                | Minimum sample size, sampling-rate sensitivity, which capture channel must be on. **Read these before quoting a number.**              |
+| `sourceChannels`         | The capture channels ([ADR 0012](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0012-sampling-and-fidelity.md)) that feed it — if a channel is off, the metric is empty **by design**, not by accident. |
+| `related` / `comparable` | Metrics worth reading alongside it, and which column's change is "the" change.                                                         |
+
+Units and caveats are the part that makes an answer trustworthy. "Average FPS is 48" means something
+different when the metric's caveat says the sample is under 30 events, or when its source channel was
+never enabled — and both facts travel with the metric rather than living in a human's head.
+
+Everything downstream is derived from the registry and nothing restates it by hand: the tool catalog
+in `@uptimizr/agent-core`, the OpenAPI document, the `uptimizr://capabilities` resource, the
+[query reference](/docs/api/query/) on this site, and the packaged `AGENTS.md` / `llms.txt` tool
+lists. A repo script (`pnpm gen:docs`) renders them and a CI check fails if any drifted.
+
+## 2. Discovery: capabilities and OpenAPI
+
+Two entry points describe the surface. Point an agent at one of them **first**, so it can plan a
+query instead of guessing parameter names.
+
+- **`uptimizr://capabilities`** — an MCP resource served by `@uptimizr/mcp` from the package itself,
+  with no collector call. It carries the schema version, the canonical event types, the tool catalog,
+  a parameter-semantics glossary, and `metrics`: the whole registry above.
+- **`GET /api/v1/openapi.json`** — an **OpenAPI 3.1** document served by the collector, no key
+  required (it is documentation and contains no project data). One path per endpoint, every
+  parameter with the schema that actually validates it, and a `200` response schema per metric. What
+  OpenAPI has no vocabulary for rides along as vendor extensions — `x-uptimizr-grain`,
+  `x-uptimizr-units`, `x-uptimizr-caveats`, `x-uptimizr-interpretation`,
+  `x-uptimizr-source-channels`, `x-uptimizr-limits`, `x-uptimizr-dimensions`, `x-uptimizr-related`,
+  `x-uptimizr-comparable`.
+
+That second one means you do not need MCP at all — generate a typed client, point an API explorer at
+it, or hand the document to any agent framework:
+
+```bash
+npx openapi-typescript https://collect.example.com/api/v1/openapi.json -o collector.d.ts
+```
+
+A third, live one fills in real values: the `uptimizr://scenes` resource (and `GET /api/v1/scenes`)
+lists the scene ids with recent activity — the valid values for the `scene` parameter.
+
+## 3. Ways to connect
+
+### MCP server — `@uptimizr/mcp`
+
+A read-only MCP server over your collector's query API, run over **stdio**:
+
+```bash
+UPTIMIZR_COLLECTOR_URL="https://collect.example.com" \
+UPTIMIZR_API_KEY="utk_…" \
+npx @uptimizr/mcp
+```
+
+Every registry metric with an endpoint becomes a typed, `GET`-only tool carrying that metric's
+interpretation and caveats in its description and an MCP `outputSchema` for its rows. There are no
+ingestion, mutation or raw-event tools. It also ships three curated prompts —
+`weekly_scene_health`, `attention_hotspots`, `xr_comfort_review` — that sequence the tools for a
+common investigation. See the [MCP guide](/docs/guides/mcp/).
+
+A collector-**hosted** MCP endpoint over Streamable HTTP (so a remote client needs no local process)
+is planned, not shipped — [#313](https://github.com/RaananW/Uptimizr/issues/313).
+
+### In-browser assistant
+
+The same tool catalog, in the dashboard, against a model the **user** supplies — WebLLM running
+locally in the browser, or a hosted backend with their own key. Nothing about it is Uptimizr-operated
+([ADR 0050](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0050-in-browser-analytics-assistant.md)).
+The catalog lives in `@uptimizr/agent-core`, which is framework-agnostic and browser-safe, so the MCP
+server, the dashboard assistant and the demo assistant cannot drift apart. See the
+[assistant guide](/docs/guides/assistant/).
+
+### Plain HTTP
+
+Nothing stops an agent framework from calling the [query API](/docs/api/query/) directly with
+`x-api-key`. The OpenAPI document is there precisely for that.
+
+## 4. Ask for agent-shaped results
+
+The single highest-leverage habit: **pass `format=summary`**.
+
+Every aggregate endpoint — and every generated aggregate tool — accepts
+`format=full | table | summary`. It filters nothing; it picks the envelope the rows arrive in.
+
+| `format`  | What comes back                                                                                                                               |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `full`    | The bare rows, unchanged. Today's default (what the dashboard uses).                                                                          |
+| `table`   | `{ meta, rows }` — the rows plus the metric, range, applied filters, sample size, row count, a truncation flag and the registry's limits.      |
+| `summary` | A bounded digest: `ranked` top rows, a `series` trend, merged spatial `clusters` or a single `record`, with shares, a sample size, the metric's caveats and a templated `reading` sentence. |
+
+`summary` is capped at the metric's `maxSummaryRows`, so a 500-bin heatmap costs the same as a 5-bin
+one. The `reading` sentence and the caveats are templated from the registry's column semantics by
+**pure code** — no model is involved — so the same rows always produce the same words, and shares
+appear only where the measure can honestly be summed. Full details and an example payload:
+[result formats](/docs/api/query/#result-formats).
+
+Switching the generated tool catalog's default away from `full` is tracked as
+[#336](https://github.com/RaananW/Uptimizr/issues/336); until then, pass `format` explicitly.
+
+## 5. Give answers a vocabulary for *where*
+
+3D analytics answers are spatial, and "the hot cell is at voxel (12, 0, −7)" is not an answer a
+person can act on. **Scene regions** are named, labelled boxes — "the entrance", "the checkout
+counter" — registered per scene, so an agent can drill into a place by name (`?region=entrance`) and
+phrase the result in words.
+
+```ts
+import { registerRegions } from "@uptimizr/sdk-core";
+```
+
+…or register them offline with `uptimizr regions set <sceneId> --file regions.json`. Reading the
+vocabulary (`GET /api/v1/scene-regions`) takes a `query` key; **writing** it takes an `annotate` key,
+so a read-only agent key cannot redraw your map. See
+[scene regions](/docs/api/query/#scene-regions).
+
+## 6. Scope the key, then read the audit log
+
+Give an agent its own key rather than the dashboard's:
+
+```bash
+npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
+  --capabilities query --label "weekly-report-agent" \
+  --rate-limit-max 120 --rate-limit-window-ms 60000
+```
+
+- A key carries a **capability set** — `query`, `query:raw`, `annotate`, `ingest` — and a key that
+  is authenticated but lacks the capability a route needs is refused with `403`.
+- `query` alone is enough for every aggregate read, and for the MCP server. **`query:raw` is
+  deliberately separate**: raw per-session streams (replay, live-follow) need it *and*
+  `ENABLE_RAW_SESSION_RETENTION` on the collector.
+- `--rate-limit-*` gives the key its own budget, bucketed on the key id, so one busy agent cannot
+  spend another's allowance.
+- `GET /api/v1/whoami` tells an agent what its key holds, so it can register only the tools it may
+  actually call.
+- Every authenticated non-dashboard request lands in the **agent audit log** —
+  `GET /api/v1/audit` — with the route pattern, bounded and credential-redacted params, row count,
+  duration and status. Refusals are recorded too. That is what makes an agent's reads reviewable
+  after the fact.
+
+Full reference: [API keys and capabilities](/docs/api/overview/#api-keys-and-capabilities).
+
+## 7. How the catalog is kept honest
+
+"AI-first" is a claim until something measures it. The repository carries an **evaluation harness**
+(`oss/packages/agent-eval`, private to the repo — it is an instrument, not a shipped package): a bank
+of **48** real analytics questions, asked of an agent through the *real* collector over a
+deterministic fixture set, and scored on **tool selection**, **argument correctness** and **answer
+accuracy**.
+
+A run seeds the parity fixtures into a fresh in-memory DuckDB store, boots the actual collector
+in-process, drives `runAgent` with the generated tool catalog, scores every case and compares the
+result to a committed baseline — exiting non-zero on a regression. Every registry metric the
+collector serves has at least one question an agent is measured on, so a tool description that makes
+a model choose badly shows up as a failed case rather than as a quiet wrong answer in production.
+CI gates the deterministic run on every change to the catalog.
+
+## What's next
+
+The AI-first layer ships in stages; these are the tracked follow-ups, linked so you can see what is
+real today versus planned. Nothing below is available yet.
+
+| Stage | Issue                                                              | What it adds                                                                    |
+| ----- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| 2     | [#303](https://github.com/RaananW/Uptimizr/issues/303)             | A bounded **query DSL** (`/api/v1/query`) and a single composable query tool.   |
+| 2     | [#305](https://github.com/RaananW/Uptimizr/issues/305)             | Insight primitives: baselines and movers.                                       |
+| 2     | [#306](https://github.com/RaananW/Uptimizr/issues/306)             | Insight primitive: anomalies (robust z + CUSUM change-points).                  |
+| 2     | [#307](https://github.com/RaananW/Uptimizr/issues/307)             | Insight primitives: significance and `scene_health`.                            |
+| 2     | [#308](https://github.com/RaananW/Uptimizr/issues/308)             | A project **context** resource and custom-event vocabulary.                     |
+| 3     | [#311](https://github.com/RaananW/Uptimizr/issues/311)             | Conditional subscriptions, an SSE stream and signed webhooks.                   |
+| 3     | [#313](https://github.com/RaananW/Uptimizr/issues/313)             | Collector-hosted MCP over Streamable HTTP.                                      |
+| 3     | [#315](https://github.com/RaananW/Uptimizr/issues/315)             | Declarative **panel specs** and "pin as panel".                                 |
+| 3     | [#316](https://github.com/RaananW/Uptimizr/issues/316)             | Packaged methodology **skills**, exposed as MCP prompts.                         |
+
+The epic is [#294](https://github.com/RaananW/Uptimizr/issues/294).
