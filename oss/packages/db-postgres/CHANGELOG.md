@@ -1,5 +1,11 @@
 # @uptimizr/db-postgres
 
+## 2.0.1
+
+### Patch Changes
+
+- 1123bfe: Ship AGENTS.md and llms.txt in the tarball (ADR 0017)
+
 ## 2.0.0
 
 ### Major Changes

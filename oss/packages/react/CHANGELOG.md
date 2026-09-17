@@ -1,5 +1,13 @@
 # @uptimizr/react
 
+## 1.2.1
+
+### Patch Changes
+
+- 1123bfe: Ship AGENTS.md and llms.txt in the tarball (ADR 0017)
+- Updated dependencies [9ec59db]
+  - @uptimizr/agent-core@1.1.1
+
 ## 1.2.0
 
 ### Minor Changes

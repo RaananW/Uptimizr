@@ -1,5 +1,15 @@
 # @uptimizr/collector-server
 
+## 2.0.1
+
+### Patch Changes
+
+- 1123bfe: Ship AGENTS.md and llms.txt in the tarball (ADR 0017)
+- Updated dependencies [1123bfe]
+  - @uptimizr/db-clickhouse@2.0.1
+  - @uptimizr/db-postgres@2.0.1
+  - @uptimizr/db-mssql@2.0.1
+
 ## 2.0.0
 
 ### Major Changes
