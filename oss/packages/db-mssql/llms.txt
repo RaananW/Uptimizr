@@ -1,0 +1,33 @@
+# @uptimizr/db-mssql
+
+> The optional single-tenant Microsoft SQL Server / Azure SQL store for the Uptimizr collector
+> (ADR 0020) — a multi-writer relational backend for teams standardized on SQL Server. A re-home +
+> dialect emitter, not a rewrite: every aggregation is authored once in `@uptimizr/db` and
+> rendered to T-SQL with the shared `mssqlDialect` / `toTsql`. Server/Node only; select it with
+> `COLLECTOR_STORE=mssql`. SQL Server 2022+ / Azure SQL.
+
+## Docs
+
+- [Package reference](./README.md): when to use it, env vars, the T-SQL fit gaps and how they are closed, the performance trade-off, file layout.
+- [Agent guide](./AGENTS.md): rules, canonical usage, parity and the `MSSQL_PARITY_REQUIRED` gate.
+- [Storage contracts + query layer](../db/README.md): `@uptimizr/db`, the `buildX`/`Dialect` layer, the parity harness.
+- [Collector configuration](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): `COLLECTOR_STORE` and the HTTP API.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): database choice (0002), privacy model (0003), migrations (0007), open-core storage boundary (0020), AI-first analytics layer (0051).
+
+## Environment
+
+- `COLLECTOR_STORE=mssql` selects this store.
+- `MSSQL_URL` — ADO.NET-style connection string (`Server=host,port;Database=…;User Id=…;Password=…;Encrypt=…`); wins when set.
+- Otherwise `MSSQL_SERVER` / `MSSQL_PORT` / `MSSQL_DATABASE` / `MSSQL_USER` / `MSSQL_PASSWORD` (fallback `MSSQL_SA_PASSWORD`).
+- `MSSQL_ENCRYPT` (default `true`), `MSSQL_TRUST_SERVER_CERTIFICATE` (default `false`), `MSSQL_POOL_MAX` (default `10`).
+- `MSSQL_PARITY_REQUIRED=1` makes the live parity suites fail instead of skipping (the CI job sets it).
+
+## Key exports
+
+- Client: `createMssqlClient(settings, overrides?)`, `resolveMssqlConfig`, `ensureMssqlDatabase`, `dropMssqlDatabase`, `assertSafeIdentifier`, `formatTemporal`; types `MssqlClient` / `MssqlExecutor` / `MssqlRow` / `MssqlClientOverrides`.
+- Migrations: `MSSQL_MIGRATIONS`, `migrateMssql(client)` — forward-only, idempotent, `sp_getapplock`-serialized (ADR 0007).
+- Queries: `runMssqlQuery(client, spec)` — `toTsql` + positional params + numeric coercion at the driver edge (ADR 0051 §2).
+- Events: `insertEvents`, `getSessionEvents`, `streamSessionEvents`, `getSessionMeta`.
+- Metadata: `createProject`, `getProject`, `createApiKey`, `resolveApiKey`, `hashApiKey`, `apiKeyPrefix`, `generateApiKey` (keys stored only as SHA-256 hashes).
+- Audit: `recordAudit`, `listAudit`, `pruneAudit` (key ids, never keys).
+- Scene registry: `upsertSceneProxy`, `getSceneRepresentation`, `listSceneRepresentations`, `putSceneRegions`, `getSceneRegions`, `listSceneRegions`.

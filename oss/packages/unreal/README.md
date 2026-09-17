@@ -61,9 +61,14 @@ client.start();
 ## Engine-side bridge
 
 The bridged tier needs a thin copy-in shim that pushes world-space pose / picks / FPS
-across Unreal's Emscripten glue. The contract and an `EM_JS` sketch live in
-[`bridge/README.md`](./bridge/README.md). The full shim is authored in the Unreal
-web-export sub-issue (umbrella #111).
+across Unreal's Emscripten glue. It ships in [`bridge/`](./bridge) as
+[`Uptimizr.h`](./bridge/Uptimizr.h) + [`Uptimizr.cpp`](./bridge/Uptimizr.cpp): copy both
+into your project's `Source/<Module>/` (or a plugin) so they build with your **web**
+target, then drive `UptimizrTelemetry().Initialize()` / `.Tick(World, DeltaSeconds)` /
+`.TraceAndReportPick(World)` from C++ (or `Init` / `Shutdown` from JS via `cwrap`). Off
+Emscripten every entry point compiles to a no-op. `Initialize()` asserts the live bridge's
+`protocolVersion` matches `UPTIMIZR_BRIDGE_PROTOCOL_VERSION` (1). The full contract, the
+viable web targets, and an `EM_JS` sketch are in [`bridge/README.md`](./bridge/README.md).
 
 ## Privacy
 

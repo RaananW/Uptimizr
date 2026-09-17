@@ -1,0 +1,23 @@
+# @uptimizr/playcanvas
+
+> The PlayCanvas connector for Uptimizr. Registers as an sdk-core collector and captures camera
+> pose, pointer move/click/buttons, camera gestures, mesh picks, FPS, asset loads, and opt-in
+> attention channels. `playcanvas` is a peer dependency read structurally, never bundled.
+
+## Docs
+
+- [Package reference](./README.md): `trackScene`, advanced composition, sampling/fidelity, scene proxy, PlayCanvas adaptations.
+- [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
+- [Connector guide](https://uptimizr.com/docs/connectors/playcanvas/): the docs-site walkthrough.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), input-source-agnostic events (0011), sampling & fidelity (0012), coordinate frame & connector provenance (0018), keyboard input actions (0023), scene actors (0027), world-space gaze (0030), pointer lock (0034).
+
+## Key exports
+
+- `trackScene(app, cameraEntity, options)` — one-call integration; returns the `UptimizrClient`.
+- `playcanvasCollector(options)` — the collector for manual composition (`client.use(...)`).
+- `readDeviceCaps(app)`, `readGraphics(app)`, `readConnector(overrides)`,
+  `readSceneMeta(app, camera)`, `classifyCamera(camera)` — the `session_start` provenance blocks.
+- `scanSceneProxy(app, options)` — per-entity world-AABB scene proxy (spatial heatmap backdrop).
+- `createSceneRaycaster(app, cameraEntity)`, `createGazeRaycaster(app, cameraEntity, options)` — hit-resolution probes.
+- `toVec3`, `clamp01` — vector helpers.

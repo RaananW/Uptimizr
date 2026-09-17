@@ -33,7 +33,9 @@
     "out",
     "server",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "AGENTS.md",
+    "llms.txt"
   ],
   "scripts": {
     "dev": "dotenv -e ../../../.env -- next dev -p 3000",

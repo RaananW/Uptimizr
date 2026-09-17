@@ -1,0 +1,31 @@
+# @uptimizr/db-postgres
+
+> The optional single-tenant PostgreSQL store for the Uptimizr collector (ADR 0020) — a familiar,
+> multi-writer relational backend for teams that already run Postgres. A re-home + dialect
+> emitter, not a rewrite: every aggregation is authored once in `@uptimizr/db` and rendered with
+> the shared `postgresDialect`. Server/Node only; select it with `COLLECTOR_STORE=postgres`.
+
+## Docs
+
+- [Package reference](./README.md): when to use it, env vars, the row-store fit gaps and how they are closed, file layout.
+- [Agent guide](./AGENTS.md): rules, canonical usage, parity and the `POSTGRES_PARITY_REQUIRED` gate.
+- [Storage contracts + query layer](../db/README.md): `@uptimizr/db`, the `buildX`/`Dialect` layer, the parity harness.
+- [Collector configuration](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): `COLLECTOR_STORE` and the HTTP API.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): database choice (0002), privacy model (0003), migrations (0007), open-core storage boundary (0020), AI-first analytics layer (0051).
+
+## Environment
+
+- `COLLECTOR_STORE=postgres` selects this store.
+- `POSTGRES_URL` (or `DATABASE_URL`) — libpq URI; the database must already exist. Postgres 14+.
+- `POSTGRES_SCHEMA` (default `public`, created on first boot), `POSTGRES_POOL_MAX` (default `10`).
+- `POSTGRES_PARITY_REQUIRED=1` makes the live parity suites fail instead of skipping (the CI job sets it).
+
+## Key exports
+
+- Client: `createPostgresClient(settings)`, `assertSafeIdentifier`, types `PostgresClient` / `PostgresExecutor` / `PostgresRow`.
+- Migrations: `POSTGRES_MIGRATIONS`, `migratePostgres(client)` — forward-only, idempotent, advisory-locked (ADR 0007).
+- Queries: `runPostgresQuery(client, spec)` — rewrites named to positional params and coerces numeric columns at the driver edge (ADR 0051 §2).
+- Events: `insertEvents`, `getSessionEvents`, `streamSessionEvents`, `getSessionMeta`.
+- Metadata: `createProject`, `getProject`, `createApiKey`, `resolveApiKey`, `hashApiKey`, `apiKeyPrefix`, `generateApiKey` (keys stored only as SHA-256 hashes).
+- Audit: `recordAudit`, `listAudit`, `pruneAudit` (key ids, never keys).
+- Scene registry: `upsertSceneProxy`, `getSceneRepresentation`, `listSceneRepresentations`, `putSceneRegions`, `getSceneRegions`, `listSceneRegions`.

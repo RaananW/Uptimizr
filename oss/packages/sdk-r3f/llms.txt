@@ -1,0 +1,23 @@
+# @uptimizr/r3f
+
+> The react-three-fiber connector for Uptimizr. A thin React layer over `@uptimizr/three`: it
+> reads the live scene/camera/gl from the R3F store via `useThree()` and hands them to the three
+> connector, stopping capture on unmount. `react`, `@react-three/fiber` and `three` are peer
+> dependencies. Sessions are attributed to the `r3f` connector.
+
+## Docs
+
+- [Package reference](./README.md): component + hook usage, options, replay, package boundary.
+- [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
+- [Connector guide](https://uptimizr.com/docs/connectors/r3f/): the docs-site walkthrough.
+- [three connector](../sdk-three/README.md): the capture engine and the full option surface.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), input-source-agnostic events (0011), sampling & fidelity (0012), coordinate frame & connector provenance (0018).
+
+## Key exports
+
+- `useUptimizr(options)` — the headless hook; returns an `UptimizrClientRef`.
+- `<Uptimizr {...options} />` — the declarative component (render it inside `<Canvas>`).
+- `UptimizrOptions` — an alias of `@uptimizr/three`'s `TrackSceneOptions`.
+- `createSceneRaycaster`, `createGazeRaycaster`, `createXrRaycaster` — re-exported hit-resolution probes.
+- Re-exported option types: `TrackSceneOptions`, `ThreeCaptureOptions`, `MeshVisibilityOptions`, `HoverDwellOptions`, `ResourceSampleOptions`.

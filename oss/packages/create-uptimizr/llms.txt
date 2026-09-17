@@ -1,0 +1,39 @@
+# create-uptimizr
+
+> The scaffolder for a self-hosted Uptimizr OSS collector (ADR 0029). Docker-free and single-file
+> (DuckDB) by default, or backed by Postgres / ClickHouse / SQL Server. It **only writes files** —
+> the generated folder is operated entirely by the `uptimizr` CLI — and has no runtime
+> dependencies. Released **manually**: it is unscoped and Changesets-ignored.
+
+## Docs
+
+- [Package reference](./README.md): usage, optional features, choosing a store, the full flag table.
+- [Agent guide](./AGENTS.md): flags vs prompts, what is generated, and the rules an agent must follow.
+- [Collector CLI](../../apps/collector-server/README.md): `uptimizr init | serve | new-project | new-key | migrate | regions`.
+- [Quickstart](https://uptimizr.com/docs/quickstart/) and [deploy guide](https://uptimizr.com/docs/deploy/collector/).
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), open-core storage boundary (0020), distribution & self-host DX (0029).
+- [CONTRIBUTING](https://github.com/RaananW/Uptimizr/blob/main/CONTRIBUTING.md): why this package is published manually.
+
+## Run
+
+```bash
+npm create uptimizr@latest my-analytics -- --engine three --store duckdb --full
+cd my-analytics && npm install && npm run setup && npm start
+```
+
+## Flags
+
+`[dir]` (default `uptimizr-analytics`), `--engine babylon|babylon-lite|three|r3f|playcanvas|aframe`
+(default `babylon`), `--store duckdb|postgres|clickhouse|mssql` (default `duckdb`),
+`--name <name>`, `--port <n>` (default `4318`), `--dashboard` / `--no-dashboard`,
+`--demo` / `--no-demo`, `--full`, `--minimal`, `--help`.
+
+Unset values are prompted for **only when stdin and stdout are both TTYs**. In CI or an agent's
+shell nothing is prompted and the defaults apply — pass the flags explicitly.
+
+## Generates
+
+`package.json` (scripts wired to the `uptimizr` CLI), a git-ignored `.env` with a freshly
+generated `VISITOR_HASH_SECRET` and store config, `.gitignore`, `README.md`,
+`client-snippet.<engine>.ts`, plus `demo/` (`--demo`) and `data/` (DuckDB only). External stores
+get placeholder connection settings to edit and no `data/` folder.

@@ -1,0 +1,30 @@
+# @uptimizr/db-clickhouse
+
+> The optional single-tenant ClickHouse store for the Uptimizr collector (ADR 0020) — the scale
+> path past DuckDB's single-writer ceiling. A re-home + dialect emitter, not a rewrite: every
+> aggregation is authored once in `@uptimizr/db` and rendered with the shared `clickhouseDialect`.
+> Server/Node only; select it with `COLLECTOR_STORE=clickhouse`.
+
+## Docs
+
+- [Package reference](./README.md): when to use it, env vars, managed-ClickHouse notes, file layout.
+- [Agent guide](./AGENTS.md): rules, canonical usage, parity and the `CLICKHOUSE_PARITY_REQUIRED` gate.
+- [Storage contracts + query layer](../db/README.md): `@uptimizr/db`, the `buildX`/`Dialect` layer, the parity harness.
+- [Collector configuration](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): `COLLECTOR_STORE` and the HTTP API.
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): database choice (0002), privacy model (0003), migrations (0007), open-core storage boundary (0020), AI-first analytics layer (0051).
+
+## Environment
+
+- `COLLECTOR_STORE=clickhouse` selects this store.
+- `CLICKHOUSE_URL` (`https://` implies TLS), `CLICKHOUSE_DATABASE`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`.
+- `CLICKHOUSE_PARITY_REQUIRED=1` makes the live parity suites fail instead of skipping (the CI job sets it).
+
+## Key exports
+
+- Client: `createClickhouseClient(settings)`, types `ClickhouseClient` / `ClickhouseRow`.
+- Migrations: `CLICKHOUSE_MIGRATIONS`, `migrateClickhouse(client)` — forward-only, idempotent (ADR 0007).
+- Queries: `runClickhouseQuery(client, spec)` — executes a rendered `QuerySpec` and coerces numeric columns at the driver edge (ADR 0051 §2).
+- Events: `insertEvents`, `getSessionEvents`, `streamSessionEvents`, `getSessionMeta`.
+- Metadata: `createProject`, `getProject`, `createApiKey`, `resolveApiKey`, `hashApiKey`, `apiKeyPrefix`, `generateApiKey` (keys stored only as SHA-256 hashes).
+- Audit: `recordAudit`, `listAudit`, `pruneAudit` (key ids, never keys).
+- Scene registry: `upsertSceneProxy`, `getSceneRepresentation`, `listSceneRepresentations`, `putSceneRegions`, `getSceneRegions`, `listSceneRegions`.

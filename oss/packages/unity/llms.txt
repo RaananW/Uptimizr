@@ -1,0 +1,29 @@
+# @uptimizr/unity
+
+> The Unity (WebGL export) connector for Uptimizr (ADR 0045). Built on `@uptimizr/web-export`:
+> a JS-only tier captures pointer heatmaps / FPS / errors with no engine code, and a thin copy-in
+> `.jslib` + `MonoBehaviour` shim pushes camera pose, picks and perf over the versioned bridge.
+> Unity's native frame is already the canonical wire frame, so no axis conversion is applied.
+
+## Docs
+
+- [Package reference](./README.md): the two tiers, `trackUnity`, bridge setup, verification status.
+- [Agent guide](./AGENTS.md): rules, the engine-side vs web-side split, export caveats.
+- [Engine-side bridge](./bridge/README.md): the copy-in `.jslib` + `MonoBehaviour` and the JS API table.
+- [Unity guide](https://uptimizr.com/docs/connectors/unity/): the docs-site walkthrough.
+- [Shared foundation](../web-export/README.md): `@uptimizr/web-export`, the bridge contract and the JS-only tier.
+- [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data (see "Web-export engines").
+- [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), coordinate frame & connector provenance (0018), web-export engine connectors (0045).
+
+## Key exports
+
+- `trackUnity(options)` — one-call integration; returns `{ client, bridge }`.
+- `unityCollector(options)` — the collector for manual composition (`client.use(...)`).
+- `UNITY_FRAME` — `{ handedness: "left", upAxis: "y", unitScale: 1 }` (already canonical).
+- `UNITY_CONNECTOR_NAME` — `"unity"`, the connector provenance / collector name.
+- Types: `TrackUnityOptions`, `UnityCollectorOptions`, `EngineBridge`.
+
+## Engine-side copy-in assets
+
+- `bridge/Uptimizr.jslib` → `Assets/Plugins/WebGL/Uptimizr.jslib`.
+- `bridge/UptimizrUnityBridge.cs` → anywhere under `Assets/`; add the component to a GameObject.
