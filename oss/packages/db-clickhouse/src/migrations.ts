@@ -291,6 +291,71 @@ export const CLICKHOUSE_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> =
       ORDER BY (project_id, scene_id, region_id);
     `,
   },
+  // Project metadata (ADR 0051 §5 / sketch §E.2): annotations, glossary and
+  // saved analyses — the three tables the `annotate` capability gates. Metadata
+  // only; the `events` table is untouched.
+  //
+  // Each is a `ReplacingMergeTree` carrying a `deleted` tombstone flag and a
+  // monotonic `version`, exactly like `scene_regions`: a delete inserts a
+  // tombstone, an upsert inserts a newer version, and every read is
+  // `FINAL … WHERE deleted = 0`. `since`/`until` are nullable — a standing note
+  // has neither.
+  {
+    id: "0012_annotations",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS annotations (
+        id            String,
+        project_id    String,
+        target_kind   LowCardinality(String) DEFAULT '',
+        target_id     Nullable(String) DEFAULT NULL,
+        since         Nullable(DateTime64(3)) DEFAULT NULL,
+        until         Nullable(DateTime64(3)) DEFAULT NULL,
+        text          String DEFAULT '',
+        author_kind   LowCardinality(String) DEFAULT 'user',
+        author_key_id Nullable(String) DEFAULT NULL,
+        created_at    DateTime64(3) DEFAULT now64(3),
+        updated_at    DateTime64(3) DEFAULT now64(3),
+        deleted       UInt8 DEFAULT 0,
+        version       UInt64 DEFAULT 0
+      )
+      ENGINE = ReplacingMergeTree(version)
+      ORDER BY (project_id, id);
+    `,
+  },
+  {
+    id: "0013_glossary",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS glossary (
+        project_id  String,
+        term        String,
+        meaning     String DEFAULT '',
+        updated_at  DateTime64(3) DEFAULT now64(3),
+        deleted     UInt8 DEFAULT 0,
+        version     UInt64 DEFAULT 0
+      )
+      ENGINE = ReplacingMergeTree(version)
+      ORDER BY (project_id, term);
+    `,
+  },
+  {
+    id: "0014_saved_analyses",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS saved_analyses (
+        id            String,
+        project_id    String,
+        title         String DEFAULT '',
+        query         String DEFAULT '{}',
+        conclusion    Nullable(String) DEFAULT NULL,
+        author_kind   LowCardinality(String) DEFAULT 'user',
+        author_key_id Nullable(String) DEFAULT NULL,
+        created_at    DateTime64(3) DEFAULT now64(3),
+        deleted       UInt8 DEFAULT 0,
+        version       UInt64 DEFAULT 0
+      )
+      ENGINE = ReplacingMergeTree(version)
+      ORDER BY (project_id, id);
+    `,
+  },
 ];
 
 /**

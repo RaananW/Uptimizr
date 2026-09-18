@@ -60,6 +60,7 @@ import type {
   SceneRetentionLink,
   SessionSummary,
   StabilityCounts,
+  AnnotationRow,
   TimeseriesBucket,
   TrajectoryPoint,
   VariantLeaderboardRow,
@@ -574,6 +575,8 @@ async function resolveProxyMeshes(ctx: PanelContext): Promise<SceneProxyMesh[]> 
 interface EventVolumeData {
   buckets: TimeseriesBucket[];
   intervalMs: number;
+  /** Project annotations overlapping the plotted window (#310). */
+  annotations: AnnotationRow[];
 }
 
 /**
@@ -610,11 +613,21 @@ export const eventVolumePanel = definePanel<EventVolumeData>({
       scene: ctx.params.scene,
       interval: intervalSec,
     });
-    return { buckets, intervalMs: intervalSec * 1000 };
+    // Project annotations overlapping the plotted window (#310, ADR 0051 §5).
+    // A collector that does not serve them — or a key that cannot read them —
+    // simply leaves the axis unmarked; the chart is never blocked on a note.
+    // `annotations()` arrived with #310, and a host app may supply an older
+    // client of its own, so its absence means "no markers", not a failed panel.
+    const annotations =
+      typeof ctx.api.annotations === "function"
+        ? await ctx.api.annotations({ since, until, limit: 100 }).catch(() => [] as AnnotationRow[])
+        : [];
+    return { buckets, intervalMs: intervalSec * 1000, annotations };
   },
   render: ({ data, ctx }) => (
     <VolumeTimeseriesView
       buckets={data?.buckets ?? []}
+      annotations={data?.annotations ?? []}
       intervalMs={data?.intervalMs ?? 3_600_000}
       onBrush={ctx.actions.setTimeRange}
       onClear={

@@ -75,15 +75,18 @@ import {
   type WorldAabb,
 } from "@uptimizr/db/query";
 import {
+  annotationSchema,
   anyEventSchema,
   funnelStepSchema,
   funnelStepsSchema,
+  glossaryEntrySchema,
+  savedAnalysisSchema,
   sceneProxySchema,
   sceneRegionsSchema,
   type AnyEvent,
 } from "@uptimizr/schema";
 import { DEMO_PROJECT_ID } from "./constants.js";
-import type { WasmDb } from "./db.js";
+import { DemoMetadataLimitError, type WasmDb } from "./db.js";
 
 /** A minimal HTTP request as forwarded from the service worker. */
 export interface DemoRequest {
@@ -173,6 +176,115 @@ function readOpts(sp: URLSearchParams): DemoOpts {
 
 function ok(body: unknown): DemoResponse {
   return { status: 200, body };
+}
+
+/**
+ * The metadata surface (#310): `annotations`, `glossary` and `analyses`.
+ *
+ * Returns `null` when the path is not one of them, so `handleRequest` can fall
+ * through to the read table. Payloads go through the same `@uptimizr/schema`
+ * contracts the collector validates with, so a body the real collector would
+ * reject is rejected here too — the demo is a fair rehearsal, not a lenient one.
+ *
+ * Rows written here are attributed to `agent`: in the demo the assistant is the
+ * only thing that writes, and the demo has no dashboard-session marker to
+ * distinguish.
+ */
+async function handleMetadata(
+  db: WasmDb,
+  req: DemoRequest,
+  path: string,
+  sp: URLSearchParams,
+): Promise<DemoResponse | null> {
+  const author = { authorKind: "agent" as const, authorKeyId: null };
+  const parseBody = (): unknown => {
+    try {
+      return JSON.parse(req.body ?? "{}");
+    } catch {
+      return undefined;
+    }
+  };
+  /** The collector's own `409` wording, so the demo behaves the same way. */
+  const full = (table: string, limit: number): DemoResponse => ({
+    status: 409,
+    body: { error: `project has reached its limit of ${limit} ${table} rows` },
+  });
+
+  if (path === "/api/v1/annotations") {
+    if (req.method === "GET") {
+      return ok(
+        await db.listAnnotations({
+          targetKind: sp.get("targetKind") ?? undefined,
+          targetId: sp.get("targetId") ?? undefined,
+          since: sp.has("since") ? Number(sp.get("since")) : undefined,
+          until: sp.has("until") ? Number(sp.get("until")) : undefined,
+        }),
+      );
+    }
+    if (req.method === "POST") {
+      const parsed = annotationSchema.safeParse(parseBody());
+      if (!parsed.success) return { status: 400, body: { error: "invalid annotation" } };
+      try {
+        return { status: 201, body: await db.createAnnotation(parsed.data, author) };
+      } catch (err) {
+        if (err instanceof DemoMetadataLimitError) return full(err.table, err.limit);
+        throw err;
+      }
+    }
+  }
+  const annotationId = path.match(/^\/api\/v1\/annotations\/([^/]+)$/);
+  if (annotationId && req.method === "DELETE") {
+    const deleted = await db.deleteAnnotation(decodeURIComponent(annotationId[1]!));
+    return deleted
+      ? { status: 204, body: null }
+      : { status: 404, body: { error: "annotation not found" } };
+  }
+
+  if (path === "/api/v1/glossary" && req.method === "GET") return ok(await db.listGlossary());
+  const term = path.match(/^\/api\/v1\/glossary\/([^/]+)$/);
+  if (term) {
+    const decoded = decodeURIComponent(term[1]!);
+    if (req.method === "PUT") {
+      const body = parseBody() as { meaning?: unknown } | undefined;
+      const parsed = glossaryEntrySchema.safeParse({ term: decoded, meaning: body?.meaning });
+      if (!parsed.success) return { status: 400, body: { error: "invalid glossary entry" } };
+      try {
+        return ok(await db.putGlossaryEntry(parsed.data.term, parsed.data.meaning));
+      } catch (err) {
+        if (err instanceof DemoMetadataLimitError) return full(err.table, err.limit);
+        throw err;
+      }
+    }
+    if (req.method === "DELETE") {
+      const deleted = await db.deleteGlossaryEntry(decoded);
+      return deleted
+        ? { status: 204, body: null }
+        : { status: 404, body: { error: "term not defined" } };
+    }
+  }
+
+  if (path === "/api/v1/analyses") {
+    if (req.method === "GET") return ok(await db.listSavedAnalyses());
+    if (req.method === "POST") {
+      const parsed = savedAnalysisSchema.safeParse(parseBody());
+      if (!parsed.success) return { status: 400, body: { error: "invalid analysis" } };
+      try {
+        return { status: 201, body: await db.createSavedAnalysis(parsed.data, author) };
+      } catch (err) {
+        if (err instanceof DemoMetadataLimitError) return full(err.table, err.limit);
+        throw err;
+      }
+    }
+  }
+  const analysisId = path.match(/^\/api\/v1\/analyses\/([^/]+)$/);
+  if (analysisId && req.method === "DELETE") {
+    const deleted = await db.deleteSavedAnalysis(decodeURIComponent(analysisId[1]!));
+    return deleted
+      ? { status: 204, body: null }
+      : { status: 404, body: { error: "analysis not found" } };
+  }
+
+  return null;
 }
 
 /**
@@ -450,13 +562,15 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
   if (path === "/health") return ok({ status: "ok" });
 
   // Key identity (#309). The demo has no keys — every request resolves to the
-  // single public demo project — so `whoami` reports a read-only identity and
-  // the audit trail is always empty.
+  // single public demo project — so `whoami` reports one fixed identity and the
+  // audit trail is always empty. It carries `annotate` (#310) so the assistant's
+  // "Annotate this" / "Save this analysis" actions are demonstrable; the data
+  // lives only in the visitor's own browser.
   if (req.method === "GET" && path === "/api/v1/whoami") {
     return ok({
       projectId: pid,
       keyId: "demo",
-      capabilities: ["query"],
+      capabilities: ["query", "annotate"],
       label: "demo",
       rateLimit: null,
       rateLimitSource: "default",
@@ -547,6 +661,14 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
       return ok(await db.getSceneRegions(sceneId));
     }
   }
+
+  // Project metadata (#310, ADR 0051 §5): annotations, glossary, saved
+  // analyses. The demo has no keys, so its one identity holds `annotate` and
+  // these writes are allowed — showing the feature is the point of the demo. It
+  // mirrors the collector's status codes, including 400 on a payload the shared
+  // schema rejects and 404 on an unknown id.
+  const metadata = await handleMetadata(db, req, path, sp);
+  if (metadata) return metadata;
 
   if (req.method === "GET") {
     // Funnel (#78): `steps` is a JSON array validated against the shared schema,

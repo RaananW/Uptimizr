@@ -363,6 +363,73 @@ export const MSSQL_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
       );
     `,
   },
+  // Project metadata (ADR 0051 §5 / sketch §E.2): annotations, glossary and
+  // saved analyses — the three tables the `annotate` capability gates, mirroring
+  // the DuckDB tables column-for-column. The events tables are untouched.
+  //
+  // `text` is a (deprecated) T-SQL data-type name, so the annotation column is
+  // bracketed here and in every accessor; the column name matches the other
+  // three engines, where it needs no quoting.
+  {
+    id: "0015_annotations",
+    sql: /* sql */ `
+      IF OBJECT_ID(N'dbo.annotations', N'U') IS NULL
+      CREATE TABLE dbo.annotations (
+        id            ${KEY} NOT NULL PRIMARY KEY NONCLUSTERED,
+        project_id    ${KEY} NOT NULL,
+        target_kind   ${KEY} NOT NULL,
+        target_id     ${KEY} NULL,
+        since         datetime2(3) NULL,
+        until         datetime2(3) NULL,
+        [text]        ${TEXT} NOT NULL,
+        author_kind   ${KEY} NOT NULL DEFAULT N'user',
+        author_key_id ${KEY} NULL,
+        created_at    datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+        updated_at    datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME()
+      );
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                      WHERE name = N'annotations_project_created_idx'
+                        AND object_id = OBJECT_ID(N'dbo.annotations'))
+        CREATE INDEX annotations_project_created_idx
+          ON dbo.annotations (project_id, created_at DESC);
+    `,
+  },
+  // Glossary. The key is NONCLUSTERED for the same 900-byte reason as
+  // `scene_regions`: two `nvarchar(255)` columns exceed a clustered key.
+  {
+    id: "0016_glossary",
+    sql: /* sql */ `
+      IF OBJECT_ID(N'dbo.glossary', N'U') IS NULL
+      CREATE TABLE dbo.glossary (
+        project_id  ${KEY} NOT NULL,
+        term        ${KEY} NOT NULL,
+        meaning     ${TEXT} NOT NULL,
+        updated_at  datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+        PRIMARY KEY NONCLUSTERED (project_id, term)
+      );
+    `,
+  },
+  {
+    id: "0017_saved_analyses",
+    sql: /* sql */ `
+      IF OBJECT_ID(N'dbo.saved_analyses', N'U') IS NULL
+      CREATE TABLE dbo.saved_analyses (
+        id            ${KEY} NOT NULL PRIMARY KEY NONCLUSTERED,
+        project_id    ${KEY} NOT NULL,
+        title         ${TEXT} NOT NULL,
+        query         nvarchar(max) NOT NULL DEFAULT N'{}',
+        conclusion    ${TEXT} NULL,
+        author_kind   ${KEY} NOT NULL DEFAULT N'user',
+        author_key_id ${KEY} NULL,
+        created_at    datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME()
+      );
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                      WHERE name = N'saved_analyses_project_created_idx'
+                        AND object_id = OBJECT_ID(N'dbo.saved_analyses'))
+        CREATE INDEX saved_analyses_project_created_idx
+          ON dbo.saved_analyses (project_id, created_at DESC);
+    `,
+  },
 ];
 
 /**

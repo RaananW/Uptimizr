@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
+import { METADATA_LIMITS, MetadataLimitError, clampMetadataLimit } from "@uptimizr/db";
 import type {
   AgentAuditEntry,
+  AnnotationRecord,
   ApiKeyCapability,
+  GlossaryEntryRecord,
+  SavedAnalysisRecord,
   SceneRegionRecord,
   SceneRepresentation,
   SessionMeta,
@@ -58,6 +62,10 @@ export function createMemoryStore({
   const audit: AgentAuditEntry[] = [];
   /** Scene regions keyed by scene id; each value is that scene's whole set. */
   const regions = new Map<string, SceneRegionRecord[]>();
+  /** Project metadata (#310): annotations, glossary (keyed by term), analyses. */
+  const annotations: AnnotationRecord[] = [];
+  const glossary = new Map<string, GlossaryEntryRecord>();
+  const analyses: SavedAnalysisRecord[] = [];
 
   const forSession = (sid: string): AnyEvent[] =>
     events
@@ -511,10 +519,102 @@ export function createMemoryStore({
         .flatMap(([sceneId, set]) =>
           set.map((r) => ({ sceneId, regionId: r.regionId, label: r.label })),
         ),
+    // --- Project metadata (#310, ADR 0051 §5) ------------------------------
+    // Same semantics as the persistent stores — per-project caps, newest-first
+    // ordering, overlap filtering, `MetadataLimitError` when a table is full —
+    // so an E2E run against this store exercises the real contract.
+    createAnnotation: async (_projectId, input) => {
+      if (annotations.length >= METADATA_LIMITS.annotations) {
+        throw new MetadataLimitError("annotations", METADATA_LIMITS.annotations);
+      }
+      const now = new Date();
+      const { annotation } = input;
+      const record: AnnotationRecord = {
+        id: randomUUID(),
+        projectId,
+        targetKind: annotation.targetKind,
+        targetId: annotation.targetId ?? null,
+        since: annotation.since == null ? null : new Date(annotation.since),
+        until: annotation.until == null ? null : new Date(annotation.until),
+        text: annotation.text,
+        authorKind: input.authorKind,
+        authorKeyId: input.authorKeyId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      annotations.push(record);
+      return record;
+    },
+    listAnnotations: async (_projectId, opts = {}) =>
+      annotations
+        .filter((row) => opts.targetKind == null || row.targetKind === opts.targetKind)
+        .filter((row) => opts.targetId == null || row.targetId === opts.targetId)
+        .filter(
+          (row) => opts.since == null || row.until == null || row.until.getTime() >= opts.since,
+        )
+        .filter(
+          (row) => opts.until == null || row.since == null || row.since.getTime() < opts.until,
+        )
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .slice(0, clampMetadataLimit(opts.limit)),
+    deleteAnnotation: async (_projectId, id) => {
+      const index = annotations.findIndex((row) => row.id === id);
+      if (index < 0) return false;
+      annotations.splice(index, 1);
+      return true;
+    },
+    putGlossaryEntry: async (_projectId, input) => {
+      const { term, meaning } = input.entry;
+      if (!glossary.has(term) && glossary.size >= METADATA_LIMITS.glossary) {
+        throw new MetadataLimitError("glossary", METADATA_LIMITS.glossary);
+      }
+      const record: GlossaryEntryRecord = { projectId, term, meaning, updatedAt: new Date() };
+      glossary.set(term, record);
+      return record;
+    },
+    listGlossary: async (_projectId, opts = {}) =>
+      [...glossary.values()]
+        .sort((a, b) => (a.term < b.term ? -1 : a.term > b.term ? 1 : 0))
+        .slice(
+          0,
+          clampMetadataLimit(opts.limit, METADATA_LIMITS.glossary, METADATA_LIMITS.glossary),
+        ),
+    deleteGlossaryEntry: async (_projectId, term) => glossary.delete(term),
+    createSavedAnalysis: async (_projectId, input) => {
+      if (analyses.length >= METADATA_LIMITS.savedAnalyses) {
+        throw new MetadataLimitError("savedAnalyses", METADATA_LIMITS.savedAnalyses);
+      }
+      const { analysis } = input;
+      const record: SavedAnalysisRecord = {
+        id: randomUUID(),
+        projectId,
+        title: analysis.title,
+        query: analysis.query,
+        conclusion: analysis.conclusion ?? null,
+        authorKind: input.authorKind,
+        authorKeyId: input.authorKeyId,
+        createdAt: new Date(),
+      };
+      analyses.push(record);
+      return record;
+    },
+    listSavedAnalyses: async (_projectId, opts = {}) =>
+      [...analyses]
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .slice(0, clampMetadataLimit(opts.limit)),
+    deleteSavedAnalysis: async (_projectId, id) => {
+      const index = analyses.findIndex((row) => row.id === id);
+      if (index < 0) return false;
+      analyses.splice(index, 1);
+      return true;
+    },
     close: async () => {
       events.length = 0;
       representations.clear();
       regions.clear();
+      annotations.length = 0;
+      glossary.clear();
+      analyses.length = 0;
     },
   };
 }

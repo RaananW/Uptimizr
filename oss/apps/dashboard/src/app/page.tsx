@@ -725,7 +725,7 @@ export default function Page() {
             </div>
           ) : null}
           <div className="lg:col-span-2">
-            <AssistantDrawer collectorUrl={baseUrl} apiKey={apiKey} />
+            <AssistantDrawer collectorUrl={baseUrl} apiKey={apiKey} filters={filters} />
           </div>
           <div className="lg:col-span-2">
             <Panel

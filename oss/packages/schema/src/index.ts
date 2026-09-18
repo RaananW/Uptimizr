@@ -154,6 +154,23 @@ export {
 } from "./sceneRegion.js";
 
 export {
+  annotationTargetKindSchema,
+  annotationSchema,
+  glossaryTermSchema,
+  glossaryEntrySchema,
+  savedAnalysisQuerySchema,
+  savedAnalysisSchema,
+  metadataAuthorKindSchema,
+  type AnnotationTargetKind,
+  type Annotation,
+  type GlossaryTerm,
+  type GlossaryEntry,
+  type SavedAnalysisQuery,
+  type SavedAnalysis,
+  type MetadataAuthorKind,
+} from "./metadata.js";
+
+export {
   coordinateHandednessSchema,
   coordinateSystemSchema,
   type CoordinateHandedness,

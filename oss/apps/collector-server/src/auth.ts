@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { ApiKeyCapability, ResolvedApiKey } from "@uptimizr/db";
+import type { ApiKeyCapability, MetadataAuthorKind, ResolvedApiKey } from "@uptimizr/db";
 import type { CollectorStore } from "./store.js";
 
 /**
@@ -52,6 +52,23 @@ export const CLIENT_HEADER = "x-uptimizr-client";
  */
 export function isDashboardRequest(request: FastifyRequest): boolean {
   return request.headers[CLIENT_HEADER] === "dashboard";
+}
+
+/**
+ * Who a metadata write (#310, ADR 0051 §5) is attributed to.
+ *
+ * It reuses the surface marker the audit log already distinguishes on rather
+ * than inventing a second notion of "who": the dashboard's own session is a
+ * **person** clicking in a UI, and everything else holding an `annotate` key —
+ * an MCP client, the in-browser assistant writing up its own answer, a
+ * scheduled report — is an **agent**.
+ *
+ * It is derived from the request, never read from the payload, so a stored row
+ * cannot claim an authorship its writer did not send. Like the audit filter it
+ * is an honest label, not a security boundary.
+ */
+export function metadataAuthorKind(request: FastifyRequest): MetadataAuthorKind {
+  return isDashboardRequest(request) ? "user" : "agent";
 }
 
 /**

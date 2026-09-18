@@ -47,6 +47,17 @@ import {
   upsertSceneProxy,
 } from "../sceneRegistry.js";
 import { getSceneRegions, listSceneRegions, putSceneRegions } from "../sceneRegions.js";
+import {
+  createAnnotation,
+  createSavedAnalysis,
+  deleteAnnotation,
+  deleteGlossaryEntry,
+  deleteSavedAnalysis,
+  listAnnotations,
+  listGlossary,
+  listSavedAnalyses,
+  putGlossaryEntry,
+} from "../projectMetadata.js";
 import { runMssqlQuery } from "../queries.js";
 import { discardTestDatabase, mssqlReachable, openTestDatabase } from "./probe.js";
 
@@ -459,6 +470,88 @@ describe.skipIf(!available)("mssql store", () => {
     expect(await putSceneRegions(ms, PID, "lobby", [])).toEqual([]);
     expect(await getSceneRegions(ms, PID, "never-registered")).toEqual([]);
     await putSceneRegions(ms, PID, "atrium", []);
+  });
+
+  it("round-trips the project-metadata tables (#310)", async () => {
+    const author = { authorKind: "user", authorKeyId: "key_1" } as const;
+    const agentAuthor = { authorKind: "agent", authorKeyId: "key_2" } as const;
+
+    // Annotations: a targeted, time-bounded note and a standing one.
+    const since = 1_700_000_000_000;
+    const until = 1_700_003_600_000;
+    const note = await createAnnotation(ms, PID, {
+      ...agentAuthor,
+      annotation: { targetKind: "mesh", targetId: "counter", since, until, text: "dead clicks" },
+    });
+    expect(note).toMatchObject({
+      projectId: PID,
+      targetKind: "mesh",
+      targetId: "counter",
+      authorKind: "agent",
+      authorKeyId: "key_2",
+    });
+    expect(note.since?.getTime()).toBe(since);
+    expect(note.until?.getTime()).toBe(until);
+
+    const standing = await createAnnotation(ms, PID, {
+      ...author,
+      annotation: { targetKind: "project", text: "v2.1 shipped" },
+    });
+    expect(standing.since).toBeNull();
+    expect(standing.targetId).toBeNull();
+
+    // The range filter is an overlap test, and a standing note always matches.
+    const overlapping = await listAnnotations(ms, PID, { since: since + 60_000, until: until });
+    expect(overlapping.map((a) => a.text).sort()).toEqual(["dead clicks", "v2.1 shipped"]);
+    expect((await listAnnotations(ms, PID, { targetKind: "mesh" })).map((a) => a.id)).toEqual([
+      note.id,
+    ]);
+
+    // Another project cannot see or delete this project's rows.
+    expect(await listAnnotations(ms, OTHER_PID)).toEqual([]);
+    expect(await deleteAnnotation(ms, OTHER_PID, note.id)).toBe(false);
+    expect(await deleteAnnotation(ms, PID, note.id)).toBe(true);
+    expect(await deleteAnnotation(ms, PID, note.id)).toBe(false);
+    expect(await listAnnotations(ms, PID)).toHaveLength(1);
+    expect(await deleteAnnotation(ms, PID, standing.id)).toBe(true);
+
+    // Glossary: the term is the identity, so a second write replaces the meaning.
+    await putGlossaryEntry(ms, PID, { entry: { term: "TTFR", meaning: "time to first render" } });
+    const redefined = await putGlossaryEntry(ms, PID, {
+      entry: { term: "TTFR", meaning: "time to first rendered frame" },
+    });
+    expect(redefined.meaning).toBe("time to first rendered frame");
+    expect(await listGlossary(ms, PID)).toHaveLength(1);
+    expect(await listGlossary(ms, OTHER_PID)).toEqual([]);
+    expect(await deleteGlossaryEntry(ms, PID, "TTFR")).toBe(true);
+    expect(await deleteGlossaryEntry(ms, PID, "TTFR")).toBe(false);
+
+    // Saved analyses: the opaque query document survives the round trip.
+    const analysis = await createSavedAnalysis(ms, PID, {
+      ...agentAuthor,
+      analysis: {
+        title: "Lobby FPS",
+        query: { metric: "perf_summary", scene: "lobby", nested: { range: "7d" } },
+        conclusion: "p50 fell to 41.",
+      },
+    });
+    expect(analysis.query).toEqual({
+      metric: "perf_summary",
+      scene: "lobby",
+      nested: { range: "7d" },
+    });
+    expect((await listSavedAnalyses(ms, PID))[0]).toEqual(analysis);
+
+    const openEnded = await createSavedAnalysis(ms, PID, {
+      ...author,
+      analysis: { title: "watch this", query: {} },
+    });
+    expect(openEnded.conclusion).toBeNull();
+
+    expect(await deleteSavedAnalysis(ms, OTHER_PID, analysis.id)).toBe(false);
+    expect(await deleteSavedAnalysis(ms, PID, analysis.id)).toBe(true);
+    expect(await deleteSavedAnalysis(ms, PID, openEnded.id)).toBe(true);
+    expect(await listSavedAnalyses(ms, PID)).toEqual([]);
   });
 
   describe("every aggregation matches DuckDB on the extended fixtures", () => {

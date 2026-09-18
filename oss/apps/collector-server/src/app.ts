@@ -17,6 +17,7 @@ import { buildDashboardCsp } from "./csp.js";
 import { collectRoutes } from "./routes/collect.js";
 import { liveRoutes } from "./routes/live.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
+import { metadataRoutes } from "./routes/metadata.js";
 import { queryRoutes } from "./routes/query.js";
 
 export interface BuildAppDeps {
@@ -88,8 +89,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
     // @fastify/cors defaults `methods` to GET,HEAD,POST — which omits PUT and so
     // breaks the browser preflight for scene-proxy registration
-    // (PUT /api/v1/scenes/:id/representation). List the verbs the HTTP API uses.
-    methods: ["GET", "HEAD", "POST", "PUT"],
+    // (PUT /api/v1/scenes/:id/representation). DELETE is needed for the metadata
+    // write path (#310: removing an annotation, a term, a saved analysis). List
+    // the verbs the HTTP API uses.
+    methods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
     // The SDK ingests via `navigator.sendBeacon`, which always sends in
     // credentials mode `include`. With a non-safelisted `application/json` body
     // that triggers a credentialed CORS preflight, so the response must echo
@@ -141,6 +144,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(collectRoutes, { store, config, liveBus });
   await app.register(liveRoutes, { store, config, liveBus });
   await app.register(queryRoutes, { store, config });
+  // The metadata write path (#310) is its own plugin so the read API above stays
+  // exactly what it is — aggregate and read-only — and so the `annotate`-gated
+  // surface is one file to inspect.
+  await app.register(metadataRoutes, { store });
   await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API

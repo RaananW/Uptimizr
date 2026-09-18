@@ -11,7 +11,15 @@ import {
   type NodeSampleRow,
   type QuerySpec,
 } from "@uptimizr/db/query";
-import type { AnyEvent, NodeTransformEvent, SceneProxy, SceneRegion } from "@uptimizr/schema";
+import { LIMITS } from "@uptimizr/schema";
+import type {
+  Annotation,
+  AnyEvent,
+  NodeTransformEvent,
+  SavedAnalysis,
+  SceneProxy,
+  SceneRegion,
+} from "@uptimizr/schema";
 import { tableToRows, type ArrowTableLike } from "./arrow.js";
 import {
   DEMO_PROJECT_ID,
@@ -224,6 +232,124 @@ export interface DemoSceneRegion {
   description: string | null;
   bounds: number[];
   updatedAt: string;
+}
+
+// --- Project metadata rows (#310, ADR 0051 §5) -----------------------------
+
+/** Raw `annotations` row as selected (timestamps as epoch-ms). */
+interface AnnotationRow {
+  id: string;
+  target_kind: string;
+  target_id: string | null;
+  since_ms: number | null;
+  until_ms: number | null;
+  text: string;
+  author_kind: string;
+  author_key_id: string | null;
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+/** Raw `glossary` row as selected. */
+interface GlossaryRow {
+  term: string;
+  meaning: string;
+  updated_at_ms: number;
+}
+
+/** Raw `saved_analyses` row as selected (`query` is JSON text). */
+interface SavedAnalysisRow {
+  id: string;
+  title: string;
+  query: string;
+  conclusion: string | null;
+  author_kind: string;
+  author_key_id: string | null;
+  created_at_ms: number;
+}
+
+/** One stored annotation, in the shape the collector's endpoint returns. */
+export interface DemoAnnotation {
+  id: string;
+  projectId: string;
+  targetKind: string;
+  targetId: string | null;
+  since: string | null;
+  until: string | null;
+  text: string;
+  authorKind: "user" | "agent";
+  authorKeyId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One stored glossary entry, in the shape the collector's endpoint returns. */
+export interface DemoGlossaryEntry {
+  projectId: string;
+  term: string;
+  meaning: string;
+  updatedAt: string;
+}
+
+/** One stored saved analysis, in the shape the collector's endpoint returns. */
+export interface DemoSavedAnalysis {
+  id: string;
+  projectId: string;
+  title: string;
+  query: Record<string, unknown>;
+  conclusion: string | null;
+  authorKind: "user" | "agent";
+  authorKeyId: string | null;
+  createdAt: string;
+}
+
+/**
+ * Thrown when a metadata write would take the demo project past a table's cap —
+ * the browser-side twin of `@uptimizr/db`'s `MetadataLimitError`, which the demo
+ * cannot import because it would drag the Node store into the bundle.
+ */
+export class DemoMetadataLimitError extends Error {
+  constructor(
+    readonly table: string,
+    readonly limit: number,
+  ) {
+    super(`project has reached its limit of ${limit} ${table} rows`);
+    this.name = "DemoMetadataLimitError";
+  }
+}
+
+/**
+ * Parse a stored `query` JSON column back into an object — the browser twin of
+ * `@uptimizr/db`'s `parseSavedAnalysisQuery` (that module reaches for
+ * `node:crypto`, so the demo cannot import it). A row written by this store
+ * always parses; anything else degrades to `{}` rather than failing a listing.
+ */
+function parseSavedAnalysisQuery(json: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed != null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Map a raw annotation row to the dashboard-facing shape. */
+function rowToAnnotation(row: AnnotationRow): DemoAnnotation {
+  return {
+    id: row.id,
+    projectId: DEMO_PROJECT_ID,
+    targetKind: row.target_kind,
+    targetId: row.target_id ?? null,
+    since: row.since_ms == null ? null : new Date(Number(row.since_ms)).toISOString(),
+    until: row.until_ms == null ? null : new Date(Number(row.until_ms)).toISOString(),
+    text: row.text,
+    authorKind: row.author_kind as "user" | "agent",
+    authorKeyId: row.author_key_id ?? null,
+    createdAt: new Date(Number(row.created_at_ms)).toISOString(),
+    updatedAt: new Date(Number(row.updated_at_ms)).toISOString(),
+  };
 }
 
 /** Map a raw region row to the dashboard-facing shape (JSON parsed). */
@@ -500,12 +626,201 @@ export class WasmDb {
     }));
   }
 
+  // --- Project metadata (#310, ADR 0051 §5) --------------------------------
+  //
+  // Annotations, glossary and saved analyses, mirroring the Node store's
+  // accessors so the demo exercises the same contract the collector does. The
+  // tables come from `DUCKDB_MIGRATIONS`, which this store already replays, so
+  // there is nothing extra to create here.
+
+  /** Create one annotation and return the stored row. */
+  async createAnnotation(
+    annotation: Annotation,
+    author: { authorKind: "user" | "agent"; authorKeyId: string | null },
+  ): Promise<DemoAnnotation> {
+    if ((await this.#count("annotations")) >= LIMITS.maxProjectAnnotations) {
+      throw new DemoMetadataLimitError("annotations", LIMITS.maxProjectAnnotations);
+    }
+    const id = crypto.randomUUID();
+    await this.#conn.query(
+      `INSERT INTO annotations
+         (id, project_id, target_kind, target_id, since, until, text,
+          author_kind, author_key_id, created_at, updated_at)
+       VALUES (${sqlString(id)}, ${sqlString(DEMO_PROJECT_ID)},
+               ${sqlString(annotation.targetKind)},
+               ${annotation.targetId == null ? "NULL" : sqlString(annotation.targetId)},
+               ${annotation.since == null ? "NULL" : `make_timestamp(${annotation.since * 1000})`},
+               ${annotation.until == null ? "NULL" : `make_timestamp(${annotation.until * 1000})`},
+               ${sqlString(annotation.text)}, ${sqlString(author.authorKind)},
+               ${author.authorKeyId == null ? "NULL" : sqlString(author.authorKeyId)},
+               now(), now())`,
+    );
+    const [row] = await this.listAnnotations({ id });
+    return row!;
+  }
+
+  /** The demo project's annotations, newest first. */
+  async listAnnotations(
+    opts: {
+      id?: string;
+      targetKind?: string;
+      targetId?: string;
+      since?: number;
+      until?: number;
+    } = {},
+  ): Promise<DemoAnnotation[]> {
+    const where = [`project_id = ${sqlString(DEMO_PROJECT_ID)}`];
+    if (opts.id != null) where.push(`id = ${sqlString(opts.id)}`);
+    if (opts.targetKind != null) where.push(`target_kind = ${sqlString(opts.targetKind)}`);
+    if (opts.targetId != null) where.push(`target_id = ${sqlString(opts.targetId)}`);
+    if (opts.since != null) {
+      where.push(`(until IS NULL OR until >= make_timestamp(${Math.trunc(opts.since) * 1000}))`);
+    }
+    if (opts.until != null) {
+      where.push(`(since IS NULL OR since < make_timestamp(${Math.trunc(opts.until) * 1000}))`);
+    }
+    const rows = await this.all<AnnotationRow>({
+      query: `SELECT id, target_kind, target_id, epoch_ms(since) AS since_ms,
+                     epoch_ms(until) AS until_ms, text, author_kind, author_key_id,
+                     epoch_ms(created_at) AS created_at_ms, epoch_ms(updated_at) AS updated_at_ms
+              FROM annotations
+              WHERE ${where.join(" AND ")}
+              ORDER BY created_at DESC, id DESC
+              LIMIT ${LIMITS.maxProjectAnnotations}`,
+      query_params: {},
+    });
+    return rows.map(rowToAnnotation);
+  }
+
+  /** Delete one annotation. Returns whether it existed. */
+  async deleteAnnotation(id: string): Promise<boolean> {
+    if ((await this.listAnnotations({ id })).length === 0) return false;
+    await this.#conn.query(
+      `DELETE FROM annotations
+        WHERE project_id = ${sqlString(DEMO_PROJECT_ID)} AND id = ${sqlString(id)}`,
+    );
+    return true;
+  }
+
+  /** Upsert one glossary entry (the term is the identity). */
+  async putGlossaryEntry(term: string, meaning: string): Promise<DemoGlossaryEntry> {
+    const existing = await this.listGlossary();
+    if (
+      !existing.some((entry) => entry.term === term) &&
+      existing.length >= LIMITS.maxProjectGlossaryEntries
+    ) {
+      throw new DemoMetadataLimitError("glossary", LIMITS.maxProjectGlossaryEntries);
+    }
+    await this.#conn.query(
+      `INSERT INTO glossary (project_id, term, meaning, updated_at)
+       VALUES (${sqlString(DEMO_PROJECT_ID)}, ${sqlString(term)}, ${sqlString(meaning)}, now())
+       ON CONFLICT (project_id, term)
+       DO UPDATE SET meaning = EXCLUDED.meaning, updated_at = now()`,
+    );
+    return (await this.listGlossary()).find((entry) => entry.term === term)!;
+  }
+
+  /** The demo project's whole glossary, ordered by term. */
+  async listGlossary(): Promise<DemoGlossaryEntry[]> {
+    const rows = await this.all<GlossaryRow>({
+      query: `SELECT term, meaning, epoch_ms(updated_at) AS updated_at_ms
+              FROM glossary
+              WHERE project_id = ${sqlString(DEMO_PROJECT_ID)}
+              ORDER BY term
+              LIMIT ${LIMITS.maxProjectGlossaryEntries}`,
+      query_params: {},
+    });
+    return rows.map((row) => ({
+      projectId: DEMO_PROJECT_ID,
+      term: row.term,
+      meaning: row.meaning,
+      updatedAt: new Date(row.updated_at_ms).toISOString(),
+    }));
+  }
+
+  /** Delete one term. Returns whether it existed. */
+  async deleteGlossaryEntry(term: string): Promise<boolean> {
+    if (!(await this.listGlossary()).some((entry) => entry.term === term)) return false;
+    await this.#conn.query(
+      `DELETE FROM glossary
+        WHERE project_id = ${sqlString(DEMO_PROJECT_ID)} AND term = ${sqlString(term)}`,
+    );
+    return true;
+  }
+
+  /** Create one saved analysis and return the stored row. */
+  async createSavedAnalysis(
+    analysis: SavedAnalysis,
+    author: { authorKind: "user" | "agent"; authorKeyId: string | null },
+  ): Promise<DemoSavedAnalysis> {
+    if ((await this.#count("saved_analyses")) >= LIMITS.maxProjectSavedAnalyses) {
+      throw new DemoMetadataLimitError("savedAnalyses", LIMITS.maxProjectSavedAnalyses);
+    }
+    const id = crypto.randomUUID();
+    await this.#conn.query(
+      `INSERT INTO saved_analyses
+         (id, project_id, title, query, conclusion, author_kind, author_key_id, created_at)
+       VALUES (${sqlString(id)}, ${sqlString(DEMO_PROJECT_ID)}, ${sqlString(analysis.title)},
+               ${sqlString(JSON.stringify(analysis.query))},
+               ${analysis.conclusion == null ? "NULL" : sqlString(analysis.conclusion)},
+               ${sqlString(author.authorKind)},
+               ${author.authorKeyId == null ? "NULL" : sqlString(author.authorKeyId)},
+               now())`,
+    );
+    return (await this.listSavedAnalyses()).find((row) => row.id === id)!;
+  }
+
+  /** The demo project's saved analyses, newest first. */
+  async listSavedAnalyses(): Promise<DemoSavedAnalysis[]> {
+    const rows = await this.all<SavedAnalysisRow>({
+      query: `SELECT id, title, query, conclusion, author_kind, author_key_id,
+                     epoch_ms(created_at) AS created_at_ms
+              FROM saved_analyses
+              WHERE project_id = ${sqlString(DEMO_PROJECT_ID)}
+              ORDER BY created_at DESC, id DESC
+              LIMIT ${LIMITS.maxProjectSavedAnalyses}`,
+      query_params: {},
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      projectId: DEMO_PROJECT_ID,
+      title: row.title,
+      query: parseSavedAnalysisQuery(row.query),
+      conclusion: row.conclusion ?? null,
+      authorKind: row.author_kind as "user" | "agent",
+      authorKeyId: row.author_key_id ?? null,
+      createdAt: new Date(row.created_at_ms).toISOString(),
+    }));
+  }
+
+  /** Delete one saved analysis. Returns whether it existed. */
+  async deleteSavedAnalysis(id: string): Promise<boolean> {
+    if (!(await this.listSavedAnalyses()).some((row) => row.id === id)) return false;
+    await this.#conn.query(
+      `DELETE FROM saved_analyses
+        WHERE project_id = ${sqlString(DEMO_PROJECT_ID)} AND id = ${sqlString(id)}`,
+    );
+    return true;
+  }
+
+  /** `SELECT count(*)` on one of the demo project's metadata tables. */
+  async #count(table: "annotations" | "saved_analyses"): Promise<number> {
+    const rows = await this.all<{ n: number | bigint }>({
+      query: `SELECT count(*) AS n FROM ${table} WHERE project_id = ${sqlString(DEMO_PROJECT_ID)}`,
+      query_params: {},
+    });
+    return Number(rows[0]?.n ?? 0);
+  }
+
   /** Clear all collected data while keeping the schema and demo project. */
   async reset(): Promise<void> {
     await this.#conn.query("DELETE FROM events");
     await this.#conn.query("DELETE FROM node_samples");
     await this.#conn.query("DELETE FROM scene_representations");
     await this.#conn.query("DELETE FROM scene_regions");
+    await this.#conn.query("DELETE FROM annotations");
+    await this.#conn.query("DELETE FROM glossary");
+    await this.#conn.query("DELETE FROM saved_analyses");
   }
 
   /** Tear down the connection and terminate the worker (proactive teardown). */

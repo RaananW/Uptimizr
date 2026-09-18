@@ -151,6 +151,15 @@ import {
   putSceneRegions as msPutSceneRegions,
   getSceneRegions as msGetSceneRegions,
   listSceneRegions as msListSceneRegions,
+  createAnnotation as msCreateAnnotation,
+  listAnnotations as msListAnnotations,
+  deleteAnnotation as msDeleteAnnotation,
+  putGlossaryEntry as msPutGlossaryEntry,
+  listGlossary as msListGlossary,
+  deleteGlossaryEntry as msDeleteGlossaryEntry,
+  createSavedAnalysis as msCreateSavedAnalysis,
+  listSavedAnalyses as msListSavedAnalyses,
+  deleteSavedAnalysis as msDeleteSavedAnalysis,
   type MssqlClient,
 } from "@uptimizr/db-mssql";
 import type { CollectorStore } from "./store.js";
@@ -361,6 +370,15 @@ export async function createMssqlStore(): Promise<CollectorStore> {
       msPutSceneRegions(msc, projectId, sceneId, regions),
     getSceneRegions: (projectId, sceneId) => msGetSceneRegions(msc, projectId, sceneId),
     listSceneRegions: (projectId) => msListSceneRegions(msc, projectId),
+    createAnnotation: (projectId, input) => msCreateAnnotation(msc, projectId, input),
+    listAnnotations: (projectId, opts) => msListAnnotations(msc, projectId, opts),
+    deleteAnnotation: (projectId, id) => msDeleteAnnotation(msc, projectId, id),
+    putGlossaryEntry: (projectId, input) => msPutGlossaryEntry(msc, projectId, input),
+    listGlossary: (projectId, opts) => msListGlossary(msc, projectId, opts),
+    deleteGlossaryEntry: (projectId, term) => msDeleteGlossaryEntry(msc, projectId, term),
+    createSavedAnalysis: (projectId, input) => msCreateSavedAnalysis(msc, projectId, input),
+    listSavedAnalyses: (projectId, opts) => msListSavedAnalyses(msc, projectId, opts),
+    deleteSavedAnalysis: (projectId, id) => msDeleteSavedAnalysis(msc, projectId, id),
     async close() {
       await msc.close();
     },

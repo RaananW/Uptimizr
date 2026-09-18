@@ -19,7 +19,7 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import { generateApiKey } from "@uptimizr/db";
+import { generateApiKey, type ApiKeyCapability } from "@uptimizr/db";
 import { buildApp } from "@uptimizr/collector-server/dist/app.js";
 import type { CollectorConfig } from "@uptimizr/collector-server/dist/config.js";
 import type { CollectorStore } from "@uptimizr/collector-server/dist/store.js";
@@ -62,9 +62,20 @@ const EVAL_CONFIG: CollectorConfig = {
   auditDashboardRequests: false,
 };
 
-/** A booted, seeded collector plus the read-only client an agent run uses. */
+/** How to start a harness. */
+export interface StartHarnessOptions {
+  /**
+   * Capabilities the run's key resolves with. Defaults to `["query"]` — the
+   * read-only key every scored question uses. The metadata cases of #310 pass
+   * `["query", "annotate"]` (and, for the refusal case, deliberately do not) so
+   * both sides of the capability gate are exercised against the real collector.
+   */
+  capabilities?: readonly ApiKeyCapability[];
+}
+
+/** A booted, seeded collector plus the client an agent run uses. */
 export interface EvalHarness {
-  /** Read-only client over the in-process collector (Fastify `inject`). */
+  /** Client over the in-process collector (Fastify `inject`). */
   client: CollectorClient;
   /** Shut the Fastify instance down. */
   close(): Promise<void>;
@@ -78,22 +89,41 @@ export interface EvalHarness {
  * difference between this and a deployed collector.
  */
 function injectClient(app: FastifyInstance, apiKey: string): CollectorClient {
+  /** Dispatch one request, applying the real client's error and parse rules. */
+  const send = async (
+    method: "GET" | "POST" | "PUT" | "DELETE",
+    url: string,
+    body?: unknown,
+  ): Promise<unknown> => {
+    const response = await app.inject({
+      method,
+      url,
+      headers: { "x-api-key": apiKey },
+      ...(body === undefined ? {} : { payload: body as object }),
+    });
+    if (response.statusCode >= 400) {
+      throw new CollectorError(response.body || String(response.statusCode), response.statusCode);
+    }
+    // A successful delete answers 204, which has no body to parse.
+    return response.statusCode === 204 ? null : response.json();
+  };
+
+  const resolve = (path: string, params: QueryParams = {}): string => {
+    const url = new URL(path.replace(/^\//, ""), "http://collector.invalid/");
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null) url.searchParams.set(key, String(value));
+    }
+    return `${url.pathname}${url.search}`;
+  };
+
   return {
-    async get(path: string, params: QueryParams = {}): Promise<unknown> {
-      const url = new URL(path.replace(/^\//, ""), "http://collector.invalid/");
-      for (const [key, value] of Object.entries(params)) {
-        if (value != null) url.searchParams.set(key, String(value));
-      }
-      const response = await app.inject({
-        method: "GET",
-        url: `${url.pathname}${url.search}`,
-        headers: { "x-api-key": apiKey },
-      });
-      if (response.statusCode >= 400) {
-        throw new CollectorError(response.body || String(response.statusCode), response.statusCode);
-      }
-      return response.json();
-    },
+    get: (path, params = {}) => send("GET", resolve(path, params)),
+    // The write methods let the metadata tools of #310 be scored against the
+    // same fixture-backed collector the read tools are. Whether a write is
+    // *allowed* remains the collector's decision, from the key's capabilities.
+    post: (path, body) => send("POST", resolve(path), body),
+    put: (path, body) => send("PUT", resolve(path), body),
+    delete: (path) => send("DELETE", resolve(path)),
   };
 }
 
@@ -102,7 +132,8 @@ function injectClient(app: FastifyInstance, apiKey: string): CollectorClient {
  * top of it, and return a read-only client bound to it. Every call gets its own
  * store and its own API key, so runs are independent and order-insensitive.
  */
-export async function startHarness(): Promise<EvalHarness> {
+export async function startHarness(options: StartHarnessOptions = {}): Promise<EvalHarness> {
+  const capabilities = options.capabilities ?? (["query"] as const);
   const apiKey = generateApiKey();
   const duckdb = await createDuckdbStore(":memory:");
   const store: CollectorStore = {
@@ -112,7 +143,7 @@ export async function startHarness(): Promise<EvalHarness> {
         ? {
             projectId: EVAL_PROJECT_ID,
             keyId: "eval-key",
-            capabilities: ["query"],
+            capabilities: [...capabilities],
             label: "agent-eval",
             rateLimit: null,
           }

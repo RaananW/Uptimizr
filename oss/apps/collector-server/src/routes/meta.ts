@@ -22,15 +22,17 @@
  * in `app.ts`).
  *
  * Routes that are not registry metrics are described only when they are trivial
- * and honest to describe (`/health`, this route, and the scene-representation
- * listing). Ingestion (`POST /api/v1/collect`), the scene-proxy write
+ * and honest to describe (`/health`, this route, the scene-representation
+ * listing, and the `metadata` group of #310 — annotations, glossary, saved
+ * analyses — whose bodies are converted from the Zod contracts that validate
+ * them). Ingestion (`POST /api/v1/collect`), the scene-proxy write
  * (`PUT …/representation`), the retention-gated raw event stream and the live
  * SSE surface are deliberately omitted rather than half-described.
  */
 
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { SCHEMA_VERSION } from "@uptimizr/schema";
+import { LIMITS, SCHEMA_VERSION, annotationSchema, savedAnalysisSchema } from "@uptimizr/schema";
 import {
   FILTER_TARGETS,
   allMetrics,
@@ -365,6 +367,231 @@ function staticPaths(): Record<string, unknown> {
   };
 }
 
+/**
+ * The **metadata** paths (#310, ADR 0051 §5): annotations, glossary, saved
+ * analyses. They are not registry metrics — they store what people and agents
+ * write rather than aggregate what visitors did — so they are described by hand
+ * here, next to the other non-metric routes. The two request bodies are
+ * converted from the very Zod contracts that validate them, so the document
+ * cannot drift from the validator.
+ */
+function metadataPaths(): Record<string, unknown> {
+  const jsonBody = (schema: JsonSchema): unknown => ({
+    required: true,
+    content: { "application/json": { schema } },
+  });
+  const rows = (name: string): unknown => ({
+    "application/json": {
+      schema: { type: "array", items: { $ref: `#/components/schemas/${name}` } },
+    },
+  });
+  const one = (name: string): unknown => ({
+    "application/json": { schema: { $ref: `#/components/schemas/${name}` } },
+  });
+  const writeErrors = {
+    ...AUTHENTICATED_ERRORS,
+    "409": { $ref: "#/components/responses/Conflict" },
+  };
+  const notFound = { "404": { $ref: "#/components/responses/NotFound" } };
+
+  return {
+    "/api/v1/annotations": {
+      get: {
+        operationId: "list_annotations",
+        summary: "Project annotations",
+        description:
+          "Notes left on the project, newest first. `since`/`until` select the annotations whose period **overlaps** the window; a standing note (no period) always matches. Requires the `query` capability.",
+        tags: ["metadata"],
+        responses: {
+          "200": { description: "Matching annotations.", content: rows("Annotation") },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+      post: {
+        operationId: "create_annotation",
+        summary: "Annotate something",
+        description:
+          "Leave a note on the project, a scene, a mesh, a region, a metric or a period of time. Requires the **`annotate`** capability; the stored row records whether a person or an agent wrote it, and the write is recorded in the agent audit log.",
+        tags: ["metadata"],
+        requestBody: jsonBody(toJsonSchema(annotationSchema, "input")),
+        responses: {
+          "201": { description: "The stored annotation.", content: one("Annotation") },
+          ...writeErrors,
+        },
+      },
+    },
+    "/api/v1/annotations/{id}": {
+      delete: {
+        operationId: "delete_annotation",
+        summary: "Delete an annotation",
+        description:
+          "Remove one annotation of this project. Requires the `annotate` capability. An id that does not exist — or belongs to another project — answers 404.",
+        tags: ["metadata"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "204": { description: "Deleted." }, ...AUTHENTICATED_ERRORS, ...notFound },
+      },
+    },
+    "/api/v1/glossary": {
+      get: {
+        operationId: "list_glossary",
+        summary: "Project glossary",
+        description:
+          "What this project's names mean, ordered by term — the vocabulary to read before interpreting mesh names, scene ids and custom events. Requires the `query` capability.",
+        tags: ["metadata"],
+        responses: {
+          "200": { description: "The whole glossary.", content: rows("GlossaryEntry") },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
+    "/api/v1/glossary/{term}": {
+      put: {
+        operationId: "define_term",
+        summary: "Define a term",
+        description:
+          "Idempotent upsert: the term is the identity, so defining it again replaces the meaning. Requires the **`annotate`** capability.",
+        tags: ["metadata"],
+        parameters: [{ name: "term", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: jsonBody({
+          type: "object",
+          properties: {
+            meaning: {
+              type: "string",
+              maxLength: LIMITS.maxGlossaryMeaningLength,
+              description: "What the term means in this project.",
+            },
+          },
+          required: ["meaning"],
+        }),
+        responses: {
+          "200": { description: "The stored entry.", content: one("GlossaryEntry") },
+          ...writeErrors,
+        },
+      },
+      delete: {
+        operationId: "delete_term",
+        summary: "Undefine a term",
+        description: "Remove one glossary entry. Requires the `annotate` capability.",
+        tags: ["metadata"],
+        parameters: [{ name: "term", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "204": { description: "Deleted." }, ...AUTHENTICATED_ERRORS, ...notFound },
+      },
+    },
+    "/api/v1/analyses": {
+      get: {
+        operationId: "list_analyses",
+        summary: "Saved analyses",
+        description:
+          "Questions worth re-asking and what was concluded from them, newest first. Requires the `query` capability.",
+        tags: ["metadata"],
+        responses: {
+          "200": { description: "Saved analyses.", content: rows("SavedAnalysis") },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+      post: {
+        operationId: "save_analysis",
+        summary: "Save an analysis",
+        description:
+          "Store a titled question plus the finding it produced. `query` is an opaque JSON document the collector stores but does not interpret. Requires the **`annotate`** capability.",
+        tags: ["metadata"],
+        requestBody: jsonBody(toJsonSchema(savedAnalysisSchema, "input")),
+        responses: {
+          "201": { description: "The stored analysis.", content: one("SavedAnalysis") },
+          ...writeErrors,
+        },
+      },
+    },
+    "/api/v1/analyses/{id}": {
+      delete: {
+        operationId: "delete_analysis",
+        summary: "Delete a saved analysis",
+        description: "Remove one saved analysis. Requires the `annotate` capability.",
+        tags: ["metadata"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "204": { description: "Deleted." }, ...AUTHENTICATED_ERRORS, ...notFound },
+      },
+    },
+  };
+}
+
+/** The stored-row schemas of the three metadata tables. */
+function metadataSchemas(): Record<string, unknown> {
+  const author = {
+    authorKind: {
+      type: "string",
+      enum: ["user", "agent"],
+      description:
+        "Whether a person (a first-party UI session) or an agent wrote the row. Derived by the collector from the calling client, never from the payload.",
+    },
+    authorKeyId: {
+      type: ["string", "null"],
+      description: "Id of the API key that carried the write — never the key or its hash.",
+    },
+  };
+  return {
+    Annotation: {
+      type: "object",
+      title: "Annotation",
+      properties: {
+        id: { type: "string" },
+        projectId: { type: "string" },
+        targetKind: {
+          type: "string",
+          enum: ["project", "scene", "mesh", "region", "metric", "window"],
+          description: "What the note is about.",
+        },
+        targetId: {
+          type: ["string", "null"],
+          description: "The scene id, mesh name, region id or metric id the note points at.",
+        },
+        since: {
+          type: ["string", "null"],
+          description: "Start of the annotated period (ISO 8601).",
+        },
+        until: { type: ["string", "null"], description: "End of the annotated period (ISO 8601)." },
+        text: { type: "string", maxLength: LIMITS.maxAnnotationTextLength },
+        ...author,
+        createdAt: { type: "string" },
+        updatedAt: { type: "string" },
+      },
+      required: ["id", "projectId", "targetKind", "text", "createdAt", "updatedAt"],
+    },
+    GlossaryEntry: {
+      type: "object",
+      title: "Glossary entry",
+      properties: {
+        projectId: { type: "string" },
+        term: { type: "string", maxLength: LIMITS.maxGlossaryTermLength },
+        meaning: { type: "string", maxLength: LIMITS.maxGlossaryMeaningLength },
+        updatedAt: { type: "string" },
+      },
+      required: ["projectId", "term", "meaning", "updatedAt"],
+    },
+    SavedAnalysis: {
+      type: "object",
+      title: "Saved analysis",
+      properties: {
+        id: { type: "string" },
+        projectId: { type: "string" },
+        title: { type: "string", maxLength: LIMITS.maxSavedAnalysisTitleLength },
+        query: {
+          type: "object",
+          description:
+            "The stored question, as an opaque JSON document the collector does not interpret.",
+        },
+        conclusion: {
+          type: ["string", "null"],
+          maxLength: LIMITS.maxSavedAnalysisConclusionLength,
+        },
+        ...author,
+        createdAt: { type: "string" },
+      },
+      required: ["id", "projectId", "title", "query", "createdAt"],
+    },
+  };
+}
+
 /** The reusable components: the API-key scheme, error responses, row schemas. */
 function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unknown> {
   const schemas: Record<string, unknown> = {
@@ -394,6 +621,7 @@ function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unk
       },
       required: ["sceneId", "kind", "updatedAt"],
     },
+    ...metadataSchemas(),
   };
   for (const metric of metrics) schemas[metric.id] = rowSchema(metric);
 
@@ -412,10 +640,16 @@ function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unk
       BadRequest: { description: "A parameter failed validation.", content: errorContent },
       Unauthorized: { description: "Missing or unknown API key.", content: errorContent },
       Forbidden: {
-        description: "The key is ingest-only and may not read.",
+        description:
+          "The key lacks the capability this operation needs — `query` to read, `annotate` to write metadata.",
         content: errorContent,
       },
-      NotFound: { description: "No such session or scene.", content: errorContent },
+      NotFound: { description: "No such session, scene or metadata row.", content: errorContent },
+      Conflict: {
+        description:
+          "The project has reached its cap for that metadata table. Delete a row and retry.",
+        content: errorContent,
+      },
       TooManyRequests: { description: "Rate limit exceeded.", content: errorContent },
     },
     schemas,
@@ -436,10 +670,10 @@ export function buildOpenApiDocument(
   const metrics = allMetrics();
   const served = metrics.filter((metric) => metric.endpoint != null);
 
-  const paths: Record<string, Record<string, unknown>> = staticPaths() as Record<
-    string,
-    Record<string, unknown>
-  >;
+  const paths: Record<string, Record<string, unknown>> = {
+    ...staticPaths(),
+    ...metadataPaths(),
+  } as Record<string, Record<string, unknown>>;
   for (const metric of served) {
     const path = toOpenApiPath(metric.endpoint!.path);
     paths[path] ??= {};
@@ -462,8 +696,11 @@ export function buildOpenApiDocument(
         "(`grain`), what its columns mean (`units`), the capture channels that must be enabled " +
         "for it to have data (`source-channels`), how far to trust it (`caveats`) and how to " +
         "read it (`interpretation`).\n\n" +
-        "The API is **read-only and aggregate-only**: there is no endpoint here that returns raw " +
-        "per-session events or personal data (ADR 0003).",
+        "The analytics API is **read-only and aggregate-only**: no endpoint here returns raw " +
+        "per-session events or personal data, and nothing can write, alter or delete an event " +
+        "(ADR 0003, ADR 0051 §9). The one writable surface is the `metadata` group — " +
+        "annotations, the glossary and saved analyses — which stores what a project's own " +
+        "people and agents write, requires the `annotate` capability, and is audited.",
       license: { name: "Apache-2.0", identifier: "Apache-2.0" },
       contact: { name: "Uptimizr", url: "https://uptimizr.com/docs/" },
     },
@@ -475,6 +712,11 @@ export function buildOpenApiDocument(
         description: CATEGORY_DESCRIPTIONS[category] ?? category,
       })),
       { name: "meta", description: "Self-description and liveness." },
+      {
+        name: "metadata",
+        description:
+          "What people and agents leave behind: annotations, the project glossary, saved analyses. Reads need `query`; every write needs `annotate` and is audited.",
+      },
     ],
     paths,
     components: componentsFor(served),

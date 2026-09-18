@@ -149,6 +149,15 @@ import {
   putSceneRegions as chPutSceneRegions,
   getSceneRegions as chGetSceneRegions,
   listSceneRegions as chListSceneRegions,
+  createAnnotation as chCreateAnnotation,
+  listAnnotations as chListAnnotations,
+  deleteAnnotation as chDeleteAnnotation,
+  putGlossaryEntry as chPutGlossaryEntry,
+  listGlossary as chListGlossary,
+  deleteGlossaryEntry as chDeleteGlossaryEntry,
+  createSavedAnalysis as chCreateSavedAnalysis,
+  listSavedAnalyses as chListSavedAnalyses,
+  deleteSavedAnalysis as chDeleteSavedAnalysis,
   type ClickhouseClient,
 } from "@uptimizr/db-clickhouse";
 import type { CollectorStore } from "./store.js";
@@ -355,6 +364,15 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       chPutSceneRegions(ch, projectId, sceneId, regions),
     getSceneRegions: (projectId, sceneId) => chGetSceneRegions(ch, projectId, sceneId),
     listSceneRegions: (projectId) => chListSceneRegions(ch, projectId),
+    createAnnotation: (projectId, input) => chCreateAnnotation(ch, projectId, input),
+    listAnnotations: (projectId, opts) => chListAnnotations(ch, projectId, opts),
+    deleteAnnotation: (projectId, id) => chDeleteAnnotation(ch, projectId, id),
+    putGlossaryEntry: (projectId, input) => chPutGlossaryEntry(ch, projectId, input),
+    listGlossary: (projectId, opts) => chListGlossary(ch, projectId, opts),
+    deleteGlossaryEntry: (projectId, term) => chDeleteGlossaryEntry(ch, projectId, term),
+    createSavedAnalysis: (projectId, input) => chCreateSavedAnalysis(ch, projectId, input),
+    listSavedAnalyses: (projectId, opts) => chListSavedAnalyses(ch, projectId, opts),
+    deleteSavedAnalysis: (projectId, id) => chDeleteSavedAnalysis(ch, projectId, id),
     async close() {
       await ch.close();
     },

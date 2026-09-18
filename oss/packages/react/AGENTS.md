@@ -96,9 +96,17 @@ import type { PanelDefinition, PanelContext } from "@uptimizr/react";
 ### The in-browser assistant (ADR 0050)
 
 `@uptimizr/react/assistant` ships a drop-in `<AssistantPanel>` and a headless `useAssistant()`
-hook. The agent loop runs **entirely in the browser** against the same read-only query API the
-panels use. It ships **no model and no key**: the user picks a local WebGPU model (`@mlc-ai/web-llm`,
-an optional peer, loaded lazily) or a bring-your-own hosted provider.
+hook. The agent loop runs **entirely in the browser** against the same query API the panels use, and
+it **reads only**: every tool call is a `GET`, and no event can be written, altered or deleted
+(ADR 0051 §9). It ships **no model and no key**: the user picks a local WebGPU model
+(`@mlc-ai/web-llm`, an optional peer, loaded lazily) or a bring-your-own hosted provider.
+
+Two **metadata** actions sit under each answer (ADR 0051 §5): "Annotate this" stores the answer as a
+project note, "Save this analysis" stores the turn as a titled record. They appear only when the key
+holds the `annotate` capability — the hook asks `GET /api/v1/whoami` once and exposes `canAnnotate`,
+`annotate(text, target?)` and `saveAnalysis(title, conclusion)`. Pass
+`<AssistantPanel annotationTarget={annotationTargetFor(filters)} />` so a note inherits what the view
+is filtered to.
 
 ```tsx
 import { AssistantPanel } from "@uptimizr/react/assistant";
@@ -127,7 +135,7 @@ chooser — nothing downloads until the user picks), `systemPrompt` (defaults to
 `DEFAULT_SYSTEM_PROMPT`; `composeSystemPrompt` / `refreshSystemPrompt` build and re-stamp it),
 `maxSteps` (`DEFAULT_ASSISTANT_MAX_STEPS`, 12), `confirmDownload`, `cachePolicy`
 (`"active-only"` default — switching models evicts the previous ~4 GB cache), `onCacheEvicted`,
-`persistBackend`, `now`.
+`persistBackend`, `now`. `<AssistantPanel>` additionally takes `annotationTarget`.
 
 ## Rules for agents
 

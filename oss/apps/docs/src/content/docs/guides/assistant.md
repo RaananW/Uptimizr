@@ -377,6 +377,28 @@ the panel asks you to **choose a backend** — local WebLLM (zero egress) or you
 before anything loads; the choice is remembered, and you can change it — or switch between local and
 hosted — at any time via **Change backend**.
 
+### Keeping an answer: "Annotate this" and "Save this analysis"
+
+An answer you have to re-derive next week is half an answer. Under every reply the panel offers two
+actions:
+
+- **Annotate this** stores the answer as a project note, pinned to whatever the dashboard is
+  currently filtered to — the scene you are looking at, or the time window you are showing. The note
+  then appears as a marker on the event-volume time axis, with its text as the tooltip, so the next
+  person to look at that spike reads the explanation instead of re-deriving it.
+- **Save this analysis** stores the turn as a titled record: a title (pre-filled with the question
+  you asked), the collector reads the model actually made, and the answer as the conclusion.
+
+Both actions are shown **only** when the connected key holds the `annotate` capability — the panel
+asks `GET /api/v1/whoami` once and hides them otherwise, rather than offering a button that would be
+refused. A key minted by `uptimizr init` / `uptimizr new-project` carries it; a read-only key
+(`uptimizr new-key`'s default) does not.
+
+Rows written this way are recorded as authored by an **agent**, because the text is the model's — the
+collector decides that from the calling client, never from the payload. They are bounded, audited,
+and metadata only: nothing here can write, alter or delete an event. See
+[Metadata endpoints](/docs/api/metadata/).
+
 ### In the backend-less demo
 
 The [live demo](https://demo.uptimizr.com) embeds this same dashboard build, and its `/api/v1/*`

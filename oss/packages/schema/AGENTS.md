@@ -41,9 +41,12 @@ const batch = collectRequestSchema.parse(requestBody);
 ## Rules for agents
 
 - **Events live once.** Import types/schemas from here; do not re-declare event shapes.
-- Some shapes here are **config, not events** — `sceneProxySchema`, `sceneRegionSchema` /
-  `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`. They are authored
-  out-of-band and are deliberately absent from `anyEventSchema`; never add them to the union.
+- Some shapes here are **config / metadata, not events** — `sceneProxySchema`, `sceneRegionSchema` /
+  `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`, and the project-metadata
+  contracts `annotationSchema` / `glossaryEntrySchema` / `savedAnalysisSchema` (ADR 0051 §5). They
+  are authored out-of-band and are deliberately absent from `anyEventSchema`; never add them to the
+  union. Events stay read-only — metadata is written through the collector's `annotate`-gated
+  endpoints, never through the ingest path (ADR 0051 §9).
 - Keep events **replay-complete**: ordered, timestamped, `sessionId`-keyed.
 - Clients never set `visitorId` (privacy model — ADR 0003).
 - To add an event type, use `defineEvent` and register it in `src/events/index.ts`; see the
