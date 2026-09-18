@@ -13,6 +13,19 @@
 import type { CollectorApi, QueryParams, SceneProxyMesh } from "../../api";
 
 /**
+ * Identity of a proxy mesh for de-duplication. Named meshes dedup by name (the
+ * bridging-mesh case above). Connectors may register meshes with an EMPTY name —
+ * `SceneProxyMesh.name` is best-effort (e.g. an unnamed three.js `Mesh`) — and
+ * keying those on the name alone collapses every unnamed mesh into the first one,
+ * silently dropping walls/pedestals from the backdrop. Unnamed meshes fall back to
+ * their path + AABB, which still dedups the same mesh registered in two areas.
+ */
+export function proxyMeshKey(mesh: SceneProxyMesh): string {
+  if (mesh.name !== "") return mesh.name;
+  return `\u0000${mesh.path ?? ""}\u0000${mesh.aabb.join(",")}`;
+}
+
+/**
  * Fetch and merge the registered proxy geometry for every active scene/area into
  * one backdrop (the whole building). Returns [] when nothing is registered. Errors
  * on individual areas are ignored so one missing representation never blanks the
@@ -31,8 +44,9 @@ export async function mergeSceneProxies(
   const merged: SceneProxyMesh[] = [];
   for (const rep of reps) {
     for (const mesh of rep?.proxy?.meshes ?? []) {
-      if (seen.has(mesh.name)) continue;
-      seen.add(mesh.name);
+      const key = proxyMeshKey(mesh);
+      if (seen.has(key)) continue;
+      seen.add(key);
       merged.push(mesh);
     }
   }
