@@ -12,7 +12,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CollectorClient, QueryParams } from "@uptimizr/agent-core";
 import { readTools } from "@uptimizr/agent-core";
 import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createMcpServer } from "../server.js";
 
 /** What the stub collector was asked for, so a test can assert the mapping. */
@@ -24,6 +24,8 @@ interface Recorded {
 let requests: Recorded[] = [];
 let respond: (path: string) => unknown = () => [];
 let client: Client;
+/** The catalog as the client sees it, listed once per test (see `beforeEach`). */
+let listed: Awaited<ReturnType<Client["listTools"]>>["tools"] = [];
 
 const stubCollector: CollectorClient = {
   async get(path, params = {}) {
@@ -32,8 +34,11 @@ const stubCollector: CollectorClient = {
   },
 };
 
-beforeEach(async () => {
-  requests = [];
+// One client, one server, for the whole file. The server is stateless between
+// calls — the stub collector is what a test steers — and connecting is cheap
+// next to `tools/list`, which converts 69 tools' Zod schemas to JSON Schema and
+// is by far the most expensive thing here.
+beforeAll(async () => {
   client = new Client({ name: "test", version: "0.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([
@@ -43,16 +48,21 @@ beforeEach(async () => {
   // Listing first is what a real client does, and it is what arms the SDK
   // client's strict (Ajv) validation of `structuredContent` against each tool's
   // advertised output schema — so every `tools/call` below is checked twice.
-  await client.listTools();
+  listed = (await client.listTools()).tools;
+}, 60_000);
+
+beforeEach(() => {
+  requests = [];
+  respond = () => [];
 });
 
-afterEach(async () => {
-  await client.close();
+afterAll(async () => {
+  await client?.close();
 });
 
 describe("tools/list", () => {
-  it("advertises every generated tool with an input and an output schema", async () => {
-    const { tools } = await client.listTools();
+  it("advertises every generated tool with an input and an output schema", () => {
+    const tools = listed;
     expect(tools).toHaveLength(readTools.length);
     expect(tools.length).toBeGreaterThanOrEqual(69);
     for (const tool of tools) {
@@ -74,8 +84,8 @@ describe("tools/list", () => {
     }
   });
 
-  it("includes the metrics agents could not reach before the registry", async () => {
-    const names = (await client.listTools()).tools.map((t) => t.name);
+  it("includes the metrics agents could not reach before the registry", () => {
+    const names = listed.map((t) => t.name);
     for (const name of [
       "dead_clicks",
       "rage_clicks",

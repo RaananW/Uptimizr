@@ -250,20 +250,24 @@ export function resultEnvelopeSchema(row: z.ZodType, full: z.ZodType = z.array(r
  * collector route's response schema, a test — should use
  * {@link resultEnvelopeSchema}, which discriminates strictly.
  */
-export function structuredEnvelopeSchema(row: z.ZodType): z.ZodObject {
+export function structuredEnvelopeSchema(row: z.ZodType, metric?: string): z.ZodObject {
+  // A tool answers for exactly one metric, so naming it collapses two copies
+  // of the 69-value registry enum (~2.7 kB per tool in `tools/list`) into a
+  // literal — smaller *and* more precise. Omitted, the enum stands.
+  const id = metric == null ? metricIdSchema : z.literal(metric);
   return z.looseObject({
     rows: z
       .array(row)
       .optional()
       .describe("`format=full` and `format=table`: the result rows. Absent from a summary."),
-    meta: tableMetaSchema
+    meta: (metric == null ? tableMetaSchema : tableMetaSchema.extend({ metric: id }))
       .optional()
       .describe("`format=table` only: metric, range, applied filters, row count, caps."),
     kind: z
       .enum(["ranked", "series", "clusters", "record"])
       .optional()
       .describe("`format=summary` only: which digest this is."),
-    metric: metricIdSchema.optional().describe("`format=summary` only: the metric summarised."),
+    metric: id.optional().describe("`format=summary` only: the metric summarised."),
     range: rangeSchema.optional(),
     filters: filtersSchema.optional(),
     sampleSize: sampleSizeSchema.optional(),
@@ -277,9 +281,19 @@ export function structuredEnvelopeSchema(row: z.ZodType): z.ZodObject {
     caveats: z.array(z.string()).optional(),
     top: z.array(rankedRowSchema).optional().describe('`kind: "ranked"`: the leading rows.'),
     rest: z
-      .union([restSchema, clusterRestSchema])
+      .looseObject({
+        rows: z.number().int().optional(),
+        clusters: z.number().int().optional(),
+        cells: z.number().int().optional(),
+        value: z.number().nullable().optional(),
+        weight: z.number().nullable().optional(),
+        share: z.number().nullable().optional(),
+      })
       .optional()
-      .describe("What the digest did not list individually."),
+      .describe(
+        "What the digest did not list individually: `rows`/`value` for a ranked digest, " +
+          "`clusters`/`cells`/`weight` for a spatial one.",
+      ),
     series: seriesDigestSchema.optional().describe('`kind: "series"`: the per-bucket digest.'),
     axes: z.array(z.string()).optional(),
     occupiedCells: z.number().int().optional(),

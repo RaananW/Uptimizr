@@ -438,7 +438,7 @@ export function metricToTool(metric: MetricDefinition): ReadTool | undefined {
   const row = outputRowSchema(metric);
   const rowsNote = `Result rows (one row per ${metric.grain}). A column is null when it has no data.`;
   const outputSchema = acceptsFormat
-    ? structuredEnvelopeSchema(row).describe(
+    ? structuredEnvelopeSchema(row, metric.id).describe(
         "The requested `format` envelope: `table` (the tools' default) is `meta` + `rows`, " +
           "`full` is `rows` alone, `summary` is the `kind`-tagged digest. " +
           rowsNote,
