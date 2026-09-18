@@ -9,7 +9,7 @@ export {
   type ReadTool,
   type ReadToolRequest,
 } from "@uptimizr/agent-core";
-export { createMcpServer } from "./server.js";
+export { createMcpServer, type CreateMcpServerOptions } from "./server.js";
 export {
   buildCapabilities,
   type CapabilitiesDescriptor,

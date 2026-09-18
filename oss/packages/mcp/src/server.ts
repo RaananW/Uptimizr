@@ -39,6 +39,52 @@ function structuredRows(outputSchema: z.ZodRawShape, data: unknown): { rows: unk
 }
 
 /**
+ * Options for {@link createMcpServer}.
+ */
+export interface CreateMcpServerOptions {
+  /**
+   * The capability set of the API key this server instance is bound to —
+   * `query`, `query:raw`, `annotate`, … (ADR 0051 §7).
+   *
+   * Supplied by the **collector-hosted** Streamable HTTP transport (`/mcp`),
+   * which resolves the key on every request and builds one server per session,
+   * so the surface a session sees can match what its key may actually do. The
+   * stdio entry point omits it: that process never learns the key's
+   * capabilities, and the collector is the enforcement point either way, so an
+   * omitted set means "register the read-only catalog and let the collector
+   * refuse anything the key may not do".
+   *
+   * Tools outside the set are simply not registered; write tools are only ever
+   * registered for a key holding `annotate`. Deliberately typed as plain strings
+   * so this package keeps its dependency-free footprint — it must not reach into
+   * `@uptimizr/db` for the capability union (see `__tests__/dependencies.test.ts`).
+   */
+  capabilities?: readonly string[];
+}
+
+/**
+ * Server-level `instructions` for a session whose key capabilities are known.
+ *
+ * Only built when {@link CreateMcpServerOptions.capabilities} is supplied, so
+ * the stdio server's `initialize` result stays byte-for-byte what it has always
+ * been. Capability names are not secret — `GET /api/v1/whoami` returns the same
+ * list to the key's holder — and naming them saves an agent a round of
+ * trial-and-error against tools it could never call.
+ */
+function instructionsFor(capabilities: readonly string[]): string {
+  const granted = capabilities.length > 0 ? capabilities.join(", ") : "none";
+  return (
+    "Every tool here reads one aggregate metric from the connected Uptimizr collector, " +
+    "always scoped to the project the API key belongs to — no cross-project access, and no " +
+    "personally identifying data. " +
+    `The key this session is bound to holds these capabilities: ${granted}. ` +
+    "Tools outside that set are not registered, and the collector refuses them independently. " +
+    "Read the uptimizr://capabilities resource first: it gives every metric's grain, column " +
+    "units, row limits, interpretation and caveats, so a query can be planned rather than guessed."
+  );
+}
+
+/**
  * Build the Uptimizr MCP server: a read-only `McpServer` whose tools each wrap
  * one collector query endpoint via the injected `CollectorClient`. The server
  * holds no business logic — it forwards validated arguments and returns the
@@ -51,11 +97,23 @@ function structuredRows(outputSchema: z.ZodRawShape, data: unknown): { rows: unk
  * endpoint. Each tool advertises the registry-derived `outputSchema` and returns
  * both `structuredContent` (the typed `{ rows }` envelope) and the `content`
  * text a client without structured-output support still reads.
+ *
+ * The factory is **transport-agnostic**: `bin.ts` connects it to stdio, and the
+ * collector connects one instance per authenticated Streamable HTTP session at
+ * `/mcp` (ADR 0051 §7), passing that session's key capabilities through
+ * `options`. Both get the same tools, resources and prompts from this one place.
  */
-export function createMcpServer(client: CollectorClient): McpServer {
+export function createMcpServer(
+  client: CollectorClient,
+  options: CreateMcpServerOptions = {},
+): McpServer {
+  const { capabilities } = options;
   const server = new McpServer(
     { name: "uptimizr-mcp", version },
-    { capabilities: { tools: {}, resources: {}, prompts: {} } },
+    {
+      capabilities: { tools: {}, resources: {}, prompts: {} },
+      ...(capabilities ? { instructions: instructionsFor(capabilities) } : {}),
+    },
   );
 
   for (const tool of readTools) {

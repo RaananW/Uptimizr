@@ -28,6 +28,9 @@ const baseConfig: CollectorConfig = {
   cspMode: "strict",
   auditRetentionDays: 30,
   auditDashboardRequests: false,
+  mcpHttpEnabled: false,
+  mcpMaxSessions: 50,
+  mcpSessionTtlMs: 1_800_000,
 };
 
 /** `raw-key` additionally holds `query:raw` (#309); `valid-key` is a plain reader. */

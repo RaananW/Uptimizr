@@ -129,6 +129,25 @@ set is carried **inside the signed token**, so `GET /api/v1/live/sessions/:id` c
 `query:raw` even though `EventSource` cannot send headers. `GET /api/v1/live/presence` and
 `/live/stream` use the same `?token=...`.
 
+### Hosted MCP (`/mcp`, ADR 0051 §7)
+
+`COLLECTOR_MCP_HTTP=1` (off by default) makes the collector serve the **Model Context Protocol**
+over MCP's Streamable HTTP transport: `POST /mcp` for JSON-RPC, `GET /mcp` for the server→client
+SSE stream, `DELETE /mcp` to end a session. It is the same server `@uptimizr/mcp` runs over stdio —
+same tools, resources and prompts, built by the same factory — so a remote agent needs only a URL
+and a key, with nothing installed locally.
+
+- Every request is authenticated with `x-api-key` **or** `Authorization: Bearer <key>` (a bearer
+  alias accepted on this route only) and needs `query`: `401` without a key, `403` without the
+  capability, `403` if a session id is presented by a different key than opened it.
+- Tool calls are dispatched to the collector's own query routes **in process**, so they run the
+  same validation, scoping and result envelope as the equivalent `curl`, and cost the caller's
+  ordinary per-key rate-limit budget once.
+- Bounded by `COLLECTOR_MCP_MAX_SESSIONS` (default `50`, one too many → `503`) and
+  `COLLECTOR_MCP_SESSION_TTL_MS` (default 30 minutes idle). Audited with `surface: "mcp-http"`.
+- Behind a reverse proxy, disable response buffering for `/mcp` (it answers with SSE) and pin a
+  session to one instance if you run several.
+
 ## Storage (`COLLECTOR_STORE`)
 
 | Value                  | Store                                                                                                                                                                                                                 |
@@ -154,6 +173,8 @@ at **query time** in v1 — no materialized views.
 - Agent audit: **`AUDIT_RETENTION_DAYS`** (default `30`; `0` = keep forever),
   `AUDIT_DASHBOARD_REQUESTS` (default off — requests carrying `x-uptimizr-client: dashboard` are
   skipped as a volume filter, **not** a security boundary).
+- Hosted MCP: `COLLECTOR_MCP_HTTP` (off by default), `COLLECTOR_MCP_MAX_SESSIONS` (`50`),
+  `COLLECTOR_MCP_SESSION_TTL_MS` (`1800000`).
 - All-in-one dashboard: `COLLECTOR_DASHBOARD_DIR` (point it at a static dashboard export and one
   process serves ingestion, queries and the UI), `COLLECTOR_CSP` (`strict` or `off`).
 

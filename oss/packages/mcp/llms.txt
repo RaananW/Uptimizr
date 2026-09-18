@@ -63,6 +63,16 @@ aggregations, and take no `format`.
   `xr_comfort_review` (optional `scene`) — each renders one user message sequencing the read-only
   tools; they fetch nothing themselves.
 
+## Transports
+
+Two transports, one server: `createMcpServer()` is transport-agnostic.
+
+- **stdio** — `npx @uptimizr/mcp`, launched by a desktop client. What this package's `bin` does.
+- **Collector-hosted Streamable HTTP** — the collector serves the same server at `POST/GET/DELETE
+  /mcp` when it is started with `COLLECTOR_MCP_HTTP=1` (ADR 0051 §7). A remote client connects with
+  a URL plus `x-api-key` (or `Authorization: Bearer <key>`); tool calls are audited with
+  `surface: "mcp-http"`. The catalog, resources and prompts are identical to stdio's.
+
 ## Required key capability
 
 `UPTIMIZR_API_KEY` needs the `query` capability, and only that
@@ -73,7 +83,9 @@ key holds; a key missing a required capability is refused with `403`.
 
 ## Key exports
 
-- `createMcpServer(client)` — build the read-only MCP server.
+- `createMcpServer(client, options?)` — build the read-only MCP server. `options.capabilities` is
+  the bound key's capability set, passed by the collector-hosted transport so a session's surface
+  matches its key; omitted (stdio) registers the whole read catalog.
 - `createCollectorClient(config)` — the thin GET-only collector client.
 - `readMcpConfig()` — read `UPTIMIZR_COLLECTOR_URL` + `UPTIMIZR_API_KEY` from the environment.
 - `readTools` — the read-only tool catalog (one entry per query endpoint), generated from the

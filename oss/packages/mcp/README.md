@@ -173,9 +173,33 @@ The server also exposes read-only **resources** for self-discovery — `uptimizr
 `metrics`: the collector's whole semantic metric registry, with each metric's result grain, column
 units, row JSON Schema, row limits, interpretation and caveats — ADR 0051) and
 `uptimizr://scenes` (live scene ids) — and curated **prompts** (`weekly_scene_health`,
-`attention_hotspots`, `xr_comfort_review`) that drive the tools above. A remote Streamable HTTP
-transport is a deferred, auth-gated follow-up (ADR 0050 §7). See the
+`attention_hotspots`, `xr_comfort_review`) that drive the tools above. See the
 [MCP guide](https://uptimizr.com/docs/guides/mcp/) for details.
+
+## Hosted transport (Streamable HTTP)
+
+The collector can serve **this same server** itself, over MCP's Streamable HTTP transport, so a
+remote agent connects with a URL and a key instead of launching this package locally (ADR 0051 §7).
+Start the collector with `COLLECTOR_MCP_HTTP=1` and point a client at `/mcp`:
+
+```jsonc
+{
+  "mcpServers": {
+    "uptimizr": {
+      "type": "http",
+      "url": "https://collect.example.com/mcp",
+      "headers": { "Authorization": "Bearer utk_…" },
+    },
+  },
+}
+```
+
+`x-api-key` works in place of the bearer header, the key still needs only `query`, and the tools,
+resources and prompts are identical — both transports are built by the same `createMcpServer()`
+below. Tool calls made that way are recorded in the collector's audit log with
+`surface: "mcp-http"`; calls from this package over stdio are ordinary HTTP reads, recorded as
+`http`. See the
+[hosted transport guide](https://uptimizr.com/docs/guides/mcp/#hosted-transport-streamable-http).
 
 ## Programmatic use
 
@@ -187,6 +211,11 @@ const client = createCollectorClient(readMcpConfig());
 const server = createMcpServer(client);
 await server.connect(new StdioServerTransport());
 ```
+
+`createMcpServer(client, options?)` takes an optional `options.capabilities` — the capability set of
+the API key the server instance is bound to. The collector-hosted transport passes the key it
+resolved, so a session's surface can only narrow to what its key may do; omitting it (as the stdio
+entry point does) registers the whole read catalog and leaves enforcement to the collector.
 
 The package also exports `readTools`, `CollectorError`, `version`, and the related public types.
 The read-only tool catalog (`readTools`) and the `GET`-only collector client are defined in the

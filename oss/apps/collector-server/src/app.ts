@@ -11,11 +11,13 @@ import {
 import type { CollectorConfig } from "./config.js";
 import type { CollectorStore } from "./store.js";
 import { createLiveBus, type LiveBus } from "./liveBus.js";
-import { attachApiKey } from "./auth.js";
+import { attachApiKey, normalizeMcpBearer } from "./auth.js";
 import { registerAuditHooks, startAuditRetention } from "./audit.js";
 import { buildDashboardCsp } from "./csp.js";
+import { isInternalDispatch, newInternalDispatchToken } from "./internalDispatch.js";
 import { collectRoutes } from "./routes/collect.js";
 import { liveRoutes } from "./routes/live.js";
+import { mcpRoutes } from "./routes/mcp.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
 import { queryRoutes } from "./routes/query.js";
 
@@ -83,13 +85,29 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     config.dashboardDir && config.cspMode === "strict"
       ? buildDashboardCsp(config.dashboardDir, config.corsOrigins)
       : false;
+  // Per-process marker for the reads the hosted MCP transport dispatches to this
+  // same app (#313). Minted only when that transport is on; see
+  // `internalDispatch.ts` for why it exists and why it must be unguessable.
+  const internalDispatchToken = config.mcpHttpEnabled ? newInternalDispatchToken() : undefined;
+
   await app.register(helmet, config.dashboardDir ? { contentSecurityPolicy } : {});
   await app.register(cors, {
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
     // @fastify/cors defaults `methods` to GET,HEAD,POST — which omits PUT and so
     // breaks the browser preflight for scene-proxy registration
     // (PUT /api/v1/scenes/:id/representation). List the verbs the HTTP API uses.
-    methods: ["GET", "HEAD", "POST", "PUT"],
+    // DELETE is only added when `/mcp` exists, since ending an MCP session is
+    // the collector's only DELETE.
+    methods: config.mcpHttpEnabled
+      ? ["GET", "HEAD", "POST", "PUT", "DELETE"]
+      : ["GET", "HEAD", "POST", "PUT"],
+    // Streamable HTTP returns the session id in a response header the client has
+    // to echo back; a browser cannot read it unless it is explicitly exposed.
+    ...(config.mcpHttpEnabled ? { exposedHeaders: ["Mcp-Session-Id"] } : {}),
+    // `allowedHeaders` is deliberately left unset: the plugin then reflects the
+    // browser's `Access-Control-Request-Headers`, which already covers the MCP
+    // request headers (`Mcp-Session-Id`, `Mcp-Protocol-Version`, `Last-Event-ID`)
+    // without narrowing what every other client may send today.
     // The SDK ingests via `navigator.sendBeacon`, which always sends in
     // credentials mode `include`. With a non-safelisted `application/json` body
     // that triggers a credentialed CORS preflight, so the response must echo
@@ -108,6 +126,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   app.decorateRequest("resolvedKey", null);
   app.decorateRequest("auditRowCount", null);
   app.addHook("onRequest", async (request) => {
+    // MCP clients send `Authorization: Bearer <key>`; fold it into `x-api-key`
+    // first so there is still one key-resolution path (#313).
+    if (config.mcpHttpEnabled) normalizeMcpBearer(request);
     await attachApiKey(request, store);
   });
 
@@ -121,11 +142,16 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     // so requests without a per-key budget keep their existing IPv6-aware bucket.
     keyGenerator: (request) =>
       request.resolvedKey?.rateLimit ? `key:${request.resolvedKey.keyId}` : normalizeIP(request.ip),
+    // A read the collector dispatched to itself for an MCP tool call is already
+    // paid for: the `POST /mcp` that carried the call went through this same
+    // limiter on the caller's bucket. Charging the inner read again would halve
+    // every key's effective allowance over the hosted transport.
+    allowList: (request) => isInternalDispatch(request, internalDispatchToken),
   });
 
   // Audit every authenticated, non-dashboard request (ADR 0051 §7). Registered
   // after the rate limiter so a throttled request is still recorded.
-  registerAuditHooks(app, store, config);
+  registerAuditHooks(app, store, config, internalDispatchToken);
   const stopAuditRetention = startAuditRetention(app, store, config);
   app.addHook("onClose", async () => stopAuditRetention());
 
@@ -141,6 +167,11 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(collectRoutes, { store, config, liveBus });
   await app.register(liveRoutes, { store, config, liveBus });
   await app.register(queryRoutes, { store, config });
+  // Collector-hosted MCP over Streamable HTTP (ADR 0051 §7). Opt-in: without
+  // `COLLECTOR_MCP_HTTP` the route does not exist.
+  if (config.mcpHttpEnabled && internalDispatchToken != null) {
+    await app.register(mcpRoutes, { store, config, internalDispatchToken });
+  }
   await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API

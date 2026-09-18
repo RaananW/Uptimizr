@@ -308,6 +308,9 @@ full list):
 | `COLLECTOR_RATE_LIMIT_MAX` / `_WINDOW_MS`          | Default request budget per client (`600` per `60000` ms). A key's own budget overrides it.      |
 | `AUDIT_RETENTION_DAYS`                             | How long agent-audit rows are kept (default `30`; `0` keeps them forever).                      |
 | `AUDIT_DASHBOARD_REQUESTS`                         | Also audit the dashboard's own requests (default off — see below).                              |
+| `COLLECTOR_MCP_HTTP`                               | Serve MCP over Streamable HTTP at `/mcp` (default **off** — see below).                         |
+| `COLLECTOR_MCP_MAX_SESSIONS`                       | Concurrent MCP sessions (default `50`); one too many is refused with `503`.                     |
+| `COLLECTOR_MCP_SESSION_TTL_MS`                     | Idle timeout before an MCP session is closed (default `1800000`, i.e. 30 minutes).              |
 
 See [Privacy & configuration](/docs/deploy/privacy/) for the privacy-relevant settings.
 
@@ -403,3 +406,43 @@ recorded, and served by `GET /api/v1/audit?since=&until=&limit=` to any `query` 
 - Writes happen after the response is flushed: the audit log can never block or fail a request.
 - Rows older than `AUDIT_RETENTION_DAYS` (default `30`) are removed by a periodic, idempotent
   sweep; `0` keeps them indefinitely.
+
+## Hosted MCP (Streamable HTTP)
+
+`COLLECTOR_MCP_HTTP=1` makes the collector serve the **Model Context Protocol** itself, over the
+Streamable HTTP transport at `/mcp`, so a remote AI client connects with a URL and an API key
+instead of running `npx @uptimizr/mcp` next to itself
+([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md) §7).
+The client-side configuration lives in the [MCP guide](/docs/guides/mcp/#hosted-transport-streamable-http);
+this is what the deployment has to get right.
+
+**It is off by default.** Nothing is served at `/mcp` — the route is not even registered — until you
+set the variable. Turn it on only when you actually want remote agents reaching this collector.
+
+**Auth is per request.** `x-api-key` or `Authorization: Bearer <key>`, resolving to a key with the
+`query` capability; `401` without one, `403` for a key that may not read, and a session id is
+refused if presented by a different key than opened it. Give agents their own labelled keys so the
+[audit log](#agent-audit-log) stays legible — hosted-MCP tool calls are tagged `surface: mcp-http`.
+
+**Behind a reverse proxy:**
+
+- **Terminate TLS upstream** and set `COLLECTOR_TRUST_PROXY` — the collector speaks plain HTTP, and
+  the key travels in a header, so `/mcp` over plain HTTP across a network is a credential leak.
+- **Do not buffer the response.** The transport answers with `text/event-stream`; a buffering proxy
+  makes a client hang until the stream closes. The collector already sends
+  `Cache-Control: no-cache, no-transform`, but the proxy has to cooperate:
+  - **nginx** — `proxy_buffering off; proxy_cache off; proxy_http_version 1.1;` on the `/mcp`
+    location (the collector's own `X-Accel-Buffering: no` on live SSE covers the `/api/v1/live/*`
+    routes).
+  - **Caddy** — `reverse_proxy` streams by default; add `flush_interval -1` if you have changed it.
+  - **Cloud load balancers** — disable response buffering/compression for `/mcp` and raise the idle
+    timeout above your polling interval, or long-lived streams are cut mid-session.
+- **Pin a session to one instance.** Sessions live in the collector process, so several instances
+  behind a load balancer need sticky sessions (hash on `Mcp-Session-Id`) — or point MCP clients at a
+  single instance.
+- **Bound it.** `COLLECTOR_MCP_MAX_SESSIONS` caps concurrent sessions the way
+  `LIVE_MAX_CONNECTIONS` caps live SSE; `COLLECTOR_MCP_SESSION_TTL_MS` reclaims the slot of a client
+  that vanished without sending `DELETE /mcp`. Request bodies stay bounded by
+  `COLLECTOR_BODY_LIMIT`, and every tool call is charged to the caller's rate-limit budget.
+- **Browser-based clients** additionally need their origin in `COLLECTOR_CORS_ORIGINS`; the
+  collector then exposes `Mcp-Session-Id` and allows the MCP request headers and `DELETE`.

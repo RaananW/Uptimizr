@@ -207,6 +207,26 @@ what makes a 500-bin heatmap affordable for an LLM. See
 
 - `GET /health` — liveness probe.
 
+### Hosted MCP (`/mcp`, opt-in)
+
+Start the collector with `COLLECTOR_MCP_HTTP=1` and it also speaks the **Model Context Protocol**
+over Streamable HTTP, so a remote AI client connects with a URL and an API key instead of running
+`npx @uptimizr/mcp` locally (ADR 0051 §7). It is off by default — without the variable the route is
+not registered.
+
+| Method   | Path   | Purpose                                                                |
+| -------- | ------ | ---------------------------------------------------------------------- |
+| `POST`   | `/mcp` | JSON-RPC. Without `Mcp-Session-Id`, only `initialize` opens a session. |
+| `GET`    | `/mcp` | The server→client SSE stream for an existing session.                  |
+| `DELETE` | `/mcp` | End a session and release its slot.                                    |
+
+Every request is authenticated with `x-api-key` or `Authorization: Bearer <key>` and needs `query`;
+a session may only be driven by the key that opened it. Tools, resources and prompts are exactly
+`@uptimizr/mcp`'s. Sessions are capped by `COLLECTOR_MCP_MAX_SESSIONS` (default `50`, one too many
+→ `503`) and expire after `COLLECTOR_MCP_SESSION_TTL_MS` idle (default 30 minutes); tool calls are
+audited with `surface: "mcp-http"`. Behind a reverse proxy, turn response buffering **off** for
+`/mcp`. See the [MCP guide](https://uptimizr.com/docs/guides/mcp/#hosted-transport-streamable-http).
+
 ## Security
 
 `@fastify/helmet`, `@fastify/cors` (restricted to `COLLECTOR_CORS_ORIGINS`), and
@@ -223,6 +243,7 @@ if `VISITOR_HASH_SECRET` is missing.
 | Live SSE routes (`/api/v1/live/*` `GET`s) | `?token=...`       | Browser `EventSource` cannot attach custom headers, so live streams use short-lived bearer tokens.                                                      |
 | `GET /health`                             | None               | Liveness probe.                                                                                                                                         |
 | `GET /api/v1/openapi.json`                | None               | API documentation, not data — a client needs it before it has a key. Rate-limited like every other route.                                               |
+| `/mcp` (when `COLLECTOR_MCP_HTTP=1`)      | `x-api-key`        | Hosted MCP. `Authorization: Bearer <key>` is accepted as an alias on this route only; the session id is never a credential on its own.                  |
 
 ### API keys and capabilities
 
@@ -306,6 +327,8 @@ Environment-driven (see [`.env.example`](../../../.env.example)):
 - Rate limits: `COLLECTOR_RATE_LIMIT_MAX`, `COLLECTOR_RATE_LIMIT_WINDOW_MS`,
   `COLLECTOR_INGEST_RATE_LIMIT_MAX`, `COLLECTOR_INGEST_RATE_LIMIT_WINDOW_MS`
   (a key's own budget overrides the first pair).
+- Hosted MCP: `COLLECTOR_MCP_HTTP` (off by default), `COLLECTOR_MCP_MAX_SESSIONS`
+  (default `50`), `COLLECTOR_MCP_SESSION_TTL_MS` (default `1800000`).
 - Agent audit: `AUDIT_RETENTION_DAYS` (default `30`, `0` = keep forever),
   `AUDIT_DASHBOARD_REQUESTS` (default off).
 - All-in-one dashboard: `COLLECTOR_DASHBOARD_DIR` (optional; see
