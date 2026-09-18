@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { readTools } from "@uptimizr/agent-core";
-import { allMetrics, isResourceMetric } from "@uptimizr/metrics";
+import { rawTools, readTools } from "@uptimizr/agent-core";
+import { allMetrics, isResourceMetric, metricCapability } from "@uptimizr/metrics";
 import { buildCapabilities } from "../capabilities.js";
 
 describe("buildCapabilities", () => {
   const cap = buildCapabilities();
   const metrics = allMetrics();
-  const served = metrics.filter((metric) => metric.endpoint != null);
+  // The default descriptor describes the ordinary `query` surface; a
+  // capability-gated metric is listed only for a key that holds its capability.
+  const served = metrics.filter(
+    (metric) => metric.endpoint != null && metricCapability(metric) === "query",
+  );
 
   it("declares the surface read-only", () => {
     expect(cap.readOnly).toBe(true);
@@ -119,5 +123,31 @@ describe("buildCapabilities", () => {
 
   it("is JSON-serialisable, which is how the resource is served", () => {
     expect(() => JSON.stringify(cap)).not.toThrow();
+  });
+});
+
+describe("buildCapabilities — capability gating (ADR 0051 §7)", () => {
+  it("omits the query:raw tools for a plain query key", () => {
+    const names = buildCapabilities().tools.map((tool) => tool.name);
+    expect(names).not.toContain("session_narrative");
+    expect(names.sort()).toEqual(readTools.map((tool) => tool.name).sort());
+  });
+
+  it("lists them for a key that holds the capability", () => {
+    const names = buildCapabilities({ capabilities: ["query", "query:raw"] }).tools.map(
+      (tool) => tool.name,
+    );
+    expect(names).toContain("session_narrative");
+    expect(names.sort()).toEqual([...readTools, ...rawTools].map((tool) => tool.name).sort());
+  });
+
+  it("still documents every metric in the registry, with the capability it needs", () => {
+    // The tool list answers "what may I call?"; the metric list answers "what
+    // exists?". Hiding the metric entirely would leave an agent unable to tell a
+    // missing feature from a missing permission.
+    const descriptor = buildCapabilities();
+    const narrative = descriptor.metrics.find((metric) => metric.id === "session_narrative");
+    expect(narrative?.endpoint?.capability).toBe("query:raw");
+    expect(descriptor.metrics).toHaveLength(allMetrics().length);
   });
 });

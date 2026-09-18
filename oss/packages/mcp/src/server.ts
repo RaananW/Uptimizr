@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { readTools, type CollectorClient } from "@uptimizr/agent-core";
+import { rawTools, readTools, type CollectorClient, type ReadTool } from "@uptimizr/agent-core";
 import { registerResources } from "./resources.js";
 import { registerPrompts } from "./prompts.js";
 import { version } from "./version.js";
@@ -39,6 +39,23 @@ function structuredRows(outputSchema: z.ZodRawShape, data: unknown): { rows: unk
 }
 
 /**
+ * How to build the server for one session.
+ *
+ * Deliberately an **options bag** from the start: the collector-hosted transport
+ * (#313) builds one server per authenticated MCP session and the metadata-write
+ * tools (#310) will key off the same field, so this is the one place a per-key
+ * decision is threaded through.
+ */
+export interface CreateMcpServerOptions {
+  /**
+   * The capability set of the API key behind the client, as
+   * `GET /api/v1/whoami` reports it (`["query", "query:raw", …]`). Unknown
+   * values are ignored; omitting the option serves the `query` surface only.
+   */
+  capabilities?: readonly string[];
+}
+
+/**
  * Build the Uptimizr MCP server: a read-only `McpServer` whose tools each wrap
  * one collector query endpoint via the injected `CollectorClient`. The server
  * holds no business logic — it forwards validated arguments and returns the
@@ -51,14 +68,35 @@ function structuredRows(outputSchema: z.ZodRawShape, data: unknown): { rows: unk
  * endpoint. Each tool advertises the registry-derived `outputSchema` and returns
  * both `structuredContent` (the typed `{ rows }` envelope) and the `content`
  * text a client without structured-output support still reads.
+ *
+ * `options.capabilities` is what the **key** behind `client` is allowed to do
+ * (`GET /api/v1/whoami`). Tools whose endpoint needs more than the ordinary
+ * `query` capability are registered only when the key really holds it, so
+ * `tools/list` describes what this session can actually do rather than what the
+ * collector could do for somebody else. Omit it and only the `query` surface is
+ * served — the safe default for a caller that has not looked the key up.
  */
-export function createMcpServer(client: CollectorClient): McpServer {
+export function createMcpServer(
+  client: CollectorClient,
+  options: CreateMcpServerOptions = {},
+): McpServer {
   const server = new McpServer(
     { name: "uptimizr-mcp", version },
     { capabilities: { tools: {}, resources: {}, prompts: {} } },
   );
 
-  for (const tool of readTools) {
+  // The default is the ordinary read surface, never "nothing": a caller that has
+  // not looked the key up still gets every `query` tool, exactly as before.
+  const capabilities = options.capabilities ?? ["query"];
+  const tools: ReadTool[] = [
+    ...readTools,
+    // `query:raw` additionally requires `ENABLE_RAW_SESSION_RETENTION` on the
+    // collector (ADR 0003), which this process cannot see — a narrative tool on
+    // a retention-disabled collector still answers 403, and says so.
+    ...(capabilities.includes("query:raw") ? rawTools : []),
+  ];
+
+  for (const tool of tools) {
     server.registerTool(
       tool.name,
       {
@@ -85,7 +123,7 @@ export function createMcpServer(client: CollectorClient): McpServer {
     );
   }
 
-  registerResources(server, client);
+  registerResources(server, client, { capabilities });
   registerPrompts(server);
 
   return server;

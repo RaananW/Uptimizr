@@ -30,7 +30,12 @@
  */
 
 import { z } from "zod";
-import { allMetrics, type FilterId, type MetricDefinition } from "@uptimizr/metrics";
+import {
+  NARRATIVE_LIMITS,
+  allMetrics,
+  type FilterId,
+  type MetricDefinition,
+} from "@uptimizr/metrics";
 import type { QueryParams } from "./client.js";
 import type { ReadTool, ReadToolRequest } from "./tools.js";
 
@@ -228,6 +233,32 @@ const FILTER_FIELDS: Readonly<Record<FilterId, z.ZodType>> = {
     .max(2048)
     .optional()
     .describe("JSON funnel-step predicate for the success event. Omit to report views only."),
+  // --- session narrative (ADR 0051 §7) ---
+  //
+  // Bounds mirror `NARRATIVE_LIMITS` in `@uptimizr/metrics`, which is also what
+  // the collector's querystring validates against.
+  minDwellMs: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(NARRATIVE_LIMITS.maxMinDwellMs)
+    .optional()
+    .describe(
+      "How long (ms) a mesh must hold attention before it earns a dwell entry in a session " +
+        `narrative. Default ${NARRATIVE_LIMITS.defaultMinDwellMs}; raise it to keep only the ` +
+        "meshes that were really looked at.",
+    ),
+  maxEntries: z
+    .number()
+    .int()
+    .positive()
+    .max(NARRATIVE_LIMITS.maxMaxEntries)
+    .optional()
+    .describe(
+      "Maximum entries in a session narrative, oldest first (default " +
+        `${NARRATIVE_LIMITS.defaultMaxEntries}, hard cap ${NARRATIVE_LIMITS.maxMaxEntries}). ` +
+        "The closing summary entry always survives and reports whether anything was dropped.",
+    ),
   // The shared result envelope (ADR 0051 §2). Declared literally rather than
   // imported from `@uptimizr/db/summary`, which would put a database driver back
   // on this package's dependency graph. `full` stays the default here: switching
@@ -434,6 +465,13 @@ export function metricToTool(metric: MetricDefinition): ReadTool | undefined {
 /**
  * Generate the read-only tool catalog from the metric registry: one tool per
  * registry entry that has a collector endpoint, in registry declaration order.
+ *
+ * **Capability-blind by design.** It generates a tool for every endpoint,
+ * whatever `endpoint.capability` says, because generation and *exposure* are
+ * separate decisions: `tools.ts` partitions the result into the `query` catalog
+ * (`readTools`) and the `query:raw` one (`rawTools`), and the host decides which
+ * of those a given API key may see (ADR 0051 §7). Pass a filtered metric list to
+ * generate only part of the catalog.
  *
  * Pure — it reads definitions only and never touches a collector — so the whole
  * catalog is unit-testable without a live server.

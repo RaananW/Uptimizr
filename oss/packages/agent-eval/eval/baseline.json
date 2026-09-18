@@ -1,7 +1,7 @@
 {
   "scripted": {
     "passRate": 1,
-    "recordedAt": "2026-09-16T15:30:16.442Z",
+    "recordedAt": "2026-09-18T23:34:11.347Z",
     "tolerance": 0,
     "cases": {
       "ar_placement_effort": true,
@@ -47,6 +47,8 @@
       "sessions_volume_over_time": true,
       "sessions_one_session_detail": true,
       "sessions_scene_geometry": true,
+      "sessions_narrative_walkthrough": true,
+      "sessions_narrative_xr_session": true,
       "xr_input_sources": true,
       "xr_locomotion_comfort": true,
       "xr_tracking_quality": true,

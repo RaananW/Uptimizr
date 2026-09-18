@@ -77,3 +77,43 @@
       - { value: 3, label: registered meshes }
     phrases: ["box", "sphere", "door"]
     forbiddenPhrases: ["not found"]
+
+# --- `query:raw` cases (ADR 0051 §7) --------------------------------------
+#
+# These two run through a key holding `query,query:raw` against the same
+# retention-enabled harness; every case above keeps the aggregate-only surface,
+# which is what a project owner hands an agent by default. They exist because
+# "what did this one session do?" is the question the aggregate catalog cannot
+# answer at all, and it is the question a narrative is for.
+
+- id: sessions_narrative_walkthrough
+  category: sessions
+  capability: query:raw
+  context:
+    session: s4
+  question: Walk me through what that session did, from start to finish.
+  expectedTools:
+    - [session_narrative]
+  expectedArgs:
+    session_narrative: { sessionId: s4 }
+  expectedAnswer:
+    numbers:
+      - { value: 22, label: events in the session }
+    phrases: ["door", "statue", "gallery", "purchase"]
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: sessions_narrative_xr_session
+  category: sessions
+  capability: query:raw
+  context:
+    session: s3
+  question: What happened in that immersive session — what did the visitor touch, and did anything degrade?
+  expectedTools:
+    - [session_narrative]
+  expectedArgs:
+    session_narrative: { sessionId: s3 }
+  expectedAnswer:
+    numbers:
+      - { value: 18, label: events in the session }
+    phrases: ["portal", "statue", "tracking", "degraded"]
+    forbiddenPhrases: ["no data", "not found"]

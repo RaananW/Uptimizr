@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readTools } from "../tools.js";
+import { rawTools, readTools } from "../tools.js";
 import { registryToTools } from "../registryTools.js";
 import { toToolSchemas } from "../loop.js";
 import shippedSchemas from "./fixtures/shippedToolSchemas.json" with { type: "json" };
@@ -83,7 +83,18 @@ describe("shipped tool compatibility", () => {
   });
 
   it("is the catalog the package actually exports", () => {
-    expect(readTools.map((tool) => tool.name)).toEqual([...generated.keys()]);
+    // `generated` is every metric with an endpoint; `readTools` is the `query`
+    // half of it, with the capability-gated tools split out into `rawTools`
+    // (ADR 0051 §7). Together they are the whole generated catalog, in order.
+    expect([...readTools, ...rawTools].map((tool) => tool.name).sort()).toEqual(
+      [...generated.keys()].sort(),
+    );
+    for (const shipped of Object.keys(frozen)) {
+      expect(
+        readTools.some((tool) => tool.name === shipped),
+        shipped,
+      ).toBe(true);
+    }
   });
 
   for (const [name, expected] of Object.entries(frozen)) {

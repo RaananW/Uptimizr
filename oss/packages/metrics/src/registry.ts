@@ -37,6 +37,7 @@
 
 import { z } from "zod";
 import type { EventType } from "@uptimizr/schema";
+import { NARRATIVE_LIMITS, sessionNarrativeEntrySchema } from "./narrative.js";
 
 /**
  * Every exported `build*` aggregation name in `@uptimizr/db`'s
@@ -203,6 +204,14 @@ export type FilterId =
   | "bands"
   | "variant"
   | "conversion"
+  // --- session narrative (ADR 0051 §7, design sketch §G.2) ---
+  //
+  // Two parameters that shape a *compaction* rather than an aggregation: they
+  // are consumed by `buildSessionNarrative` in `@uptimizr/db` and never reach a
+  // SQL builder. `fpsThreshold` and `format` are shared with the aggregations
+  // above and so are not repeated here.
+  | "minDwellMs"
+  | "maxEntries"
   // Cross-cutting result shaping (ADR 0051 §2, design sketch §B.1). Unlike every
   // other filter this one narrows nothing: it selects the *envelope* the
   // collector wraps the rows in, and is consumed by the response layer rather
@@ -228,6 +237,13 @@ export type FilterOptionInterface =
   | "LoadBounceFunnelOptions"
   | "VariantLeaderboardOptions"
   | "BuilderOptions"
+  /**
+   * Not an aggregation option either: the parameter is consumed by
+   * `buildSessionNarrative` — the pure compaction behind
+   * `GET /api/v1/sessions/:id/narrative` (ADR 0051 §7) — and never reaches a
+   * SQL builder.
+   */
+  | "SessionNarrativeOptions"
   /**
    * Not an aggregation option at all: the parameter is consumed by the
    * collector's response layer and never reaches a builder. Only `format`
@@ -431,6 +447,20 @@ export const FILTER_TARGETS: Readonly<Record<FilterId, FilterTarget>> = {
     field: "conversion",
     description: "JSON funnel-step predicate for the success event. Omit to report views only.",
   },
+  minDwellMs: {
+    option: "SessionNarrativeOptions",
+    field: "minDwellMs",
+    description:
+      "Session narrative only: a mesh must hold attention for at least this many milliseconds " +
+      "before it earns a `dwell` entry. Raise it to keep only the meshes that were really looked at.",
+  },
+  maxEntries: {
+    option: "SessionNarrativeOptions",
+    field: "maxEntries",
+    description:
+      "Session narrative only: the maximum number of entries, oldest first. The closing `summary` " +
+      "entry always survives and reports whether anything was dropped.",
+  },
   format: {
     option: "ResultEnvelope",
     field: "(response layer)",
@@ -498,6 +528,21 @@ export type MetricCategory =
   | "sessions"
   | "conversion";
 
+/**
+ * The API-key capability an endpoint requires (ADR 0051 §7).
+ *
+ * `query` is the whole aggregate read surface and is the default. `query:raw`
+ * is the narrow, opt-in door to per-session data: the collector honours it only
+ * when `ENABLE_RAW_SESSION_RETENTION` is on (ADR 0003), and a generated tool for
+ * such a metric must be registered **only** for a key that holds it.
+ *
+ * Declared as a literal union rather than imported from `@uptimizr/db`'s
+ * `ApiKeyCapability`: that package depends on *this* one, and the registry may
+ * never depend on a database driver. `@uptimizr/db` re-checks the two in its own
+ * test suite.
+ */
+export type MetricCapability = "query" | "query:raw";
+
 /** The collector route a metric is served on. */
 export interface MetricEndpoint {
   method: "GET";
@@ -508,6 +553,21 @@ export interface MetricEndpoint {
    * of a trajectory). One entry per `:param` segment, in order.
    */
   pathParams?: readonly FilterId[];
+  /**
+   * The capability a key must hold to call it. Omitted means `query` — the
+   * ordinary aggregate read surface. See {@link MetricCapability}.
+   */
+  capability?: MetricCapability;
+}
+
+/**
+ * The capability `metric`'s endpoint requires, with the `query` default applied.
+ * Consumers partition the catalog with this rather than reading the optional
+ * field directly, so "no capability declared" cannot be mistaken for "no
+ * capability required".
+ */
+export function metricCapability(metric: MetricDefinition): MetricCapability {
+  return metric.endpoint?.capability ?? "query";
 }
 
 /** Comparison semantics for `compare`, `movers` and `anomalies` (ADR 0051 §4). */
@@ -652,7 +712,9 @@ export type MetricId =
   // --- conversion ---
   | "scene_retention"
   | "load_bounce_funnel"
-  | "variant_leaderboard";
+  | "variant_leaderboard"
+  // --- raw per-session (`query:raw` + retention only, ADR 0051 §7) ---
+  | "session_narrative";
 
 // --- Row-schema building blocks ------------------------------------------
 //
@@ -862,6 +924,96 @@ export const METRIC_REGISTRY = {
     ],
     sourceChannels: ["session_start"],
     related: ["list_sessions", "perf_by_device"],
+    category: "sessions",
+  },
+  session_narrative: {
+    id: "session_narrative",
+    title: "Session narrative",
+    description:
+      "An ordered, compacted account of what one session did — scene changes, the meshes it " +
+      "dwelled on, its interactions, performance dips, errors and how it ended — timestamps " +
+      "relative to its first event, plus a closing totals entry. A compaction of the raw " +
+      "per-session stream, gated on `query:raw` and raw-session retention (ADR 0003).",
+    endpoint: {
+      method: "GET",
+      path: "/api/v1/sessions/:id/narrative",
+      pathParams: ["session"],
+      capability: "query:raw",
+    },
+    grain: "row",
+    dimensions: ["session"],
+    filters: ["minDwellMs", "fpsThreshold", "maxEntries", "format"],
+    row: sessionNarrativeEntrySchema,
+    columns: {
+      tMs: {
+        description:
+          "Milliseconds since the session's first event. Relative by design — a narrative never carries a wall-clock time.",
+        unit: "ms",
+      },
+      kind: {
+        description:
+          "What the entry is about: scene / dwell / interaction / perf_dip / error / diagnostic / capability / xr / end / summary.",
+        unit: "label",
+        label: true,
+      },
+      summary: {
+        description:
+          "One templated line of prose, composed from the entry's own fields — never free text copied out of an event payload.",
+      },
+      refs: {
+        description:
+          "The named things the entry points at: `mesh`, `scene` and `name` (a custom-event or input-action name). Nothing else is ever referenced.",
+      },
+      durationMs: {
+        description: "How long the entry spans, for the kinds that cover a stretch of time.",
+        unit: "ms",
+      },
+      count: {
+        description: "How many source events the entry collapses (dwell samples, dip frames, …).",
+        unit: "count",
+      },
+      totals: {
+        description:
+          "Session totals (events, duration, scenes, meshes, interactions, dips, errors). Present on the closing `summary` entry only.",
+      },
+      truncated: {
+        description:
+          "Whether entries were dropped to honour `maxEntries`. Present on the closing `summary` entry only.",
+      },
+    },
+    limits: {
+      maxRows: NARRATIVE_LIMITS.maxMaxEntries,
+      maxSummaryRows: NARRATIVE_LIMITS.defaultMaxEntries,
+    },
+    interpretation:
+      "Read it top to bottom as a story: where the session went, what held its attention, what it " +
+      "touched, and what went wrong. The closing `summary` entry gives the totals and says whether " +
+      "anything was dropped — if `truncated` is true, raise `minDwellMs` or `maxEntries` rather " +
+      "than trusting the tail.",
+    caveats: [
+      "Refused with 403 unless the collector has `ENABLE_RAW_SESSION_RETENTION` enabled AND the key holds `query:raw` (ADR 0003).",
+      "Returns 404 when the session id is unknown to the project, or when retention was enabled only after it was recorded.",
+      "A projection, not the raw stream: no visitor hash, no URL or page metadata, no positions or rays, and no `device` detail. Custom-event property **keys** are listed; their values never are.",
+      "Dwell comes from the sampled `mesh_visibility` / `hover_dwell` channels (ADR 0012), so it ranks attention rather than measuring it exactly.",
+      "Not an aggregation — there is no `build*` builder, and it takes no time range.",
+    ],
+    sourceChannels: [
+      "session_start",
+      "session_end",
+      "scene_change",
+      "mesh_visibility",
+      "hover_dwell",
+      "mesh_interaction",
+      "pointer_click",
+      "input_action",
+      "custom",
+      "frame_perf",
+      "runtime_error",
+      "graphics_diagnostic",
+      "capability_change",
+      "xr_boundary_proximity",
+    ],
+    related: ["session_meta", "list_sessions", "session_trajectory"],
     category: "sessions",
   },
   scene_representation: {

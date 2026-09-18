@@ -33,7 +33,7 @@ import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PARITY_EVENTS, PARITY_PROJECT_ID } from "@uptimizr/db";
 import { resultSummarySchema, tableResultSchema } from "@uptimizr/db";
-import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
+import { allMetrics, metricCapability, type MetricDefinition } from "@uptimizr/metrics";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildApp } from "../app.js";
@@ -170,13 +170,23 @@ function canonicalBody(value: unknown): string {
   return JSON.stringify(rows.map((row) => JSON.stringify(stable(row))).sort());
 }
 
-/** The two resource reads take no querystring, so they are outside `format`. */
-const FORMATTED_METRICS = allMetrics().filter(
-  (metric) => metric.endpoint != null && metric.builder != null,
+/**
+ * Endpoints this sweep can reach with an ordinary `query` key.
+ *
+ * `session_narrative` needs `ENABLE_RAW_SESSION_RETENTION` plus a `query:raw`
+ * key (ADR 0051 §7), and offers `text` in place of `summary`, so it is outside
+ * the shared-envelope sweep entirely. Its own `format` handling — including the
+ * `table` envelope — is covered by `narrative.test.ts`.
+ */
+const REACHABLE_METRICS = allMetrics().filter(
+  (metric) => metric.endpoint != null && metricCapability(metric) === "query",
 );
 
-/** Every endpoint, including the two resource reads, for the `full` sweep. */
-const METRICS_WITH_ENDPOINTS = allMetrics().filter((metric) => metric.endpoint != null);
+/** The two resource reads take no querystring, so they are outside `format`. */
+const FORMATTED_METRICS = REACHABLE_METRICS.filter((metric) => metric.builder != null);
+
+/** Every reachable endpoint, including the two resource reads, for the `full` sweep. */
+const METRICS_WITH_ENDPOINTS = REACHABLE_METRICS;
 
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");

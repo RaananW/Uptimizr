@@ -4,9 +4,11 @@ import {
   FILTER_TARGETS,
   allMetrics,
   isResourceMetric,
+  metricCapability,
   type ColumnSemantics,
   type DimensionId,
   type FilterId,
+  type MetricCapability,
   type MetricCategory,
   type MetricComparison,
   type MetricDefinition,
@@ -49,8 +51,18 @@ export interface CapabilityMetricDescriptor {
   category: MetricCategory;
   /** What one row represents. */
   grain: MetricGrain;
-  /** The collector route it is served on, when it has one. */
-  endpoint?: { method: "GET"; path: string; pathParams?: readonly FilterId[] };
+  /**
+   * The collector route it is served on, when it has one. `capability` names the
+   * API-key capability the route requires; it is absent for the ordinary
+   * `query` surface and `"query:raw"` for a metric gated behind raw-session
+   * retention (ADR 0051 §7).
+   */
+  endpoint?: {
+    method: "GET";
+    path: string;
+    pathParams?: readonly FilterId[];
+    capability?: MetricCapability;
+  };
   /** Group-by dimensions the rows are keyed by. */
   dimensions: readonly DimensionId[];
   /** Accepted request parameters. */
@@ -137,13 +149,34 @@ function toMetricDescriptor(metric: MetricDefinition): CapabilityMetricDescripto
 }
 
 /**
+ * What the descriptor should describe.
+ */
+export interface BuildCapabilitiesOptions {
+  /**
+   * The capability set of the key this descriptor is being built for, as
+   * `GET /api/v1/whoami` reports it. Defaults to `["query"]` — the ordinary
+   * aggregate read surface, and the safe answer for a caller that has not
+   * looked the key up.
+   */
+  capabilities?: readonly string[];
+}
+
+/**
  * Build the capabilities descriptor from the metric registry and the event
  * schema. Pure and synchronous — it introspects definitions only, never the
  * collector, so it is safe to serve as a static resource.
  */
-export function buildCapabilities(): CapabilitiesDescriptor {
+export function buildCapabilities(options: BuildCapabilitiesOptions = {}): CapabilitiesDescriptor {
+  const granted = new Set(options.capabilities ?? ["query"]);
   const metrics = allMetrics();
-  const served = metrics.filter((metric) => metric.endpoint != null);
+  // `tools` describes what THIS key can call, so a capability-gated metric is
+  // listed only when the key holds its capability (ADR 0051 §7). `metrics` below
+  // still documents the whole registry, each entry carrying the capability its
+  // endpoint needs — the difference between "you cannot call this" and "this
+  // does not exist" is worth keeping.
+  const served = metrics.filter(
+    (metric) => metric.endpoint != null && granted.has(metricCapability(metric)),
+  );
 
   const tools: CapabilityToolDescriptor[] = served.map((metric) => ({
     name: metric.id,
@@ -168,7 +201,10 @@ export function buildCapabilities(): CapabilitiesDescriptor {
     metrics: metrics.map(toMetricDescriptor),
     notes: [
       "This MCP surface is strictly read-only: aggregate, privacy-preserving queries only. " +
-        "There are no ingestion, mutation, or raw per-session event tools (ADR 0003 / ADR 0017).",
+        "There are no ingestion or mutation tools, and no raw per-session event tools " +
+        "(ADR 0003 / ADR 0017). The one per-session read, `session_narrative`, is a bounded " +
+        "compaction rather than an event stream, and the collector serves it only to a key " +
+        "holding `query:raw` on a deployment with raw-session retention enabled.",
       "`metrics` is the collector's semantic metric registry (ADR 0051 §1): for each metric it " +
         "gives the result `grain` (what one row is), the `columns` with their units, the JSON " +
         "Schema of a row, `limits`, how to read it (`interpretation`) and how far to trust it " +

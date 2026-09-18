@@ -36,3 +36,10 @@
 - **Stores:** `COLLECTOR_STORE=duckdb` (default, single-file, single-writer, `DUCKDB_PATH`) | `memory` | `postgres` | `mssql` | `clickhouse` — identical analytics on all four (parity suite).
 - **Required:** `VISITOR_HASH_SECRET`. The server fails fast without it; the raw IP is never stored.
 - **Bins:** `uptimizr` (`dist/cli.js`) and the legacy `uptimizr-collector` (`dist/server.js`).
+
+## Session narrative (`query:raw`)
+
+- `GET /api/v1/sessions/:id/narrative` — an ordered, compacted account of what one session did (scene changes, mesh dwell, interactions, perf dips, errors, end reason, then a totals entry), timestamps relative to the session start, bounded by `maxEntries` (default 200, hard cap 1000). Params: `minDwellMs`, `fpsThreshold`, `maxEntries`, `format=full|table|text`.
+- Gated twice — `ENABLE_RAW_SESSION_RETENTION` **and** a `query:raw` key; either missing is `403`, an unknown session is `404`.
+- `format=text` (this route only) is one line per entry — the cheapest way to put a whole session in a model's context.
+- A projection, not the raw stream: no `visitorId`, URL or page metadata, no positions or rays, no `device` detail beyond the engine, custom-event property keys only (ADR 0003).

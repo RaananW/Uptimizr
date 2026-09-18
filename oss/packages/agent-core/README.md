@@ -79,6 +79,11 @@ console.log(result.content); // the model's final answer
 `ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
 `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
 
+Only on a key holding `query:raw`, and only when the collector runs with
+`ENABLE_RAW_SESSION_RETENTION` (ADR 0003):
+
+`session_narrative`
+
 <!-- generated:registry-tool-names:end -->
 
 `readTools` is **generated** from the semantic metric registry in `@uptimizr/metrics`

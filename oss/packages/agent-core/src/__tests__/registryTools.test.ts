@@ -17,8 +17,11 @@ describe("registryToTools", () => {
     expect(tools.map((t) => t.name)).toEqual(withEndpoint.map((m) => m.id));
   });
 
-  it("covers the whole collector read surface — 69 tools, uniquely named", () => {
-    expect(tools).toHaveLength(69);
+  it("covers the whole collector read surface — 70 tools, uniquely named", () => {
+    // 69 on the ordinary `query` surface plus the one `query:raw` metric
+    // (`session_narrative`). `registryToTools` is capability-blind; `tools.ts`
+    // is what splits them into `readTools` and `rawTools`.
+    expect(tools).toHaveLength(70);
     expect(new Set(tools.map((t) => t.name)).size).toBe(tools.length);
     for (const tool of tools) expect(tool.name).toMatch(/^[a-z][a-z0-9_]*$/);
   });

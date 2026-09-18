@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { allMetrics, metricCapability } from "@uptimizr/metrics";
 import {
   readTools,
+  rawTools,
   coreReadTools,
   selectReadTools,
   filterReadTools,
@@ -16,8 +18,34 @@ const byName = (name: string) => {
 
 describe("read tools catalog", () => {
   it("is the catalog generated from the metric registry", () => {
-    expect(readTools.map((t) => t.name)).toEqual(registryToTools().map((t) => t.name));
+    // The `query` half of the generated catalog: every tool whose endpoint needs
+    // nothing more than the ordinary read capability (ADR 0051 §7).
+    const queryMetrics = allMetrics().filter((m) => metricCapability(m) === "query");
+    expect(readTools.map((t) => t.name)).toEqual(registryToTools(queryMetrics).map((t) => t.name));
     expect(readTools.length).toBe(69);
+  });
+
+  it("splits the query:raw tools out into their own catalog", () => {
+    // `session_narrative` must never be in `readTools`: a host registers it only
+    // after confirming the key holds `query:raw` (ADR 0051 §7), because a tool
+    // that always answers 403 is worse than no tool at all.
+    expect(readTools.map((t) => t.name)).not.toContain("session_narrative");
+    expect(rawTools.map((t) => t.name)).toEqual(["session_narrative"]);
+    for (const tool of rawTools) {
+      expect(readTools.some((read) => read.name === tool.name)).toBe(false);
+      expect(Object.keys(tool.outputSchema ?? {})).toEqual(["rows"]);
+    }
+  });
+
+  it("gives the narrative tool its registry parameters", () => {
+    const narrative = rawTools.find((tool) => tool.name === "session_narrative")!;
+    expect(Object.keys(narrative.inputSchema).sort()).toEqual(
+      ["sessionId", "minDwellMs", "fpsThreshold", "maxEntries", "format"].sort(),
+    );
+    expect(narrative.buildRequest({ sessionId: "s 1", maxEntries: 50 })).toEqual({
+      path: "api/v1/sessions/s%201/narrative",
+      params: { minDwellMs: undefined, fpsThreshold: undefined, maxEntries: 50, format: undefined },
+    });
   });
 
   it("gives every tool an output schema", () => {

@@ -146,3 +146,48 @@ Retention alone used to be enough: any `query` key could read the raw stream onc
 on. Aggregate endpoints are unaffected and existing keys need no migration, but a key issued
 before this change and used for replay or live-follow must be re-minted with `query:raw`.
 :::
+
+## Session narrative
+
+The raw stream is built for a **replay driver**, not for a reader: a two-minute session is
+thousands of sampled camera poses and frame-perf ticks. `GET /api/v1/sessions/:id/narrative`
+answers the human question instead — _what did this session actually do?_ — as an ordered,
+compacted account:
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/sessions/<session-id>/narrative?format=text"
+```
+
+```text
+session 019bf1d4 — 74 events over 41.0s
+    0.0s  scene        Session started in scene "lobby" on webgl2.
+    2.4s  dwell        Dwelled on "product-hero" for 6.2s (1.1s hovered).
+    5.1s  interaction  click on "buy" via mouse.
+    9.0s  scene        Moved to scene "configurator".
+   12.5s  perf_dip     Frame rate dipped to 14 fps (mean 19) across 6 samples over 3.0s.
+   18.2s  interaction  Custom event "add_to_cart" (currency, sku).
+   41.0s  end          Session ended (unload) after 41.0s.
+   41.0s  summary      74 events over 41.0s: 2 scene(s), 5 mesh(es), 3 interaction(s), 1 perf dip(s), 0 error(s).
+```
+
+**It is gated exactly like the raw stream** — `ENABLE_RAW_SESSION_RETENTION` **and** a
+`query:raw` key, either one missing is a `403` — because it is derived from the same data. An
+unknown session (or one recorded before retention was switched on) is a `404`.
+
+| Parameter      | Default | What it does                                                                      |
+| -------------- | ------- | --------------------------------------------------------------------------------- |
+| `minDwellMs`   | `1000`  | How long a mesh must hold attention before it earns a `dwell` entry.              |
+| `fpsThreshold` | `30`    | A frame sample below this counts towards a dip; two in a row make one `perf_dip`. |
+| `maxEntries`   | `200`   | Hard-capped at `1000`. The closing `summary` entry always survives.               |
+| `format`       | `full`  | `full` (entries), `table` (the shared `meta` envelope), `text` (the lines above). |
+
+`format=text` exists only on this route and only because of who reads it: a line per entry costs
+roughly a third of the tokens of the equivalent JSON, which is what makes a whole session
+affordable to put in a model's context.
+
+Each entry is `{ tMs, kind, summary, refs }`, where `kind` is one of `scene`, `dwell`,
+`interaction`, `perf_dip`, `error`, `diagnostic`, `capability`, `xr`, `end` or `summary`, and
+`refs` names at most a mesh, a scene and a custom-event/input-action name. Timestamps are always
+**relative to the session's first event**. What a narrative deliberately leaves out is covered in
+[Privacy & retention](/docs/deploy/privacy/#what-a-session-narrative-shows).

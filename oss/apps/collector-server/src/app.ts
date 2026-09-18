@@ -17,6 +17,7 @@ import { buildDashboardCsp } from "./csp.js";
 import { collectRoutes } from "./routes/collect.js";
 import { liveRoutes } from "./routes/live.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
+import { narrativeRoutes } from "./routes/narrative.js";
 import { queryRoutes } from "./routes/query.js";
 
 export interface BuildAppDeps {
@@ -141,6 +142,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(collectRoutes, { store, config, liveBus });
   await app.register(liveRoutes, { store, config, liveBus });
   await app.register(queryRoutes, { store, config });
+  // Session narrative (#314): its own plugin so it does not inherit the query
+  // plugin's `format` hook, which knows only the three shared envelopes.
+  await app.register(narrativeRoutes, { store, config });
   await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API

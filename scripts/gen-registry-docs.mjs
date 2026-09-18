@@ -198,13 +198,30 @@ const BLOCKS = {
         ]),
     ),
 
-  /** A compact name list for the packaged `AGENTS.md` / `llms.txt` (ADR 0017). */
-  "registry-tool-names": ({ allMetrics }) =>
-    wrapList(
-      allMetrics()
-        .filter((metric) => metric.endpoint)
-        .map((metric) => metric.id),
-    ),
+  /**
+   * A compact name list for the packaged `AGENTS.md` / `llms.txt` (ADR 0017).
+   *
+   * Split by the capability each tool needs (ADR 0051 §7): the main list is what
+   * every `query` key sees, and a capability-gated tool is named separately
+   * because a host registers it only for a key that holds the capability.
+   * Listing them together would promise a tool most keys do not have.
+   */
+  "registry-tool-names": ({ allMetrics, metricCapability }) => {
+    const served = allMetrics().filter((metric) => metric.endpoint);
+    const withCapability = (capability) =>
+      served.filter((metric) => metricCapability(metric) === capability).map((metric) => metric.id);
+    const base = wrapList(withCapability("query"));
+    const raw = withCapability("query:raw");
+    if (raw.length === 0) return base;
+    return [
+      base,
+      "",
+      "Only on a key holding `query:raw`, and only when the collector runs with",
+      "`ENABLE_RAW_SESSION_RETENTION` (ADR 0003):",
+      "",
+      wrapList(raw),
+    ].join("\n");
+  },
 };
 
 // --- targets --------------------------------------------------------------

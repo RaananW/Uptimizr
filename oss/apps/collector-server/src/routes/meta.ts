@@ -33,6 +33,7 @@ import { z } from "zod";
 import { SCHEMA_VERSION } from "@uptimizr/schema";
 import {
   FILTER_TARGETS,
+  metricCapability,
   allMetrics,
   isResourceMetric,
   type FilterId,
@@ -247,6 +248,7 @@ function vendorExtensions(metric: MetricDefinition): Record<string, unknown> {
     ...(label ? { "x-uptimizr-label": label } : {}),
     "x-uptimizr-limits": metric.limits,
     "x-uptimizr-interpretation": metric.interpretation,
+    "x-uptimizr-capability": metricCapability(metric),
     "x-uptimizr-caveats": metric.caveats,
     "x-uptimizr-source-channels": metric.sourceChannels,
     "x-uptimizr-related": metric.related,
@@ -405,14 +407,18 @@ function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unk
         in: "header",
         name: "x-api-key",
         description:
-          "A project API key with the `query` capability. Reads are always scoped to the project the key resolves to; a client-supplied project id is ignored.",
+          "A project API key with the `query` capability. Reads are always scoped to the project the key resolves to; a client-supplied project id is ignored. An operation whose `x-uptimizr-capability` is `query:raw` needs a key holding that capability as well, on a collector started with `ENABLE_RAW_SESSION_RETENTION` (ADR 0003 / ADR 0051 §7).",
       },
     },
     responses: {
       BadRequest: { description: "A parameter failed validation.", content: errorContent },
       Unauthorized: { description: "Missing or unknown API key.", content: errorContent },
       Forbidden: {
-        description: "The key is ingest-only and may not read.",
+        description:
+          "The key does not hold the capability this operation requires — an ingest-only key " +
+          "trying to read, or a `query` key asking for a `query:raw` operation. A " +
+          "`query:raw` operation also answers 403 when the collector was started " +
+          "without `ENABLE_RAW_SESSION_RETENTION` (ADR 0003).",
         content: errorContent,
       },
       NotFound: { description: "No such session or scene.", content: errorContent },
@@ -462,8 +468,11 @@ export function buildOpenApiDocument(
         "(`grain`), what its columns mean (`units`), the capture channels that must be enabled " +
         "for it to have data (`source-channels`), how far to trust it (`caveats`) and how to " +
         "read it (`interpretation`).\n\n" +
-        "The API is **read-only and aggregate-only**: there is no endpoint here that returns raw " +
-        "per-session events or personal data (ADR 0003).",
+        "The API is **read-only**: no endpoint here ingests, mutates or returns personal data " +
+        "(ADR 0003). It is aggregate-only with exactly one, doubly-gated exception — " +
+        "`session_narrative`, a bounded compaction of one session, which requires both a " +
+        "`query:raw` key and `ENABLE_RAW_SESSION_RETENTION`. Check each operation's " +
+        "`x-uptimizr-capability`.",
       license: { name: "Apache-2.0", identifier: "Apache-2.0" },
       contact: { name: "Uptimizr", url: "https://uptimizr.com/docs/" },
     },

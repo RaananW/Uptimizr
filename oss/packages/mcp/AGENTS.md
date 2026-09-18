@@ -21,17 +21,23 @@ UPTIMIZR_COLLECTOR_URL="https://collect.example.com" UPTIMIZR_API_KEY="utk_…" 
 
 ## Required key capability
 
-`UPTIMIZR_API_KEY` must hold the **`query`** capability — and only that. Mint one with
+`UPTIMIZR_API_KEY` must hold the **`query`** capability. Mint one with
 `uptimizr new-key <projectId> --capabilities query --label "mcp-agent"` (`query` is the default).
 `GET /api/v1/whoami` reports what a key holds, so a client can check before it registers tools; an
 authenticated key missing a capability is refused with `403`, not `401`.
 
-**`query:raw` is deliberately not needed.** Every tool here is an aggregate read; the server exposes
-no raw per-session, replay or live-follow tool, so granting its key `query:raw` widens the blast
-radius for nothing. `annotate` (metadata writes) and `ingest` are likewise never used. Prefer a
-dedicated, labelled key with its own `--rate-limit-max` / `--rate-limit-window-ms` budget: the
-collector's agent audit log records activity per key id, which is what makes an agent's reads
-reviewable.
+**`query:raw` is optional, and off by default.** Every tool in the default catalog is an aggregate
+read: there is no raw per-session, replay or live-follow tool, so a plain `query` key is all most
+deployments should grant. A key that _does_ hold `query:raw` additionally gets the
+**`session_narrative`** tool — an ordered, bounded account of what one session did — but only when
+the server was told about the capability, and only on a collector running with
+`ENABLE_RAW_SESSION_RETENTION`. `createMcpServer(client, { capabilities })` takes the set that
+`GET /api/v1/whoami` reports; the `uptimizr-mcp` binary looks it up at start-up (best effort — if
+the call fails it serves the `query` surface). Omitting the option serves the `query` surface too,
+so a tool that would always answer `403` is never advertised. `annotate` (metadata writes) and
+`ingest` are never used here. Prefer a dedicated, labelled key with its own `--rate-limit-max` /
+`--rate-limit-window-ms` budget: the collector's agent audit log records activity per key id, which
+is what makes an agent's reads reviewable.
 
 ## Tools (read-only)
 
@@ -52,6 +58,11 @@ reviewable.
 `boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
 `ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
 `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
+
+Only on a key holding `query:raw`, and only when the collector runs with
+`ENABLE_RAW_SESSION_RETENTION` (ADR 0003):
+
+`session_narrative`
 
 <!-- generated:registry-tool-names:end -->
 
@@ -134,9 +145,11 @@ Every **aggregate** tool takes a `format` argument choosing the envelope its row
 
 ## Programmatic API
 
-`readMcpConfig()`, `createMcpServer(client)`, and the shared building blocks re-exported from
+`readMcpConfig()`, `createMcpServer(client, options?)` (`options.capabilities` is the key’s
+capability set from `/api/v1/whoami`; it gates the `query:raw` tools),
+`buildCapabilities(options?)`, and the shared building blocks re-exported from
 [`@uptimizr/agent-core`](https://www.npmjs.com/package/@uptimizr/agent-core):
-`createCollectorClient(config)` and `readTools`.
+`createCollectorClient(config)`, `readTools` and `rawTools`.
 
 ## More
 

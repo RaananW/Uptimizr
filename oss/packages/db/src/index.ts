@@ -316,3 +316,11 @@ export {
 export type { ParityRow, ParityCompareOptions } from "./parity/compare.js";
 export { PARITY_CASES } from "./parity/cases.js";
 export type { ParityCase } from "./parity/cases.js";
+
+// --- Session narrative (ADR 0051 §7, design sketch §G.2) ---
+// The pure compaction of one session's raw event stream into an ordered,
+// bounded account of what it did, plus its plain-text rendering. Served by the
+// collector on `GET /api/v1/sessions/:id/narrative`, which is gated by
+// `ENABLE_RAW_SESSION_RETENTION` **and** the `query:raw` capability (ADR 0003).
+export { buildSessionNarrative, renderSessionNarrativeText } from "./narrative/index.js";
+export type { SessionNarrative, SessionNarrativeOptions } from "./narrative/index.js";

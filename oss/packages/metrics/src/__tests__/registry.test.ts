@@ -91,12 +91,15 @@ describe("metric registry — coverage", () => {
     }
   });
 
-  it("marks exactly the two store resources as builder-less", () => {
+  it("marks exactly the store resources and compactions as builder-less", () => {
+    // A builder-less entry is served by reading the store rather than by running
+    // an aggregation: the two metadata resources, plus the session narrative,
+    // which compacts the raw per-session stream in memory (ADR 0051 §7).
     const resources = allMetrics()
       .filter(isResourceMetric)
       .map((metric) => metric.id)
       .sort();
-    expect(resources).toEqual(["scene_representation", "session_meta"]);
+    expect(resources).toEqual(["scene_representation", "session_meta", "session_narrative"]);
   });
 
   it("resolves a metric from its builder name", () => {
@@ -166,9 +169,11 @@ describe("metric registry — internal consistency", () => {
 
   it("offers every aggregate endpoint the shared `format` filter", () => {
     for (const metric of metrics) {
-      // The two resource reads take no querystring at all; the daily rollups are
-      // not served on an endpoint. Everything else must accept an envelope.
-      const servedOnAQuerystring = metric.endpoint != null && metric.builder != null;
+      // The two metadata resource reads take no querystring at all; the daily
+      // rollups are not served on an endpoint. Everything that *is* served with
+      // parameters must accept an envelope — including the builder-less session
+      // narrative, whose querystring shapes the compaction (ADR 0051 §7).
+      const servedOnAQuerystring = metric.endpoint != null && metric.filters.length > 0;
       expect(
         metric.filters.includes("format"),
         `${metric.id}: format filter ${servedOnAQuerystring ? "missing" : "should not be declared"}`,
