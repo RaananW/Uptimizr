@@ -48,8 +48,13 @@ Every aggregate tool takes `format` — the envelope its rows arrive in, not a f
 
 Shares appear only where the measure can honestly be summed (an FPS or ratio metric reports
 `total: null` and no shares). Cluster coordinates are grid indices — multiply by the effective
-`cellSize` for world space. `session_meta` and `scene_representation` are stored records, not
-aggregations, and take no `format`.
+`cellSize` for world space. When the scene has a registered proxy and named regions, a world-space
+cluster is also labelled with `region` (the smallest containing region), `regions[]` (all containing
+ids), `nearestMesh` and `distance` (world units, `0` when the mesh box contains it), and
+`drill.region` becomes that region id — pass it straight back as the `region` argument. Quote the
+label rather than the coordinate; a `null` means the scene registered nothing that could answer (the
+`caveats` say which), so do not invent a landmark. `session_meta` and `scene_representation` are
+stored records, not aggregations, and take no `format`.
 
 ## Resources and prompts
 

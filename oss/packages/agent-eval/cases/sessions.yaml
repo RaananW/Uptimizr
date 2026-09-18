@@ -74,6 +74,6 @@
     scene_representation: { sceneId: lobby }
   expectedAnswer:
     numbers:
-      - { value: 3, label: registered meshes }
-    phrases: ["box", "sphere", "door"]
+      - { value: 4, label: registered meshes }
+    phrases: ["box", "sphere", "door", "plinth"]
     forbiddenPhrases: ["not found"]

@@ -51,6 +51,7 @@ import {
   weightColumn,
 } from "./columns.js";
 import { isAdditiveUnit } from "./format.js";
+import { labelClusters } from "./labels.js";
 import { readingFor, type UnreadSummary } from "./reading.js";
 import { leastSquaresSlope, trendOf, wilsonInterval, Z_95 } from "./stats.js";
 import type {
@@ -409,7 +410,7 @@ function clusterSummary(
     ctx.cellSize > 0 &&
     axes.length === 3 &&
     metric.filters.includes("region");
-  const clusters: SpatialCluster[] = result.clusters.map((cluster) => {
+  const boxed: SpatialCluster[] = result.clusters.map((cluster) => {
     if (!canDrillRegion) return cluster;
     const size = ctx.cellSize as number;
     const box = [
@@ -419,15 +420,35 @@ function clusterSummary(
     return { ...cluster, drill: { region: box.join(",") } };
   });
 
+  // Spatial labelling (ADR 0051 §2, sketch §B.2): when the collector handed us
+  // the scene's regions and proxy boxes, each hotspot is named — the region it
+  // falls in and the mesh it sits on — and a containing region upgrades the
+  // `drill.region` hint from an ad-hoc box to the region's own id.
+  const labelled =
+    ctx.scene != null && ctx.cellSize != null
+      ? labelClusters(boxed, {
+          axes: axes.map(([name]) => name),
+          cellSize: ctx.cellSize,
+          scene: ctx.scene,
+        })
+      : null;
+  const clusters = labelled?.clusters ?? boxed;
+
   const extraCaveats =
     result.occupiedCells > 0
       ? [
           `Hotspots are merged from cells at or above a density threshold of ` +
             `${result.densityThreshold} (the mean weight per occupied cell); looser cells are ` +
             "reported in `rest` rather than clustered.",
-          "Cluster coordinates are grid indices, not world coordinates — multiply by the " +
-            "effective `cellSize` to place them (ADR 0040 §1). Spatial labelling (nearest mesh, " +
-            "named region) is not part of this envelope.",
+          labelled?.labelled === true
+            ? "Cluster coordinates are grid indices, not world coordinates — multiply by the " +
+              "effective `cellSize` to place them (ADR 0040 §1). `region` / `nearestMesh` label " +
+              "each hotspot against the scene registry; `distance` is in world units and `0` " +
+              "means the mesh box contains the hotspot."
+            : "Cluster coordinates are grid indices, not world coordinates — multiply by the " +
+              "effective `cellSize` to place them (ADR 0040 §1). Spatial labelling (nearest " +
+              "mesh, named region) is not part of this envelope.",
+          ...(labelled?.caveats ?? []),
         ]
       : [];
 

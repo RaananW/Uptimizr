@@ -138,6 +138,15 @@ const clusterSummarySchema = z.object({
       weight: z.number(),
       share: z.number().nullable(),
       drill: drillSchema.optional(),
+      // Spatial labelling (ADR 0051 §2 / sketch §B.2). Optional as a group: a
+      // labelled cluster carries all four, and they are absent entirely when
+      // the grid is not world-space (viewport bins, view-direction angles) or
+      // the request selected no scene. `null` inside the group is meaningful —
+      // "the scene was checked and nothing contains this hotspot".
+      region: z.string().nullable().optional(),
+      regions: z.array(z.string()).optional(),
+      nearestMesh: z.string().nullable().optional(),
+      distance: z.number().nullable().optional(),
     }),
   ),
   rest: z.object({
