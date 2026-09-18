@@ -67,6 +67,8 @@ const DATABASE = "uptimizr_mssql_store_test";
 const available = await mssqlReachable(SETTINGS);
 
 const PID = PARITY_PROJECT_ID;
+/** A second project, so per-project isolation can be asserted. */
+const OTHER_PID = "other-project";
 const T0 = PARITY_T0;
 
 function ev(type: string, ts: number, extra: Record<string, unknown> = {}): AnyEvent {
@@ -175,12 +177,15 @@ describe.skipIf(!available)("mssql store", () => {
     );
     expect(tables.map((t) => t.table_name)).toEqual([
       "agent_audit",
+      "annotations",
       "api_keys",
       "events",
       "events_daily",
+      "glossary",
       "node_samples",
       "perf_daily",
       "projects",
+      "saved_analyses",
       "scene_regions",
       "scene_representations",
     ]);
