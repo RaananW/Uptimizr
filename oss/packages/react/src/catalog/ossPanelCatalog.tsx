@@ -607,21 +607,23 @@ export const eventVolumePanel = definePanel<EventVolumeData>({
       since = Number.isFinite(earliest) ? earliest : until - 86_400_000;
     }
     const intervalSec = pickInterval(Math.max(60_000, until - since));
-    const buckets = await ctx.api.timeseries({
-      since: range.since,
-      until: range.until,
-      scene: ctx.params.scene,
-      interval: intervalSec,
-    });
-    // Project annotations overlapping the plotted window (#310, ADR 0051 §5).
-    // A collector that does not serve them — or a key that cannot read them —
-    // simply leaves the axis unmarked; the chart is never blocked on a note.
-    // `annotations()` arrived with #310, and a host app may supply an older
-    // client of its own, so its absence means "no markers", not a failed panel.
-    const annotations =
+    // The bars and the annotation markers are fetched **in parallel**: the
+    // markers are a label on the chart, so waiting for them would delay the
+    // chart itself for no reason (#310, ADR 0051 §5). A collector that does not
+    // serve them — or a key that cannot read them — simply leaves the axis
+    // unmarked. `annotations()` arrived with #310, so a host app supplying an
+    // older client of its own means "no markers", not a failed panel.
+    const [buckets, annotations] = await Promise.all([
+      ctx.api.timeseries({
+        since: range.since,
+        until: range.until,
+        scene: ctx.params.scene,
+        interval: intervalSec,
+      }),
       typeof ctx.api.annotations === "function"
-        ? await ctx.api.annotations({ since, until, limit: 100 }).catch(() => [] as AnnotationRow[])
-        : [];
+        ? ctx.api.annotations({ since, until, limit: 100 }).catch(() => [] as AnnotationRow[])
+        : Promise.resolve([] as AnnotationRow[]),
+    ]);
     return { buckets, intervalMs: intervalSec * 1000, annotations };
   },
   render: ({ data, ctx }) => (
