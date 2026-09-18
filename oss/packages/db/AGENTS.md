@@ -196,7 +196,7 @@ runMetric: (projectId, metric, options) =>
 - **Two values must be resolved first**, by whoever has a store: a `filters.region` given as a
   registered region id (→ its bounds) and a spatial `cellSize` derived from the scene's extent. Pass
   them as the `QueryResolution` argument.
-- **The generic tier is the second compiler**, not a second _path_: `buildGenericGroupBy`
+- **The generic tier is the second compiler**, not a second _path_: `compileGenericGroupBy`
   (`query/dsl/generic.ts`) renders `SELECT <dims>, <measures> … GROUP BY <dims>` for a metric that
   declares `genericGroupBy`, at any grain it declares. Everything variable in that SQL comes from
   registry data — the event types, the scope predicate, the measures, each dimension's expression —

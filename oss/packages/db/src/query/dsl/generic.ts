@@ -46,6 +46,15 @@
  * latter (the mssql dialect rewrites it, but not relying on the rewrite is
  * cheaper than relying on it).
  *
+ * ## Why it is not called `build*`
+ *
+ * Every `build*` export of this package is a dialect-agnostic aggregation with
+ * the signature `(projectId, opts, dialect)`, and the optional stores' suites
+ * enumerate them by that prefix to run each one against DuckDB. This one takes a
+ * `MetricDefinition` first, because the metric *is* its configuration — so it is
+ * a `compile*`, next to `compileMetric` and `compileQuery`, and the prefix keeps
+ * meaning what it has always meant.
+ *
  * The one session attribute deliberately left out is `device.isMobile`: it is a
  * boolean, and a group-by on it would key rows by `"true"` on one engine and `1`
  * on another. `GENERIC_DIMENSIONS` in the registry says so, and `validateQuery`
@@ -350,7 +359,7 @@ function sessionAttributes(
  * already checked that, and `validateQuery` before it, so the throw below guards
  * a programming error rather than a client one.
  */
-export function buildGenericGroupBy(
+export function compileGenericGroupBy(
   metric: MetricDefinition,
   projectId: string,
   opts: GenericQueryOptions,

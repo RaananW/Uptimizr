@@ -184,7 +184,7 @@ export {
   DEFAULT_ALPHA,
   ORDER_AFTER_CAP_CAVEAT,
   applyOrder,
-  buildGenericGroupBy,
+  compileGenericGroupBy,
   builderFor,
   cameraTypeForMode,
   channelRows,

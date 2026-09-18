@@ -18,7 +18,7 @@ export { builderFor } from "./builders.js";
 export type { AggregationBuilder } from "./builders.js";
 export { cameraTypeForMode, compileMetric, compileQuery, toBuilderOptions } from "./compile.js";
 export type { MetricQueryOptions, QueryResolution } from "./compile.js";
-export { buildGenericGroupBy, genericResultColumns } from "./generic.js";
+export { compileGenericGroupBy, genericResultColumns } from "./generic.js";
 export type { GenericDeviceFilter, GenericEventPredicate, GenericQueryOptions } from "./generic.js";
 export { compareRows, comparisonKeys, summarizeComparison } from "./compare.js";
 export type {

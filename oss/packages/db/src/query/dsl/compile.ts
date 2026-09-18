@@ -39,7 +39,7 @@ import type { QueryV1 } from "@uptimizr/schema";
 import type { Dialect } from "../dialect.js";
 import type { QuerySpec, WorldAabb } from "../types.js";
 import { builderFor } from "./builders.js";
-import { buildGenericGroupBy, type GenericQueryOptions } from "./generic.js";
+import { compileGenericGroupBy, type GenericQueryOptions } from "./generic.js";
 
 /**
  * The option bag an aggregation builder takes, assembled from a query. Loosely
@@ -201,7 +201,7 @@ export function compileMetric(
   // calling `runMetric` with a plain option bag therefore keeps the delegated
   // behaviour it has always had.
   if (options.tier === "generic") {
-    return buildGenericGroupBy(
+    return compileGenericGroupBy(
       definition,
       projectId,
       options as unknown as GenericQueryOptions,

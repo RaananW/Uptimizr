@@ -24,7 +24,7 @@ import { postgresDialect } from "../query/postgresDialect.js";
 import { mssqlDialect } from "../query/mssqlDialect.js";
 import type { Dialect } from "../query/dialect.js";
 import { compileQuery, toBuilderOptions } from "../query/dsl/compile.js";
-import { buildGenericGroupBy, genericResultColumns } from "../query/dsl/generic.js";
+import { compileGenericGroupBy, genericResultColumns } from "../query/dsl/generic.js";
 import { compareRows, comparisonKeys, summarizeComparison } from "../query/dsl/compare.js";
 import { explainSpec, planWarnings, silentChannels, channelRows } from "../query/dsl/explain.js";
 import { ORDER_AFTER_CAP_CAVEAT, applyOrder, reordersCappedResult } from "../query/dsl/order.js";
@@ -188,7 +188,7 @@ describe("the generic group-by compiler", () => {
 
   it("refuses to compile a metric that declares no generic tier", () => {
     const metric = getMetric("pointer_heatmap") as MetricDefinition;
-    expect(() => buildGenericGroupBy(metric, PID, {}, duckdbDialect)).toThrow(
+    expect(() => compileGenericGroupBy(metric, PID, {}, duckdbDialect)).toThrow(
       /declares no genericGroupBy/,
     );
   });
