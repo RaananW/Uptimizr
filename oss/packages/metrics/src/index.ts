@@ -57,3 +57,18 @@ export type {
   NoUnregisteredAggregations,
   UnregisteredAggregation,
 } from "./registry.js";
+
+// --- Result envelopes (ADR 0051 §2) ---
+// The Zod mirrors of `format=full | table | summary`. They live here, next to
+// the row schemas they wrap, so the collector (`@uptimizr/db`), the generated
+// tool catalog (`@uptimizr/agent-core`) and the MCP server can all describe the
+// same three shapes without any of them depending on the others. The summariser
+// that *builds* an envelope stays in `@uptimizr/db/summary` (#337).
+export {
+  resultEnvelopeSchema,
+  resultFormatSchema,
+  structuredEnvelopeSchema,
+  summaryEnvelopeSchema,
+  tableEnvelopeSchema,
+  tableMetaSchema,
+} from "./envelopes.js";

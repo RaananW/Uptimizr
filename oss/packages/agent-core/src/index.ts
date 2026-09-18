@@ -15,7 +15,12 @@ export {
   type ReadToolRequest,
   type ReadToolSetKind,
 } from "./tools.js";
-export { registryToTools, metricToTool, describeMetric } from "./registryTools.js";
+export {
+  registryToTools,
+  metricToTool,
+  describeMetric,
+  DEFAULT_TOOL_FORMAT,
+} from "./registryTools.js";
 export type {
   AgentMessage,
   AgentToolCall,

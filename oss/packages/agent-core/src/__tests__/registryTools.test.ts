@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { allMetrics, getMetric, type MetricDefinition } from "@uptimizr/metrics";
-import { describeMetric, metricToTool, registryToTools } from "../registryTools.js";
+import {
+  DEFAULT_TOOL_FORMAT,
+  describeMetric,
+  metricToTool,
+  registryToTools,
+} from "../registryTools.js";
 
 const tools = registryToTools();
 const byName = (name: string) => {
@@ -67,9 +72,10 @@ describe("registryToTools", () => {
   it("gives every tool an output schema derived from the registry row", () => {
     for (const tool of tools) {
       expect(tool.outputSchema, tool.name).toBeDefined();
-      expect(Object.keys(tool.outputSchema ?? {})).toEqual(["rows"]);
+      // One object schema per tool: what an MCP output schema has to be.
+      expect(z.toJSONSchema(tool.outputSchema!).type, tool.name).toBe("object");
     }
-    const schema = z.object(byName("top_meshes").outputSchema ?? {});
+    const schema = byName("top_meshes").outputSchema!;
     expect(schema.parse({ rows: [{ mesh: "buy", count: 12 }] })).toEqual({
       rows: [{ mesh: "buy", count: 12 }],
     });
@@ -81,9 +87,9 @@ describe("registryToTools", () => {
   });
 
   it("keeps unknown columns rather than silently dropping them", () => {
-    const parsed = z
-      .object(byName("world_heatmap_stats").outputSchema ?? {})
-      .parse({ rows: [{ cells: 3, hits: 9, cellSize: 0.5 }] });
+    const parsed = byName("world_heatmap_stats").outputSchema!.parse({
+      rows: [{ cells: 3, hits: 9, cellSize: 0.5 }],
+    });
     expect(parsed).toEqual({ rows: [{ cells: 3, hits: 9, cellSize: 0.5 }] });
   });
 
@@ -158,5 +164,61 @@ describe("describeMetric", () => {
     expect(text).toContain("How to read it:");
     expect(text).toContain("Caveats:");
     expect(text.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(metric.caveats.length);
+  });
+});
+
+describe("result envelopes", () => {
+  const meta = {
+    metric: "top_meshes",
+    range: { since: 1, until: 2 },
+    filters: { scene: "lobby" },
+    sampleSize: { sessions: null, events: 18 },
+    rows: 1,
+    truncated: false,
+    limits: { maxRows: 1000, maxSummaryRows: 10 },
+  };
+  const rows = [{ mesh: "buy", count: 12 }];
+
+  it("advertises all three envelopes for a tool that honours format", () => {
+    // #350: the tool used to advertise `{ rows }` only, so an MCP client
+    // rejected the `table` and `summary` results the guides tell agents to ask
+    // for. All three now validate against the one advertised schema.
+    const schema = byName("top_meshes").outputSchema!;
+    expect(schema.parse({ rows })).toEqual({ rows });
+    expect(schema.parse({ meta, rows })).toEqual({ meta, rows });
+    const summary = {
+      kind: "ranked",
+      metric: "top_meshes",
+      range: { since: 1, until: 2 },
+      filters: {},
+      sampleSize: { sessions: null, events: 18 },
+      total: 18,
+      measure: { column: "count", unit: "count", additive: true },
+      top: [{ label: "buy", value: 12, share: 0.667 }],
+      rest: { rows: 1, value: 6, share: 0.333 },
+      reading: "Most-interacted meshes: buy leads on count with 12 (66.7% of 18).",
+      caveats: [],
+    };
+    expect(schema.parse(summary)).toMatchObject({ kind: "ranked" });
+  });
+
+  it("leaves a resource read's schema at the rows envelope it shipped with", () => {
+    // `session_meta` and `scene_representation` declare no `format`: a stored
+    // record has nothing to summarise, so their schema must not widen.
+    const schema = byName("session_meta").outputSchema!;
+    expect(Object.keys(z.toJSONSchema(schema).properties ?? {})).toEqual(["rows"]);
+  });
+
+  it("asks for the table envelope by default and lets a caller choose another", () => {
+    expect(byName("top_meshes").buildRequest({}).params.format).toBe(DEFAULT_TOOL_FORMAT);
+    expect(byName("top_meshes").buildRequest({ format: "summary" }).params.format).toBe("summary");
+    expect(byName("top_meshes").buildRequest({ format: "full" }).params.format).toBe("full");
+  });
+
+  it("never sends format to an endpoint that does not accept it", () => {
+    expect(byName("session_meta").buildRequest({ sessionId: "s1" }).params.format).toBeUndefined();
+    expect(
+      byName("scene_representation").buildRequest({ sceneId: "lobby" }).params.format,
+    ).toBeUndefined();
   });
 });

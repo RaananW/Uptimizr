@@ -500,3 +500,102 @@ describe("useAssistant", () => {
     expect(result.current.notice).toBeNull();
   });
 });
+
+describe("useAssistant result envelopes", () => {
+  /** A `format=table` envelope with `rows` generated rows, as the collector sends it. */
+  function tableEnvelope(rows: number): Record<string, unknown> {
+    return {
+      meta: {
+        metric: "top_meshes",
+        range: { since: 1, until: 2 },
+        filters: { since: 1, until: 2 },
+        sampleSize: { sessions: null, events: rows },
+        rows,
+        truncated: false,
+        limits: { maxRows: 1000, maxSummaryRows: 10 },
+      },
+      rows: Array.from({ length: rows }, (_, i) => ({ mesh: `mesh_${i}`, count: rows - i })),
+    };
+  }
+
+  it("asks for the table envelope by default, so the model sees the meta block", async () => {
+    // #336: the generated tools apply `format=table` themselves, so the
+    // assistant's reads carry it without the model having to name it.
+    nextProvider = scriptedProvider([
+      { kind: "tool_calls", toolCalls: [{ id: "t1", name: "top_meshes", arguments: {} }] },
+      { kind: "final", content: "statue leads." },
+    ]);
+    const api = fakeApi(tableEnvelope(2));
+    const { result } = renderHook(() => useAssistant({ api, backend: HOSTED }));
+
+    await act(async () => {
+      await result.current.send("top meshes?");
+    });
+
+    expect(api.read).toHaveBeenCalledWith(
+      "api/v1/meshes/top",
+      expect.objectContaining({ format: "table" }),
+    );
+    const toolTurn = result.current.messages.find((m) => m.role === "tool");
+    const payload = JSON.parse(toolTurn!.content) as { meta: { rows: number }; rows: unknown[] };
+    // The envelope reaches the transcript whole: the model is told how many rows
+    // it is looking at and whether the cap truncated them, instead of having to
+    // infer it from a bare array.
+    expect(payload.meta.rows).toBe(2);
+    expect(payload.rows).toHaveLength(2);
+  });
+
+  it("carries a summary digest into the transcript unchanged", async () => {
+    const summary = {
+      kind: "ranked",
+      metric: "top_meshes",
+      range: { since: 1, until: 2 },
+      filters: {},
+      sampleSize: { sessions: null, events: 17 },
+      total: 17,
+      measure: { column: "count", unit: "count", additive: true },
+      top: [{ label: "statue", value: 4, share: 0.235 }],
+      rest: { rows: 6, value: 13, share: 0.765 },
+      reading: "Most-interacted meshes: statue leads on count with 4 (23.5% of 17).",
+      caveats: [],
+    };
+    nextProvider = scriptedProvider([
+      {
+        kind: "tool_calls",
+        toolCalls: [{ id: "t1", name: "top_meshes", arguments: { format: "summary" } }],
+      },
+      { kind: "final", content: "statue leads with 23.5%." },
+    ]);
+    const api = fakeApi(summary);
+    const { result } = renderHook(() => useAssistant({ api, backend: HOSTED }));
+
+    await act(async () => {
+      await result.current.send("summarise mesh interaction");
+    });
+
+    expect(api.read).toHaveBeenCalledWith(
+      "api/v1/meshes/top",
+      expect.objectContaining({ format: "summary" }),
+    );
+    const toolTurn = result.current.messages.find((m) => m.role === "tool");
+    expect(toolTurn!.content).toContain("statue leads on count");
+    expect(JSON.parse(toolTurn!.content)).toMatchObject({ kind: "ranked" });
+  });
+
+  it("keeps the table envelope's overhead constant, not proportional to the rows", () => {
+    // Tool results are stringified into the transcript, which is the whole
+    // context budget of a 4-bit local model. `table` costs a fixed `meta` block
+    // — it does NOT scale with the result — while `summary` is the one that is
+    // actually bounded (capped at the metric's `maxSummaryRows`). Measured here
+    // so the claim in the guides stays true.
+    const small = tableEnvelope(5);
+    const large = tableEnvelope(500);
+    const overhead = (envelope: Record<string, unknown>) =>
+      JSON.stringify(envelope).length - JSON.stringify(envelope.rows).length;
+    // Identical but for the digits of the row count itself.
+    expect(Math.abs(overhead(large) - overhead(small))).toBeLessThan(10);
+    expect(overhead(large)).toBeLessThan(250);
+    // And the digest a model should ask for instead of 500 rows.
+    expect(JSON.stringify(large).length).toBeGreaterThan(10_000);
+  });
+});

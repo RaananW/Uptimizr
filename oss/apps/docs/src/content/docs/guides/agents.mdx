@@ -24,7 +24,8 @@ This page is the map. Each section links to the reference for that piece.
 		[in-browser assistant](/docs/guides/assistant/).
 	</Card>
 	<Card title="Ask for `format=summary`" icon="seti:json">
-		Bounded digests with shares, caveats and a templated reading — not a thousand raw rows.
+		Bounded digests with shares, caveats and a templated reading — not a thousand raw rows. Tools
+		default to the `table` envelope.
 	</Card>
 	<Card title="Scope the key" icon="approve-check">
 		A labelled `query`-only key, its own rate budget, and every request in the audit log.
@@ -97,7 +98,8 @@ npx @uptimizr/mcp
 ```
 
 Every registry metric with an endpoint becomes a typed, `GET`-only tool carrying that metric's
-interpretation and caveats in its description and an MCP `outputSchema` for its rows. There are no
+interpretation and caveats in its description and an MCP `outputSchema` covering every envelope it
+can answer with — its rows, the `table` envelope around them, a `summary` digest. There are no
 ingestion, mutation or raw-event tools. It also ships three curated prompts —
 `weekly_scene_health`, `attention_hotspots`, `xr_comfort_review` — that sequence the tools for a
 common investigation. See the [MCP guide](/docs/guides/mcp/).
@@ -124,12 +126,14 @@ Nothing stops an agent framework from calling the [query API](/docs/api/query/) 
 The single highest-leverage habit: **pass `format=summary`**.
 
 Every aggregate endpoint — and every generated aggregate tool — accepts
-`format=full | table | summary`. It filters nothing; it picks the envelope the rows arrive in.
+`format=full | table | summary`. It filters nothing; it picks the envelope the rows arrive in. The
+HTTP endpoint defaults to `full` (what the dashboard uses); the generated **tools** default to
+`table`, which they send explicitly.
 
 | `format`  | What comes back                                                                                                                               |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `full`    | The bare rows, unchanged. Today's default (what the dashboard uses).                                                                          |
-| `table`   | `{ meta, rows }` — the rows plus the metric, range, applied filters, sample size, row count, a truncation flag and the registry's limits.      |
+| `full`    | The bare rows, unchanged. The HTTP endpoint default (what the dashboard uses).                                                                |
+| `table`   | `{ meta, rows }` — the rows plus the metric, range, applied filters, sample size, row count, a truncation flag and the registry's limits. **The tools' default.** |
 | `summary` | A bounded digest: `ranked` top rows, a `series` trend, merged spatial `clusters` or a single `record`, with shares, a sample size, the metric's caveats and a templated `reading` sentence. |
 
 `summary` is capped at the metric's `maxSummaryRows`, so a 500-bin heatmap costs the same as a 5-bin
@@ -138,8 +142,9 @@ one. The `reading` sentence and the caveats are templated from the registry's co
 appear only where the measure can honestly be summed. Full details and an example payload:
 [result formats](/docs/api/query/#result-formats).
 
-Switching the generated tool catalog's default away from `full` is tracked as
-[#336](https://github.com/RaananW/Uptimizr/issues/336); until then, pass `format` explicitly.
+A tool that is asked for no `format` asks the collector for `table`, so a model always gets the
+`meta` context with its rows; `summary` is still the one to ask for when the result could be big,
+and all three validate against the tool's advertised output schema.
 
 ## 5. Give answers a vocabulary for *where*
 

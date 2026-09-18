@@ -78,8 +78,9 @@ For **GitHub Copilot CLI**, put the same entry in `~/.copilot/mcp-config.json` w
 The catalog is **generated from the semantic metric registry** in `@uptimizr/metrics` (ADR 0051 §1):
 every aggregation the collector serves on a read endpoint is a tool — **69** of them. Each tool's
 description carries the metric's interpretation notes and caveats, and each declares an MCP
-`outputSchema` for the rows it returns (results come back as both `content` text and
-`structuredContent`).
+`outputSchema` covering every `format` envelope it can answer with — the rows, the `table`
+envelope around them (the tools' default), or a `summary` digest. Results come back as both
+`content` text and `structuredContent`.
 
 The table is **generated** from the collector's semantic metric registry (ADR 0051) — one row per
 registered read metric. Read `uptimizr://capabilities` for each one's result grain, column units,

@@ -11,6 +11,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CollectorClient, QueryParams } from "@uptimizr/agent-core";
 import { readTools } from "@uptimizr/agent-core";
+import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMcpServer } from "../server.js";
 
@@ -56,9 +57,20 @@ describe("tools/list", () => {
     expect(tools.length).toBeGreaterThanOrEqual(69);
     for (const tool of tools) {
       expect(tool.inputSchema.type).toBe("object");
-      expect(tool.outputSchema?.type).toBe("object");
-      expect(Object.keys(tool.outputSchema?.properties ?? {})).toEqual(["rows"]);
+      // MCP output schemas must be objects — the SDK drops anything else, so a
+      // union of the three envelopes is advertised in its merged object form.
+      expect(tool.outputSchema?.type, tool.name).toBe("object");
+      const properties = Object.keys(tool.outputSchema?.properties ?? {});
+      expect(properties, tool.name).toContain("rows");
       expect(tool.description).toContain("Caveats:");
+      const metric = metricOf(tool.name);
+      if (metric.filters.includes("format")) {
+        // Every envelope the tool can answer with is described (#350).
+        expect(properties, tool.name).toEqual(expect.arrayContaining(["meta", "kind", "reading"]));
+      } else {
+        // A resource read takes no `format`, so its schema is unchanged.
+        expect(properties, tool.name).toEqual(["rows"]);
+      }
     }
   });
 
@@ -84,10 +96,19 @@ describe("tools/call", () => {
       name: "top_meshes",
       arguments: { since: 1, limit: 5 },
     });
+    // `format` defaults to `table` in the tool schema (#336) and travels
+    // explicitly on the wire, so the collector default stays `full`.
     expect(requests).toEqual([
       {
         path: "api/v1/meshes/top",
-        params: { since: 1, until: undefined, bins: undefined, limit: 5, session: undefined },
+        params: {
+          since: 1,
+          until: undefined,
+          bins: undefined,
+          limit: 5,
+          session: undefined,
+          format: "table",
+        },
       },
     ]);
     expect(result.structuredContent).toEqual({ rows: [{ mesh: "buy", count: 12 }] });
@@ -155,5 +176,175 @@ describe("tools/call", () => {
     const result = await client.callTool({ name: "list_scenes", arguments: {} });
     expect(result.isError).toBe(true);
     expect((result.content as { text: string }[])[0]?.text).toContain("collector unavailable");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Result envelopes (#350 / #336)
+// ---------------------------------------------------------------------------
+
+const METRICS = new Map<string, MetricDefinition>(allMetrics().map((m) => [m.id, m]));
+
+function metricOf(name: string): MetricDefinition {
+  const metric = METRICS.get(name);
+  if (!metric) throw new Error(`no registry metric for tool '${name}'`);
+  return metric;
+}
+
+/**
+ * The arguments a tool declares **required** — the two the collector requires in
+ * its querystring, plus the two path parameters. Everything else is optional, so
+ * a call can be made with nothing but the format under test.
+ */
+const REQUIRED_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
+  funnel: { steps: '[{"type":"scene_change","to":"lobby"}]' },
+  mesh_uv_heatmap: { mesh: "box" },
+  session_meta: { sessionId: "s1" },
+  session_trajectory: { sessionId: "s4" },
+  scene_representation: { sceneId: "lobby" },
+};
+
+/**
+ * One row of a metric with every column `null`. The generated row schema makes
+ * every column nullable (an aggregate over an empty window really does project
+ * SQL `NULL`), so this is a valid row for *every* metric in the registry — which
+ * is what lets one loop check all 69 row schemas against all three envelopes
+ * without inventing 69 sets of plausible values.
+ */
+function nullRow(metric: MetricDefinition): Record<string, unknown> {
+  return Object.fromEntries(Object.keys(metric.row.shape).map((column) => [column, null]));
+}
+
+/** What the collector answers with for `format=table`. */
+function tableEnvelope(metric: MetricDefinition, rows: readonly unknown[]): unknown {
+  return {
+    meta: {
+      metric: metric.id,
+      range: { since: 1, until: 2 },
+      filters: { since: 1, until: 2 },
+      sampleSize: { sessions: null, events: 3 },
+      rows: rows.length,
+      truncated: false,
+      limits: metric.limits,
+    },
+    rows,
+  };
+}
+
+/** What the collector answers with for `format=summary` (the `ranked` grain). */
+function summaryEnvelope(metric: MetricDefinition): unknown {
+  return {
+    kind: "ranked",
+    metric: metric.id,
+    range: { since: 1, until: 2 },
+    filters: { since: 1, until: 2 },
+    sampleSize: { sessions: null, events: 3 },
+    total: 3,
+    measure: { column: "count", unit: "count", additive: true },
+    confidence: { kind: "wilson", level: 0.95, note: "95% Wilson interval." },
+    top: [
+      {
+        label: "buy",
+        value: 2,
+        share: 0.666,
+        shareInterval: { low: 0.2, high: 0.94 },
+        drill: { mesh: "buy" },
+      },
+    ],
+    rest: { rows: 1, value: 1, share: 0.333 },
+    reading: `${metric.title}: buy leads with 2 (66.6% of 3).`,
+    caveats: metric.caveats,
+  };
+}
+
+describe("result envelopes", () => {
+  it("accepts all three formats for every generated tool", async () => {
+    for (const tool of readTools) {
+      const metric = metricOf(tool.name);
+      const args = { ...(REQUIRED_ARGS[tool.name] ?? {}) };
+      const row = nullRow(metric);
+
+      respond = () => [row];
+      const full = await client.callTool({
+        name: tool.name,
+        arguments: { ...args, format: "full" },
+      });
+      expect(full.isError, `${tool.name} format=full`).toBeFalsy();
+      expect(full.structuredContent, tool.name).toEqual({ rows: [row] });
+
+      // The two resource reads declare no `format` — the argument is rejected
+      // by the input schema rather than silently ignored.
+      if (!metric.filters.includes("format")) continue;
+
+      respond = () => tableEnvelope(metric, [row]);
+      const table = await client.callTool({
+        name: tool.name,
+        arguments: { ...args, format: "table" },
+      });
+      expect(table.isError, `${tool.name} format=table`).toBeFalsy();
+      expect(table.structuredContent, tool.name).toEqual(tableEnvelope(metric, [row]));
+
+      respond = () => summaryEnvelope(metric);
+      const summary = await client.callTool({
+        name: tool.name,
+        arguments: { ...args, format: "summary" },
+      });
+      expect(summary.isError, `${tool.name} format=summary`).toBeFalsy();
+      expect((summary.structuredContent as { kind: string }).kind, tool.name).toBe("ranked");
+      expect((summary.structuredContent as { reading: string }).reading, tool.name).toContain(
+        metric.title,
+      );
+    }
+  }, 120_000);
+
+  it("defaults to the table envelope when the caller omits format (#336)", async () => {
+    const metric = metricOf("top_meshes");
+    respond = () => tableEnvelope(metric, [{ mesh: "buy", count: 12 }]);
+    const result = await client.callTool({ name: "top_meshes", arguments: {} });
+    expect(requests[0]?.params.format).toBe("table");
+    expect(result.isError).toBeFalsy();
+    const structured = result.structuredContent as { meta: { rows: number }; rows: unknown[] };
+    expect(structured.meta.rows).toBe(1);
+    expect(structured.rows).toEqual([{ mesh: "buy", count: 12 }]);
+  });
+
+  it("keeps the summary digest whole rather than stripping it to rows", async () => {
+    // The regression #350 reported: the tool advertised `{ rows }` only, so the
+    // SDK rejected the summary envelope with -32602 before a client ever saw it.
+    const metric = metricOf("top_meshes");
+    respond = () => summaryEnvelope(metric);
+    const result = await client.callTool({
+      name: "top_meshes",
+      arguments: { format: "summary" },
+    });
+    expect(result.isError).toBeFalsy();
+    const structured = result.structuredContent as {
+      kind: string;
+      top: { label: string }[];
+      reading: string;
+    };
+    expect(structured.kind).toBe("ranked");
+    expect(structured.top[0]?.label).toBe("buy");
+    expect(structured.reading).toContain("buy leads");
+  });
+
+  it("still wraps rows from an older collector that ignores format", async () => {
+    // A published client pointed at a collector from before ADR 0051 §2 asks for
+    // `table` and gets the bare rows back. That is not an envelope, so it is
+    // reported as `{ rows }` — the tool keeps working instead of failing output
+    // validation on a payload the collector never promised.
+    respond = () => [{ mesh: "buy", count: 12 }];
+    const result = await client.callTool({ name: "top_meshes", arguments: { format: "table" } });
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({ rows: [{ mesh: "buy", count: 12 }] });
+  });
+
+  it("rejects a malformed envelope instead of passing it off as a result", async () => {
+    // `meta.rows` is the row count, not the rows; a collector that sends the
+    // wrong shape is reported by name rather than silently accepted.
+    respond = () => ({ meta: { metric: "top_meshes", rows: "many" }, rows: [] });
+    const result = await client.callTool({ name: "top_meshes", arguments: { format: "table" } });
+    expect(result.isError).toBe(true);
+    expect((result.content as { text: string }[])[0]?.text).toContain("meta");
   });
 });

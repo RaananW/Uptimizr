@@ -74,3 +74,39 @@
       - { value: 2500, label: statue dwell ms }
     phrases: ["statue"]
     forbiddenPhrases: ["no data"]
+
+# --- format=summary (#336) --------------------------------------------------
+# The bounded digest is what the guides tell an agent to reach for, and what the
+# tools' own `format` argument now names alongside `table` (the default) and
+# `full`. These cases assert the envelope itself arrives intact — the templated
+# `reading` sentence, the ranked `top` rows and the merged spatial clusters —
+# rather than only the rows underneath it.
+
+- id: attention_top_meshes_summary
+  category: attention
+  question: Summarise mesh interaction as a bounded digest — which mesh leads, what share of interactions it holds, and how many events back the answer.
+  expectedTools:
+    - [top_meshes]
+  expectedArgs:
+    top_meshes: { format: summary }
+  expectedAnswer:
+    numbers:
+      - { value: 4, label: interactions on the leading mesh }
+      - { value: 17, label: events behind the digest }
+    phrases: ["ranked", "statue leads on count", "sample: 17 events"]
+    forbiddenPhrases: ["no data"]
+
+- id: attention_world_hotspots_summary
+  category: attention
+  question: Give me the world-space attention hotspots as a digest rather than a voxel dump — how many hotspots, how many occupied voxels, and how much of the attention the densest one holds.
+  expectedTools:
+    - [world_heatmap]
+  expectedArgs:
+    world_heatmap: { format: summary }
+  expectedAnswer:
+    numbers:
+      - { value: 3, label: occupied voxels }
+      - { value: 5, label: hits in the densest hotspot }
+      - { value: 7, label: events behind the digest }
+    phrases: ["clusters", "1 hotspot over 3 occupied voxels"]
+    forbiddenPhrases: ["no data"]

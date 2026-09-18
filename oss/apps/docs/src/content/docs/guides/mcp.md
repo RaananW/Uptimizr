@@ -146,8 +146,9 @@ The catalog is **generated from the semantic metric registry** in `@uptimizr/met
 every aggregation the collector serves on a read endpoint is a tool — **69** of them — so an agent
 sees the whole read surface rather than a hand-picked subset. Each tool's description carries the
 metric's interpretation notes and caveats (sample-size warnings, which capture channel has to be
-enabled), and each declares an MCP **output schema** describing the rows it returns, so a client can
-parse a result without guessing.
+enabled), and each declares an MCP **output schema** covering every envelope the tool can answer
+with — the rows, the `table` envelope around them, or a `summary` digest — so a client can parse a
+result without guessing and validate it without the `format` it asked for being rejected.
 
 Most tools accept an optional time range (`since` / `until`, epoch ms) plus the filters their
 endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, `cameraMode`,
@@ -160,31 +161,35 @@ descriptions honest — every metric the collector serves has at least one quest
 measured on. The harness lives in the repository at
 [`oss/packages/agent-eval`](https://github.com/RaananW/Uptimizr/tree/main/oss/packages/agent-eval).
 
-### Result formats — pass `format=summary`
+### Result formats — the tools default to `table`
 
-By default a tool returns the endpoint's rows as they are. For a large result — a 500-bin heatmap, a
-voxel cloud, a thousand-row list — that is token-expensive and hard for a model to read, so **every
-generated aggregate tool accepts a `format` argument** that picks the envelope the rows arrive in
+For a large result — a 500-bin heatmap, a voxel cloud, a thousand-row list — bare rows are
+token-expensive and hard for a model to read, so **every generated aggregate tool accepts a `format`
+argument** that picks the envelope the rows arrive in
 ([result formats](/docs/api/query/#result-formats)):
 
-| `format`  | What the tool returns                                                                                                                                        |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `full`    | The bare rows. **Today's default**, so the dashboard is unaffected.                                                                                          |
-| `table`   | `{ meta, rows }` — the same rows plus the metric, range, applied filters, sample size, row count, whether the cap truncated them, and the registry's limits. |
-| `summary` | A bounded digest: top rows, a trend or merged spatial clusters, with shares, a sample size, the metric's caveats and a templated `reading` sentence.         |
+| `format`  | What the tool returns                                                                                                                                                                |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `table`   | **The tools' default.** `{ meta, rows }` — the same rows plus the metric, range, applied filters, sample size, row count, whether the cap truncated them, and the registry's limits. |
+| `summary` | A bounded digest: top rows, a trend or merged spatial clusters, with shares, a sample size, the metric's caveats and a templated `reading` sentence.                                 |
+| `full`    | The bare rows, and nothing else.                                                                                                                                                     |
 
-**Prefer `format=summary` for agent work.** It is capped at the metric's `maxSummaryRows`, so a
-500-bin heatmap costs the same as a 5-bin one, and the `reading` sentence and `caveats` come from
-the metric registry by pure code — no model is involved, so the same rows always produce the same
-words. Reach for `format=table` when you want every row but also need the sample size and the
-truncation flag to judge how much to trust them, and `full` when you are post-processing the rows
-yourself. Narrowing with `limit`, `scene` and a tight `since`/`until` still helps on top of any
-format.
+Omit `format` and you get `table`: the same rows you always got, plus the context to judge them —
+which metric answered, over what range, with which filters, and whether the row cap truncated the
+result. (The HTTP endpoints still default to `full`, so the dashboard is unaffected; the default is
+the _tool's_, and it travels as an explicit `format=table` on the wire.)
 
-The two single-record reads (`session_meta`, `scene_representation`) are stored resources rather
-than aggregations, so they take no `format`. Switching the generated catalog's **default** away from
-`full` is a separate, deliberate change — see
-[#336](https://github.com/RaananW/Uptimizr/issues/336); until it lands, pass `format` explicitly.
+**Reach for `format=summary` whenever the result could be large.** It is capped at the metric's
+`maxSummaryRows`, so a 500-bin heatmap costs the same as a 5-bin one, and the `reading` sentence and
+`caveats` come from the metric registry by pure code — no model is involved, so the same rows always
+produce the same words. Ask for `full` when you are post-processing the rows yourself and already
+know the sample is adequate. Narrowing with `limit`, `scene` and a tight `since`/`until` still helps
+on top of any format.
+
+All three validate against the tool's advertised output schema, so a client that checks
+`structuredContent` against `tools/list` accepts whichever one you asked for. The two single-record
+reads (`session_meta`, `scene_representation`) are stored resources rather than aggregations, so
+they take no `format` and always answer with their `{ rows }` envelope.
 
 ### Tool catalog
 

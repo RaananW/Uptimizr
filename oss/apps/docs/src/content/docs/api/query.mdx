@@ -14,9 +14,13 @@ picks the envelope the rows arrive in.
 
 | `format`  | Response                                                                                                                                   |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `full`    | **Default.** The bare rows, unchanged. What the dashboard uses.                                                                              |
-| `table`   | `{ meta, rows }` — the same rows plus the metric, range, applied filters, sample size, row count, whether the cap truncated them, and limits. |
+| `full`    | **The endpoint default.** The bare rows, unchanged. What the dashboard uses.                                                                 |
+| `table`   | **The agent tools' default.** `{ meta, rows }` — the same rows plus the metric, range, applied filters, sample size, row count, whether the cap truncated them, and limits. |
 | `summary` | A bounded digest: top rows, a trend or spatial clusters, with shares, a sample size, a templated `reading` sentence and the metric's caveats. |
+
+The generated agent tools (`@uptimizr/agent-core`, `@uptimizr/mcp`) send `format=table` when the
+caller names none, so a model gets the `meta` context with its rows; the endpoint itself still
+defaults to `full` for every other client.
 
 `summary` is the one to use from an assistant or an MCP client: it is capped at the metric's
 `maxSummaryRows`, so a 500-bin heatmap costs the same as a 5-bin one. Its shape follows what one row

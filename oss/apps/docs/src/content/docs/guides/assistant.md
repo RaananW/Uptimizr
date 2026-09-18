@@ -142,16 +142,17 @@ The assistant is tuned for that reality:
   top meshes this week?"_, _"How's my average FPS?"_) in the empty conversation; each maps to a
   single core tool. Clicking one sends it — a reliable first-run path that also demonstrates the
   agent working.
-- **Keep tool results small — pass `format=summary`.** By default a tool hands the model the
-  endpoint's rows as they are, and a big heatmap can fill a local model's whole context on its own.
-  Every generated aggregate tool takes a `format` argument
+- **Keep tool results small — pass `format=summary`.** A tool hands the model every row it asked
+  for, and a big heatmap can fill a local model's whole context on its own. Every generated
+  aggregate tool takes a `format` argument
   ([result formats](/docs/api/query/#result-formats)): `summary` returns a bounded digest — top
   rows, a trend or merged spatial clusters, with shares, the metric's caveats and a templated
   `reading` sentence — capped at the metric's `maxSummaryRows`, so a 500-bin heatmap costs the same
-  as a 5-bin one. `table` keeps every row but adds the sample size and a truncation flag. Prefer
-  questions that map to a small result and pass `limit` / `scene` / a tight range as well. `full`
-  (the bare rows) is still the catalog default, so pass `format` explicitly until the default flips
-  ([#336](https://github.com/RaananW/Uptimizr/issues/336)).
+  as a 5-bin one. The tools default to `table`, which keeps every row and adds the `meta` block
+  (metric, range, applied filters, sample size, row count, truncation flag) so the model can tell
+  what it is looking at; that envelope costs a fixed ~200 characters, it does **not** bound the
+  result, so ask for `summary` when the answer could be large. Prefer questions that map to a small
+  result and pass `limit` / `scene` / a tight range as well.
 - **An evaluated tool catalog.** The tools the assistant hands your model are not just generated —
   they are measured. A bank of ~48 real analytics questions is run against a deterministic fixture
   set through this same catalog whenever it changes, and each answer is scored on tool selection,

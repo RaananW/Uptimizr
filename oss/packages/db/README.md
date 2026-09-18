@@ -150,6 +150,13 @@ for a `bin`/`voxel` grid (`clusterCells` — a deterministic greedy merge of adj
 above a density threshold, 8-neighbourhood in 2D and 26 in 3D), and the `record` itself plus its
 `rateOf` rates for a single-row metric. Everything is capped at `limits.maxSummaryRows`.
 
+The Zod mirrors of the envelopes — `tableResultSchema(row)`, `resultSummarySchema`,
+`resultEnvelopeSchema(full, row)`, `resultFormatSchema` — are exported from the same subpath as
+always, but are **defined in [`@uptimizr/metrics`](../metrics)** and re-exported here.
+`@uptimizr/agent-core` and `@uptimizr/mcp` describe the same envelopes in their tool output
+schemas and cannot depend on this package (it carries the DuckDB driver), so the shapes have one
+definition, in the package both sides already share.
+
 Two invariants worth knowing before extending it:
 
 - **`reading` is templated, not generated.** It is assembled from `ColumnSemantics` alone, so the

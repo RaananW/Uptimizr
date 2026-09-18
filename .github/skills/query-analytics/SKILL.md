@@ -46,8 +46,10 @@ coerced and bounded by Zod at the edge — out-of-range values are rejected with
   `xr-controller`, `hand`, `gaze`, `transient`, `other` (ADR 0011).
 - `session` — scope an aggregate to a single session id.
 - `type` — event-type filter on `timeseries` (lowercase/underscore event name).
-- `format` — `full` (default) | `table` | `summary`. Not a filter: it selects the result
-  **envelope** (ADR 0051 §2). `full` is the bare rows and never changes. `table` adds a `meta`
+- `format` — `full` | `table` | `summary`. Not a filter: it selects the result
+  **envelope** (ADR 0051 §2). The HTTP endpoint defaults to `full`; the generated agent tools
+  (`@uptimizr/agent-core`, `@uptimizr/mcp`) default to `table` and send it explicitly. `full` is
+  the bare rows and never changes. `table` adds a `meta`
   envelope (metric, range, applied filters, sample size, row count, `truncated`, limits). `summary`
   returns a bounded digest capped at the metric's `maxSummaryRows` — ranked top rows, a
   first/last/min/max/trend series, or merged spatial clusters, with shares, a sample size, the

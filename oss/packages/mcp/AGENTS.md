@@ -73,21 +73,22 @@ Navigation: `aggregate_paths`, `session_trajectory`, `scene_coverage`, `navigati
 `variant_leaderboard`.
 
 Most accept `since`/`until` (epoch ms) plus endpoint-specific filters (`scene`, `session`, `source`,
-`bins`, `cellSize`, `limit`, `cameraMode`, `region`, …). Every tool declares an `outputSchema` and
-returns `structuredContent` (`{ rows }`) alongside the JSON text — read the schema instead of
-guessing the row shape, and read the tool description for the metric's caveats before trusting a
-small sample.
+`bins`, `cellSize`, `limit`, `cameraMode`, `region`, …). Every tool declares an `outputSchema`
+covering all three `format` envelopes and returns the one you asked for as `structuredContent`
+alongside the JSON text — read the schema instead of guessing the row shape, and read the tool
+description for the metric's caveats before trusting a small sample.
 
 ## Result formats (`format`)
 
 Every **aggregate** tool takes a `format` argument choosing the envelope its rows arrive in
-(ADR 0051 §2). It filters nothing.
+(ADR 0051 §2). It filters nothing. **Omit it and you get `table`** — the tools' own default,
+sent explicitly, so the HTTP endpoints still default to `full` for every other client.
 
-| `format`  | Returns                                                                                                                                                                                          | Use it when                                                                         |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| `summary` | A bounded digest — `ranked` top rows, a `series` trend, merged spatial `clusters`, or a single `record` — with shares, a sample size, the metric's `caveats` and a templated `reading` sentence. | **The default choice for an agent.** Always, unless you specifically need the rows. |
-| `table`   | `{ meta, rows }`: the same rows plus the metric, range, applied filters, sample size, row count, a truncation flag and the registry's limits.                                                    | You need every row _and_ the context to judge how far to trust it.                  |
-| `full`    | The bare rows, unchanged. Today's default.                                                                                                                                                       | You are post-processing the rows yourself and already know the sample is adequate.  |
+| `format`  | Returns                                                                                                                                                                                          | Use it when                                                                                  |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `summary` | A bounded digest — `ranked` top rows, a `series` trend, merged spatial `clusters`, or a single `record` — with shares, a sample size, the metric's `caveats` and a templated `reading` sentence. | **Ask for it.** Whenever you do not need every row — always, for a heatmap or a leaderboard. |
+| `table`   | `{ meta, rows }`: the same rows plus the metric, range, applied filters, sample size, row count, a truncation flag and the registry's limits.                                                    | **What you get if you name no format.** Every row _and_ the context to judge it.             |
+| `full`    | The bare rows, unchanged, with no envelope at all.                                                                                                                                               | You are post-processing the rows yourself and already know the sample is adequate.           |
 
 - `summary` is capped at the metric's `limits.maxSummaryRows`, so a 500-bin heatmap costs the same
   as a 5-bin one. That is the whole point: a heatmap, voxel cloud or long leaderboard returned as
@@ -100,7 +101,8 @@ Every **aggregate** tool takes a `format` argument choosing the envelope its row
 - `session_meta` and `scene_representation` are single stored records, not aggregations, and take no
   `format`. Raw `/api/v1/sessions/:id/events` has an unrelated `format=json|ndjson`, and this server
   exposes no tool for it.
-- The catalog's default is still `full` — pass `format` explicitly.
+- `table` is only self-_describing_, not bounded: its `meta` costs a fixed ~200 characters and the
+  rows are still all of them. When the answer could be large, ask for `summary`.
 
 ## Resources and prompts
 
