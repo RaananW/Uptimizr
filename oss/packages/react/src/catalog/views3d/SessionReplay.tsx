@@ -8,7 +8,7 @@ import type { SceneBackdrop } from "@uptimizr/replay/babylon";
 import type { CollectorApi, SceneProxyMesh } from "../../api";
 import type { LiveEvent } from "../../live";
 import { useSessionTail } from "../../live-hooks";
-import { mergeSceneProxies } from "../lib/sceneProxies";
+import { mergeSceneProxies, proxyMeshKey } from "../lib/sceneProxies";
 import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "../lib/orbitZoom";
 import { ZoomButtons } from "../views/ZoomButtons";
 
@@ -587,14 +587,17 @@ export function SessionReplayView({
         };
         const labelCenters: { name: string; center: Vector3 }[] = [];
         const proxyBoxes: { setEnabled(value: boolean): void }[] = [];
-        const proxyMeshNames = new Set<string>();
+        // Keyed by `proxyMeshKey` (not the bare name): unnamed meshes must each
+        // get their own box instead of collapsing into the first one drawn.
+        const proxyMeshKeys = new Set<string>();
         // Create one wireframe AABB box (+ floating label) for a proxy mesh, unless
         // it is already drawn or is a moving actor (drawn as a live marker instead).
         // Returns true when a new box was added, so the live refresh below can tell
         // whether the label set changed.
         const addProxyMesh = (m: SceneProxyMesh): boolean => {
-          if (proxyMeshNames.has(m.name) || isMovingActor(m)) return false;
-          proxyMeshNames.add(m.name);
+          const key = proxyMeshKey(m);
+          if (proxyMeshKeys.has(key) || isMovingActor(m)) return false;
+          proxyMeshKeys.add(key);
           const a = m.aabb;
           const sx = Math.max(a[3] - a[0], 1e-3);
           const sy = Math.max(a[4] - a[1], 1e-3);
