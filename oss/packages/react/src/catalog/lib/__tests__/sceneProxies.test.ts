@@ -25,7 +25,9 @@ describe("proxyMeshKey", () => {
     // The same unnamed mesh registered twice still collapses.
     expect(proxyMeshKey(wallN)).toBe(proxyMeshKey({ ...wallN }));
     // And an unnamed key can never collide with a real name.
-    expect(proxyMeshKey(wallN)).not.toBe(proxyMeshKey({ name: wallN.aabb.join(","), aabb: wallN.aabb }));
+    expect(proxyMeshKey(wallN)).not.toBe(
+      proxyMeshKey({ name: wallN.aabb.join(","), aabb: wallN.aabb }),
+    );
   });
 });
 
