@@ -190,6 +190,10 @@ export async function createPostgresStore(): Promise<CollectorStore> {
     // aggregates below.
     runMetric: (projectId, metric, options) =>
       runPostgresQuery<Record<string, unknown>>(pgc, compileMetric(metric, projectId, options, d)),
+    describeMetric: (projectId, metric, options) => ({
+      dialect: d.name,
+      spec: compileMetric(metric, projectId, options, d),
+    }),
     listSessions: (projectId, opts = {}) =>
       runPostgresQuery<SessionSummaryRow>(pgc, buildListSessions(projectId, opts, d)),
     pointerHeatmap: (projectId, opts = {}) =>

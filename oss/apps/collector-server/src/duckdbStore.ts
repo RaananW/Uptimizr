@@ -184,6 +184,11 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
         db,
         compileMetric(metric, projectId, options, duckdbDialect),
       ),
+    // `explain: true` (#304): the same compilation, not executed.
+    describeMetric: (projectId, metric, options) => ({
+      dialect: duckdbDialect.name,
+      spec: compileMetric(metric, projectId, options, duckdbDialect),
+    }),
     listSessions: (projectId, opts = {}) =>
       runDuckdbQuery<SessionSummaryRow>(db, buildListSessions(projectId, opts, duckdbDialect)),
     pointerHeatmap: (projectId, opts = {}) =>

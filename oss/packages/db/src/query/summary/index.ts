@@ -20,6 +20,7 @@ export type {
   ClusterRest,
   ClusterSummary,
   DrillHints,
+  DrillQuery,
   RankedRow,
   RankedSummary,
   RecordSummary,
@@ -43,6 +44,10 @@ export type {
   TrendDirection,
 } from "./types.js";
 export {
+  comparisonResultSchema,
+  moversSummarySchema,
+  queryEnvelopeSchema,
+  queryPlanSchema,
   resultEnvelopeSchema,
   resultFormatSchema,
   resultSummarySchema,

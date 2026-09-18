@@ -182,13 +182,37 @@ with a narrow, obvious tool than with a schema it has to compose. Reach for `que
 needs a filter the canned tool does not expose, or when `format: "table"` (the DSL's default, unlike
 the canned endpoints') is what you want anyway.
 
-:::note[What v1 answers]
-A query runs the metric's *existing* aggregation, so every metric is reachable at exactly the power
-of its own endpoint. `dimensions` must be the metric's grain, or be omitted. `compare`, `segment`,
-`order`, `explain`, `filters.event` and `filters.device` are part of the published grammar and are
-answered with `400 … not supported yet` — compare two windows by running two queries, and drill in by
-re-running the same query with one more filter. Full reference:
-[query DSL](/docs/api/query/#one-query-endpoint-the-query-dsl).
+### The three things a model otherwise gets wrong
+
+```jsonc
+{
+  "v": 1,
+  "metric": "top_meshes",
+  "range":   { "since": 1757600000000, "until": 1758204800000 },
+  "compare": { "range": { "since": 1756995200000, "until": 1757600000000 } },
+  "format": "summary",
+}
+```
+
+**What changed.** `compare` runs the query twice and joins the results on the dimension key, so each
+row is `{ key, label, current, previous, delta, deltaPct }` and a key present on one side only is
+still a row. `significance` is attached only where the measure is a count and both windows clear the
+metric's own minimum — a p-value the data cannot support is worse than none. Left to itself a model
+will run two queries and subtract them in prose, which is where the arithmetic goes wrong.
+
+**Can you trust it.** `explain: true` answers with the plan rather than the rows: which compiler
+would run, the SQL with its parameters left unbound, how much data the window holds, and `warnings`
+for a capture channel that produced nothing (ADR 0012 — the most common reason an Uptimizr answer is
+empty *and wrong*), a sample below the metric's minimum, or a result cut off by `limit`.
+
+**Narrow it down.** Every row of a `summary` carries `drillQuery`: the whole query, narrowed to that
+row, ready to send straight back.
+
+:::note[Which metrics can be regrouped]
+`dimensions` can be any subset a metric declares when its measure is a portable count — event
+counts, mesh and interaction tallies, input actions, camera gestures. A spatial heatmap or a
+percentile *is* its grain and refuses anything else by name, listing the grain it does support. Full
+reference: [query DSL](/docs/api/query/#one-query-endpoint-the-query-dsl).
 :::
 
 ## 6. Give answers a vocabulary for *where*

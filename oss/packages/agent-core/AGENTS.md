@@ -66,10 +66,18 @@ Its input _is_ the query DSL, so it can run any metric above with any filter tha
 - The grammar is **closed**. Metrics, dimensions and filters are exactly the registry's vocabulary;
   naming something outside it returns a `400` whose `issues[].accepted` lists what would have
   worked. Read that rather than guessing again.
-- `dimensions` must be the metric's own grain, or be omitted — each metric is computed at one grain.
-- `compare`, `segment`, `order`, `explain`, `filters.event` and `filters.device` parse but are
-  answered with `400 … not supported yet`. Compare two windows by running two queries; drill in by
-  re-running the same query with one more filter.
+- `dimensions` may be any subset a metric declares **when** its measure is a portable count —
+  event counts, mesh and interaction tallies, input actions, camera gestures. A spatial heatmap or a
+  percentile is computed at one fixed grain and refuses anything else, naming the grain it supports.
+- **`compare`** — another `{ range }` or `{ segment }`; the result comes back joined on the
+  dimension key as `{ current, previous, delta, deltaPct }`, with a significance test where the
+  measure is a count and both windows clear the metric's minimum. Never subtract two results by hand.
+- **`explain: true`** — the compiled plan instead of the rows: the tier, the SQL with its parameters
+  left unbound, `params` by name and type (never value), `rowsScanned`, and `warnings` (a capture
+  channel that produced nothing, a sample below the metric's minimum, a truncated result).
+- **`drillQuery`** — every row of a `summary` carries the whole query narrowed to that row, ready to
+  send straight back.
+- `order` takes a measure column, and only where the result is a ranked list.
 
 It reaches the collector as `GET /api/v1/query?q=<url-encoded JSON>`, so `CollectorClient` stays
 `GET`-only — an Uptimizr agent remains structurally incapable of writing.

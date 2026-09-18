@@ -71,6 +71,14 @@ const confidenceSchema = z.object({
 
 const drillSchema = z.record(z.string(), z.string());
 
+/**
+ * The runnable drill-down query (#304). Loose on purpose: its real shape is
+ * `queryV1Schema` in `@uptimizr/schema`, which this package does not depend on,
+ * and restating it here would create the second definition ADR 0051 §1 exists to
+ * prevent.
+ */
+const drillQuerySchema = z.record(z.string(), z.unknown());
+
 const restSchema = z.object({
   rows: z.number().int(),
   value: z.number().nullable(),
@@ -100,6 +108,7 @@ const rankedSummarySchema = z.object({
       share: z.number().nullable(),
       shareInterval: shareIntervalSchema.optional(),
       drill: drillSchema.optional(),
+      drillQuery: drillQuerySchema.optional(),
     }),
   ),
   rest: restSchema,
@@ -198,4 +207,125 @@ export function tableResultSchema(row: z.ZodType): z.ZodObject {
  */
 export function resultEnvelopeSchema(full: z.ZodType, row: z.ZodType): z.ZodType {
   return z.union([full, tableResultSchema(row), resultSummarySchema]);
+}
+
+// --- compare / explain (ADR 0051 §3, #304) --------------------------------
+
+const scoreIntervalSchema = z.object({ low: z.number(), high: z.number() });
+
+const proportionSignificanceSchema = z.object({
+  test: z.literal("two-proportion-z"),
+  current: z.number(),
+  previous: z.number(),
+  diff: z.number(),
+  z: z.number(),
+  pValue: z.number(),
+  significant: z.boolean(),
+  currentInterval: scoreIntervalSchema,
+  previousInterval: scoreIntervalSchema,
+});
+
+const meanSignificanceSchema = z.object({
+  test: z.literal("welch-t"),
+  current: z.number(),
+  previous: z.number(),
+  diff: z.number(),
+  t: z.number(),
+  df: z.number(),
+  pValue: z.number(),
+  significant: z.boolean(),
+  currentSamples: z.number().int(),
+  previousSamples: z.number().int(),
+});
+
+const significanceSchema = z.discriminatedUnion("test", [
+  proportionSignificanceSchema,
+  meanSignificanceSchema,
+]);
+
+const comparisonSideSchema = z.object({
+  range: rangeSchema,
+  segment: filtersSchema,
+  rows: z.number().int(),
+  total: z.number().nullable(),
+  sampleSize: sampleSizeSchema,
+});
+
+const comparisonRowSchema = z.object({
+  key: z.record(z.string(), z.string()),
+  label: z.string(),
+  current: z.number().nullable(),
+  previous: z.number().nullable(),
+  delta: z.number().nullable(),
+  deltaPct: z.number().nullable(),
+  significance: significanceSchema.optional(),
+});
+
+/** `format=full | table` on a `compare` query: the envelope plus joined rows. */
+export const comparisonResultSchema = z.object({
+  meta: z.object({
+    metric: metricIdSchema,
+    basis: z.enum(["range", "segment"]),
+    keys: z.array(z.string()),
+    measure: measureSchema,
+    current: comparisonSideSchema,
+    previous: comparisonSideSchema,
+    rows: z.number().int(),
+    truncated: z.boolean(),
+    overall: meanSignificanceSchema.optional(),
+    caveats: z.array(z.string()),
+  }),
+  rows: z.array(comparisonRowSchema),
+});
+
+/** `format=summary` on a `compare` query: the biggest movers, with a reading. */
+export const moversSummarySchema = z.object({
+  kind: z.literal("movers"),
+  metric: metricIdSchema,
+  basis: z.enum(["range", "segment"]),
+  measure: measureSchema,
+  current: comparisonSideSchema,
+  previous: comparisonSideSchema,
+  top: z.array(comparisonRowSchema),
+  rest: z.object({ rows: z.number().int(), delta: z.number().nullable() }),
+  overall: meanSignificanceSchema.optional(),
+  reading: z.string(),
+  caveats: z.array(z.string()),
+});
+
+/**
+ * `explain: true`: the plan instead of the rows.
+ *
+ * `params` carries names and logical types only — never values. That is not a
+ * redaction step applied afterwards; the DSL binds every caller-supplied value,
+ * so there is nothing in `sql` to redact and nothing in `params` worth echoing.
+ */
+export const queryPlanSchema = z.object({
+  metric: metricIdSchema,
+  tier: z.enum(["delegated", "generic"]),
+  dialect: z.string(),
+  sql: z.string(),
+  params: z.array(z.object({ name: z.string(), type: z.string() })),
+  rowsScanned: z.number().nullable(),
+  sampleSize: sampleSizeSchema,
+  warnings: z.array(z.string()),
+});
+
+/**
+ * The 200 response schema of the query DSL endpoint: everything
+ * {@link resultEnvelopeSchema} answers with, plus the three envelopes only the
+ * DSL can produce — a comparison, a movers digest and a plan.
+ *
+ * Order matters for the same reason it does there: the plain-rows shape is
+ * matched first so a `format=full` response cannot be reshaped on its way out.
+ */
+export function queryEnvelopeSchema(full: z.ZodType, row: z.ZodType): z.ZodType {
+  return z.union([
+    full,
+    tableResultSchema(row),
+    resultSummarySchema,
+    comparisonResultSchema,
+    moversSummarySchema,
+    queryPlanSchema,
+  ]);
 }

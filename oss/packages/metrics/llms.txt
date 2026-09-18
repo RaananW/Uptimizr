@@ -17,7 +17,8 @@
 - `allMetrics()`, `getMetric(id)`, `isMetricId(value)`, `metricForBuilder(name)`, `isResourceMetric(metric)`.
 - `FILTER_TARGETS` — every request parameter and what it does; `DIMENSION_COLUMNS` — every group-by dimension.
 - `AGGREGATION_BUILDER_NAMES` — the closed set of `build*` aggregations in `@uptimizr/db`.
-- Types: `MetricDefinition`, `MetricId`, `MetricEndpoint`, `ColumnSemantics`, `ColumnUnit`, `DimensionId`, `FilterId`, `MetricCategory`, `MetricGrain`.
+- Types: `MetricDefinition`, `MetricId`, `MetricEndpoint`, `ColumnSemantics`, `ColumnUnit`, `DimensionId`, `FilterId`, `MetricCategory`, `MetricGrain`, `GenericGroupBy`, `GenericMeasure`, `QueryTier`.
+- The grain is registry data: `MetricDefinition.grainDimensions` (read it through `nativeDimensions`) is what a row is keyed by, while `dimensions` is everything the metric can be filtered, keyed or regrouped by. A metric that also declares `genericGroupBy` can be recomputed at any grain in `genericDimensions(metric)` by the shared group-by builder in `@uptimizr/db`; `queryTier(metric, query)` says which compiler a query takes.
 
 ## Rules
 

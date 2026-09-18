@@ -1,7 +1,7 @@
 {
   "scripted": {
     "passRate": 1,
-    "recordedAt": "2026-09-18T21:59:36.393Z",
+    "recordedAt": "2026-09-18T23:30:59.694Z",
     "tolerance": 0,
     "cases": {
       "ar_placement_effort": true,
@@ -46,6 +46,10 @@
       "query_perf_digest": true,
       "query_table_envelope": true,
       "query_unknown_metric": true,
+      "query_compare_week_over_week": true,
+      "query_group_by_device": true,
+      "query_explain_warns_small_sample": true,
+      "query_rejected_group_by": true,
       "sessions_recorded": true,
       "sessions_scenes_active": true,
       "sessions_event_mix": true,

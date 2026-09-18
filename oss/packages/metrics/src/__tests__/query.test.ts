@@ -18,7 +18,16 @@ import { describe, expect, it } from "vitest";
 import { queryFiltersSchema, queryV1Schema, type QueryV1 } from "@uptimizr/schema";
 import { FILTER_TARGETS, allMetrics, getMetric, isResourceMetric } from "../registry.js";
 import type { FilterId } from "../registry.js";
-import { nativeDimensions, queryableFilters, requiredFilters, validateQuery } from "../query.js";
+import {
+  genericDimensions,
+  nativeDimensions,
+  orderableColumns,
+  queryTier,
+  queryableFilters,
+  requiredFilters,
+  segmentableDimensions,
+  validateQuery,
+} from "../query.js";
 
 const RANGE = { since: 1_757_000_000_000, until: 1_757_600_000_000 };
 
@@ -98,22 +107,30 @@ describe("validateQuery rejects", () => {
   });
 
   it("a dimension the metric does not declare at all", () => {
-    const [issue] = validateQuery(query("top_meshes", { dimensions: ["event_type"] })).issues;
+    const [issue] = validateQuery(query("top_meshes", { dimensions: ["device.isMobile"] })).issues;
     expect(issue?.code).toBe("unknown_dimension");
     expect(issue?.accepted).toContain("mesh");
   });
 
-  it("a dimension the metric can only be filtered by", () => {
-    const [issue] = validateQuery(query("top_meshes", { dimensions: ["session"] })).issues;
+  it("a dimension a delegated metric can only be filtered by", () => {
+    // `pointer_heatmap` bins screen coordinates; its measure *is* that binning,
+    // so there is no other grain to move it to and no generic tier to move it
+    // with.
+    const [issue] = validateQuery(query("pointer_heatmap", { dimensions: ["session"] })).issues;
     expect(issue?.code).toBe("dimension_not_native");
     expect(issue?.message).toContain("Pass it as a filter instead");
-    expect(issue?.accepted).toEqual(["mesh"]);
   });
 
-  it("a partial grain, because a builder renders one fixed grain", () => {
-    const [issue] = validateQuery(query("mesh_sources", { dimensions: ["mesh"] })).issues;
+  it("a partial grain on a metric with no generic tier", () => {
+    const [issue] = validateQuery(query("perf_by_device", { dimensions: ["device.os"] })).issues;
     expect(issue?.code).toBe("dimension_not_native");
-    expect(issue?.accepted).toEqual(["mesh", "source"]);
+    expect(issue?.accepted).toEqual([...nativeDimensions(getMetric("perf_by_device")!)]);
+  });
+
+  it("the same dimension twice", () => {
+    const [issue] = validateQuery(query("top_meshes", { dimensions: ["mesh", "mesh"] })).issues;
+    expect(issue?.code).toBe("unknown_dimension");
+    expect(issue?.message).toContain("twice");
   });
 
   it("a filter the metric does not accept, naming the ones it does", () => {
@@ -144,33 +161,146 @@ describe("validateQuery rejects", () => {
     );
   });
 
-  it("the grammar v1 parses but does not answer, saying so explicitly", () => {
-    const deferred: Record<string, unknown>[] = [
-      { compare: { range: { since: 1, until: 2 } } },
-      { segment: { mesh: "box" } },
-      { order: { by: "count", dir: "desc" } },
-      { explain: true },
-      { filters: { event: { type: "mesh_interaction" } } },
-      { filters: { device: { os: "iOS" } } },
-    ];
-    for (const extra of deferred) {
-      const issues = validateQuery(query("top_meshes", extra)).issues;
+  it("an event or device predicate on a metric with no generic tier", () => {
+    for (const filters of [{ event: { type: "mesh_interaction" } }, { device: { os: "iOS" } }]) {
+      const issues = validateQuery(query("pointer_heatmap", { filters })).issues;
       expect(
         issues.map((i) => i.code),
-        JSON.stringify(extra),
+        JSON.stringify(filters),
       ).toContain("unsupported_feature");
-      expect(issues[0]?.message).toContain("not supported yet");
+      expect(issues[0]?.message).toContain("generic group-by tier");
     }
+  });
+
+  it("an order on a label column, and on a result whose order is not a choice", () => {
+    const [byLabel] = validateQuery(
+      query("top_meshes", { order: { by: "mesh", dir: "asc" } }),
+    ).issues;
+    expect(byLabel?.code).toBe("unsupported_order");
+    expect(byLabel?.accepted).toContain("count");
+
+    // A histogram walks its bins; "order it by count" is not a question about it.
+    const [onSeries] = validateQuery(
+      query("fps_histogram", { order: { by: "count", dir: "asc" } }),
+    ).issues;
+    expect(onSeries?.code).toBe("unsupported_order");
+    expect(onSeries?.accepted).toEqual([]);
+  });
+
+  it("a segment on a dimension the metric can neither filter nor group by", () => {
+    // `perf_by_device` is keyed by five device attributes but can only be
+    // filtered by scene and session, and has no generic tier to hold one fixed.
+    const [issue] = validateQuery(
+      query("perf_by_device", { segment: { "device.os": "iOS" } }),
+    ).issues;
+    expect(issue?.code).toBe("unsupported_segment");
+    expect(issue?.accepted).toEqual([...segmentableDimensions(getMetric("perf_by_device")!)]);
+  });
+
+  it("a comparison segment, on the same terms as the query's own", () => {
+    const [issue] = validateQuery(
+      query("perf_by_device", { compare: { segment: { "device.os": "iOS" } } }),
+    ).issues;
+    expect(issue?.code).toBe("unsupported_segment");
+    expect(issue?.path).toBe("compare.segment.device.os");
   });
 
   it("everything that is wrong at once, so one round trip is enough", () => {
     const issues = validateQuery(
-      query("top_meshes", { dimensions: ["session"], filters: { scene: "lobby" }, limit: 1000 }),
+      query("top_meshes", {
+        dimensions: ["device.isMobile"],
+        filters: { scene: "lobby" },
+        order: { by: "mesh", dir: "asc" },
+      }),
     ).issues;
     expect(issues.map((i) => i.code).sort()).toEqual([
-      "dimension_not_native",
+      "unknown_dimension",
       "unsupported_filter",
+      "unsupported_order",
     ]);
+  });
+});
+
+describe("the generic group-by tier", () => {
+  const generic = aggregations.filter((metric) => metric.genericGroupBy != null);
+
+  it("covers the count-shaped metrics, and only those", () => {
+    expect(generic.map((metric) => metric.id).sort()).toEqual([
+      "camera_gestures",
+      "event_counts",
+      "interaction_sources",
+      "mesh_interaction_kinds",
+      "mesh_sources",
+      "top_input_actions",
+      "top_meshes",
+    ]);
+  });
+
+  it("accepts any renderable subset of a generic metric's declared dimensions", () => {
+    for (const metric of generic) {
+      for (const dimension of genericDimensions(metric)) {
+        const issues = validateQuery(query(metric.id, { dimensions: [dimension] })).issues;
+        expect(issues, `${metric.id} by ${dimension}`).toEqual([]);
+      }
+    }
+  });
+
+  it("stays on the delegated tier until something actually needs the generic one", () => {
+    const meshes = getMetric("top_meshes")!;
+    expect(queryTier(meshes, query("top_meshes"))).toBe("delegated");
+    expect(queryTier(meshes, query("top_meshes", { dimensions: ["mesh"] }))).toBe("delegated");
+    expect(queryTier(meshes, query("top_meshes", { filters: { session: "s1" } }))).toBe(
+      "delegated",
+    );
+    // `session` is one of `top_meshes`' own filters, so holding it fixed needs
+    // nothing its builder cannot already do.
+    expect(queryTier(meshes, query("top_meshes", { segment: { session: "s1" } }))).toBe(
+      "delegated",
+    );
+    expect(queryTier(meshes, query("top_meshes", { dimensions: ["source"] }))).toBe("generic");
+    expect(queryTier(meshes, query("top_meshes", { filters: { device: { os: "iOS" } } }))).toBe(
+      "generic",
+    );
+    expect(queryTier(meshes, query("top_meshes", { segment: { scene: "lobby" } }))).toBe("generic");
+  });
+
+  it("orders by a generic measure column", () => {
+    const sources = getMetric("interaction_sources")!;
+    expect(orderableColumns(sources, "generic")).toEqual(["count", "sessions"]);
+    expect(
+      validateQuery(
+        query("interaction_sources", {
+          dimensions: ["scene"],
+          order: { by: "sessions", dir: "asc" },
+        }),
+      ).issues,
+    ).toEqual([]);
+  });
+
+  it("refuses a device attribute nothing captures, rather than matching nothing", () => {
+    const [issue] = validateQuery(
+      query("event_counts", { dimensions: ["scene"], filters: { device: { gpuTier: "high" } } }),
+    ).issues;
+    expect(issue?.code).toBe("unsupported_filter");
+    expect(issue?.path).toBe("filters.device.gpuTier");
+    expect(issue?.accepted).toEqual(["os", "browser"]);
+    // …while the two that are captured pass.
+    expect(
+      validateQuery(
+        query("event_counts", { dimensions: ["scene"], filters: { device: { os: "iOS" } } }),
+      ).issues,
+    ).toEqual([]);
+  });
+
+  it("takes a limit even where the canned endpoint has no row cap", () => {
+    // `event_counts` declares no `limit` filter, but the generic tier always
+    // bounds its own output — a group-by on `session` is unbounded without one.
+    expect(validateQuery(query("event_counts", { limit: 10 })).issues[0]?.code).toBe(
+      "unsupported_filter",
+    );
+    expect(
+      validateQuery(query("event_counts", { dimensions: ["session"], limit: 10 })).issues,
+    ).toEqual([]);
   });
 });
 

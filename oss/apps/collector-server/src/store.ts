@@ -85,6 +85,7 @@ import type {
   TimeseriesOptions,
   TrajectoryPointRow,
   WorldHeatmapBinRow,
+  QuerySpec,
 } from "@uptimizr/db";
 import type { MetricId } from "@uptimizr/metrics";
 
@@ -138,6 +139,25 @@ export interface CollectorStore {
     metric: MetricId,
     options: MetricQueryOptions,
   ): Promise<Record<string, unknown>[]>;
+  /**
+   * Render the same query {@link runMetric} would run, **without running it** —
+   * the compiled `QuerySpec` and the name of the engine that would execute it
+   * (ADR 0051 §3, #304).
+   *
+   * This is what `explain: true` answers with. It has to be a store method for
+   * the one reason the DSL has a store seam at all: the dialect is the store’s,
+   * and the collector deliberately does not know which engine it is talking to.
+   * Returning the spec rather than a rendered string keeps the redaction
+   * decision (`explainSpec`) in one place instead of four.
+   *
+   * `null` from a store that compiles no SQL (the in-memory one), so `explain`
+   * degrades to the warnings rather than failing.
+   */
+  describeMetric(
+    projectId: string,
+    metric: MetricId,
+    options: MetricQueryOptions,
+  ): { dialect: string; spec: QuerySpec } | null;
   listSessions(
     projectId: string,
     opts?: RangeOptions & CameraModeOptions & { limit?: number },

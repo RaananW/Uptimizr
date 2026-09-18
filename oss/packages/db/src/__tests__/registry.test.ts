@@ -39,6 +39,7 @@ import {
   allMetrics,
   getMetric,
   metricForBuilder,
+  type DimensionId,
   type MetricId,
 } from "@uptimizr/metrics";
 import { coerceRows, numericColumns } from "../query/coerce.js";
@@ -46,7 +47,8 @@ import * as aggregations from "../query/aggregations.js";
 import { duckdbDialect } from "../query/duckdbDialect.js";
 import type { Dialect } from "../query/dialect.js";
 import type { QuerySpec } from "../query/types.js";
-import { PARITY_CASES } from "../parity/cases.js";
+import { GENERIC_PARITY_CASE_NAMES, PARITY_CASES } from "../parity/cases.js";
+import { genericResultColumns } from "../query/dsl/index.js";
 import { PARITY_PROJECT_ID, PARITY_EVENTS, PARITY_RANGE, PARITY_T0 } from "../parity/fixtures.js";
 import { createDuckdbClient, type DuckdbClient } from "../duckdb/client.js";
 import { migrateDuckdb } from "../duckdb/migrations.js";
@@ -232,6 +234,28 @@ const PARITY_CASE_METRIC: Readonly<Record<string, MetricId>> = {
   "dsl:topMeshes": "top_meshes",
   "dsl:meshSourcesFiltered": "mesh_sources",
   "dsl:funnel": "funnel",
+  // The generic group-by tier (#304) recomputes a metric at another grain, so
+  // its rows are keyed by the dimensions that were *asked for* rather than by
+  // the metric's own `row` schema. They are still that metric's rows — the
+  // measures are its measures — but the row schema is the wrong gate for them,
+  // so `GENERIC_PARITY_CASE_NAMES` excludes them from the strict check below and
+  // "generic group-by rows are self-describing" checks them instead.
+  "dsl:genericMeshesByEventType": "top_meshes",
+  "dsl:genericMeshesByScene": "top_meshes",
+  "dsl:genericEventCountsByScene": "event_counts",
+  "dsl:genericEventCountsByEngine": "event_counts",
+  "dsl:genericMeshSourcesByScene": "mesh_sources",
+  "dsl:genericInteractionsByCameraMode": "interaction_sources",
+};
+
+/** The dimensions each generic parity case grouped by, for the column check. */
+const GENERIC_CASE_DIMENSIONS: Readonly<Record<string, readonly DimensionId[]>> = {
+  "dsl:genericMeshesByEventType": ["mesh", "event_type"],
+  "dsl:genericMeshesByScene": ["scene"],
+  "dsl:genericEventCountsByScene": ["event_type", "scene"],
+  "dsl:genericEventCountsByEngine": ["device.engine"],
+  "dsl:genericMeshSourcesByScene": ["scene", "source"],
+  "dsl:genericInteractionsByCameraMode": ["cameraMode"],
 };
 
 /**
@@ -437,6 +461,8 @@ describe("metric registry — row schemas against real DuckDB output", () => {
   let db: DuckdbClient;
   /** metric id -> the rows every query for that metric produced. */
   const produced = new Map<MetricId, Record<string, unknown>[]>();
+  /** generic parity case name -> the rows it produced (#304). */
+  const genericRows = new Map<string, Record<string, unknown>[]>();
 
   beforeAll(async () => {
     db = await createDuckdbClient(":memory:");
@@ -444,12 +470,22 @@ describe("metric registry — row schemas against real DuckDB output", () => {
     await insertEvents(db, [...PARITY_EVENTS, ...REGISTRY_EXTRA_EVENTS]);
 
     const queries: ReadonlyArray<{ metric: MetricId; build: (d: Dialect) => QuerySpec }> = [
-      ...PARITY_CASES.map((parityCase) => ({
+      ...PARITY_CASES.filter(
+        (parityCase) => !GENERIC_PARITY_CASE_NAMES.includes(parityCase.name),
+      ).map((parityCase) => ({
         metric: PARITY_CASE_METRIC[parityCase.name] as MetricId,
         build: parityCase.build.bind(parityCase),
       })),
       ...EXTRA_METRIC_QUERIES,
     ];
+
+    for (const parityCase of PARITY_CASES) {
+      if (!GENERIC_PARITY_CASE_NAMES.includes(parityCase.name)) continue;
+      genericRows.set(
+        parityCase.name,
+        await runDuckdbQuery<Record<string, unknown>>(db, parityCase.build(duckdbDialect)),
+      );
+    }
 
     for (const query of queries) {
       const rows = await runDuckdbQuery<Record<string, unknown>>(db, query.build(duckdbDialect));
@@ -460,6 +496,36 @@ describe("metric registry — row schemas against real DuckDB output", () => {
 
   afterAll(async () => {
     await db?.close();
+  });
+
+  it("produces exactly the declared columns for a generic group-by", () => {
+    for (const [name, dimensions] of Object.entries(GENERIC_CASE_DIMENSIONS)) {
+      const metric = getMetric(PARITY_CASE_METRIC[name] as MetricId)!;
+      const expected = [...genericResultColumns(metric, dimensions)].sort();
+      const rows = genericRows.get(name) ?? [];
+      expect(rows.length, `${name}: produced no rows`).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(Object.keys(row).sort(), name).toEqual(expected);
+      }
+    }
+  });
+
+  it("keeps a generic group-by's measures numeric and its dimensions text", () => {
+    for (const [name, dimensions] of Object.entries(GENERIC_CASE_DIMENSIONS)) {
+      const metric = getMetric(PARITY_CASE_METRIC[name] as MetricId)!;
+      const measures = (metric.genericGroupBy?.measures ?? []).map((measure) => measure.column);
+      const keys = genericResultColumns(metric, dimensions).filter(
+        (column) => !measures.includes(column),
+      );
+      for (const row of genericRows.get(name) ?? []) {
+        for (const column of measures) {
+          expect(typeof row[column], `${name}.${column}`).toBe("number");
+        }
+        for (const column of keys) {
+          expect(typeof row[column], `${name}.${column}`).toBe("string");
+        }
+      }
+    }
   });
 
   it("maps every parity case to a registry metric", () => {

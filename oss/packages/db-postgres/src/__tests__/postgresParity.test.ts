@@ -144,6 +144,15 @@ describe.skipIf(!available)("postgres parity (vs golden, vs duckdb)", () => {
       "dsl:topMeshes",
       "dsl:meshSourcesFiltered",
       "dsl:funnel",
+      // Compiled through the generic group-by tier (#304): one shared
+      // `SELECT <dims>, <measures> … GROUP BY <dims>` rendered from registry
+      // data, at a grain the metric’s own builder cannot produce.
+      "dsl:genericMeshesByEventType",
+      "dsl:genericMeshesByScene",
+      "dsl:genericEventCountsByScene",
+      "dsl:genericEventCountsByEngine",
+      "dsl:genericMeshSourcesByScene",
+      "dsl:genericInteractionsByCameraMode",
     ]);
   });
 

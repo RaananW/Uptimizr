@@ -28,7 +28,9 @@
 export {
   AGGREGATION_BUILDER_NAMES,
   DIMENSION_COLUMNS,
+  DIMENSION_ROW_COLUMNS,
   FILTER_TARGETS,
+  GENERIC_DIMENSIONS,
   METRIC_BY_BUILDER,
   METRIC_IDS,
   METRIC_REGISTRY,
@@ -44,12 +46,17 @@ export {
 // checks the shape, this checks the vocabulary.
 export {
   REQUIRED_FILTERS,
+  dimensionColumn,
+  genericDimensions,
   nativeDimensions,
+  orderableColumns,
+  queryTier,
   queryableFilters,
   requiredFilters,
+  segmentableDimensions,
   validateQuery,
 } from "./query.js";
-export type { QueryIssue, QueryIssueCode, QueryValidation } from "./query.js";
+export type { QueryIssue, QueryIssueCode, QueryTier, QueryValidation } from "./query.js";
 
 export type {
   AggregationBuilderName,
@@ -59,6 +66,10 @@ export type {
   FilterId,
   FilterOptionInterface,
   FilterTarget,
+  GenericGroupBy,
+  GenericMeasure,
+  GenericMeasureKind,
+  GenericScope,
   MetricCategory,
   MetricComparison,
   MetricDefinition,

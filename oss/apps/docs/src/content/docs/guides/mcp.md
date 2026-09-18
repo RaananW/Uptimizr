@@ -207,12 +207,26 @@ filter that metric declares, in one call:
 The grammar is closed — metrics, dimensions and filters are exactly the vocabulary
 `uptimizr://capabilities` lists — and naming something outside it returns an error whose
 `issues[].accepted` says what _would_ have worked, so a wrong guess is a correction rather than an
-empty result. `dimensions` must be the metric's own grain, and `compare`, `segment`, `order`,
-`explain`, `filters.event` and `filters.device` are part of the published grammar but are not
-answered yet.
+empty result.
+
+Three things it does that no per-metric tool can, and that a model will otherwise do badly in prose:
+
+- **`compare`** — give it another `{ range }` or `{ segment }` and the result comes back already
+  joined on the dimension key as `{ current, previous, delta, deltaPct }`, with a significance test
+  where the measure is a count and both windows are large enough. An agent should never run two
+  queries and subtract them itself.
+- **`explain: true`** — the compiled plan instead of the rows, with `warnings` naming the reasons an
+  answer might mislead: a capture channel that produced nothing in the window, a sample below the
+  metric's own minimum, a result cut off by `limit`. One call before reporting a zero.
+- **`drillQuery`** — every row of a `summary` carries the whole query narrowed to that row, ready to
+  send straight back.
+
+`dimensions` can be any subset a metric declares when its measure is a portable count; a spatial
+heatmap or a percentile is computed at one fixed grain and refuses anything else by name. See the
+[query reference](/docs/api/query/#two-compilation-tiers) for which metrics are which.
 
 Reach for the per-metric tools for discovery, and for `query` when a question needs a filter the
-canned tool does not expose.
+canned tool does not expose — and for anything that compares, explains or drills.
 
 ### Tool catalog
 

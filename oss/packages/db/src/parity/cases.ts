@@ -108,7 +108,7 @@ export interface ParityCase {
 
 const PID = PARITY_PROJECT_ID;
 
-export const PARITY_CASES: readonly ParityCase[] = [
+const DELEGATED_PARITY_CASES: readonly ParityCase[] = [
   {
     name: "listSessions",
     build: (d) => buildListSessions(PID, PARITY_RANGE, d),
@@ -1067,3 +1067,179 @@ export const PARITY_CASES: readonly ParityCase[] = [
     ],
   },
 ];
+
+/**
+ * **Generic group-by tier** (ADR 0051 §3, design sketch §C.2 tier 2, #304).
+ *
+ * The delegated cases above prove the DSL reaches each metric's own builder.
+ * These prove the *other* compiler: one shared `SELECT <dims>, <measures> FROM
+ * events GROUP BY <dims>` rendered from registry data, executed on every engine
+ * and compared against the same hand-verified golden.
+ *
+ * Three metrics at two grains each, chosen to exercise every part of the
+ * builder: promoted columns alone (`top_meshes`, `event_counts`,
+ * `mesh_sources`), a two-dimension group-by, and the `session_start` attribute
+ * CTE that `device.*` and `cameraMode` are read through — which is the piece
+ * most likely to diverge between engines, since it is the only one that goes
+ * through `Dialect.jsonText` and a `LEFT JOIN`.
+ *
+ * Appended as a separate block rather than merged above so the v1 goldens stay
+ * exactly where #349 left them.
+ */
+const GENERIC_PARITY_CASES: readonly ParityCase[] = [
+  {
+    // `top_meshes` is keyed by `mesh`; asking for `(mesh, event_type)` splits
+    // each mesh's tally by what actually referenced it — a passive visibility
+    // sample versus a real click. The delegated builder cannot express it at all.
+    name: "dsl:genericMeshesByEventType",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "top_meshes",
+          dimensions: ["mesh", "event_type"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["mesh", "event_type"],
+    golden: [
+      { mesh: "box", event_type: "mesh_visibility", count: 1 },
+      { mesh: "box", event_type: "pointer_click", count: 1 },
+      { mesh: "floor", event_type: "pointer_click", count: 1 },
+      { mesh: "floor", event_type: "pointer_move", count: 1 },
+      { mesh: "sphere", event_type: "mesh_visibility", count: 1 },
+      { mesh: "sphere", event_type: "pointer_click", count: 1 },
+    ],
+  },
+  {
+    // The same metric regrouped onto a dimension it can only be *filtered* by on
+    // the delegated tier — and, for `top_meshes`, not even that: its builder has
+    // no scene clause at all.
+    name: "dsl:genericMeshesByScene",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "top_meshes",
+          dimensions: ["scene"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["scene_id"],
+    golden: [
+      { scene_id: "arena", count: 2 },
+      { scene_id: "lobby", count: 4 },
+    ],
+  },
+  {
+    // Two promoted dimensions at once, over the whole event stream.
+    name: "dsl:genericEventCountsByScene",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "event_counts",
+          dimensions: ["event_type", "scene"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["event_type", "scene_id"],
+    golden: [
+      { event_type: "camera_sample", scene_id: "arena", count: 1 },
+      { event_type: "camera_sample", scene_id: "lobby", count: 2 },
+      { event_type: "frame_perf", scene_id: "arena", count: 1 },
+      { event_type: "frame_perf", scene_id: "lobby", count: 2 },
+      { event_type: "graphics_diagnostic", scene_id: "arena", count: 1 },
+      { event_type: "mesh_visibility", scene_id: "lobby", count: 2 },
+      { event_type: "pointer_click", scene_id: "arena", count: 1 },
+      { event_type: "pointer_click", scene_id: "lobby", count: 2 },
+      { event_type: "pointer_move", scene_id: "arena", count: 1 },
+      { event_type: "runtime_error", scene_id: "arena", count: 1 },
+      { event_type: "session_start", scene_id: "arena", count: 1 },
+      { event_type: "session_start", scene_id: "lobby", count: 1 },
+      { event_type: "xr_boundary_proximity", scene_id: "arena", count: 2 },
+      { event_type: "xr_boundary_proximity", scene_id: "lobby", count: 1 },
+    ],
+  },
+  {
+    // The session-attribute CTE: `device.engine` lives in the `session_start`
+    // payload, so this is the case that proves `jsonText` + `LEFT JOIN` render
+    // and group identically on all four engines.
+    name: "dsl:genericEventCountsByEngine",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "event_counts",
+          dimensions: ["device.engine"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["engine"],
+    golden: [
+      { engine: "webgl2", count: 9 },
+      { engine: "webgpu", count: 10 },
+    ],
+  },
+  {
+    // A metric with an `event_type` scope *and* a `mesh != ''` scope, regrouped:
+    // the scope predicates must survive the regrouping or the counts inflate.
+    name: "dsl:genericMeshSourcesByScene",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "mesh_sources",
+          dimensions: ["scene", "source"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["scene_id", "source"],
+    golden: [
+      { scene_id: "arena", source: "mouse", count: 1 },
+      { scene_id: "lobby", source: "mouse", count: 2 },
+    ],
+  },
+  {
+    // Two measures (`count` and `count(DISTINCT session_id)`) over a session
+    // attribute that is not a device field — the camera model (ADR 0026).
+    name: "dsl:genericInteractionsByCameraMode",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "interaction_sources",
+          dimensions: ["cameraMode"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["camera_mode"],
+    golden: [
+      { camera_mode: "arc-rotate", count: 2, sessions: 1 },
+      { camera_mode: "free", count: 2, sessions: 1 },
+    ],
+  },
+];
+
+/** Every case the cross-engine harness runs, delegated tier then generic. */
+export const PARITY_CASES: readonly ParityCase[] = [
+  ...DELEGATED_PARITY_CASES,
+  ...GENERIC_PARITY_CASES,
+];
+
+/** The subset compiled through the generic group-by tier (#304). */
+export const GENERIC_PARITY_CASE_NAMES: readonly string[] = GENERIC_PARITY_CASES.map(
+  (parityCase) => parityCase.name,
+);

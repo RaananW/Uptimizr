@@ -98,6 +98,19 @@ export interface SummaryConfidence {
 /** Filter values that would narrow a subsequent query to one summarised row. */
 export type DrillHints = Readonly<Record<string, string>>;
 
+/**
+ * A complete, runnable `queryV1` document that narrows to one summarised row
+ * (ADR 0051 §3, #304).
+ *
+ * {@link DrillHints} names the *filters*; this is the whole query with them
+ * applied, so following a drill-down is a copy-paste rather than a
+ * reconstruction — which is where a model reliably loses the range, the scene it
+ * had already scoped to, or the `format` it was reading. Loosely typed because
+ * `@uptimizr/db` does not depend on `@uptimizr/schema`; the collector puts a
+ * parsed `QueryV1` in and a `QueryV1` comes out.
+ */
+export type DrillQuery = Readonly<Record<string, unknown>>;
+
 /** One ranked row of a `kind: "ranked"` summary. */
 export interface RankedRow {
   label: string;
@@ -107,6 +120,12 @@ export interface RankedRow {
   shareInterval?: ShareInterval;
   /** Filters that would drill into this row; omitted when none apply. */
   drill?: DrillHints;
+  /**
+   * The same query, narrowed to this row — ready to run. Present only when the
+   * caller told the summariser what the query was (`SummaryContext.query`) and
+   * the row has drill filters.
+   */
+  drillQuery?: DrillQuery;
 }
 
 /** Everything the summary did not list individually. */
@@ -234,6 +253,11 @@ export interface SummaryContext {
    * hint; without it a cluster reports indices only.
    */
   cellSize?: number;
+  /**
+   * The query that produced these rows, as a `queryV1` document. Given it, each
+   * ranked row carries a `drillQuery`: the same query with one more filter.
+   */
+  query?: Readonly<Record<string, unknown>>;
   /** Extra caveats true of this result only, appended after the registry's. */
   caveats?: readonly string[];
   /** Override the cluster density threshold (default: mean weight per cell). */

@@ -1633,7 +1633,11 @@ same way, and they can compute nothing the canned endpoints cannot.
 | `metric`     | yes      | A registry metric id — the `Metric` column of the table above.                                                                    |
 | `range`      | yes      | `{ since, until }` in epoch milliseconds, `since` inclusive and `until` exclusive. There is no unbounded query.                   |
 | `filters`    | no       | The filters that metric declares, as JSON. Names and meanings are the canned endpoint's querystring parameters.                   |
-| `dimensions` | no       | Up to 3 group-by dimensions. In v1 these must be the metric's own grain (see below), or be omitted.                               |
+| `dimensions` | no       | Up to 3 group-by dimensions: the metric's own grain, or — for a metric with a generic tier — any subset it declares.              |
+| `segment`    | no       | `{ dimension: value }` held fixed for the whole query. Extra equality filters with a name.                                        |
+| `compare`    | no       | `{ range }` or `{ segment }` to measure this query against. The result comes back joined (see below).                             |
+| `order`      | no       | `{ by, dir }` over a measure column of a ranked or regrouped result.                                                              |
+| `explain`    | no       | `true` returns the compiled plan and its warnings instead of the rows.                                                            |
 | `limit`      | no       | Row cap, at most 1000 and at most the metric's own `limits.maxRows`.                                                              |
 | `format`     | no       | `full` \| `table` \| `summary` — the [result envelope](#result-formats-formatfull--table--summary). **Defaults to `table`** here. |
 
@@ -1646,24 +1650,136 @@ Two conveniences over the querystring form, because the DSL is already JSON: `fi
 rather than JSON-encoded strings, and `filters.region` takes either a registered region id or the
 `[minX,minY,minZ,maxX,maxY,maxZ]` box as an array.
 
-#### What v1 answers, and what it does not
+#### Two compilation tiers
 
-v1 compiles a query onto the metric's **existing** aggregation, so every metric is reachable at
-exactly the power of its canned endpoint — no more, and no less:
+A query runs on one of two compilers, and which one is a property of the **metric**, not of the
+request:
 
-- **`dimensions` must be the metric's grain.** Each metric is computed at one fixed grain: the
-  dimension columns its rows already carry (`top_meshes` → `["mesh"]`, `mesh_sources` →
-  `["mesh", "source"]`). A metric can be _filtered_ by dimensions it is not _keyed_ by, and asking to
-  group by one of those is a `400` that names the grain it does support. Arbitrary group-by is
-  planned, not shipped.
-- **`compare`, `segment`, `order` and `explain`** are part of the published grammar and parse
-  cleanly, but are answered with `400 … not supported yet`. To compare two windows, run two queries
-  and subtract; to drill in, re-run the same query with one more filter.
-- **`filters.event`** (an event predicate) and **`filters.device`** (`os` / `browser` / `gpuTier`)
-  are likewise parsed and not yet executed.
+- **Delegated** — the metric's _existing_ aggregation runs, so the result is byte-for-byte what its
+  canned endpoint returns. Every query at a metric's own grain takes this path, and it is the only
+  path a spatial heatmap or a percentile has: their measure _is_ the grain (a binning of
+  coordinates, a quantile over a set), and neither decomposes onto another one.
+- **Generic group-by** — a metric whose measure is a portable count or sum over promoted columns is
+  recomputed at any grain it declares, by one shared `SELECT <dimensions>, <measures> … GROUP BY
+<dimensions>` builder. This is what lets `top_meshes` answer "per input source" and
+  `event_counts` answer "per device OS" without a new endpoint each.
 
-They are declared now so the grammar is published once and a client written against it today does not
-have to be rewritten when the rest lands.
+The delegated tier is preferred wherever it can answer, so an unchanged query keeps returning
+exactly what it always has.
+
+##### Metrics with a generic tier
+
+<!-- generated:registry-generic-groupby:start (pnpm gen:docs — do not edit by hand) -->
+
+| Metric                   | Default grain          | Can also group by                                                                                                             | Measures                                   |
+| ------------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `event_counts`           | `event_type`           | `scene`, `session`, `source`, `mesh`, `name`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer` | `count`                                    |
+| `top_meshes`             | `mesh`                 | `session`, `scene`, `source`, `event_type`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer`   | `count`                                    |
+| `mesh_sources`           | `mesh`, `source`       | `scene`, `session`, `cameraMode`, `name`, `event_type`, `device.os`, `device.browser`, `device.engine`, `device.renderer`     | `count`                                    |
+| `mesh_interaction_kinds` | `mesh`, `name`         | `scene`, `session`, `source`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer`                 | `count`                                    |
+| `interaction_sources`    | `event_type`, `source` | `scene`, `session`, `cameraMode`, `mesh`, `name`, `device.os`, `device.browser`, `device.engine`, `device.renderer`           | `count`, `sessions`                        |
+| `top_input_actions`      | `name`, `source`       | `scene`, `session`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer`                           | `count`                                    |
+| `camera_gestures`        | `name`                 | `scene`, `session`, `source`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer`                 | `gestures`, `total_ms`, `avg_ms`, `max_ms` |
+
+<!-- generated:registry-generic-groupby:end -->
+
+Anything not in that table is computed at one fixed grain and says so: asking to group it by
+something else is a `400` naming the grain it does support. `device.isMobile` is never a group-by —
+it is a boolean, and would key rows as `true`/`false` on one engine and `1`/`0` on another. Filter by
+it, or group by `device.os`.
+
+#### Comparing two windows or two segments
+
+`compare` runs the same query twice — with the comparison's `range`, or with its `segment`
+substituted — and joins the two results on the dimension key **for you**:
+
+```bash
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{
+        "v": 1,
+        "metric": "top_meshes",
+        "range":   { "since": 1757600000000, "until": 1758204800000 },
+        "compare": { "range": { "since": 1756995200000, "until": 1757600000000 } },
+        "format": "summary"
+      }' \
+  "https://collect.example.com/api/v1/query"
+```
+
+Each row is `{ key, label, current, previous, delta, deltaPct }`. A key present on one side only is
+still a row — `previous: null` is an arrival, `current: null` a disappearance — because those are
+usually the answer.
+
+`significance` is attached **only where the data supports it**: when the measure is a count or a
+session count (so a row's share of its window really is a proportion) and both windows clear the
+metric's own `minSample`. It is then a pooled two-proportion _z_ test with a 95 % Wilson interval on
+each share. For a mean-shaped measure (FPS, a ratio, an average duration) the field is absent and a
+caveat says why — a p-value the data cannot support is worse than none. A `bucket`-grain metric
+additionally gets `meta.overall`: Welch's unequal-variance _t_ test over the two windows'
+per-bucket values, which is the one place these two ranges really are two samples.
+
+`format` shapes the comparison the same way it shapes anything else: `full` is the joined rows,
+`table` wraps them in the envelope that says which windows they came from, and `summary` returns
+the biggest **movers** (`kind: "movers"`) with a one-sentence reading.
+
+#### Checking an answer before you quote it (`explain`)
+
+`explain: true` answers with the **plan** instead of the rows:
+
+```jsonc
+{
+  "metric": "top_input_actions",
+  "tier": "delegated",
+  "dialect": "duckdb",
+  "sql": "SELECT\n  name AS action, …", // parameters left as placeholders
+  "params": [{ "name": "since", "type": "timestamp" }], // names and types only, never values
+  "rowsScanned": 0,
+  "sampleSize": { "sessions": null, "events": 0 },
+  "warnings": ["No `input_action` events exist in this project over the selected range, …"],
+}
+```
+
+The SQL can be shown because there is nothing in it to redact: every caller-supplied value is a
+bound parameter, which is precisely what `explain` lets you verify. `params` therefore carries
+names and logical types and never values.
+
+`warnings` is the point of the endpoint. It covers the ways an Uptimizr answer is most often empty
+and wrong:
+
+| Warning                | When                                                                                           |
+| ---------------------- | ---------------------------------------------------------------------------------------------- |
+| Capture channel silent | One of the metric's `sourceChannels` produced nothing in the window — usually a capture dial   |
+|                        | that is switched off (ADR 0012), not an absence of behaviour.                                  |
+| Below the minimum      | The window holds fewer events than the metric's own `minSample`.                               |
+| No spatial labels      | A binned or voxelised metric in a project with no scene proxy and no regions, so a hotspot has |
+|                        | nothing to be named after.                                                                     |
+| Truncated              | The result hit its row cap, so totals and shares describe the returned rows only.              |
+
+`rowsScanned` is how many events of the metric's own capture channels exist in the window. No
+supported engine reports true rows-scanned without a second pass, and this number answers the
+question anyone actually asks; it is `null` for a metric that declares no channels.
+
+#### Drilling in
+
+Every row of a `format=summary` result carries `drill` (the filter values that narrow to it) and
+`drillQuery` — **the whole query, narrowed, ready to send back**. Where the metric has a filter for
+the dimension it goes in `filters`; where it has not (`top_meshes` has never taken a `mesh` filter)
+it goes in `segment`, which the generic tier honours. Following a drill-down is a copy-paste rather
+than a reconstruction, which is where the range or an already-applied scene usually gets lost.
+
+#### Event and device filters
+
+Two filters exist only on the generic tier, because no canned aggregation ever took them:
+
+- **`filters.event`** — an [ADR 0038 step predicate](#funnels-apiv1funnel--caller-configured-adr-0038-78)
+  (`{ type, name?, mesh? }`) used as a **cohort**: keep the sessions in which that event happened at
+  least once, then compute the metric over them. "What did the people who reached checkout look at."
+- **`filters.device`** — `os` and `browser` equality against the session's `session_start`, joined
+  by session. Both are derived server-side from the User-Agent at ingestion (ADR 0042), so they are
+  coarse families rather than versions. `gpuTier` is part of the published grammar but no connector
+  reports one, so it is refused rather than silently matching nothing; group by `device.renderer`
+  instead.
+
+On a metric with no generic tier both are a `400` naming the filters it does accept.
 
 #### Errors
 
@@ -1685,16 +1801,19 @@ have been accepted. An agent should read `accepted` rather than guess again:
 }
 ```
 
-| `code`                 | Meaning                                                                                   |
-| ---------------------- | ----------------------------------------------------------------------------------------- |
-| `unknown_metric`       | No such metric. Read the vocabulary from `GET /api/v1/openapi.json`.                      |
-| `metric_not_queryable` | A stored record (`session_meta`, `scene_representation`), not an aggregation.             |
-| `unknown_dimension`    | The metric does not declare that dimension at all.                                        |
-| `dimension_not_native` | It declares it, but is not keyed by it — pass it as a filter.                             |
-| `unsupported_filter`   | The metric does not accept that filter (or takes no row cap).                             |
-| `missing_filter`       | A filter the metric cannot be queried without (`funnel.steps`, a trajectory's `session`). |
-| `limit_too_large`      | Above the metric's registry cap.                                                          |
-| `unsupported_feature`  | Grammar v1 parses but does not answer yet — see above.                                    |
+| `code`                    | Meaning                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| `unknown_metric`          | No such metric. Read the vocabulary from `GET /api/v1/openapi.json`.                      |
+| `metric_not_queryable`    | A stored record (`session_meta`, `scene_representation`), not an aggregation.             |
+| `unknown_dimension`       | The metric does not declare that dimension at all.                                        |
+| `dimension_not_native`    | It declares it, but is not keyed by it and has no generic tier — pass it as a filter.     |
+| `dimension_not_groupable` | It declares it, but the generic tier cannot render it (`device.isMobile`).                |
+| `unsupported_filter`      | The metric does not accept that filter (or takes no row cap).                             |
+| `missing_filter`          | A filter the metric cannot be queried without (`funnel.steps`, a trajectory's `session`). |
+| `limit_too_large`         | Above the metric's registry cap.                                                          |
+| `unsupported_order`       | `order.by` is not a measure column of this result, or the result has no chosen order.     |
+| `unsupported_segment`     | The metric can neither filter nor group by that dimension, so it cannot hold it fixed.    |
+| `unsupported_feature`     | `filters.event` / `filters.device` on a metric with no generic tier.                      |
 
 ### Scene registry (representations)
 

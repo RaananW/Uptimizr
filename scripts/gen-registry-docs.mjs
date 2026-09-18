@@ -198,6 +198,32 @@ const BLOCKS = {
         ]),
     ),
 
+  /**
+   * The metrics the query DSL can **regroup** (ADR 0051 §3, #304): the ones
+   * whose measure is a portable count or sum over promoted columns, with the
+   * grain they answer at by default and the dimensions they accept instead.
+   *
+   * Generated, because the alternative is a hand-kept list that drifts the
+   * first time a metric gains or loses `genericGroupBy`.
+   */
+  "registry-generic-groupby": ({ allMetrics, GENERIC_DIMENSIONS }) =>
+    table(
+      ["Metric", "Default grain", "Can also group by", "Measures"],
+      allMetrics()
+        .filter((metric) => metric.genericGroupBy)
+        .map((metric) => [
+          `\`${metric.id}\``,
+          codeList(metric.grainDimensions),
+          codeList(
+            metric.dimensions.filter(
+              (dimension) =>
+                GENERIC_DIMENSIONS.includes(dimension) &&
+                !metric.grainDimensions.includes(dimension),
+            ),
+          ),
+          codeList(metric.genericGroupBy.measures.map((measure) => measure.column)),
+        ]),
+    ),
   /** A compact name list for the packaged `AGENTS.md` / `llms.txt` (ADR 0017). */
   "registry-tool-names": ({ allMetrics }) =>
     wrapList(
@@ -211,10 +237,10 @@ const BLOCKS = {
 
 /** Every file this script owns, and the blocks it renders into each. */
 const TARGETS = [
-  { file: "docs/integration.md", blocks: ["registry-endpoints"] },
+  { file: "docs/integration.md", blocks: ["registry-endpoints", "registry-generic-groupby"] },
   {
     file: "oss/apps/docs/src/content/docs/api/query.mdx",
-    blocks: ["registry-query-reference"],
+    blocks: ["registry-query-reference", "registry-generic-groupby"],
   },
   {
     file: "oss/apps/docs/src/content/docs/guides/mcp.md",

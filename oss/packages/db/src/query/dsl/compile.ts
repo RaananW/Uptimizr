@@ -29,14 +29,17 @@
 import {
   FILTER_TARGETS,
   getMetric,
+  queryTier,
   type FilterId,
   type MetricDefinition,
   type MetricId,
+  type QueryTier,
 } from "@uptimizr/metrics";
 import type { QueryV1 } from "@uptimizr/schema";
 import type { Dialect } from "../dialect.js";
 import type { QuerySpec, WorldAabb } from "../types.js";
 import { builderFor } from "./builders.js";
+import { buildGenericGroupBy, type GenericQueryOptions } from "./generic.js";
 
 /**
  * The option bag an aggregation builder takes, assembled from a query. Loosely
@@ -102,6 +105,7 @@ function assign(options: Record<string, unknown>, field: string, value: unknown)
 export function toBuilderOptions(
   query: QueryV1,
   resolved: QueryResolution = {},
+  tier: QueryTier = "delegated",
 ): MetricQueryOptions {
   const options: Record<string, unknown> = {
     since: query.range.since,
@@ -110,9 +114,13 @@ export function toBuilderOptions(
 
   for (const [key, value] of Object.entries(query.filters ?? {})) {
     if (value === undefined) continue;
-    // Grammar keys with no delegated implementation (#304). `validateQuery`
-    // has already rejected them; skipped here so this function stays total.
-    if (key === "event" || key === "device") continue;
+    // The two generic-tier filters are not builder options at all: no `build*`
+    // takes an event predicate or a device attribute. They ride in the bag under
+    // their own names and are read by the generic builder alone.
+    if (key === "event" || key === "device") {
+      if (tier === "generic") options[key] = value;
+      continue;
+    }
 
     const target = FILTER_TARGETS[key as FilterId];
     if (!target) continue;
@@ -134,8 +142,36 @@ export function toBuilderOptions(
     assign(options, target.field, value);
   }
 
+  // A `segment` is a set of equality filters with a name. Where the metric
+  // already has a filter for the dimension, it *is* that filter — so it lands on
+  // the same option field and a delegated query never has to know the difference.
+  // Anything else is a dimension only the generic builder can hold fixed.
+  const segment: Record<string, string> = {};
+  for (const [dimension, value] of Object.entries(query.segment ?? {})) {
+    const target = FILTER_TARGETS[dimension as FilterId];
+    if (target != null) {
+      if (dimension === "cameraMode") {
+        assign(options, target.field, cameraTypeForMode(value as "viewer" | "first-person"));
+      } else {
+        assign(options, target.field, value);
+      }
+      continue;
+    }
+    segment[dimension] = value;
+  }
+
   if (query.limit != null) options.limit = query.limit;
   if (resolved.cellSize != null && options.cellSize == null) options.cellSize = resolved.cellSize;
+
+  if (tier === "generic") {
+    // The generic builder reads its grain, its order and its segment from the
+    // same bag; `compileMetric` dispatches on `tier`, which is the one field
+    // that is about compilation rather than about the query.
+    options.tier = "generic";
+    options.dimensions = query.dimensions == null ? undefined : [...query.dimensions];
+    if (query.order != null) options.order = { ...query.order };
+    if (Object.keys(segment).length > 0) options.segment = segment;
+  }
 
   return options;
 }
@@ -159,23 +195,44 @@ export function compileMetric(
   if (!definition?.builder) {
     throw new Error(`metric '${metric}' has no aggregation builder and cannot be compiled`);
   }
+  // `tier` is the one field of the bag that describes the *compilation* rather
+  // than the query, and it is set only by `toBuilderOptions` after
+  // `validateQuery` decided the metric can answer at another grain. A store
+  // calling `runMetric` with a plain option bag therefore keeps the delegated
+  // behaviour it has always had.
+  if (options.tier === "generic") {
+    return buildGenericGroupBy(
+      definition,
+      projectId,
+      options as unknown as GenericQueryOptions,
+      dialect,
+    );
+  }
   return builderFor(definition.builder)(projectId, { ...options }, dialect);
 }
 
 /**
  * Compile a validated query end to end: filters → option bag → the metric's
- * builder → a `QuerySpec`.
+ * builder (or the generic one) → a `QuerySpec`.
+ *
+ * The tier is derived here rather than passed in, so a caller that has a
+ * validated query cannot compile it onto the wrong compiler; the collector,
+ * which already has the tier from `validateQuery`, may pass it to save the
+ * lookup.
  */
 export function compileQuery(
   projectId: string,
   query: QueryV1,
   dialect: Dialect,
   resolved: QueryResolution = {},
+  tier?: QueryTier,
 ): QuerySpec {
+  const definition = getMetric(query.metric as MetricId);
+  const effective = tier ?? (definition == null ? "delegated" : queryTier(definition, query));
   return compileMetric(
     query.metric as MetricId,
     projectId,
-    toBuilderOptions(query, resolved),
+    toBuilderOptions(query, resolved, effective),
     dialect,
   );
 }
