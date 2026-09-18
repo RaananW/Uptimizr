@@ -78,7 +78,7 @@ console.log(result.content); // the model's final answer
 `boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
 `ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
 `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`, `insight_baseline`,
-`insight_movers`
+`insight_movers`, `insight_anomalies`
 
 <!-- generated:registry-tool-names:end -->
 

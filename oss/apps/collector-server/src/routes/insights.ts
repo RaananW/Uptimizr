@@ -5,7 +5,9 @@
  * from raw rows on every turn:
  *
  * - `insight_baseline` — what is normal for one metric in one scene;
- * - `insight_movers` — what changed, ranked by how unusual the change is.
+ * - `insight_movers` — what changed, ranked by how unusual the change is;
+ * - `insight_anomalies` — which buckets of one metric do not belong, and what
+ *   inside the metric accounts for them (#306).
  *
  * The plugin is deliberately thin (ADR 0005). Everything that decides an answer
  * lives in `@uptimizr/db`'s pure `src/insights/`: which metrics have a portable
@@ -25,10 +27,17 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import {
   BUCKETABLE_METRIC_IDS,
+  MAX_ANOMALY_SENSITIVITY,
+  MIN_ANOMALY_SENSITIVITY,
   MOVERS_DEFAULT_METRICS,
   MOVERS_MAX_METRICS,
+  attributeContributor,
   bucketMeasureFor,
   computeBaseline,
+  contributorDimensionFor,
+  contributorWindows,
+  detectAnomalies,
+  inContributorWindow,
   inWindow,
   isBucketableMetric,
   rankMovers,
@@ -39,6 +48,7 @@ import {
   spanningWindow,
   summarizeRows,
   tableResult,
+  type AnomalyRow,
   type BaselineRow,
   type BucketGrain,
   type MetricBucketRow,
@@ -141,6 +151,30 @@ const moversQueryParams = z.object({
   format: formatFilter,
 });
 
+// --- anomalies (#306) ------------------------------------------------------
+/**
+ * `GET /api/v1/insights/anomalies` parameters.
+ *
+ * The same subject-plus-window shape as `baseline` — an anomaly is an anomaly
+ * *of* one metric — with one extra dial. `sensitivity` is bounded by the schema
+ * rather than clamped silently, so a caller who asks for `0` (which would report
+ * every bucket) is told the range instead of being handed noise.
+ */
+const anomaliesQueryParams = z.object({
+  metric: z.string().min(1).max(64),
+  scene: sceneFilter,
+  window: z.coerce.number().int().positive().max(365).optional(),
+  bucket: bucketFilter,
+  sensitivity: z.coerce
+    .number()
+    .min(MIN_ANOMALY_SENSITIVITY)
+    .max(MAX_ANOMALY_SENSITIVITY)
+    .optional(),
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  format: formatFilter,
+});
+
 /** `{ error, … }` body the insight routes send for a rejected metric. */
 const badRequestResponse = z.object({
   error: z.string(),
@@ -159,6 +193,8 @@ function metricFor(id: MetricId): MetricDefinition {
 
 const BASELINE = metricFor("insight_baseline");
 const MOVERS = metricFor("insight_movers");
+// --- anomalies (#306) ---
+const ANOMALIES = metricFor("insight_anomalies");
 
 /** 200 response schema for an insight route: rows, or either envelope. */
 function rowsFor(metric: MetricDefinition): z.ZodType<unknown[]> {
@@ -426,10 +462,93 @@ export const insightRoutes: FastifyPluginAsync<Options> = async (app, { store })
       return rows;
     },
   );
+
+  // --- anomalies (#306) ----------------------------------------------------
+  /**
+   * When one metric stopped behaving. One row per anomalous bucket, oldest
+   * first, each carrying what was expected, how far out it was, and — where the
+   * metric declares a split dimension — which value inside it accounts for the
+   * excess.
+   *
+   * Cost is `1 + min(anomalous windows, ANOMALY_MAX_CONTRIBUTOR_SCANS)` grouped
+   * scans: one to build the series, and at most three to attribute it. The cap
+   * is the reason a pathological series (every bucket anomalous) cannot turn one
+   * request into a hundred scans.
+   */
+  r.get(
+    ANOMALIES.endpoint!.path,
+    {
+      schema: {
+        querystring: anomaliesQueryParams,
+        response: { 200: rowsFor(ANOMALIES), 400: badRequestResponse },
+      },
+    },
+    async (req, reply) => {
+      const resolved = await requireCapability(req, reply, store, "query");
+      if (!resolved) return reply;
+
+      const metric = resolveSeriesMetric(req.query.metric);
+      if (isRejection(metric)) return reply.code(400).send(metric);
+
+      const bucket: BucketGrain = req.query.bucket ?? "day";
+      // Same window resolution as `baseline`: the two answer questions about the
+      // same series, and a caller who reads one and then the other must not have
+      // to reason about two different notions of "the last 28 days".
+      const range = resolveBaselineWindow({
+        since: req.query.since,
+        until: req.query.until,
+        windowDays: req.query.window,
+        bucket,
+        now: Date.now(),
+      });
+      resolvedRanges.set(req, range);
+
+      const series = await store.metricBuckets(resolved.projectId, {
+        metric: metric.id,
+        bucket,
+        since: range.since,
+        until: range.until,
+        scene: req.query.scene,
+      });
+      const rows: AnomalyRow[] = detectAnomalies(metric.id, req.query.scene, series, {
+        bucket,
+        sensitivity: req.query.sensitivity,
+      });
+
+      const dimension = contributorDimensionFor(metric.id, { scene: req.query.scene });
+      if (dimension == null || rows.length === 0) return rows;
+
+      // One extra grouped scan per anomalous window, capped. Each scan is
+      // clamped to the analysed range, so attribution never reads outside the
+      // window the caller asked about and each split value's "before" is the
+      // same history the detection itself used.
+      const windows = contributorWindows(rows, { bucket, seriesUntil: range.until });
+      const splits = await mapPooled(windows, BUCKET_READ_CONCURRENCY, (window) =>
+        store.metricBuckets(resolved.projectId, {
+          metric: metric.id,
+          bucket,
+          since: Math.max(window.since, range.since),
+          until: Math.min(window.until, range.until),
+          scene: req.query.scene,
+          groupBy: dimension,
+        }),
+      );
+      for (const [index, window] of windows.entries()) {
+        const splitRows = splits[index] ?? [];
+        for (const row of rows) {
+          if (row.contributor != null || !inContributorWindow(row, window)) continue;
+          row.contributor = attributeContributor(row, dimension, splitRows);
+        }
+      }
+      return rows;
+    },
+  );
 };
 
-/** The two derived metrics, indexed by the path that serves them. */
+/** The derived metrics, indexed by the path that serves them. */
 const METRIC_BY_PATH = new Map<string, MetricDefinition>([
   [BASELINE.endpoint!.path, BASELINE],
   [MOVERS.endpoint!.path, MOVERS],
+  // --- anomalies (#306) ---
+  [ANOMALIES.endpoint!.path, ANOMALIES],
 ]);

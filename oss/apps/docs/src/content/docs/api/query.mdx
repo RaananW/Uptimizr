@@ -195,16 +195,18 @@ including each column's unit and each metric's caveats.
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/v1/insights/baseline` | `insight_baseline` | project | `metric`, `scene`, `window`, `bucket`, `since`, `until`, `format` | What is normal for one metric in one scene. Buckets a comparable metric's headline column into days or hours over a trailing window and reduces the series to its centre (mean, median), its ordinary spread (MAD, p10, p90) and its drift (least-squares slope per bucket). One row per request: the reference distribution a single later observation should be judged against, so 'is 42 FPS bad here?' has an answer that does not depend on the reader's memory. |
 | `GET` | `/api/v1/insights/movers` | `insight_movers` | row | `scene`, `metrics`, `bucket`, `limit`, `since`, `until`, `refSince`, `refUntil`, `format` | What moved, ranked. For every comparable metric in scope, compares the current range with a reference range (the previous equal window by default) and ranks the differences by a robust z-score — the change divided by how much that metric normally swings, so a metric that is always volatile has to move much further than a steady one before it is called a mover. One row per metric: the top risers, the top fallers, and the ones that did not move. |
+| `GET` | `/api/v1/insights/anomalies` | `insight_anomalies` | row | `metric`, `scene`, `window`, `bucket`, `sensitivity`, `since`, `until`, `format` | When one metric stopped behaving, and what inside it accounts for that. Walks a comparable metric's day or hour bucket series and returns only the buckets that do not belong in it: a `spike` or a `drop` when a single bucket sits more than `sensitivity` median absolute deviations from the buckets just before it, and a `shift` at the bucket where a CUSUM change-point says the level moved and stayed moved. Where the metric declares a dimension it can be split by, the row also names the dimension value holding the largest share of the excess — the difference between 'errors tripled on the 14th' and 'graphics diagnostics tripled on the 14th'. |
 
 {/* generated:registry-query-reference:end */}
 
-## Insights — baselines and movers
+## Insights — baselines, movers and anomalies
 
-Two of the metrics above are not measurements but **readings about the other
-metrics**: `insight_baseline` answers "is this number normal here?" and
-`insight_movers` answers "what changed?". Both are ordinary registry metrics, so
-they take the same parameters, the same `format` envelopes and the same API key
-as everything else on this page.
+Three of the metrics above are not measurements but **readings about the other
+metrics**: `insight_baseline` answers "is this number normal here?",
+`insight_movers` answers "what changed?" and `insight_anomalies` answers "*when*
+did it go wrong, and what inside it did?". All three are ordinary registry
+metrics, so they take the same parameters, the same `format` envelopes and the
+same API key as everything else on this page.
 
 Both work the same way: one comparable metric's headline column is bucketed by
 day or hour, and every statistic over that series — mean, median, MAD,
@@ -292,7 +294,63 @@ per-bucket form participate at all — funnels, cohort metrics and anything defi
 by the relationship between *consecutive* events (click→gaze rays, flow links,
 reachability, backtracking, rage clusters, perf churn) are excluded by
 construction, because bucketing them would change what they mean. Asking for one
-returns `400` listing every metric id that *is* available.
+returns `400` listing every metric id that *is* available. The same rule governs
+`/api/v1/insights/anomalies`.
+:::
+
+### `/api/v1/insights/anomalies`
+
+`metric` (required) plus `scene`, `window` (days, default 28, max 365), `bucket`
+(`day` | `hour`), `sensitivity` (1–10, default 3) and the usual `since` /
+`until`. One row per bucket that does not belong in the series, oldest first:
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/anomalies?metric=error_heatmap&scene=lobby"
+```
+
+```jsonc
+{
+  "metric": "error_heatmap",
+  "scene": "lobby",
+  "bucketStart": 1718064000000, // the day itself, not the day it was detected
+  "value": 32,
+  "expected": 2, // the median of the trailing window
+  "z": 1500, // signed, in standard deviations
+  "kind": "spike", // spike | drop | shift
+  "contributor": { "dimension": "event_type", "value": "graphics_diagnostic", "share": 1 },
+  "sampleSize": 32,
+}
+```
+
+- **`spike` / `drop` are one bucket; `shift` is a level.** The first two come
+  from a rolling median and MAD over the trailing window (14 buckets at `day`
+  grain, 168 at `hour`) with the bucket itself excluded. The third comes from a
+  CUSUM over the same series and catches what a point detector structurally
+  cannot: a regression that is only a MAD or two deep on any single day but
+  never recovers. A sustained change appears as both — the `shift` at its
+  change-point, then `drop` rows for the days after it until the trailing window
+  catches up.
+- **`z` is in standard deviations.** The trailing MAD, rescaled by 1.4826 and
+  floored at 1% of the level, so `sensitivity: 3` means "beyond three sigma".
+  `insight_movers` reports the same ratio *unscaled* — it ranks rather than
+  thresholds — so the two columns differ by that constant.
+- **`contributor` says where the excess sits, not what caused it.** When the
+  metric declares a dimension it can be split by (a mesh, a source, an input
+  action, an event type, a scene), the anomalous window is re-read grouped by
+  that column and the value with the largest share of the excess is reported. A
+  `share` above ~0.8 means the anomaly *is* that value. It is `null` for a metric
+  with no such dimension — and for a `scene`-split metric on a request already
+  scoped to one scene, where the split could only ever return a share of 1.
+
+:::note
+A bucket with fewer than five buckets of history behind it is never judged, so a
+new project reads "no anomalies" rather than "every day is an anomaly". Buckets
+with no matching events are absent from the series rather than zero, so a gap in
+capture is not reported as a drop. Attribution costs **at most three** extra
+grouped scans per request however many buckets are anomalous: adjacent findings
+share one window, and only the three most extreme windows are re-read — quieter
+findings carry `contributor: null`.
 :::
 
 ## Scene regions

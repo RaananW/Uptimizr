@@ -143,14 +143,15 @@ Switching the generated tool catalog's default away from `full` is tracked as
 
 ## 5. Let the collector do the comparing
 
-Two questions come up on every investigation, and a model that answers them by pulling raw rows and
-doing arithmetic will answer them differently each time: **"is this number normal here?"** and
-**"what changed?"** Both are metrics of their own.
+Three questions come up on every investigation, and a model that answers them by pulling raw rows
+and doing arithmetic will answer them differently each time: **"is this number normal here?"**,
+**"what changed?"** and **"when did it go wrong?"** All three are metrics of their own.
 
 | Tool               | Answers                                                                                                   |
 | ------------------ | ---------------------------------------------------------------------------------------------------------- |
 | `insight_baseline` | What is normal for one metric in one scene: `median` and `mad`, the p10..p90 band, and the drift `slope`. |
 | `insight_movers`   | What moved against the previous equal window, for every comparable metric, ranked by how unusual it is.    |
+| `insight_anomalies` | Which individual buckets of one metric do not belong — and which mesh, channel or source holds the excess. |
 
 Reach for `insight_movers` **first** on an open-ended "how are things?" question: it turns a survey of
 thirty endpoints into one call, and it ranks by a robust z-score — the change divided by how much that
@@ -167,9 +168,21 @@ Two fields decide whether a row is worth reporting at all:
   evidence. Those rows are returned rather than dropped — "we cannot tell" and "nothing changed" are
   different answers — and they must never be reported as findings.
 
+Then reach for `insight_anomalies` to put a **date** on it. `movers` compares two windows you chose;
+`anomalies` walks the whole series and names the buckets that do not belong: a `spike` or a `drop`
+where one bucket sits more than `sensitivity` standard deviations from the ones before it, and a
+`shift` at the bucket where the level moved and *stayed* moved — the shape a release regression
+actually has, and the one a per-bucket threshold can never see. Quote `bucketStart` rather than
+saying "recently", and read `contributor`: where the metric declares a dimension it can be split by,
+the row names the mesh, source, input action, event type or scene holding the largest share of the
+excess, with that share. A share above ~0.8 means the anomaly *is* that value and the investigation
+has one place to start; `null` means the metric has no column that could honestly explain it. Note
+that `anomalies` reports `z` in standard deviations while `movers` reports the same ratio unscaled,
+so do not compare the two columns directly.
+
 Statistics are computed in pure TypeScript over portable day/hour buckets, so the same data gives the
 same baseline on DuckDB, ClickHouse, Postgres and SQL Server. Full parameters and the excluded-metric
-rules: [insights](/docs/api/query/#insights--baselines-and-movers).
+rules: [insights](/docs/api/query/#insights--baselines-movers-and-anomalies).
 
 ## 6. Give answers a vocabulary for *where*
 

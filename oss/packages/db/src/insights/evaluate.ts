@@ -20,8 +20,9 @@ import {
   type BucketGrain,
   type BucketMeasure,
   type BucketPredicate,
+  type BucketSplitDimension,
 } from "./measures.js";
-import type { MetricBucketRow } from "./buckets.js";
+import { byBucketThenDimension, type MetricBucketRow } from "./buckets.js";
 import { quantile } from "./stats.js";
 
 /**
@@ -56,10 +57,33 @@ export interface EvaluateBucketOptions {
   since?: number;
   until?: number;
   scene?: string;
+  // --- anomalies (#306) ---------------------------------------------------
+  /** Split the series by one promoted dimension, as `buildMetricBuckets` does. */
+  groupBy?: BucketSplitDimension;
 }
 
 /** The vector columns a geometry predicate can guard. */
 const VECTORS = ["position", "direction", "hit_point", "screen"] as const;
+
+/**
+ * The split dimension's value on one event — the in-memory mirror of
+ * `BUCKET_SPLIT_COLUMNS` (#306). `''` is "unknown", the same reading the stores'
+ * `NOT NULL DEFAULT ''` columns give.
+ */
+function splitValueOf(event: BucketEventLike, dimension: BucketSplitDimension): string {
+  switch (dimension) {
+    case "scene":
+      return event.scene_id ?? "";
+    case "event_type":
+      return event.event_type ?? "";
+    case "mesh":
+      return event.mesh ?? "";
+    case "name":
+      return event.name ?? "";
+    case "source":
+      return event.source ?? "";
+  }
+}
 
 /** Whether an event satisfies one predicate from the closed vocabulary. */
 function matches(event: BucketEventLike, predicate: BucketPredicate): boolean {
@@ -112,7 +136,18 @@ export function evaluateBucketMeasure(
   }
   const width = BUCKET_SECONDS[opts.bucket ?? "day"] * 1000;
   const types = measure.eventTypes.length > 0 ? new Set(measure.eventTypes) : null;
-  const buckets = new Map<number, { values: number[]; count: number; sessions: Set<string> }>();
+  // Keyed by bucket, or by `bucket|dimension` on a grouped read (#306) — the
+  // in-memory counterpart of adding the column to the SQL `GROUP BY`.
+  const buckets = new Map<
+    string,
+    {
+      start: number;
+      dimension: string | null;
+      values: number[];
+      count: number;
+      sessions: Set<string>;
+    }
+  >();
 
   for (const event of events) {
     if (!Number.isFinite(event.ts)) continue;
@@ -123,10 +158,12 @@ export function evaluateBucketMeasure(
     if ((measure.where ?? []).some((predicate) => !matches(event, predicate))) continue;
 
     const start = Math.floor(event.ts / width) * width;
-    let entry = buckets.get(start);
+    const dimension = opts.groupBy == null ? null : splitValueOf(event, opts.groupBy);
+    const key = dimension == null ? String(start) : `${start}|${dimension}`;
+    let entry = buckets.get(key);
     if (entry == null) {
-      entry = { values: [], count: 0, sessions: new Set() };
-      buckets.set(start, entry);
+      entry = { start, dimension, values: [], count: 0, sessions: new Set() };
+      buckets.set(key, entry);
     }
     entry.count += 1;
     entry.sessions.add(event.session_id);
@@ -135,14 +172,15 @@ export function evaluateBucketMeasure(
   }
 
   const rows: MetricBucketRow[] = [];
-  for (const [start, entry] of buckets) {
+  for (const entry of buckets.values()) {
     rows.push({
-      bucket: start,
+      bucket: entry.start,
       value: aggregate(entry, measure),
       sample_size: measure.aggregate.kind === "sessions" ? entry.sessions.size : entry.count,
+      ...(entry.dimension == null ? {} : { dimension_value: entry.dimension }),
     });
   }
-  return rows.sort((a, b) => a.bucket - b.bucket);
+  return rows.sort(byBucketThenDimension);
 }
 
 /** Apply a measure's aggregate to one bucket's accumulated values. */

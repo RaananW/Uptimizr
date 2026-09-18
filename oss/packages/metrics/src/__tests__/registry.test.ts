@@ -106,7 +106,7 @@ describe("metric registry — coverage", () => {
       .filter(isDerivedMetric)
       .map((metric) => metric.id)
       .sort();
-    expect(derived).toEqual(["insight_baseline", "insight_movers"]);
+    expect(derived).toEqual(["insight_anomalies", "insight_baseline", "insight_movers"]);
     for (const metric of allMetrics().filter(isDerivedMetric)) {
       // A derived metric has no `build*` aggregation, but unlike a resource it
       // is a real aggregate: an endpoint, a querystring, a time range and the

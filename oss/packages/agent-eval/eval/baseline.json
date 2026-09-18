@@ -1,7 +1,7 @@
 {
   "scripted": {
     "passRate": 1,
-    "recordedAt": "2026-09-18T22:11:08.582Z",
+    "recordedAt": "2026-09-18T23:22:29.846Z",
     "tolerance": 0,
     "cases": {
       "ar_placement_effort": true,
@@ -22,6 +22,8 @@
       "insights_baseline_gallery_fps": true,
       "insights_movers_lobby_week": true,
       "insights_baseline_unknown_metric": true,
+      "insights_anomalies_lobby_fps": true,
+      "insights_anomalies_error_contributor": true,
       "interaction_top_meshes": true,
       "interaction_input_sources": true,
       "interaction_kinds": true,

@@ -29,13 +29,13 @@
 `boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
 `ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
 `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`, `insight_baseline`,
-`insight_movers`
+`insight_movers`, `insight_anomalies`
 
 <!-- generated:registry-tool-names:end -->
 
 ## Insight primitives (ADR 0051 §4)
 
-Two of the tools are readings *about* the other metrics, and they are the right first call on an
+Three of the tools are readings *about* the other metrics, and they are the right first call on an
 open-ended question — "how are things?" does not mean "call thirty tools".
 
 - `insight_movers` — what changed against a reference window (the previous equal one by default),
@@ -45,6 +45,17 @@ open-ended question — "how are things?" does not mean "call thirty tools".
 - `insight_baseline` — what is normal for one metric in one scene: `median` and `mad`, the
   `p10`..`p90` band, and the drift `slope`. Call it on whatever moved, to say whether the new level
   is actually outside normal rather than merely different.
+- `insight_anomalies` — *when* one metric went wrong. One row per bucket that does not belong in
+  the series: `kind: "spike" | "drop"` for a bucket more than `sensitivity` (default 3) standard
+  deviations from the trailing window, and `kind: "shift"` at the bucket where the level moved and
+  stayed moved. Where the metric declares a dimension it can be split by, `contributor` names the
+  mesh, source, input action, event type or scene holding the largest `share` of the excess.
+  Bounded: one scan for the series plus at most three attribution scans per request.
+
+Read `insight_anomalies`' `z` as standard deviations and `insight_movers`' as the same ratio
+unscaled — they differ by a constant factor (1.4826) and must not be compared directly. A sustained
+level change is reported both as a `shift` and, for the days right after it, as `drop`/`spike`
+rows: two true statements about one event.
 
 Two fields decide whether a mover is worth reporting, and both are easy to misread:
 

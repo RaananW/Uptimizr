@@ -17,7 +17,7 @@ const byName = (name: string) => {
 describe("read tools catalog", () => {
   it("is the catalog generated from the metric registry", () => {
     expect(readTools.map((t) => t.name)).toEqual(registryToTools().map((t) => t.name));
-    expect(readTools.length).toBe(71);
+    expect(readTools.length).toBe(72);
   });
 
   it("gives every tool an output schema", () => {

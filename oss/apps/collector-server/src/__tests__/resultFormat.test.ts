@@ -76,6 +76,9 @@ const PRE_CHANGE_BODY_HASHES: Readonly<Record<string, string>> = {
   // from here their default shape is pinned like every other endpoint.
   "/api/v1/insights/baseline": "70da6e75dbce179a14e5ba83ac7f5db3f33dbaf1e15dd0a451d1695587f9aca2",
   "/api/v1/insights/movers": "db847696207abb389e259c5a7af2c40a3ac787cd8f47871dab46b3e73628038b",
+  // --- anomalies (#306) --- the seeded fixture holds far too few buckets for
+  // any bucket to be judged, so the honest answer is an empty result.
+  "/api/v1/insights/anomalies": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "/api/v1/sessions": "fc8a8b1690f001672de3e9dd0b336eb9c874ad55555577cfd9b9402358b326cd",
   "/api/v1/scenes": "7aba7bfa05c14a726c4667868c75e8f053c4fb2b0c8dedf6a775a58ef3bd556a",
   "/api/v1/timeseries": "956599592dac1cf3753392d03d113b7657687f12a2080ebad6822a87a2b63162",

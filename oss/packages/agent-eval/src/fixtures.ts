@@ -422,15 +422,120 @@ const PRIOR_DAY_SESSION: AnyEvent[] = (() => {
   return events;
 })();
 
+// --- anomalies (#306) ------------------------------------------------------
+
 /**
- * Every event the harness seeds: the previous day, then the parity fixtures and
- * the supplement that share {@link EVAL_T0}'s day.
+ * A fortnight of **quiet `lobby` history**, with one bad day in it.
+ *
+ * `anomalies` is the only primitive that needs a *series*: it judges each bucket
+ * against the ones before it and refuses to judge one with fewer than five
+ * buckets of history, so two days of fixtures can produce nothing but an empty
+ * result. This batch gives the bank thirteen ordinary days (`EVAL_T0 − 14d` …
+ * `EVAL_T0 − 2d`) at a steady 60 FPS with two runtime errors a day, and injects
+ * exactly two departures into them:
+ *
+ * - **`EVAL_T0 − 5d`** — an error spike: thirty `graphics_diagnostic` events on
+ *   top of the usual two runtime errors, so the day reads as 32 against a
+ *   baseline of 2 *and* the contributor is unambiguously one channel. That is
+ *   what makes "what caused the error spike?" a question with a checkable
+ *   answer rather than a number.
+ * - **`EVAL_T0 − 4d`** — an FPS drop: the same six frame samples, at 25 instead
+ *   of 60.
+ *
+ * Values are exact rather than jittered, so every expected number in
+ * `cases/insights.yaml` is arithmetic a reader can redo by hand.
+ *
+ * **Invisible to every other case**, like {@link PRIOR_DAY_SESSION}: the events
+ * sit two to fifteen days before {@link EVAL_T0}, outside {@link EVAL_RANGE} and
+ * outside the single previous day that `insight_movers` compares against — so no
+ * existing derived expectation moves.
+ */
+const ANOMALY_HISTORY: AnyEvent[] = (() => {
+  const events: AnyEvent[] = [];
+  /** Days before {@link EVAL_T0} that carry the injected departures. */
+  const ERROR_SPIKE_DAY = 5;
+  const FPS_DROP_DAY = 4;
+
+  for (let daysAgo = 14; daysAgo >= 2; daysAgo -= 1) {
+    const session = `h${daysAgo}`;
+    const t = (offsetMs: number): number => EVAL_T0 - daysAgo * DAY_MS + offsetMs;
+    events.push(
+      ev("session_start", t(0), session, "lobby", {
+        scene: { cameraType: "arc-rotate", cameraName: "cam", meshCount: 3 },
+        user: { id: `anon-h${daysAgo}` },
+        device: {
+          engine: "webgpu",
+          renderer: "Apple M2",
+          isMobile: false,
+          browser: "Chrome",
+          os: "macOS",
+        },
+        graphics: { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl" },
+      }),
+    );
+    // Six frame samples: 60 FPS every day but one.
+    const fps = daysAgo === FPS_DROP_DAY ? 25 : 60;
+    for (let index = 0; index < 6; index += 1) {
+      events.push(
+        ev("frame_perf", t(1_000 + index * 1_000), session, "lobby", {
+          fps,
+          frameTimeMs: 1000 / fps,
+          frameTimeP95Ms: fps === 60 ? 20 : 60,
+          longFrames: fps === 60 ? 0 : 4,
+          dpr: 2,
+          renderScale: 1,
+          position: [0, 0, 0],
+        }),
+      );
+    }
+    // Two runtime errors a day — the steady floor the spike stands out from.
+    for (let index = 0; index < 2; index += 1) {
+      events.push(
+        ev("runtime_error", t(8_000 + index * 500), session, "lobby", {
+          kind: "error",
+          message: "background sync failed",
+          position: [1, 0, 1],
+        }),
+      );
+    }
+    // …and, on one day, thirty engine diagnostics on top of them.
+    if (daysAgo === ERROR_SPIKE_DAY) {
+      for (let index = 0; index < 30; index += 1) {
+        events.push(
+          ev("graphics_diagnostic", t(10_000 + index * 100), session, "lobby", {
+            severity: "error",
+            category: "shader-compile",
+            backend: "webgpu",
+            position: [2, 0, 3],
+          }),
+        );
+      }
+    }
+    events.push(
+      ev("session_end", t(20_000), session, "lobby", { durationMs: 20_000, reason: "unload" }),
+    );
+  }
+  return events;
+})();
+
+/**
+ * Every event the harness seeds: the quiet fortnight, the previous day, then the
+ * parity fixtures and the supplement that share {@link EVAL_T0}'s day.
  */
 export const EVAL_EVENTS: readonly AnyEvent[] = [
+  ...ANOMALY_HISTORY,
   ...PRIOR_DAY_SESSION,
   ...PARITY_EVENTS,
   ...EVAL_SUPPLEMENT_EVENTS,
 ];
+
+/**
+ * The range the `anomalies` cases are asked over: the fifteen days ending at
+ * {@link EVAL_T0}. Snapped down to whole days by the endpoint, it covers the
+ * quiet fortnight and {@link PRIOR_DAY_SESSION} and stops *before* `EVAL_T0`'s
+ * own day, so the parity fixtures cannot add a finding of their own.
+ */
+export const EVAL_ANOMALY_RANGE = { since: EVAL_T0 - 15 * DAY_MS, until: EVAL_T0 } as const;
 
 /**
  * A registered scene proxy for `lobby` (ADR 0040). Without one the collector's

@@ -270,6 +270,17 @@ const FILTER_FIELDS: Readonly<Record<FilterId, z.ZodType>> = {
     .int()
     .optional()
     .describe("End of the reference window, epoch milliseconds. Defaults to `since`."),
+  // --- anomalies (#306) ---
+  sensitivity: z
+    .number()
+    .min(1)
+    .max(10)
+    .optional()
+    .describe(
+      "How far out of line a bucket must be before it is reported, in standard deviations of " +
+        "the trailing window (a rescaled median absolute deviation). Higher means fewer, more " +
+        "extreme findings. 1-10, default 3.",
+    ),
   // The shared result envelope (ADR 0051 §2). Declared literally rather than
   // imported from `@uptimizr/db/summary`, which would put a database driver back
   // on this package's dependency graph. `full` stays the default here: switching
