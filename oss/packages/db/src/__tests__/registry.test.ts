@@ -42,6 +42,10 @@ import {
   type MetricId,
 } from "@uptimizr/metrics";
 import { coerceRows, numericColumns } from "../query/coerce.js";
+import {
+  foldCustomEventVocabulary,
+  type CustomEventVocabularySampleRow,
+} from "../query/customEventVocabulary.js";
 import * as aggregations from "../query/aggregations.js";
 import { duckdbDialect } from "../query/duckdbDialect.js";
 import type { Dialect } from "../query/dialect.js";
@@ -183,6 +187,7 @@ const PARITY_CASE_METRIC: Readonly<Record<string, MetricId>> = {
   meshInteractionKinds: "mesh_interaction_kinds",
   reachability: "mesh_reachability",
   topInputActions: "top_input_actions",
+  customEventVocabulary: "custom_event_vocabulary",
   perfSummary: "perf_summary",
   renderScaleTruth: "render_scale_truth",
   perfDistribution: "perf_distribution",
@@ -417,6 +422,29 @@ const REGISTRY_EXTRA_EVENTS: readonly AnyEvent[] = [
  * Pinned so a fixture change that silently empties a metric surfaces here
  * instead of passing vacuously.
  */
+
+/**
+ * The rows the **API** serves for a metric, given the rows its builder produced.
+ *
+ * For all but one metric these are the same thing, and the registry `row` schema
+ * describes the builder output directly. `custom_event_vocabulary` is the
+ * exception (ADR 0051 §5): its SQL emits the per-name totals repeated across the
+ * sampled raw payloads, and `foldCustomEventVocabulary` — a pure function, not a
+ * query — turns those into the one-row-per-name result with discovered prop
+ * types. The raw payload is an intermediate that never leaves the store layer,
+ * so it is the *folded* rows the registry schema must describe, and the folded
+ * rows this suite checks.
+ */
+function apiRows(
+  metric: MetricId,
+  rows: readonly Record<string, unknown>[],
+): Record<string, unknown>[] {
+  if (metric !== "custom_event_vocabulary") return [...rows];
+  return foldCustomEventVocabulary(
+    rows as unknown as readonly CustomEventVocabularySampleRow[],
+  ) as unknown as Record<string, unknown>[];
+}
+
 const EMPTY_AGAINST_FIXTURES: readonly MetricId[] = [];
 
 /** Render every JSON number in a row as a string — the ClickHouse HTTP shape. */
@@ -447,7 +475,8 @@ describe("metric registry — row schemas against real DuckDB output", () => {
     ];
 
     for (const query of queries) {
-      const rows = await runDuckdbQuery<Record<string, unknown>>(db, query.build(duckdbDialect));
+      const raw = await runDuckdbQuery<Record<string, unknown>>(db, query.build(duckdbDialect));
+      const rows = apiRows(query.metric, raw);
       const existing = produced.get(query.metric) ?? [];
       produced.set(query.metric, [...existing, ...rows]);
     }

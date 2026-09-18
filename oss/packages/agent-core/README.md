@@ -69,15 +69,15 @@ console.log(result.content); // the model's final answer
 `position_heatmap`, `session_trajectory`, `aggregate_paths`, `scene_coverage`, `camera_distance`,
 `click_rays`, `flow_links`, `top_meshes`, `mesh_sources`, `mesh_trend`, `mesh_dwell`,
 `mesh_blind_spots`, `mesh_interaction_kinds`, `mesh_reachability`, `dead_clicks`, `rage_clicks`,
-`hover_dwell`, `interaction_sources`, `top_input_actions`, `camera_gestures`, `navigation_stats`,
-`backtrack_ratio`, `perf_summary`, `render_scale_truth`, `perf_distribution`, `fps_histogram`,
-`frame_time_percentiles`, `jank_rate`, `perf_churn`, `perf_by_device`, `perf_by_scene`,
-`perf_heatmap`, `compile_stalls`, `resource_summary`, `resource_percentiles`, `stability_counts`,
-`graphics_diagnostics`, `error_heatmap`, `rendering_technology`, `capability_changes`,
-`xr_rotation`, `xr_sources`, `xr_abandonment`, `xr_locomotion`, `xr_tracking_quality`,
-`boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
-`ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
-`scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
+`hover_dwell`, `interaction_sources`, `top_input_actions`, `custom_event_vocabulary`,
+`camera_gestures`, `navigation_stats`, `backtrack_ratio`, `perf_summary`, `render_scale_truth`,
+`perf_distribution`, `fps_histogram`, `frame_time_percentiles`, `jank_rate`, `perf_churn`,
+`perf_by_device`, `perf_by_scene`, `perf_heatmap`, `compile_stalls`, `resource_summary`,
+`resource_percentiles`, `stability_counts`, `graphics_diagnostics`, `error_heatmap`,
+`rendering_technology`, `capability_changes`, `xr_rotation`, `xr_sources`, `xr_abandonment`,
+`xr_locomotion`, `xr_tracking_quality`, `boundary_heatmap`, `boundary_heatmap_stats`,
+`xr_boundary_contacts`, `ar_placement_time_to_place`, `ar_placement_attempts`,
+`ar_placement_surfaces`, `funnel`, `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
 
 <!-- generated:registry-tool-names:end -->
 

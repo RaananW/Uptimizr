@@ -1,7 +1,7 @@
 {
   "scripted": {
     "passRate": 1,
-    "recordedAt": "2026-09-16T15:30:16.442Z",
+    "recordedAt": "2026-09-18T22:06:34.991Z",
     "tolerance": 0,
     "cases": {
       "ar_placement_effort": true,
@@ -12,10 +12,12 @@
       "attention_view_directions": true,
       "attention_mesh_dwell": true,
       "attention_hover_and_uv": true,
+      "attention_named_region": true,
       "conversion_funnel": true,
       "conversion_scene_retention": true,
       "conversion_load_bounce": true,
       "conversion_variants": true,
+      "conversion_named_variant": true,
       "errors_stability_overview": true,
       "errors_graphics_diagnostics": true,
       "errors_where_and_capability": true,
@@ -25,6 +27,7 @@
       "interaction_frustration": true,
       "interaction_click_geometry": true,
       "interaction_reach_and_keys": true,
+      "interaction_custom_event_vocabulary": true,
       "navigation_standpoints": true,
       "navigation_one_trajectory": true,
       "navigation_distance_travelled": true,

@@ -4,6 +4,7 @@ import {
   buildCameraDistance,
   buildCameraPositionHeatmap,
   buildClickGazeRay,
+  buildCustomEventVocabulary,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -62,6 +63,7 @@ import {
   buildTopMeshesBySource,
   buildTopMeshesTrend,
   buildTopInputActions,
+  foldCustomEventVocabulary,
   buildWorldHeatmap,
   buildWorldHeatmapStats,
   buildGazeHeatmap,
@@ -98,6 +100,7 @@ import {
   type ReachabilityBinRow,
   type MeshSourceCountRow,
   type MeshTrendPointRow,
+  type CustomEventVocabularySampleRow,
   type InputActionCountRow,
   type NavigationStatsRow,
   type BacktrackRatioRow,
@@ -177,6 +180,7 @@ export async function createPostgresStore(): Promise<CollectorStore> {
 
   const d = postgresDialect;
   return {
+    engine: "postgres",
     resolveApiKey: (key) => pgResolveApiKey(pgc, key),
     recordAudit: (entry) => pgRecordAudit(pgc, entry),
     listAudit: (projectId, opts) => pgListAudit(pgc, projectId, opts),
@@ -333,6 +337,16 @@ export async function createPostgresStore(): Promise<CollectorStore> {
       runPostgresQuery<InteractionSourceRow>(pgc, buildInteractionsBySource(projectId, opts, d)),
     topInputActions: (projectId, opts = {}) =>
       runPostgresQuery<InputActionCountRow>(pgc, buildTopInputActions(projectId, opts, d)),
+    // Discovered custom-event vocabulary (ADR 0051 §5): the SQL counts and
+    // samples, the pure fold turns the sampled payloads into prop types. The
+    // raw payload stops here and never reaches a route.
+    customEventVocabulary: async (projectId, opts = {}) =>
+      foldCustomEventVocabulary(
+        await runPostgresQuery<CustomEventVocabularySampleRow>(
+          pgc,
+          buildCustomEventVocabulary(projectId, opts, d),
+        ),
+      ),
     scenes: (projectId, opts = {}) =>
       runPostgresQuery<SceneRow>(pgc, buildDistinctScenes(projectId, opts, d)),
     timeseries: (projectId, opts = {}) =>

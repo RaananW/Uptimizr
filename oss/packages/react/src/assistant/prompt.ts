@@ -41,12 +41,22 @@ export const DEFAULT_SYSTEM_PROMPT = [
  * Plain string building only — no regex — so there is no ReDoS surface even though
  * `basePrompt` may be a consumer-supplied override.
  *
+ * The optional third part is the **project context block** (ADR 0051 §5): the
+ * compact rendering of the collector's `GET /api/v1/context` document produced by
+ * `renderContextForPrompt` in `@uptimizr/agent-core` — the project's real scene
+ * ids, region ids and custom-event names, and which metrics cannot have data.
+ * It is appended last, closest to the question, and omitted entirely when empty
+ * (an older collector without the endpoint, or a project with nothing to say),
+ * so the prompt is byte-identical to before in that case.
+ *
  * @param basePrompt The base system instructions (defaults to {@link DEFAULT_SYSTEM_PROMPT}).
  * @param nowMs The current time in epoch milliseconds (e.g. `Date.now()`).
+ * @param projectContext Pre-rendered project context block, or `""` for none.
  */
 export function composeSystemPrompt(
   basePrompt: string = DEFAULT_SYSTEM_PROMPT,
   nowMs: number = Date.now(),
+  projectContext = "",
 ): string {
   const iso = new Date(nowMs).toISOString();
   const currentTimeLine =
@@ -54,7 +64,10 @@ export function composeSystemPrompt(
     "Resolve any relative time range in the question against this — " +
     '"today" is the current calendar day, "this week" the last 7 days, ' +
     '"last 24h" the preceding 24 hours — into concrete `since`/`until` epoch-ms arguments.';
-  return `${basePrompt}\n\n${currentTimeLine}`;
+  const context = projectContext.trim();
+  return context.length > 0
+    ? `${basePrompt}\n\n${currentTimeLine}\n\n${context}`
+    : `${basePrompt}\n\n${currentTimeLine}`;
 }
 
 /**
@@ -78,13 +91,20 @@ export function composeSystemPrompt(
  * @param messages The current transcript (may be empty).
  * @param basePrompt The base system instructions (defaults to {@link DEFAULT_SYSTEM_PROMPT}).
  * @param nowMs The current time in epoch milliseconds (e.g. `Date.now()`).
+ * @param projectContext Pre-rendered project context block, or `""` for none.
+ *   Re-stamped on every send too, so a context that arrives after the first turn
+ *   still reaches the model.
  */
 export function refreshSystemPrompt(
   messages: readonly AgentMessage[],
   basePrompt: string = DEFAULT_SYSTEM_PROMPT,
   nowMs: number = Date.now(),
+  projectContext = "",
 ): AgentMessage[] {
-  const system: AgentMessage = { role: "system", content: composeSystemPrompt(basePrompt, nowMs) };
+  const system: AgentMessage = {
+    role: "system",
+    content: composeSystemPrompt(basePrompt, nowMs, projectContext),
+  };
   const rest = messages.filter((message) => message.role !== "system");
   return [system, ...rest];
 }

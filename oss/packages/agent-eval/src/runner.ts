@@ -13,7 +13,14 @@
  * partial report is far more useful than none.
  */
 
-import { runAgent, readTools, type LlmProvider, type ReadTool } from "@uptimizr/agent-core";
+import {
+  renderContextForPrompt,
+  runAgent,
+  readTools,
+  type LlmProvider,
+  type PromptContextDocument,
+  type ReadTool,
+} from "@uptimizr/agent-core";
 import type { AgentMessage } from "@uptimizr/agent-core";
 import type { EvalCase } from "./cases.js";
 import { EVAL_PROJECT_ID, EVAL_RANGE, EVAL_SCENES } from "./fixtures.js";
@@ -30,8 +37,17 @@ import {
 /** Cap on provider turns per case — enough for gather-then-answer with retries. */
 const MAX_STEPS = 6;
 
-/** The system prompt every case is asked under. */
-export function systemPrompt(evalCase: EvalCase): string {
+/**
+ * The system prompt every case is asked under.
+ *
+ * `projectContext` is the compact rendering of the collector's own context
+ * document (ADR 0051 §5) — the project's real scene ids, region ids and
+ * custom-event names. It is injected here, exactly as `useAssistant` injects it
+ * in the browser, so the bank measures the same prompt a real client sends. It is
+ * appended **after** the scene/range hints and before the closing instruction,
+ * and omitted entirely when the collector has no context endpoint.
+ */
+export function systemPrompt(evalCase: EvalCase, projectContext = ""): string {
   const { since, until } = EVAL_RANGE;
   const lines = [
     "You are an analytics assistant for a 3D scene. Answer the user's question by " +
@@ -49,6 +65,8 @@ export function systemPrompt(evalCase: EvalCase): string {
     lines.push(`The question is about session "${evalCase.context.session}".`);
   }
   if (evalCase.context.note) lines.push(evalCase.context.note);
+  const context = projectContext.trim();
+  if (context.length > 0) lines.push("", context);
   lines.push(
     "",
     "Report the figures the tools returned. Never invent a number, and say so plainly " +
@@ -96,6 +114,21 @@ export interface RunEvalOptions {
   onCase?: (result: CaseResult, index: number, total: number) => void;
 }
 
+/**
+ * Read the collector's project context and render it for the prompt, or return
+ * `""`. A collector without the endpoint (or a read that fails) must degrade to
+ * the prompt the bank has always used rather than abort the run — the same rule
+ * the browser assistant follows.
+ */
+async function readProjectContext(harness: EvalHarness): Promise<string> {
+  try {
+    const document = await harness.client.get("api/v1/context");
+    return renderContextForPrompt(document as PromptContextDocument);
+  } catch {
+    return "";
+  }
+}
+
 /** Pull the tool calls out of a finished transcript, in order. */
 function observedCalls(messages: readonly AgentMessage[]): ObservedToolCall[] {
   const calls: ObservedToolCall[] = [];
@@ -113,6 +146,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalRun> {
   const tools = options.tools ?? readTools;
   const harness = options.harness ?? (await startHarness());
   const ownsHarness = options.harness === undefined;
+  const projectContext = await readProjectContext(harness);
   const startedAt = new Date();
   const results: CaseResult[] = [];
 
@@ -127,7 +161,7 @@ export async function runEval(options: RunEvalOptions): Promise<EvalRun> {
           tools,
           maxSteps: MAX_STEPS,
           messages: [
-            { role: "system", content: systemPrompt(evalCase) },
+            { role: "system", content: systemPrompt(evalCase, projectContext) },
             { role: "user", content: evalCase.question },
           ],
         });

@@ -43,19 +43,19 @@ reviewable.
 `position_heatmap`, `session_trajectory`, `aggregate_paths`, `scene_coverage`, `camera_distance`,
 `click_rays`, `flow_links`, `top_meshes`, `mesh_sources`, `mesh_trend`, `mesh_dwell`,
 `mesh_blind_spots`, `mesh_interaction_kinds`, `mesh_reachability`, `dead_clicks`, `rage_clicks`,
-`hover_dwell`, `interaction_sources`, `top_input_actions`, `camera_gestures`, `navigation_stats`,
-`backtrack_ratio`, `perf_summary`, `render_scale_truth`, `perf_distribution`, `fps_histogram`,
-`frame_time_percentiles`, `jank_rate`, `perf_churn`, `perf_by_device`, `perf_by_scene`,
-`perf_heatmap`, `compile_stalls`, `resource_summary`, `resource_percentiles`, `stability_counts`,
-`graphics_diagnostics`, `error_heatmap`, `rendering_technology`, `capability_changes`,
-`xr_rotation`, `xr_sources`, `xr_abandonment`, `xr_locomotion`, `xr_tracking_quality`,
-`boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
-`ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
-`scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
+`hover_dwell`, `interaction_sources`, `top_input_actions`, `custom_event_vocabulary`,
+`camera_gestures`, `navigation_stats`, `backtrack_ratio`, `perf_summary`, `render_scale_truth`,
+`perf_distribution`, `fps_histogram`, `frame_time_percentiles`, `jank_rate`, `perf_churn`,
+`perf_by_device`, `perf_by_scene`, `perf_heatmap`, `compile_stalls`, `resource_summary`,
+`resource_percentiles`, `stability_counts`, `graphics_diagnostics`, `error_heatmap`,
+`rendering_technology`, `capability_changes`, `xr_rotation`, `xr_sources`, `xr_abandonment`,
+`xr_locomotion`, `xr_tracking_quality`, `boundary_heatmap`, `boundary_heatmap_stats`,
+`xr_boundary_contacts`, `ar_placement_time_to_place`, `ar_placement_attempts`,
+`ar_placement_surfaces`, `funnel`, `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
 
 <!-- generated:registry-tool-names:end -->
 
-**69 tools, generated** from the `@uptimizr/metrics` semantic metric registry (ADR 0051 §1) — one per
+**70 tools, generated** from the `@uptimizr/metrics` semantic metric registry (ADR 0051 §1) — one per
 metric the collector serves on a read endpoint. Names are the registry ids; the full table lives in
 [README.md](./README.md), and `uptimizr://capabilities` enumerates them at runtime with each tool's
 grain, column units and caveats.
@@ -104,16 +104,26 @@ Every **aggregate** tool takes a `format` argument choosing the envelope its row
 
 ## Resources and prompts
 
+- `uptimizr://context` (`application/json`) — the **live project context document**
+  (`GET /api/v1/context`, ADR 0051 §5). **Read this first, before capabilities.** It describes the
+  project in front of you rather than the API: the scene ids with their labels and named region ids,
+  the custom events the application emits with the `props` keys and coarse types they carry, the top
+  meshes and bound input actions, data freshness (`lastEventAt`, `sessions24h`), whether raw session
+  retention is on, the store engine and collector version, the project glossary and recent
+  annotations, and `metrics.disabledByCapture` — the metrics that WILL return empty because every
+  capture channel feeding them is off. Bounded (<16 KB) and cached per project for ~30 s. Use the ids
+  and names it gives you; never infer a scene id, a region id or a custom-event name.
 - `uptimizr://capabilities` (`application/json`) — the machine-readable descriptor: schema version,
   the canonical event types, the tool catalog, the parameter-semantics glossary, and `metrics`, the
   whole registry with each metric's grain, column units, row JSON Schema, filters, limits,
   interpretation, caveats, source channels and related metrics. Served from the package; **no
-  collector call**. Read it first — it is how to plan a query without trial and error.
+  collector call**. The companion to the context: it is how to plan a query without trial and error.
 - `uptimizr://scenes` (`application/json`) — the **live** list of scene ids with recent activity,
   fetched through the read-only query API. These are the valid values for the `scene` parameter, so
   resolve a user's scene name against it instead of guessing a string.
 - Prompts: `weekly_scene_health` (optional `scene`), `attention_hotspots` (required `scene`) and
-  `xr_comfort_review` (optional `scene`). Each renders one user message that sequences the existing
+  `xr_comfort_review` (optional `scene`). Each opens by telling the agent to read
+  `uptimizr://context` first, then renders one user message that sequences the existing
   read-only tools; they fetch nothing themselves and name no exact arguments, so the agent still
   resolves the epoch-ms range and the filters.
 

@@ -464,6 +464,20 @@ const scenesQueryParams = z.object({
   format: formatFilter,
 });
 
+/**
+ * Custom-event vocabulary params (ADR 0051 §5): range + optional scene, and a
+ * cap on how many distinct event names come back. The payload-sampling depth is
+ * deliberately NOT a request parameter — it is a cost knob, not a filter, and
+ * the registry-declared default is what keeps the context document bounded.
+ */
+const customEventVocabularyQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  scene: sceneFilter,
+  limit: z.coerce.number().int().positive().max(200).optional(),
+  format: formatFilter,
+});
+
 /** Time-series params: range + scene + optional event-type filter + bucket interval (seconds). */
 const timeseriesQueryParams = z.object({
   since: z.coerce.number().int().optional(),
@@ -2061,6 +2075,26 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.topInputActions(projectId, req.query);
+    },
+  );
+
+  // Discovered custom-event vocabulary (ADR 0051 §5, design sketch §E.1) — the
+  // developer-defined `custom` event names this project actually emits, with the
+  // `props` keys observed on each. The one read that tells an agent what an
+  // application calls its own events, so it can filter or funnel on a real name
+  // instead of guessing one. Prop *values* are never reported (ADR 0003).
+  r.get(
+    "/api/v1/vocabulary/custom-events",
+    {
+      schema: {
+        querystring: customEventVocabularyQueryParams,
+        response: { 200: rowsFor("/api/v1/vocabulary/custom-events") },
+      },
+    },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.customEventVocabulary(projectId, req.query);
     },
   );
 

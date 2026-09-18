@@ -4,6 +4,7 @@ import {
   buildCameraDistance,
   buildCameraPositionHeatmap,
   buildClickGazeRay,
+  buildCustomEventVocabulary,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -62,6 +63,7 @@ import {
   buildTopMeshesBySource,
   buildTopMeshesTrend,
   buildTopInputActions,
+  foldCustomEventVocabulary,
   buildWorldHeatmap,
   buildWorldHeatmapStats,
   buildGazeHeatmap,
@@ -98,6 +100,7 @@ import {
   type ReachabilityBinRow,
   type MeshSourceCountRow,
   type MeshTrendPointRow,
+  type CustomEventVocabularySampleRow,
   type InputActionCountRow,
   type NavigationStatsRow,
   type BacktrackRatioRow,
@@ -183,6 +186,7 @@ export async function createMssqlStore(): Promise<CollectorStore> {
 
   const d = mssqlDialect;
   return {
+    engine: "mssql",
     resolveApiKey: (key) => msResolveApiKey(msc, key),
     recordAudit: (entry) => msRecordAudit(msc, entry),
     listAudit: (projectId, opts) => msListAudit(msc, projectId, opts),
@@ -336,6 +340,16 @@ export async function createMssqlStore(): Promise<CollectorStore> {
       runMssqlQuery<InteractionSourceRow>(msc, buildInteractionsBySource(projectId, opts, d)),
     topInputActions: (projectId, opts = {}) =>
       runMssqlQuery<InputActionCountRow>(msc, buildTopInputActions(projectId, opts, d)),
+    // Discovered custom-event vocabulary (ADR 0051 §5): the SQL counts and
+    // samples, the pure fold turns the sampled payloads into prop types. The
+    // raw payload stops here and never reaches a route.
+    customEventVocabulary: async (projectId, opts = {}) =>
+      foldCustomEventVocabulary(
+        await runMssqlQuery<CustomEventVocabularySampleRow>(
+          msc,
+          buildCustomEventVocabulary(projectId, opts, d),
+        ),
+      ),
     scenes: (projectId, opts = {}) =>
       runMssqlQuery<SceneRow>(msc, buildDistinctScenes(projectId, opts, d)),
     timeseries: (projectId, opts = {}) =>

@@ -16,11 +16,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   filterReadTools,
+  renderContextForPrompt,
   runAgent,
   selectReadTools,
   type AgentMessage,
   type CollectorClient,
   type LlmProvider,
+  type PromptContextDocument,
 } from "@uptimizr/agent-core";
 import {
   CURATED_MODELS,
@@ -92,7 +94,7 @@ export interface UseAssistantOptions {
    * Which read tools to expose to the model, as catalog tool names.
    *
    * The catalog is generated from the metric registry (ADR 0051 §1) and is
-   * ~69 tools — every schema is folded into the model's function-calling prompt,
+   * ~70 tools — every schema is folded into the model's function-calling prompt,
    * which a small local model cannot carry. By default the hook picks for you:
    * the **local** (WebLLM) backend gets agent-core's `coreReadTools` subset and
    * a **hosted** backend gets the full catalog. Pass an explicit list to narrow
@@ -167,6 +169,14 @@ export interface UseAssistantResult {
   webGpuAvailable: boolean;
   /** The curated local models available for selection. */
   models: readonly CuratedModel[];
+  /**
+   * The project context document this collector served (ADR 0051 §5), or `null`
+   * while it is loading, when the collector is too old to serve
+   * `GET /api/v1/context`, or when the read failed. Exposed so a UI can show what
+   * the assistant knows about the project; the hook injects it into the system
+   * prompt either way.
+   */
+  projectContext: PromptContextDocument | null;
   /** True when a backend and a collector client are both available. */
   isReady: boolean;
   /** True while a turn is in flight. */
@@ -254,6 +264,11 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
   const [initProgress, setInitProgress] = useState<InitProgress | null>(null);
   const [notice, setNotice] = useState<AssistantNotice | null>(null);
   const [partialText, setPartialText] = useState<string | null>(null);
+  // The collector's project context document (ADR 0051 §5, design sketch §E.1):
+  // the scene ids, region ids and custom-event names this project really uses.
+  // Fetched once per collector connection; the collector caches it server-side,
+  // so a remount is cheap.
+  const [projectContext, setProjectContext] = useState<PromptContextDocument | null>(null);
 
   // Refs so `send` reads fresh values without being re-created every render.
   const messagesRef = useRef(messages);
@@ -262,6 +277,11 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
   backendRef.current = backend;
   const nowRef = useRef(now);
   nowRef.current = now;
+  // Read inside `send` without making the context a dependency of it: a document
+  // that lands mid-conversation reaches the next turn, and a turn already in
+  // flight is not disturbed.
+  const projectContextRef = useRef(projectContext);
+  projectContextRef.current = projectContext;
   const onCacheEvictedRef = useRef(onCacheEvicted);
   onCacheEvictedRef.current = onCacheEvicted;
   const providerRef = useRef<{ key: string; provider: LlmProvider } | null>(null);
@@ -276,6 +296,54 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
       if (cached && isUnloadable(cached.provider)) void cached.provider.unload().catch(() => {});
     };
   }, []);
+
+  // Serialised form of the document currently in state, so an identical refetch
+  // does not produce a new object — see the effect below.
+  const contextJsonRef = useRef<string | null>(null);
+
+  // Fetch the project context whenever the collector connection changes — a new
+  // project, a new key, a new `api`.
+  //
+  // Two deliberate properties:
+  //
+  // 1. **Failure is silent.** A collector that predates `GET /api/v1/context`
+  //    answers 404. That is not an error the user should see; it just means the
+  //    assistant runs with exactly the prompt it has always had. Both paths are
+  //    tested.
+  // 2. **An identical document does not re-render.** `api` is often built inline
+  //    by the caller (`api={new CollectorApi(url, key)}`), so its identity
+  //    changes on every render; storing a fresh object here would then feed a
+  //    render→effect→setState loop. Comparing the serialised document makes the
+  //    second pass a no-op, which settles it — and the collector caches the
+  //    document server-side, so the extra read is nearly free.
+  useEffect(() => {
+    if (!api) {
+      contextJsonRef.current = null;
+      setProjectContext(null);
+      return;
+    }
+    let cancelled = false;
+    const settle = (document: PromptContextDocument | null) => {
+      if (cancelled) return;
+      const json = JSON.stringify(document) ?? "null";
+      if (contextJsonRef.current === json) return;
+      contextJsonRef.current = json;
+      setProjectContext(document);
+    };
+    void api
+      .read("api/v1/context")
+      .then((document) => {
+        settle(
+          document != null && typeof document === "object"
+            ? (document as PromptContextDocument)
+            : null,
+        );
+      })
+      .catch(() => settle(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   const setBackend = useCallback(
     (config: AssistantBackendConfig) => {
@@ -363,8 +431,14 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
       // calendar boundary still resolves "today" / "this week" against the real
       // current time (#220). The existing system message is updated in place;
       // a second system turn is never appended.
+      //
+      // The project context block (ADR 0051 §5) is re-rendered on every send for
+      // the same reason: a document that arrived after the conversation started
+      // still reaches the model, and the block is `""` — leaving the prompt
+      // byte-identical to before — when there is no context to inject.
+      const contextBlock = renderContextForPrompt(projectContextRef.current, nowRef.current());
       const outgoing: AgentMessage[] = [
-        ...refreshSystemPrompt(history, systemPrompt, nowRef.current()),
+        ...refreshSystemPrompt(history, systemPrompt, nowRef.current(), contextBlock),
         userMessage,
       ];
       setMessages(outgoing);
@@ -511,6 +585,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     backend,
     webGpuAvailable,
     models: CURATED_MODELS,
+    projectContext,
     isReady: Boolean(api) && Boolean(backend),
     isBusy,
     send,

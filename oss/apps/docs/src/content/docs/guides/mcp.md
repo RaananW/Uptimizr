@@ -236,19 +236,20 @@ grain, column units, limits and caveats.
 
 #### Meshes & interactions
 
-| Tool                     | Endpoint                       | Returns                           |
-| ------------------------ | ------------------------------ | --------------------------------- |
-| `click_rays`             | `/api/v1/heatmaps/click-rays`  | View-gated click rays             |
-| `flow_links`             | `/api/v1/heatmaps/flow`        | Gaze → mesh flow links            |
-| `top_meshes`             | `/api/v1/meshes/top`           | Most-interacted meshes            |
-| `mesh_sources`           | `/api/v1/meshes/sources`       | Mesh interactions by input source |
-| `mesh_trend`             | `/api/v1/meshes/trend`         | Per-mesh interaction trend        |
-| `mesh_interaction_kinds` | `/api/v1/meshes/kinds`         | Interaction kinds per mesh        |
-| `mesh_reachability`      | `/api/v1/meshes/reachability`  | Mesh reachability by distance     |
-| `dead_clicks`            | `/api/v1/clicks/dead`          | Dead-click rate                   |
-| `rage_clicks`            | `/api/v1/clicks/rage`          | Rage-click clusters               |
-| `interaction_sources`    | `/api/v1/interactions/sources` | Interactions by input source      |
-| `top_input_actions`      | `/api/v1/input-actions/top`    | Most-used shortcuts and actions   |
+| Tool                      | Endpoint                           | Returns                            |
+| ------------------------- | ---------------------------------- | ---------------------------------- |
+| `click_rays`              | `/api/v1/heatmaps/click-rays`      | View-gated click rays              |
+| `flow_links`              | `/api/v1/heatmaps/flow`            | Gaze → mesh flow links             |
+| `top_meshes`              | `/api/v1/meshes/top`               | Most-interacted meshes             |
+| `mesh_sources`            | `/api/v1/meshes/sources`           | Mesh interactions by input source  |
+| `mesh_trend`              | `/api/v1/meshes/trend`             | Per-mesh interaction trend         |
+| `mesh_interaction_kinds`  | `/api/v1/meshes/kinds`             | Interaction kinds per mesh         |
+| `mesh_reachability`       | `/api/v1/meshes/reachability`      | Mesh reachability by distance      |
+| `dead_clicks`             | `/api/v1/clicks/dead`              | Dead-click rate                    |
+| `rage_clicks`             | `/api/v1/clicks/rage`              | Rage-click clusters                |
+| `interaction_sources`     | `/api/v1/interactions/sources`     | Interactions by input source       |
+| `top_input_actions`       | `/api/v1/input-actions/top`        | Most-used shortcuts and actions    |
+| `custom_event_vocabulary` | `/api/v1/vocabulary/custom-events` | Discovered custom-event vocabulary |
 
 #### Performance & stability
 
@@ -315,13 +316,17 @@ grain, column units, limits and caveats.
 The server also exposes read-only [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources)
 so an agent can **self-discover** what it can ask instead of guessing:
 
-| Resource URI              | Type               | Contents                                                                                                                                                                                                                                             |
-| ------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `uptimizr://capabilities` | `application/json` | A machine-readable descriptor: schema version, the canonical **event types**, the **tool catalog**, the **parameter semantics** glossary, and `metrics` — the collector's whole [semantic metric registry](#the-metric-registry). No collector call. |
-| `uptimizr://scenes`       | `application/json` | The **live** list of scene ids with recent activity — the valid values for the `scene` parameter. Fetched via the read-only query API.                                                                                                               |
+| Resource URI              | Type               | Contents                                                                                                                                                                                                                                                                                                     |
+| ------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `uptimizr://capabilities` | `application/json` | A machine-readable descriptor: schema version, the canonical **event types**, the **tool catalog**, the **parameter semantics** glossary, and `metrics` — the collector's whole [semantic metric registry](#the-metric-registry). No collector call.                                                         |
+| `uptimizr://context`      | `application/json` | **Read this first.** The live [project context document](/docs/api/context/): the scenes and their named regions, the custom events this application emits and the props they carry, data freshness and retention flags, the store engine, and which metrics are empty because their capture channel is off. |
+| `uptimizr://scenes`       | `application/json` | The **live** list of scene ids with recent activity — the valid values for the `scene` parameter. Fetched via the read-only query API.                                                                                                                                                                       |
 
-Point an agent at `uptimizr://capabilities` first: it enumerates every tool, its parameters, and
-what each parameter means, so the agent can plan a query without trial and error.
+Point an agent at `uptimizr://context` first: it is the only one that describes **this** project —
+the real scene ids, region ids and custom-event names it must use, and which metrics cannot have
+data. `uptimizr://capabilities` is the companion: it enumerates every tool, its parameters, and what
+each parameter means, so the agent can plan a query without trial and error. All three curated
+prompts below open by telling the agent to read the context.
 
 ### The metric registry
 

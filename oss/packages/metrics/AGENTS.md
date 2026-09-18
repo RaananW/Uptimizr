@@ -55,6 +55,12 @@ const metric: MetricDefinition | undefined = getMetric("perf_summary");
   capture-gating conditions — a metric with no enabled source channel returns an honest empty
   result, not a zero.
 - **`null` is not `0`.** An aggregate over no samples is SQL `NULL` and means "no data".
+- **`sourceChannels` is load-bearing.** The collector's project context document
+  (`GET /api/v1/context`, ADR 0051 §5) reports a metric under `metrics.disabledByCapture` when
+  **every** channel it declares produced no events over the window, which is how an agent learns to
+  say "that channel is off" instead of reporting the zero as a finding. An empty `sourceChannels`
+  means a derived rollup and is never reported as disabled — so declare the channels a metric
+  really reads, no more and no fewer.
 
 ## Where the SQL lives
 

@@ -31,6 +31,7 @@
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { SCHEMA_VERSION } from "@uptimizr/schema";
+import { projectContextSchema } from "./context.js";
 import {
   FILTER_TARGETS,
   allMetrics,
@@ -41,6 +42,20 @@ import {
 
 /** A JSON Schema object, as produced by `z.toJSONSchema`. */
 type JsonSchema = Record<string, unknown>;
+
+/**
+ * The project context document's JSON Schema, derived from the very Zod schema
+ * that serialises the response (`routes/context.ts`) rather than restated here —
+ * the same rule the registry rows follow, for the same reason.
+ */
+function contextSchema(): JsonSchema {
+  const schema = z.toJSONSchema(projectContextSchema, {
+    io: "output",
+    unrepresentable: "any",
+  }) as JsonSchema;
+  delete schema.$schema;
+  return { title: "Project context", ...schema };
+}
 
 /** A minimal OpenAPI document shape — enough to build and serve one. */
 export type OpenApiDocument = Record<string, unknown>;
@@ -338,6 +353,27 @@ function staticPaths(): Record<string, unknown> {
         },
       },
     },
+    "/api/v1/context": {
+      get: {
+        operationId: "project_context",
+        summary: "Project context document",
+        description:
+          "Everything an agent needs to know about *this* project before it asks anything: the store engine and versions, data freshness and retention flags, which capture channels produce data, the scenes with their labels and named regions, the discovered custom-event/mesh/input vocabulary, the glossary and recent annotations, and which registry metrics are disabled because their capture channels are off (ADR 0051 §5). Bounded and cached briefly per project. Not a registry metric — it describes the project, not a row grain.",
+        tags: ["meta"],
+        parameters: [],
+        responses: {
+          "200": {
+            description: "The project context document.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProjectContext" },
+              },
+            },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
     "/api/v1/scene-representations": {
       get: {
         operationId: "list_scene_representations",
@@ -374,6 +410,7 @@ function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unk
       properties: { error: { type: "string", description: "Human-readable failure reason." } },
       required: ["error"],
     },
+    ProjectContext: contextSchema(),
     SceneRepresentationSummary: {
       type: "object",
       title: "Scene representation summary",

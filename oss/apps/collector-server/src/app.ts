@@ -12,9 +12,11 @@ import type { CollectorConfig } from "./config.js";
 import type { CollectorStore } from "./store.js";
 import { createLiveBus, type LiveBus } from "./liveBus.js";
 import { attachApiKey } from "./auth.js";
+import { EMPTY_PROJECT_METADATA, type ProjectMetadataProvider } from "./projectMetadata.js";
 import { registerAuditHooks, startAuditRetention } from "./audit.js";
 import { buildDashboardCsp } from "./csp.js";
 import { collectRoutes } from "./routes/collect.js";
+import { contextRoutes } from "./routes/context.js";
 import { liveRoutes } from "./routes/live.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
 import { queryRoutes } from "./routes/query.js";
@@ -29,6 +31,12 @@ export interface BuildAppDeps {
   liveBus?: LiveBus;
   /** Pass `true` (or Fastify logger options) to enable request logging. */
   logger?: boolean;
+  /**
+   * Source of the glossary and recent annotations the project context document
+   * reports (ADR 0051 §5). Defaults to the empty provider until the metadata
+   * write path exists — see `projectMetadata.ts`.
+   */
+  projectMetadata?: ProjectMetadataProvider;
 }
 
 /**
@@ -141,6 +149,11 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(collectRoutes, { store, config, liveBus });
   await app.register(liveRoutes, { store, config, liveBus });
   await app.register(queryRoutes, { store, config });
+  await app.register(contextRoutes, {
+    store,
+    config,
+    metadata: deps.projectMetadata ?? EMPTY_PROJECT_METADATA,
+  });
   await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API

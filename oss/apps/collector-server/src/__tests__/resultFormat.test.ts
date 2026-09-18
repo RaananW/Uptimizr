@@ -64,12 +64,21 @@ const OFF_REQUEST_PATH = new Set(["recordAudit", "pruneAudit"]);
  * Regenerate **only** when a deliberate change to an endpoint's rows lands, and
  * never to make this suite pass: run the file with `RECORD_FULL_HASHES=1` and
  * paste what it prints.
+ *
+ * Re-recorded for five endpoints on #308, which added four `custom` events to the
+ * shared parity fixtures so the custom-event vocabulary has something to
+ * discover. Only the five whose rows count events — `list_sessions`,
+ * `list_scenes`, `timeseries`, `event_counts` and `variant_leaderboard` (whose
+ * default variant predicate *is* `custom`) — moved; every other endpoint still
+ * hashes to its original value, which is the evidence that the fixture change
+ * and not the response layer is what moved them. The vocabulary endpoint itself
+ * is new in the same change, so its entry is recorded at introduction.
  */
 const PRE_CHANGE_BODY_HASHES: Readonly<Record<string, string>> = {
-  "/api/v1/sessions": "fc8a8b1690f001672de3e9dd0b336eb9c874ad55555577cfd9b9402358b326cd",
-  "/api/v1/scenes": "7aba7bfa05c14a726c4667868c75e8f053c4fb2b0c8dedf6a775a58ef3bd556a",
-  "/api/v1/timeseries": "956599592dac1cf3753392d03d113b7657687f12a2080ebad6822a87a2b63162",
-  "/api/v1/event-counts": "8c1e75a0534531549e14c563095eaf0b817406fe1dc64783a07b931c70ddae8a",
+  "/api/v1/sessions": "7d38d880d2ab531a28d1ec3ac71fb96f03f7fcc29539ec8eaf6f54c6a0b186a7",
+  "/api/v1/scenes": "064b8168045bdb7976a46c1eee39421ec9a33dbb06caa5a8ed051d5b27fd5190",
+  "/api/v1/timeseries": "9176b8732485a635e4fee508764f49662fc8349582e58679bde9dd164784fd55",
+  "/api/v1/event-counts": "cfe2ac309d9f24032d234f272088bf5d5864caa5f2f940fe3bad54a3ff63aa7c",
   "/api/v1/heatmaps/pointer": "4e41b09f637099b7874362a800709ebe0800390d1ac9a1c8273a1eca8d7f73cc",
   "/api/v1/heatmaps/mesh-uv": "fed9cd3d814b12e31be8a44eb7fb5ad85332483c2ca58178e719ebde0978e7d4",
   "/api/v1/heatmaps/world": "89f03d861421299140a925be6af2af825df7bef49b9deecf7d23d85c8c37b994",
@@ -100,6 +109,8 @@ const PRE_CHANGE_BODY_HASHES: Readonly<Record<string, string>> = {
   "/api/v1/hover/dwell": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "/api/v1/interactions/sources":
     "6d12b16842ccf65d82adb39a830acb6f904e8c7aba2a1dece08317ee6a4133d9",
+  "/api/v1/vocabulary/custom-events":
+    "447c737a84fa30297a16b808b083e7ac45230100682cb934bbb8de61b08df709",
   "/api/v1/input-actions/top": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "/api/v1/camera-gestures": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "/api/v1/navigation": "0a7404cf407ff7a9613f4587da8c866d03db622840254b63718ea4ee211842ed",
@@ -144,7 +155,7 @@ const PRE_CHANGE_BODY_HASHES: Readonly<Record<string, string>> = {
   "/api/v1/funnel": "18a8f8d9fe53647be921f7e1a331ce86e3cea0ea6f8037245a484005c323d8bf",
   "/api/v1/scene-retention": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "/api/v1/load-bounce": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-  "/api/v1/variant-leaderboard": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "/api/v1/variant-leaderboard": "bdb47b32bfd763b86d5a6109489924a1c06bad7bb23fa08d9e4ab6f8ad62654a",
 };
 
 /** Recursively sort object keys, so two equal bodies render identically. */

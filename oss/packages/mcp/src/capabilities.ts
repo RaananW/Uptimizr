@@ -167,6 +167,11 @@ export function buildCapabilities(): CapabilitiesDescriptor {
     tools,
     metrics: metrics.map(toMetricDescriptor),
     notes: [
+      "Read the uptimizr://context resource FIRST. It describes the project in front of you — " +
+        "its scene ids and named regions, the custom events this application emits and the props " +
+        "they carry, how fresh the data is, whether raw session retention is on, and which of the " +
+        "metrics below are empty because their capture channel is off. Use the names it gives " +
+        "you; do not infer a scene id, a region id or a custom-event name.",
       "This MCP surface is strictly read-only: aggregate, privacy-preserving queries only. " +
         "There are no ingestion, mutation, or raw per-session event tools (ADR 0003 / ADR 0017).",
       "`metrics` is the collector's semantic metric registry (ADR 0051 §1): for each metric it " +
@@ -180,8 +185,10 @@ export function buildCapabilities(): CapabilitiesDescriptor {
         "underlying endpoint. It is exactly the set this server registers, because the tool " +
         "catalog is generated from the same registry (ADR 0051 §1) — the authoritative input " +
         "and output schemas of a registered tool are still the ones returned by `tools/list`.",
-      "Enumerate the concrete scene ids for the `scene` parameter with the uptimizr://scenes " +
-        "resource or the list_scenes tool; enumerate sessions with the list_sessions tool.",
+      "Enumerate the concrete scene ids for the `scene` parameter with the uptimizr://context or " +
+        "uptimizr://scenes resource, or the list_scenes tool; enumerate sessions with the " +
+        "list_sessions tool. Custom-event names and their prop keys come from " +
+        "uptimizr://context or the custom_event_vocabulary tool.",
       "All time ranges use epoch-millisecond `since`/`until`. Omit both for all-time.",
       "The same registry drives the collector's OpenAPI document at GET /api/v1/openapi.json, " +
         "which describes every endpoint below with its parameters and response schema.",

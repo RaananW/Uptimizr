@@ -24,3 +24,7 @@
 - Derive tool catalogs, OpenAPI documents and docs tables from the registry; never restate them by hand.
 - A new aggregation is not done until it has a registry entry.
 - Keep this package free of `@uptimizr/db`, `node:` built-ins and native dependencies.
+- `sourceChannels` is load-bearing beyond documentation: the collector's project context document
+  (`GET /api/v1/context`, ADR 0051 §5) reports a metric as `disabledByCapture` when **every** channel
+  it declares produced no events over the window. A metric with an empty `sourceChannels` is a
+  derived rollup and is never reported as disabled — so declare the channels a metric really reads.

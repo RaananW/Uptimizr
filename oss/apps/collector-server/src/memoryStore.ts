@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
+import { foldCustomEventVocabulary } from "@uptimizr/db";
 import type {
   AgentAuditEntry,
+  CustomEventVocabularySampleRow,
   ApiKeyCapability,
   SceneRegionRecord,
   SceneRepresentation,
@@ -73,6 +75,7 @@ export function createMemoryStore({
     (opts.since == null || e.ts >= opts.since) && (opts.until == null || e.ts < opts.until);
 
   return {
+    engine: "memory",
     resolveApiKey: async (key) =>
       key === apiKey
         ? { projectId, keyId, capabilities: [...capabilities], label: null, rateLimit: null }
@@ -194,6 +197,36 @@ export function createMemoryStore({
     trackingQuality: async () => [],
     interactionsBySource: async () => [],
     topInputActions: async () => [],
+    // Discovered custom-event vocabulary (ADR 0051 §5). Implemented here (unlike
+    // the heavier spatial aggregates) because the playground and the demo run on
+    // this store, and an empty vocabulary would make their project context
+    // document silently wrong about what the app emits.
+    customEventVocabulary: async (_projectId, opts = {}) => {
+      const limit = Math.min(opts.limit ?? 100, 200);
+      const sampleRows = Math.min(opts.sampleRows ?? 20, 100);
+      const byName = new Map<string, AnyEvent[]>();
+      for (const e of forProject()) {
+        if (e.type !== "custom" || !inRange(e, opts)) continue;
+        if (opts.scene != null && opts.scene.length > 0 && sceneOf(e) !== opts.scene) continue;
+        const name = (e as { name?: unknown }).name;
+        if (typeof name !== "string" || name.length === 0) continue;
+        const list = byName.get(name) ?? [];
+        list.push(e);
+        byName.set(name, list);
+      }
+      const samples: CustomEventVocabularySampleRow[] = [];
+      const ranked = [...byName.entries()]
+        .sort((a, b) => b[1].length - a[1].length || (a[0] < b[0] ? -1 : 1))
+        .slice(0, limit);
+      for (const [name, list] of ranked) {
+        const sessions = new Set(list.map((e) => e.sessionId)).size;
+        const recent = [...list].sort((a, b) => b.ts - a.ts).slice(0, sampleRows);
+        for (const event of recent) {
+          samples.push({ name, count: list.length, sessions, sample_payload: event });
+        }
+      }
+      return foldCustomEventVocabulary(samples);
+    },
     scenes: async (_projectId, opts = {}) => {
       const map = new Map<string, { events: number; last: number }>();
       for (const e of forProject()) {
