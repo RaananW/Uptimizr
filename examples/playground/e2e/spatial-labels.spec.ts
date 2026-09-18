@@ -88,6 +88,12 @@ test("a summarised world heatmap names its hotspots, and the 3D panel shows the 
   page,
   request,
 }) => {
+  // The longest single flow in the suite: boot an engine, scan and upload a
+  // proxy, declare regions, capture clicks, poll three aggregates, write a
+  // derived region set, then boot the Next dev dashboard and mount a Babylon
+  // panel. Comfortably past the 45 s default, so it gets the same allowance
+  // `live.spec.ts` takes.
+  test.setTimeout(90_000);
   await enableAllCapture(page, "babylon");
   const sessionId = await bootEngine(page, "babylon");
   const scene = (await page.locator("#currentScene").textContent())?.trim();
@@ -266,9 +272,9 @@ test("a summarised world heatmap names its hotspots, and the 3D panel shows the 
   const tooltip = panel.locator("div.pointer-events-none.absolute.z-10").first();
   const wanted = /in (Hotspot|Heat area)/;
   let labelText = "";
-  for (let i = 0; i < 24 && !wanted.test(labelText); i += 1) {
-    const fx = 0.25 + (i % 6) * 0.1;
-    const fy = 0.25 + Math.floor(i / 6) * 0.15;
+  for (let i = 0; i < 16 && !wanted.test(labelText); i += 1) {
+    const fx = 0.3 + (i % 4) * 0.1333;
+    const fy = 0.3 + Math.floor(i / 4) * 0.1333;
     await page.mouse.move(box.x + box.width * fx, box.y + box.height * fy, { steps: 2 });
     await page.waitForTimeout(80);
     labelText = (await tooltip.textContent().catch(() => "")) ?? "";
