@@ -45,6 +45,23 @@ interface ClusterSummary {
   caveats: string[];
 }
 
+/** One stored region, as the registry read returns it. */
+interface StoredRegion {
+  sceneId: string;
+  regionId: string;
+  label: string;
+  description: string | null;
+  bounds: [number, number, number, number, number, number];
+}
+
+/** One `full` world-heatmap row. */
+interface WorldBin {
+  vx: number;
+  vy: number;
+  vz: number;
+  count: number;
+}
+
 async function getJson<T>(request: APIRequestContext, url: string): Promise<T> {
   const res = await request.get(url, { headers: { "x-api-key": API_KEY } });
   expect(res.ok(), `${url} should succeed (got ${res.status()}: ${await res.text()})`).toBeTruthy();
@@ -84,6 +101,12 @@ test("a summarised world heatmap names its hotspots, and the 3D panel shows the 
   await page.locator("#registerRegionsButton").click();
   await expect(page.locator("#heatmapStatus")).toContainText(/Registered 2 regions/);
 
+  const stored = await getJson<StoredRegion[]>(
+    request,
+    `${COLLECTOR_URL}/api/v1/scenes/${scene}/regions`,
+  );
+  expect(stored.length, "the playground registers two demo regions").toBe(2);
+
   await clickAround(page);
   await waitForEventTypes(request, sessionId, ["pointer_click"]);
 
@@ -104,35 +127,106 @@ test("a summarised world heatmap names its hotspots, and the 3D panel shows the 
   expect(summary.kind).toBe("clusters");
   expect(summary.axes).toEqual(["vx", "vy", "vz"]);
   for (const cluster of summary.clusters) {
-    // Labelling ran: the fields are present, and `regions` lists every box the
-    // hotspot falls in. The playground's `whole-scene` region covers the scene,
-    // so every cluster the clicks produced is inside at least one.
+    // Labelling ran: all four fields are present on every cluster, `null` where
+    // nothing names it (never absent, never a guess).
     expect(cluster, "a labelled cluster carries its region membership").toHaveProperty("regions");
+    expect(cluster).toHaveProperty("region");
     expect(cluster).toHaveProperty("nearestMesh");
     expect(cluster).toHaveProperty("distance");
-    expect(cluster.regions).toContain("whole-scene");
-    // The reported region is the smallest containing one.
-    expect(["whole-scene", "near-half"]).toContain(cluster.region);
-    // The drill hint is now a region **id**, ready to send back as `?region=`.
-    expect(cluster.drill?.region).toBe(cluster.region);
+    expect(Array.isArray(cluster.regions)).toBe(true);
     if (cluster.nearestMesh != null) {
       expect(typeof cluster.distance).toBe("number");
       expect(cluster.distance).toBeGreaterThanOrEqual(0);
+    } else {
+      expect(cluster.distance).toBeNull();
     }
   }
 
+  // 3) Now pin two regions **derived from the captured data** and re-read.
+  //
+  //    Deriving them (rather than hoping the playground's demo boxes happen to
+  //    contain a click, which depends on where the raycasts landed in whatever
+  //    scene the engine built) is what makes the containment assertion real: a
+  //    hotspot inside a named box MUST come back named, every time. Two nested
+  //    boxes, so "every containing region, smallest one reported" is under test:
+  //
+  //    - `heat-area` — the bounding box of every occupied cell, padded a cell;
+  //    - `hotspot`   — one cell either side of the densest cluster's centre,
+  //                    strictly inside `heat-area`.
+  const cells = await getJson<WorldBin[]>(
+    request,
+    `${COLLECTOR_URL}/api/v1/heatmaps/world?scene=${scene}&cellSize=${CELL}`,
+  );
+  expect(cells.length).toBeGreaterThan(0);
+  const axis = (pick: (bin: WorldBin) => number, side: "min" | "max"): number => {
+    const values = cells.map((bin) => (pick(bin) + 0.5) * CELL);
+    return side === "min" ? Math.min(...values) - CELL : Math.max(...values) + CELL;
+  };
+  const HEAT_AREA: [number, number, number, number, number, number] = [
+    axis((b) => b.vx, "min"),
+    axis((b) => b.vy, "min"),
+    axis((b) => b.vz, "min"),
+    axis((b) => b.vx, "max"),
+    axis((b) => b.vy, "max"),
+    axis((b) => b.vz, "max"),
+  ];
+  // Clusters come back ordered by weight, so `[0]` is the densest.
+  const densest = summary.clusters[0]!;
+  const [cx, cy, cz] = densest.centroid.map((index) => (index + 0.5) * CELL) as [
+    number,
+    number,
+    number,
+  ];
+  const HOTSPOT: [number, number, number, number, number, number] = [
+    cx - CELL / 2,
+    cy - CELL / 2,
+    cz - CELL / 2,
+    cx + CELL / 2,
+    cy + CELL / 2,
+    cz + CELL / 2,
+  ];
+  // The write replaces the scene's whole set, so the playground's own two regions
+  // are resent alongside the derived pair.
+  const wrote = await request.put(`${COLLECTOR_URL}/api/v1/scenes/${scene}/regions`, {
+    headers: { "x-api-key": API_KEY },
+    data: {
+      regions: [
+        ...stored.map((r) => ({
+          id: r.regionId,
+          label: r.label,
+          bounds: r.bounds,
+          ...(r.description != null ? { description: r.description } : {}),
+        })),
+        { id: "heat-area", label: "Heat area", bounds: HEAT_AREA },
+        { id: "hotspot", label: "Hotspot", bounds: HOTSPOT },
+      ],
+    },
+  });
+  expect(wrote.status(), await wrote.text()).toBe(200);
+
+  const labelled = await getJson<ClusterSummary>(request, summaryUrl);
+  const named = labelled.clusters[0]!;
+  // Membership is *every* containing region; both derived boxes contain the
+  // densest hotspot by construction.
+  expect(named.regions, "the pinned boxes contain the hotspot they were derived from").toEqual(
+    expect.arrayContaining(["heat-area", "hotspot"]),
+  );
+  // `hotspot` is half a cell either side and sits strictly inside `heat-area`;
+  // the smaller box by volume is the one reported.
+  expect(named.region).toBe("hotspot");
+  // The drill hint is now the region **id**, ready to send back as `?region=`.
+  expect(named.drill?.region).toBe("hotspot");
   // The reading names the place rather than only a coordinate.
-  expect(summary.reading).toMatch(/in region `(whole-scene|near-half)`/);
+  expect(labelled.reading).toContain("in region `hotspot`");
 
   // A hint handed straight back really does narrow the query.
-  const densest = summary.clusters[0]!;
-  const drilled = await request.get(
-    `${COLLECTOR_URL}/api/v1/heatmaps/world?scene=${scene}&cellSize=${CELL}&region=${densest.drill?.region}`,
-    { headers: { "x-api-key": API_KEY } },
+  const drilled = await getJson<WorldBin[]>(
+    request,
+    `${COLLECTOR_URL}/api/v1/heatmaps/world?scene=${scene}&cellSize=${CELL}&region=hotspot`,
   );
-  expect(drilled.status(), await drilled.text()).toBe(200);
+  expect(drilled.length).toBeGreaterThan(0);
 
-  // 3) The dashboard's 3D panel shows the same vocabulary on hover. Scoped to the
+  // 4) The dashboard's 3D panel shows the same vocabulary on hover. Scoped to the
   //    scene, because regions are keyed by scene — "All scenes" has no single
   //    vocabulary to label against.
   await page.goto(DASHBOARD_URL);
@@ -150,17 +244,19 @@ test("a summarised world heatmap names its hotspots, and the 3D panel shows the 
   // so a single hover is a coin flip; the sweep is the reliable way to land one.
   const box = (await canvas.boundingBox())!;
   const tooltip = panel.locator("div.pointer-events-none.absolute.z-10").first();
+  // `heat-area` was derived to cover every occupied cell, so whichever marker the
+  // sweep lands on is inside a named region.
+  const wanted = /in (Hotspot|Heat area)/;
   let labelText = "";
-  for (let i = 0; i < 40 && !/in (Whole scene|Near half)/.test(labelText); i += 1) {
-    const fx = 0.25 + (i % 8) * 0.0714;
-    const fy = 0.25 + Math.floor(i / 8) * 0.125;
+  for (let i = 0; i < 48 && !wanted.test(labelText); i += 1) {
+    const fx = 0.2 + (i % 8) * 0.0857;
+    const fy = 0.2 + Math.floor(i / 8) * 0.1;
     await page.mouse.move(box.x + box.width * fx, box.y + box.height * fy, { steps: 2 });
     await page.waitForTimeout(120);
     labelText = (await tooltip.textContent().catch(() => "")) ?? "";
   }
   // The tooltip names the region (and, where a box is close enough, the mesh) —
-  // the same labels the summary reports, resolved on the client.
-  expect(labelText, "a hovered voxel should name the region it falls in").toMatch(
-    /in (Whole scene|Near half)/,
-  );
+  // the same labels the summary reports, resolved on the client from the proxy
+  // and regions the panel already fetched.
+  expect(labelText, "a hovered voxel should name the region it falls in").toMatch(wanted);
 });
