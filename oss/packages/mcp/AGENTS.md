@@ -78,6 +78,35 @@ returns `structuredContent` (`{ rows }`) alongside the JSON text — read the sc
 guessing the row shape, and read the tool description for the metric's caveats before trusting a
 small sample.
 
+## The `query` tool (the query DSL)
+
+One tool is **not** per-metric: `query` (ADR 0051 §3). Its input is the query DSL, so it runs any
+metric in the catalog above with any filter that metric declares:
+
+```jsonc
+{
+  "v": 1,
+  "metric": "mesh_sources",
+  "range": { "since": 1757000000000, "until": 1757600000000 },
+  "filters": { "scene": "lobby", "cameraMode": "first-person" },
+  "limit": 20,
+  "format": "summary",
+}
+```
+
+- **`range` is required** (both ends, epoch ms) — there is no unbounded query.
+- **`format` defaults to `table`** here rather than `full`.
+- The grammar is closed: metrics, dimensions and filters are exactly the vocabulary in the
+  `uptimizr://capabilities` resource. Naming something outside it is a `400` whose
+  `issues[].accepted` lists what would have worked — read it instead of guessing again.
+- `dimensions` must be the metric's own grain, or be omitted.
+- `compare`, `segment`, `order`, `explain`, `filters.event` and `filters.device` parse but are
+  answered with `400 … not supported yet`. Compare two windows with two queries; drill in by
+  re-running the same query with one more filter.
+
+Its `structuredContent` is `{ result }` rather than `{ rows }`, because what comes back depends on
+the `format` asked for.
+
 ## Result formats (`format`)
 
 Every **aggregate** tool takes a `format` argument choosing the envelope its rows arrive in

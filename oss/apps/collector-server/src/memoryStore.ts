@@ -110,6 +110,13 @@ export function createMemoryStore({
     insertEvents: async (incoming) => {
       events.push(...incoming);
     },
+    // The query DSL (ADR 0051 §3) compiles to SQL, and this store has no SQL
+    // engine — it answers a handful of aggregates by walking the array above.
+    // Rather than grow a second, JavaScript re-implementation of seventy
+    // builders that could silently disagree with the real ones, it reports no
+    // rows, exactly as the spatial aggregates below already do. Use the DuckDB
+    // store (the OSS default) for the DSL.
+    runMetric: async () => [],
     listSessions: async () => {
       const bySession = new Map<string, AnyEvent[]>();
       for (const e of events) {

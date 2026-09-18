@@ -135,6 +135,7 @@ describe(`${SELF} — negative dependency gate`, () => {
     expect(runtimeDeps(self as Manifest).sort()).toEqual([
       "@mlc-ai/web-llm",
       "@uptimizr/metrics",
+      "@uptimizr/schema",
       "zod",
     ]);
   });

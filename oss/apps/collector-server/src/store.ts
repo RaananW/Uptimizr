@@ -36,6 +36,7 @@ import type {
   ReachabilityBinRow,
   MeshSourceCountRow,
   MeshTrendPointRow,
+  MetricQueryOptions,
   InputActionCountRow,
   PositionBinRow,
   PerfHeatmapVoxelRow,
@@ -85,6 +86,7 @@ import type {
   TrajectoryPointRow,
   WorldHeatmapBinRow,
 } from "@uptimizr/db";
+import type { MetricId } from "@uptimizr/metrics";
 
 /**
  * The data-access surface the routes depend on. Abstracting it behind an
@@ -116,6 +118,26 @@ export interface CollectorStore {
   projectExists(projectId: string): Promise<boolean>;
   /** Batched insert of enriched, validated events. */
   insertEvents(events: readonly AnyEvent[]): Promise<void>;
+  /**
+   * Run **any** registry metric by id, with an option bag the query DSL
+   * assembled from a validated `queryV1` document (ADR 0051 §3).
+   *
+   * The one method the DSL needs, and deliberately the only one it adds: every
+   * store implements it as `run<Engine>Query(compileMetric(…, <engine>Dialect))`,
+   * so a DSL query takes exactly the path a canned aggregate takes — the same
+   * builders, the same dialect, the same cross-engine parity harness and the
+   * same numeric coercion at the driver edge. Putting the dispatch in the
+   * collector instead would have given the DSL a second, unverified query path.
+   *
+   * Rows are returned untyped because the shape depends on the metric; the
+   * registry `row` schema is what describes them, and the response layer
+   * (`format=table|summary`) reads that.
+   */
+  runMetric(
+    projectId: string,
+    metric: MetricId,
+    options: MetricQueryOptions,
+  ): Promise<Record<string, unknown>[]>;
   listSessions(
     projectId: string,
     opts?: RangeOptions & CameraModeOptions & { limit?: number },

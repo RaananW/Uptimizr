@@ -16,6 +16,7 @@ export {
   type ReadToolSetKind,
 } from "./tools.js";
 export { registryToTools, metricToTool, describeMetric } from "./registryTools.js";
+export { QUERY_TOOL_NAME, queryTool } from "./queryTool.js";
 export type {
   AgentMessage,
   AgentToolCall,

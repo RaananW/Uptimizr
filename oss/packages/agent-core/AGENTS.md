@@ -44,6 +44,36 @@ The core ships **no model and no key**. It only ever reads a consumer's **own** 
 Each name is a metric in the collector's semantic metric registry (ADR 0051) and maps one-to-one to
 a documented query endpoint. Most accept `since`/`until` (epoch ms) plus endpoint-specific filters.
 
+## The `query` tool (the query DSL)
+
+One more tool sits after the generated list, and it is **not** per-metric: `query` (ADR 0051 §3).
+Its input _is_ the query DSL, so it can run any metric above with any filter that metric declares:
+
+```jsonc
+{
+  "v": 1,
+  "metric": "mesh_sources",
+  "range": { "since": 1757000000000, "until": 1757600000000 },
+  "filters": { "scene": "lobby", "cameraMode": "first-person" },
+  "limit": 20,
+  "format": "summary",
+}
+```
+
+- **`range` is required** — both ends, epoch ms. There is no unbounded query.
+- **`format` defaults to `table` here**, not `full`: this is a new, agent-facing surface, so the
+  envelope with the sample size and the truncation flag is the default.
+- The grammar is **closed**. Metrics, dimensions and filters are exactly the registry's vocabulary;
+  naming something outside it returns a `400` whose `issues[].accepted` lists what would have
+  worked. Read that rather than guessing again.
+- `dimensions` must be the metric's own grain, or be omitted — each metric is computed at one grain.
+- `compare`, `segment`, `order`, `explain`, `filters.event` and `filters.device` parse but are
+  answered with `400 … not supported yet`. Compare two windows by running two queries; drill in by
+  re-running the same query with one more filter.
+
+It reaches the collector as `GET /api/v1/query?q=<url-encoded JSON>`, so `CollectorClient` stays
+`GET`-only — an Uptimizr agent remains structurally incapable of writing.
+
 ## Result formats (`format`)
 
 Every **aggregate** tool in the catalog declares a `format` argument — `full | table | summary`.

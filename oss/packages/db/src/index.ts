@@ -173,6 +173,19 @@ export {
 export { coerceRows, numericColumns, numericColumnsOfMetric } from "./query/coerce.js";
 export type { CoerceRowsOptions } from "./query/coerce.js";
 
+// --- Query DSL v1, delegated tier (ADR 0051 §3, design sketch §C.2) ---
+// A validated `queryV1` document → the metric's existing aggregation builder →
+// an ordinary `QuerySpec`. Also published on the browser-safe
+// `@uptimizr/db/query` subpath, alongside the builders it delegates to.
+export {
+  builderFor,
+  cameraTypeForMode,
+  compileMetric,
+  compileQuery,
+  toBuilderOptions,
+} from "./query/dsl/index.js";
+export type { AggregationBuilder, MetricQueryOptions, QueryResolution } from "./query/dsl/index.js";
+
 // --- Agent-shaped result envelopes (ADR 0051 §2, design sketch §B.1) ---
 // `format=table | summary`: pure, registry-driven summarisation of a metric's
 // rows. Re-exported here for the collector's convenience; also published on its

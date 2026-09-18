@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { QueryParams } from "./client.js";
 import { registryToTools } from "./registryTools.js";
+import { queryTool } from "./queryTool.js";
 
 /** A resolved read request: the collector path and its query parameters. */
 export interface ReadToolRequest {
@@ -29,6 +30,14 @@ export interface ReadTool {
    * it. Optional so a hand-built tool stays valid.
    */
   outputSchema?: z.ZodRawShape;
+  /**
+   * Turn the collector's response into the object {@link outputSchema}
+   * describes. Omitted by every generated per-metric tool, whose result is
+   * always a list of rows and is therefore wrapped as `{ rows }` by the
+   * consumer. The `query` tool sets it because its shape is chosen by the
+   * request's `format`, so only the tool knows how its answer is keyed.
+   */
+  structuredContent?: (data: unknown) => Record<string, unknown>;
   buildRequest: (args: Record<string, unknown>) => ReadToolRequest;
 }
 
@@ -51,8 +60,14 @@ export interface ReadTool {
  * and their argument schemas are unchanged — `__tests__/shippedToolCompat.test.ts`
  * pins that against a frozen fixture, so an MCP client written against the old
  * catalog keeps working.
+ *
+ * One tool is **not** per-metric: `query` (ADR 0051 §3), appended last. Its
+ * input is the query DSL, so it can run any metric with any filter that metric
+ * declares — what the per-metric tools are for discovery, `query` is for
+ * anything that needs a filter the canned tool does not expose. See
+ * `queryTool.ts`.
  */
-export const readTools: readonly ReadTool[] = registryToTools();
+export const readTools: readonly ReadTool[] = [...registryToTools(), queryTool];
 
 /**
  * Names of the **core** read tools — a small, single-step-friendly subset of

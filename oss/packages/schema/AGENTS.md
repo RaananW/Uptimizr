@@ -42,8 +42,13 @@ const batch = collectRequestSchema.parse(requestBody);
 
 - **Events live once.** Import types/schemas from here; do not re-declare event shapes.
 - Some shapes here are **config, not events** — `sceneProxySchema`, `sceneRegionSchema` /
-  `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`. They are authored
-  out-of-band and are deliberately absent from `anyEventSchema`; never add them to the union.
+  `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`, and `queryV1Schema` (the
+  analytics query DSL, ADR 0051 §3). They are authored out-of-band and are deliberately absent
+  from `anyEventSchema`; never add them to the union.
+- `queryV1Schema` validates a query's **shape** only. Whether `metric` names a real metric, and
+  whether that metric accepts a given dimension or filter, is `validateQuery()` in
+  `@uptimizr/metrics` — the vocabulary lives in the registry, and this package is the registry's
+  dependency rather than the other way round. Both run, in that order, at the collector edge.
 - Keep events **replay-complete**: ordered, timestamped, `sessionId`-keyed.
 - Clients never set `visitorId` (privacy model — ADR 0003).
 - To add an event type, use `defineEvent` and register it in `src/events/index.ts`; see the

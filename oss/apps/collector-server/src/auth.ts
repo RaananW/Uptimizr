@@ -30,6 +30,13 @@ declare module "fastify" {
     resolvedKey: ResolvedApiKey | null;
     /** Rows in the response body, when it serialized to an array (audit log). */
     auditRowCount: number | null;
+    /**
+     * What the audit log should record as this request's parameters, when the
+     * querystring is not the whole story. `POST /api/v1/query` carries its
+     * query in the body (ADR 0051 §3), so without this the audit trail would
+     * show a bare path and nothing about what was asked for.
+     */
+    auditParams: unknown;
   }
 }
 

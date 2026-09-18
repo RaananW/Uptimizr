@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { readTools, type CollectorClient } from "@uptimizr/agent-core";
+import { readTools, type CollectorClient, type ReadTool } from "@uptimizr/agent-core";
 import { registerResources } from "./resources.js";
 import { registerPrompts } from "./prompts.js";
 import { version } from "./version.js";
@@ -19,8 +19,8 @@ function toRows(data: unknown): unknown[] {
 }
 
 /**
- * Validate the rows against the tool's registry-derived output schema and
- * return the **parsed** result as the structured payload.
+ * Validate the result against the tool's output schema and return the
+ * **parsed** value as the structured payload.
  *
  * The registry's numeric columns are strict `z.number()`: since ADR 0051 §2 the
  * *collector* guarantees numbers, coercing each dialect's wire format
@@ -28,14 +28,18 @@ function toRows(data: unknown): unknown[] {
  * point rows leave its driver. So this is a check, not a repair — the advertised
  * schema describes the API, and normalising here would hide a store regression.
  *
- * If the rows do not match the schema the raw rows are passed through; the SDK's
- * own output validation then reports the offending column by name, which is the
- * honest outcome for a collector that is out of contract.
+ * If the payload does not match the schema it is passed through unchanged; the
+ * SDK's own output validation then reports the offending column by name, which
+ * is the honest outcome for a collector that is out of contract.
  */
-function structuredRows(outputSchema: z.ZodRawShape, data: unknown): { rows: unknown[] } {
-  const rows = toRows(data);
-  const parsed = z.object(outputSchema).safeParse({ rows });
-  return parsed.success ? (parsed.data as { rows: unknown[] }) : { rows };
+function structuredResult(tool: ReadTool, data: unknown): Record<string, unknown> {
+  // Every generated per-metric tool returns a list of one metric's rows, so the
+  // `{ rows }` envelope is the default. The `query` tool (ADR 0051 §3) chooses
+  // its own shape, because what comes back depends on the `format` that was
+  // asked for, so it supplies the wrapper itself.
+  const payload = tool.structuredContent?.(data) ?? { rows: toRows(data) };
+  const parsed = z.object(tool.outputSchema ?? {}).safeParse(payload);
+  return parsed.success ? (parsed.data as Record<string, unknown>) : payload;
 }
 
 /**
@@ -75,7 +79,7 @@ export function createMcpServer(client: CollectorClient): McpServer {
           if (!tool.outputSchema) return { content: [{ type: "text", text }] };
           return {
             content: [{ type: "text", text }],
-            structuredContent: structuredRows(tool.outputSchema, data),
+            structuredContent: structuredResult(tool, data),
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);

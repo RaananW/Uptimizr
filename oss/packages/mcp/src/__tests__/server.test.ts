@@ -57,7 +57,11 @@ describe("tools/list", () => {
     for (const tool of tools) {
       expect(tool.inputSchema.type).toBe("object");
       expect(tool.outputSchema?.type).toBe("object");
-      expect(Object.keys(tool.outputSchema?.properties ?? {})).toEqual(["rows"]);
+      // Per-metric tools return one metric's rows; the query DSL tool's shape
+      // is chosen by its `format`, so it advertises a single `result` key.
+      expect(Object.keys(tool.outputSchema?.properties ?? {}), tool.name).toEqual(
+        tool.name === "query" ? ["result"] : ["rows"],
+      );
       expect(tool.description).toContain("Caveats:");
     }
   });

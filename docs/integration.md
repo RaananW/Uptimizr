@@ -1601,6 +1601,101 @@ of them aggregates anything, so none of them takes `format` — a stray `format=
 | `GET`  | `/api/v1/whoami`              | The calling key's identity — project, key id, capabilities, label and the rate-limit budget in force. See [API keys](#api-keys-capabilities-rate-limits-and-the-audit-log) above.               |
 | `GET`  | `/api/v1/audit`               | The project's agent-audit trail, newest first (`since` / `until` / `limit`). Needs the ordinary `query` capability. See [API keys](#api-keys-capabilities-rate-limits-and-the-audit-log) above. |
 
+### Query DSL (`POST /api/v1/query`)
+
+Every metric in the table above also answers to **one** endpoint. Instead of picking the route that
+happens to carry the flag you need, you name the metric, the window, the filters that metric
+declares and how you want the result shaped — in one validated JSON document (ADR 0051 §3).
+
+```bash
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{
+        "v": 1,
+        "metric": "mesh_sources",
+        "range": { "since": 1757000000000, "until": 1757600000000 },
+        "filters": { "scene": "lobby", "cameraMode": "first-person" },
+        "limit": 20,
+        "format": "summary"
+      }' \
+  "https://collect.example.com/api/v1/query"
+```
+
+`GET /api/v1/query?q=<url-encoded JSON>` takes the identical document in a single parameter (capped
+at 8 KiB), for GET-only clients such as `@uptimizr/agent-core`'s read-only collector client. Both
+forms are **reads**: they need the same `query` capability as everything above, they are audited the
+same way, and they can compute nothing the canned endpoints cannot.
+
+#### The grammar
+
+| Field        | Required | What it is                                                                                                                        |
+| ------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `v`          | yes      | Grammar version. Always `1`.                                                                                                      |
+| `metric`     | yes      | A registry metric id — the `Metric` column of the table above.                                                                    |
+| `range`      | yes      | `{ since, until }` in epoch milliseconds, `since` inclusive and `until` exclusive. There is no unbounded query.                   |
+| `filters`    | no       | The filters that metric declares, as JSON. Names and meanings are the canned endpoint's querystring parameters.                   |
+| `dimensions` | no       | Up to 3 group-by dimensions. In v1 these must be the metric's own grain (see below), or be omitted.                               |
+| `limit`      | no       | Row cap, at most 1000 and at most the metric's own `limits.maxRows`.                                                              |
+| `format`     | no       | `full` \| `table` \| `summary` — the [result envelope](#result-formats-formatfull--table--summary). **Defaults to `table`** here. |
+
+The grammar is **closed**. There is no raw SQL, no expression language and no free-form value: every
+filter is typed, every identifier is checked against the registry, and the output is bounded. Unknown
+keys are rejected rather than ignored, so a typo is an error instead of a silently-dropped filter.
+
+Two conveniences over the querystring form, because the DSL is already JSON: `filters.steps`,
+`filters.variant` and `filters.conversion` take real [funnel step predicates](#funnels-apiv1funnel--caller-configured-adr-0038-78)
+rather than JSON-encoded strings, and `filters.region` takes either a registered region id or the
+`[minX,minY,minZ,maxX,maxY,maxZ]` box as an array.
+
+#### What v1 answers, and what it does not
+
+v1 compiles a query onto the metric's **existing** aggregation, so every metric is reachable at
+exactly the power of its canned endpoint — no more, and no less:
+
+- **`dimensions` must be the metric's grain.** Each metric is computed at one fixed grain: the
+  dimension columns its rows already carry (`top_meshes` → `["mesh"]`, `mesh_sources` →
+  `["mesh", "source"]`). A metric can be _filtered_ by dimensions it is not _keyed_ by, and asking to
+  group by one of those is a `400` that names the grain it does support. Arbitrary group-by is
+  planned, not shipped.
+- **`compare`, `segment`, `order` and `explain`** are part of the published grammar and parse
+  cleanly, but are answered with `400 … not supported yet`. To compare two windows, run two queries
+  and subtract; to drill in, re-run the same query with one more filter.
+- **`filters.event`** (an event predicate) and **`filters.device`** (`os` / `browser` / `gpuTier`)
+  are likewise parsed and not yet executed.
+
+They are declared now so the grammar is published once and a client written against it today does not
+have to be rewritten when the rest lands.
+
+#### Errors
+
+A query that names something the registry does not know is a `400` carrying **every** objection, each
+with a stable `code`, the path that offended and — where the answer is a closed list — what would
+have been accepted. An agent should read `accepted` rather than guess again:
+
+```json
+{
+  "error": "the query cannot be answered: \"top_meshes\" does not accept the filter \"scene\". It accepts `session`, `bins`, `limit`.",
+  "issues": [
+    {
+      "code": "unsupported_filter",
+      "path": "filters.scene",
+      "message": "\"top_meshes\" does not accept the filter \"scene\". It accepts `session`, `bins`, `limit`.",
+      "accepted": ["session", "bins", "limit"]
+    }
+  ]
+}
+```
+
+| `code`                 | Meaning                                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `unknown_metric`       | No such metric. Read the vocabulary from `GET /api/v1/openapi.json`.                      |
+| `metric_not_queryable` | A stored record (`session_meta`, `scene_representation`), not an aggregation.             |
+| `unknown_dimension`    | The metric does not declare that dimension at all.                                        |
+| `dimension_not_native` | It declares it, but is not keyed by it — pass it as a filter.                             |
+| `unsupported_filter`   | The metric does not accept that filter (or takes no row cap).                             |
+| `missing_filter`       | A filter the metric cannot be queried without (`funnel.steps`, a trajectory's `session`). |
+| `limit_too_large`      | Above the metric's registry cap.                                                          |
+| `unsupported_feature`  | Grammar v1 parses but does not answer yet — see above.                                    |
+
 ### Scene registry (representations)
 
 A scene can register a **proxy** of its geometry (per-mesh AABBs, ADR 0014) so the

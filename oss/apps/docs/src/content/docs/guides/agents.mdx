@@ -141,7 +141,57 @@ appear only where the measure can honestly be summed. Full details and an exampl
 Switching the generated tool catalog's default away from `full` is tracked as
 [#336](https://github.com/RaananW/Uptimizr/issues/336); until then, pass `format` explicitly.
 
-## 5. Give answers a vocabulary for *where*
+## 5. One query, any metric — the query DSL
+
+Seventy tools is a lot of surface for a model to hold, and the canned tool for a metric exposes only
+the filters that metric's endpoint happens to take. The **query DSL** collapses that into one call:
+name the `metric`, bound it with a `range`, narrow it with the filters that metric declares, cap it,
+and pick the envelope.
+
+```jsonc
+// POST /api/v1/query   — or the `query` tool, whose input is this document
+{
+  "v": 1,
+  "metric": "mesh_sources",
+  "range": { "since": 1757000000000, "until": 1757600000000 },
+  "filters": { "scene": "lobby", "cameraMode": "first-person" },
+  "limit": 20,
+  "format": "summary",
+}
+```
+
+The grammar is **closed**: no SQL, no expression language, no free-form value. Metrics, dimensions
+and filters are exactly the registry's vocabulary — the one an agent already reads from
+`uptimizr://capabilities` — and a query naming something outside it comes back as a `400` that says
+what *would* have worked, with the accepted values as data:
+
+```jsonc
+{
+  "code": "unsupported_filter",
+  "path": "filters.scene",
+  "message": "\"top_meshes\" does not accept the filter \"scene\". It accepts `session`, `bins`, `limit`.",
+  "accepted": ["session", "bins", "limit"],
+}
+```
+
+That is the property worth designing for: a wrong guess is a correction, never an empty result the
+agent would report as "no interactions".
+
+The per-metric tools stay — they are excellent for discovery, and a small local model does better
+with a narrow, obvious tool than with a schema it has to compose. Reach for `query` when a question
+needs a filter the canned tool does not expose, or when `format: "table"` (the DSL's default, unlike
+the canned endpoints') is what you want anyway.
+
+:::note[What v1 answers]
+A query runs the metric's *existing* aggregation, so every metric is reachable at exactly the power
+of its own endpoint. `dimensions` must be the metric's grain, or be omitted. `compare`, `segment`,
+`order`, `explain`, `filters.event` and `filters.device` are part of the published grammar and are
+answered with `400 … not supported yet` — compare two windows by running two queries, and drill in by
+re-running the same query with one more filter. Full reference:
+[query DSL](/docs/api/query/#one-query-endpoint-the-query-dsl).
+:::
+
+## 6. Give answers a vocabulary for *where*
 
 3D analytics answers are spatial, and "the hot cell is at voxel (12, 0, −7)" is not an answer a
 person can act on. **Scene regions** are named, labelled boxes — "the entrance", "the checkout
@@ -157,7 +207,7 @@ vocabulary (`GET /api/v1/scene-regions`) takes a `query` key; **writing** it tak
 so a read-only agent key cannot redraw your map. See
 [scene regions](/docs/api/query/#scene-regions).
 
-## 6. Scope the key, then read the audit log
+## 7. Scope the key, then read the audit log
 
 Give an agent its own key rather than the dashboard's:
 
@@ -183,7 +233,7 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 
 Full reference: [API keys and capabilities](/docs/api/overview/#api-keys-and-capabilities).
 
-## 7. How the catalog is kept honest
+## 8. How the catalog is kept honest
 
 "AI-first" is a claim until something measures it. The repository carries an **evaluation harness**
 (`oss/packages/agent-eval`, private to the repo — it is an instrument, not a shipped package): a bank

@@ -171,3 +171,27 @@ export {
   type FunnelSteps,
   type FunnelConfig,
 } from "./funnel.js";
+
+export {
+  QUERY_MAX_DIMENSIONS,
+  QUERY_MAX_LIMIT,
+  queryCompareSchema,
+  queryDeviceFilterSchema,
+  queryDimensionIdSchema,
+  queryFiltersSchema,
+  queryMetricIdSchema,
+  queryOrderSchema,
+  queryRangeSchema,
+  queryRegionSchema,
+  querySegmentSchema,
+  queryV1Schema,
+  type QueryCompare,
+  type QueryDeviceFilter,
+  type QueryFilters,
+  type QueryOrder,
+  type QueryRange,
+  type QueryRegion,
+  type QuerySegment,
+  type QueryV1,
+  type QueryV1Input,
+} from "./query.js";
