@@ -524,7 +524,16 @@ describe.skipIf(!available)("mssql store", () => {
     for (const [variant, baseOpts] of Object.entries(VARIANTS)) {
       for (const [name, build] of builders) {
         // The per-session trajectory is the one builder with a required session.
-        const opts = name === "buildSessionTrajectory" ? { session: "s1", ...baseOpts } : baseOpts;
+        // Two builders need an argument the shared bag cannot supply: the
+        // per-session trajectory needs its session, and the insight bucket
+        // series needs the metric it is a series *of* (and a time grain, not the
+        // FPS bin width `bucket` means everywhere else).
+        const opts =
+          name === "buildSessionTrajectory"
+            ? { session: "s1", ...baseOpts }
+            : name === "buildMetricBuckets"
+              ? { ...baseOpts, metric: "list_sessions", bucket: "day" }
+              : baseOpts;
         it(`${name} (${variant})`, async () => {
           await insertEvents(ms, EXTENDED_EVENTS);
           const pgRows = await runMssqlQuery<Record<string, unknown>>(

@@ -69,7 +69,7 @@ describe.skipIf(!available)("postgres parity (vs golden, vs duckdb)", () => {
     if (duck) await duck.close();
   });
 
-  it("covers all 68 aggregations", () => {
+  it("covers all 68 aggregations plus the insight bucket series", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
@@ -139,6 +139,15 @@ describe.skipIf(!available)("postgres parity (vs golden, vs duckdb)", () => {
       "interactionsBySource",
       "funnel",
       "loadBounceFunnel",
+      // The one query behind both insight primitives (ADR 0051 §4), one case per
+      // aggregate shape its measure catalog can render.
+      "metricBuckets:count",
+      "metricBuckets:sessions",
+      "metricBuckets:quantile",
+      "metricBuckets:sum",
+      "metricBuckets:geometry",
+      "metricBuckets:emptySeries",
+      "metricBuckets:dayGrain",
     ]);
   });
 
