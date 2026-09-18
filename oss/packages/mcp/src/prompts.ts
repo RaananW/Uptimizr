@@ -41,6 +41,17 @@ export function registerPrompts(server: McpServer): void {
             text:
               `Give me a weekly health report for ${forScene(scene)} covering the last 7 days.\n\n` +
               "Use these read-only tools and summarise the findings:\n" +
+              "- `insight_movers` **first**" +
+              (scene ? ` (scene="${scene}")` : "") +
+              ": it compares every comparable metric with the previous equal window and ranks " +
+              "the changes by how unusual each one is, so start from what actually moved instead " +
+              "of re-deriving it. Read `direction` together with the sign of `delta` — a rise in " +
+              "a `down` metric (errors, dead clicks, jank) is a regression — and do not report " +
+              "any row with `aboveMinSample: false`: its delta is real arithmetic but not " +
+              "evidence.\n" +
+              "- `insight_baseline` for each metric that moved, to say whether the new level is " +
+              "actually outside what is normal here — compare it with `median` give or take a " +
+              "few `mad`, or with the p10..p90 band.\n" +
               "- `event_counts` for the per-event-type mix" +
               (scene ? ` (scene="${scene}")` : "") +
               ".\n" +
@@ -48,8 +59,9 @@ export function registerPrompts(server: McpServer): void {
               "- `perf_summary` for avg/min/p50 FPS.\n" +
               "- `top_meshes` for the most-interacted meshes.\n" +
               "- `list_sessions` for how many sessions were recorded.\n\n" +
-              "Call out anything unusual (traffic spikes/drops, FPS regressions, error events) and " +
-              "end with 2–3 concrete recommendations.",
+              "Call out anything unusual (traffic spikes/drops, FPS regressions, error events), " +
+              "say how far outside its baseline each one sits, and end with 2–3 concrete " +
+              "recommendations.",
           },
         },
       ],

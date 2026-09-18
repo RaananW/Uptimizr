@@ -16,6 +16,8 @@ import {
   buildCameraGestures,
   buildDistinctScenes,
   buildEventTypeCounts,
+  buildMetricBuckets,
+  toMetricBucketRows,
   buildFlowHeatmap,
   buildFunnel,
   buildSceneRetention,
@@ -339,6 +341,17 @@ export async function createPostgresStore(): Promise<CollectorStore> {
       runPostgresQuery<TimeseriesBucketRow>(pgc, buildTimeseries(projectId, opts, d)),
     eventTypeCounts: (projectId, opts = {}) =>
       runPostgresQuery<EventTypeCountRow>(pgc, buildEventTypeCounts(projectId, opts, d)),
+    // The one bucket series behind `baseline` and `movers` (ADR 0051 §4). The
+    // spec carries no registry metric of its own, so the store edge has no row
+    // schema to coerce it against — `toMetricBucketRows` parses the numbers,
+    // which is what keeps the engines that string-encode 64-bit counts honest.
+    metricBuckets: async (projectId, opts) =>
+      toMetricBucketRows(
+        await runPostgresQuery<Record<string, unknown>>(
+          pgc,
+          buildMetricBuckets(projectId, opts, d),
+        ),
+      ),
     funnel: (projectId, opts) =>
       runPostgresQuery<FunnelStepResultRow>(pgc, buildFunnel(projectId, opts, d)),
     sceneRetention: (projectId, opts) =>

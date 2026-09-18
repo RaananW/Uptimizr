@@ -308,6 +308,13 @@ grain, column units, limits and caveats.
 | `load_bounce_funnel`  | `/api/v1/load-bounce`         | Load → bounce funnel             |
 | `variant_leaderboard` | `/api/v1/variant-leaderboard` | Variant → conversion leaderboard |
 
+#### insights
+
+| Tool               | Endpoint                    | Returns         |
+| ------------------ | --------------------------- | --------------- |
+| `insight_baseline` | `/api/v1/insights/baseline` | Metric baseline |
+| `insight_movers`   | `/api/v1/insights/movers`   | What changed    |
+
 <!-- generated:registry-guide-tools:end -->
 
 ## Resources

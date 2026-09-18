@@ -56,6 +56,22 @@ const metric: MetricDefinition | undefined = getMetric("perf_summary");
   result, not a zero.
 - **`null` is not `0`.** An aggregate over no samples is SQL `NULL` and means "no data".
 
+## Derived metrics (ADR 0051 §4)
+
+Most entries name a `build*` aggregation. Two do not, and are not store resources either: the
+insight primitives `insight_baseline` and `insight_movers` are computed in pure TypeScript _over
+other metrics' data_ (`@uptimizr/db`'s `src/insights/`). They carry `derived: "insight"`, and there
+are three kinds of entry rather than two:
+
+| Predicate           | Entry                                                          |
+| ------------------- | -------------------------------------------------------------- |
+| `isResourceMetric`  | A store read — no builder, no querystring, no `format`.        |
+| `isDerivedMetric`   | Computed in TypeScript; a real aggregate with an endpoint.     |
+| `isAggregateMetric` | Either a builder or a derivation — i.e. "takes a querystring". |
+
+Prefer `isAggregateMetric` over `metric.builder != null` anywhere the question is "is this served as
+an aggregate?", or a derived metric silently drops out of the envelope and OpenAPI surfaces.
+
 ## Where the SQL lives
 
 The `build*` aggregation each entry names is in [`@uptimizr/db`](../db)'s

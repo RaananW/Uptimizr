@@ -12,8 +12,13 @@
  * - every read route the collector serves has a registry entry, except the few
  *   deliberately-unmetricated ones listed below.
  *
- * No request is ever made, so no store is needed: the plugin is registered with
- * a stub and only its route table is inspected.
+ * Both read plugins are registered: `queryRoutes` serves the aggregations and
+ * `insightRoutes` the two derived insight metrics (ADR 0051 §4). The registry
+ * does not distinguish where a route is *implemented*, so the contract has to be
+ * checked against the whole read surface the collector mounts.
+ *
+ * No request is ever made, so no store is needed: the plugins are registered
+ * with a stub and only their route tables are inspected.
  */
 
 import { describe, expect, it, beforeAll } from "vitest";
@@ -21,6 +26,7 @@ import Fastify from "fastify";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
+import { insightRoutes } from "../routes/insights.js";
 import { queryRoutes } from "../routes/query.js";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
@@ -85,6 +91,7 @@ async function collectRoutes(): Promise<RegisteredRoute[]> {
     store: {} as CollectorStore,
     config: {} as CollectorConfig,
   });
+  await app.register(insightRoutes, { store: {} as CollectorStore });
   await app.ready();
   await app.close();
   return routes;

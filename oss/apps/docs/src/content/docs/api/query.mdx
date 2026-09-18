@@ -189,7 +189,111 @@ including each column's unit and each metric's caveats.
 | `GET` | `/api/v1/load-bounce` | `load_bounce_funnel` | bucket | `since`, `until`, `scene`, `bands`, `format` | Sessions bucketed by their initial load time, with how many bounced in each band (#152) — a bounce being a session that produced no interaction at or after its first asset load. One row per band. Turns 'slow loads cost you customers' into a number. |
 | `GET` | `/api/v1/variant-leaderboard` | `variant_leaderboard` | row | `since`, `until`, `scene`, `cameraMode`, `variant`, `conversion`, `limit`, `format` | For a product configurator (#150): per variant — a custom event grouped by its name — how often it was viewed, over how many sessions, how many of those converted, and the mean dwell before the visitor switched or converted. One row per variant, ranked by views. |
 
+## insights
+
+| Method | Path | Metric | One row is | Parameters | Purpose |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/v1/insights/baseline` | `insight_baseline` | project | `metric`, `scene`, `window`, `bucket`, `since`, `until`, `format` | What is normal for one metric in one scene. Buckets a comparable metric's headline column into days or hours over a trailing window and reduces the series to its centre (mean, median), its ordinary spread (MAD, p10, p90) and its drift (least-squares slope per bucket). One row per request: the reference distribution a single later observation should be judged against, so 'is 42 FPS bad here?' has an answer that does not depend on the reader's memory. |
+| `GET` | `/api/v1/insights/movers` | `insight_movers` | row | `scene`, `metrics`, `bucket`, `limit`, `since`, `until`, `refSince`, `refUntil`, `format` | What moved, ranked. For every comparable metric in scope, compares the current range with a reference range (the previous equal window by default) and ranks the differences by a robust z-score — the change divided by how much that metric normally swings, so a metric that is always volatile has to move much further than a steady one before it is called a mover. One row per metric: the top risers, the top fallers, and the ones that did not move. |
+
 {/* generated:registry-query-reference:end */}
+
+## Insights — baselines and movers
+
+Two of the metrics above are not measurements but **readings about the other
+metrics**: `insight_baseline` answers "is this number normal here?" and
+`insight_movers` answers "what changed?". Both are ordinary registry metrics, so
+they take the same parameters, the same `format` envelopes and the same API key
+as everything else on this page.
+
+Both work the same way: one comparable metric's headline column is bucketed by
+day or hour, and every statistic over that series — mean, median, MAD,
+percentiles, slope, robust z — is computed in plain TypeScript rather than SQL.
+That is deliberate: five SQL engines disagree about `quantile` and `median`, and
+an insight that changes when you switch storage backend is not an insight.
+
+:::note
+Window bounds are **snapped down to whole buckets**, so the day or hour in
+progress is excluded — otherwise every morning would look like a traffic
+collapse. The window that was actually measured comes back in the `table` and
+`summary` envelopes.
+:::
+
+### `/api/v1/insights/baseline`
+
+`metric` (required) plus `scene`, `window` (days, default 28, max 365), `bucket`
+(`day` | `hour`) and the usual `since` / `until`. One row:
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/baseline?metric=perf_summary&scene=lobby"
+```
+
+```jsonc
+{
+  "metric": "perf_summary",
+  "scene": "lobby",
+  "sampleSize": 18420,
+  "buckets": 28,
+  "mean": 54.1,
+  "median": 55,
+  "mad": 2, // the typical day-to-day swing
+  "p10": 48.3,
+  "p90": 58.6,
+  "slope": -0.21, // change per bucket, i.e. drift within the window
+}
+```
+
+`median` is the centre and `mad` the tolerance: a later reading more than a few
+MADs away is unusual *for this scene*; one inside `p10..p90` is ordinary. A
+baseline with a steep `slope` is not a stable reference — re-read it over a
+shorter window before judging anything against it. `null` means "no data", never
+zero.
+
+### `/api/v1/insights/movers`
+
+`scene`, `since` / `until` (default: the last 7 complete days), `refSince` /
+`refUntil` (default: the equal window immediately before), `bucket`, `limit`
+(default 10, max 50) and an optional comma-separated `metrics` allowlist. One row
+per scanned metric — risers, then fallers, then the ones that did not move:
+
+```jsonc
+{
+  "metric": "error_heatmap",
+  "current": 412,
+  "previous": 96,
+  "delta": 316,
+  "deltaPct": 3.2917,
+  "z": 39.5, // delta ÷ the reference window's spread
+  "direction": "down", // a *rise* in this metric is bad
+  "aboveMinSample": true,
+  "sampleSize": 412,
+}
+```
+
+- **`z` ranks, `deltaPct` describes.** `z` is the change divided by the median
+  absolute deviation of the reference window's buckets, so a metric that swings
+  wildly every day must move much further than a steady one to be called a mover.
+  Under ~2 is ordinary noise for that metric; over ~3 is worth explaining.
+- **`direction` is not the direction of the move.** It is the registry's opinion
+  of what a *rise* in that metric means — good (`up`), bad (`down`) or neutral.
+  Read it with the sign of `delta`: above is a rise in a `down` metric, i.e. a
+  regression.
+- **`aboveMinSample: false` is not a finding.** The delta is real arithmetic but
+  the denominator is below the metric's declared minimum. Such rows are kept —
+  "we cannot tell" and "nothing changed" are different answers — and always sort
+  below every gated mover.
+
+:::caution[Bounded by design, and not every metric qualifies]
+A request scans at most **24** metrics, one grouped scan each; without a
+`metrics` allowlist a curated default set is used, so a move outside that set is
+not reported unless you name it. Only `comparable` metrics with a faithful
+per-bucket form participate at all — funnels, cohort metrics and anything defined
+by the relationship between *consecutive* events (click→gaze rays, flow links,
+reachability, backtracking, rage clusters, perf churn) are excluded by
+construction, because bucketing them would change what they mean. Asking for one
+returns `400` listing every metric id that *is* available.
+:::
 
 ## Scene regions
 

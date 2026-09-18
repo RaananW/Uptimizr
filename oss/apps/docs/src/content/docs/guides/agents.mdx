@@ -141,7 +141,37 @@ appear only where the measure can honestly be summed. Full details and an exampl
 Switching the generated tool catalog's default away from `full` is tracked as
 [#336](https://github.com/RaananW/Uptimizr/issues/336); until then, pass `format` explicitly.
 
-## 5. Give answers a vocabulary for *where*
+## 5. Let the collector do the comparing
+
+Two questions come up on every investigation, and a model that answers them by pulling raw rows and
+doing arithmetic will answer them differently each time: **"is this number normal here?"** and
+**"what changed?"** Both are metrics of their own.
+
+| Tool               | Answers                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `insight_baseline` | What is normal for one metric in one scene: `median` and `mad`, the p10..p90 band, and the drift `slope`. |
+| `insight_movers`   | What moved against the previous equal window, for every comparable metric, ranked by how unusual it is.    |
+
+Reach for `insight_movers` **first** on an open-ended "how are things?" question: it turns a survey of
+thirty endpoints into one call, and it ranks by a robust z-score — the change divided by how much that
+metric normally swings — so a noisy metric has to move much further than a steady one to reach the top.
+Then use `insight_baseline` on whatever moved, to say whether the new level is actually outside normal
+rather than merely different.
+
+Two fields decide whether a row is worth reporting at all:
+
+- **`direction`** is the registry's opinion of what a *rise* means for that metric — good (`up`), bad
+  (`down`) or neutral. It is **not** the direction of the move: read it with the sign of `delta`, so a
+  rise in a `down` metric (errors, dead clicks, jank) is a regression.
+- **`aboveMinSample: false`** means the delta is real arithmetic but the denominator is too small to be
+  evidence. Those rows are returned rather than dropped — "we cannot tell" and "nothing changed" are
+  different answers — and they must never be reported as findings.
+
+Statistics are computed in pure TypeScript over portable day/hour buckets, so the same data gives the
+same baseline on DuckDB, ClickHouse, Postgres and SQL Server. Full parameters and the excluded-metric
+rules: [insights](/docs/api/query/#insights--baselines-and-movers).
+
+## 6. Give answers a vocabulary for *where*
 
 3D analytics answers are spatial, and "the hot cell is at voxel (12, 0, −7)" is not an answer a
 person can act on. **Scene regions** are named, labelled boxes — "the entrance", "the checkout
@@ -157,7 +187,7 @@ vocabulary (`GET /api/v1/scene-regions`) takes a `query` key; **writing** it tak
 so a read-only agent key cannot redraw your map. See
 [scene regions](/docs/api/query/#scene-regions).
 
-## 6. Scope the key, then read the audit log
+## 7. Scope the key, then read the audit log
 
 Give an agent its own key rather than the dashboard's:
 
@@ -183,7 +213,7 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 
 Full reference: [API keys and capabilities](/docs/api/overview/#api-keys-and-capabilities).
 
-## 7. How the catalog is kept honest
+## 8. How the catalog is kept honest
 
 "AI-first" is a claim until something measures it. The repository carries an **evaluation harness**
 (`oss/packages/agent-eval`, private to the repo — it is an instrument, not a shipped package): a bank
@@ -206,7 +236,6 @@ real today versus planned. Nothing below is available yet.
 | Stage | Issue                                                              | What it adds                                                                    |
 | ----- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | 2     | [#303](https://github.com/RaananW/Uptimizr/issues/303)             | A bounded **query DSL** (`/api/v1/query`) and a single composable query tool.   |
-| 2     | [#305](https://github.com/RaananW/Uptimizr/issues/305)             | Insight primitives: baselines and movers.                                       |
 | 2     | [#306](https://github.com/RaananW/Uptimizr/issues/306)             | Insight primitive: anomalies (robust z + CUSUM change-points).                  |
 | 2     | [#307](https://github.com/RaananW/Uptimizr/issues/307)             | Insight primitives: significance and `scene_health`.                            |
 | 2     | [#308](https://github.com/RaananW/Uptimizr/issues/308)             | A project **context** resource and custom-event vocabulary.                     |

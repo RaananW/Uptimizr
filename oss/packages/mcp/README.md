@@ -163,6 +163,8 @@ underlying endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, 
 | `scene_retention`            | `/api/v1/scene-retention`                | Scene-to-scene retention            | `since`, `until`, `limit`, `format`                                                                                       |
 | `load_bounce_funnel`         | `/api/v1/load-bounce`                    | Load → bounce funnel                | `since`, `until`, `scene`, `bands`, `format`                                                                              |
 | `variant_leaderboard`        | `/api/v1/variant-leaderboard`            | Variant → conversion leaderboard    | `since`, `until`, `scene`, `cameraMode`, `variant`, `conversion`, `limit`, `format`                                       |
+| `insight_baseline`           | `/api/v1/insights/baseline`              | Metric baseline                     | `metric`, `scene`, `window`, `bucket`, `since`, `until`, `format`                                                         |
+| `insight_movers`             | `/api/v1/insights/movers`                | What changed                        | `scene`, `metrics`, `bucket`, `limit`, `since`, `until`, `refSince`, `refUntil`, `format`                                 |
 
 <!-- generated:registry-tools:end -->
 

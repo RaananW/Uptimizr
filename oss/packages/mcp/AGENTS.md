@@ -51,7 +51,8 @@ reviewable.
 `xr_rotation`, `xr_sources`, `xr_abandonment`, `xr_locomotion`, `xr_tracking_quality`,
 `boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
 `ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
-`scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
+`scene_retention`, `load_bounce_funnel`, `variant_leaderboard`, `insight_baseline`,
+`insight_movers`
 
 <!-- generated:registry-tool-names:end -->
 
@@ -130,6 +131,13 @@ Every **aggregate** tool takes a `format` argument choosing the envelope its row
 - **No database driver, ever.** This server talks to a collector over HTTP; it must stay installable
   with `npx`. Never add `@uptimizr/db` (or any package with a native/optional binary dependency) to
   `dependencies` — `src/__tests__/dependencies.test.ts` fails if you do.
+- **Start from `insight_movers` on an open-ended question.** "How are things?" does not mean "call
+  thirty tools": `insight_movers` compares every comparable metric with the previous equal window
+  and ranks the changes by how unusual each is, and `insight_baseline` says whether a level is
+  outside normal for that scene. Two fields decide whether a row is reportable: `direction` is the
+  registry's opinion of what a _rise_ means (so a rise in a `down` metric is a regression, not an
+  improvement), and `aboveMinSample: false` means the delta is arithmetic but not evidence — those
+  rows are returned rather than dropped, and must never be reported as findings.
 - Tool definitions are pure (`buildRequest`) and must stay unit-testable without a live collector.
 
 ## Programmatic API

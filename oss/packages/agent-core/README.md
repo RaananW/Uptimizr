@@ -77,7 +77,8 @@ console.log(result.content); // the model's final answer
 `xr_rotation`, `xr_sources`, `xr_abandonment`, `xr_locomotion`, `xr_tracking_quality`,
 `boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
 `ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
-`scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
+`scene_retention`, `load_bounce_funnel`, `variant_leaderboard`, `insight_baseline`,
+`insight_movers`
 
 <!-- generated:registry-tool-names:end -->
 

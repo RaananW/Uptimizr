@@ -35,6 +35,8 @@ export {
   allMetrics,
   getMetric,
   isMetricId,
+  isAggregateMetric,
+  isDerivedMetric,
   isResourceMetric,
   metricForBuilder,
 } from "./registry.js";
@@ -50,6 +52,7 @@ export type {
   MetricCategory,
   MetricComparison,
   MetricDefinition,
+  MetricDerivation,
   MetricEndpoint,
   MetricGrain,
   MetricId,

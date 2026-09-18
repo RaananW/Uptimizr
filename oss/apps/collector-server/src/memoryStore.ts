@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
+import { evaluateBucketMeasure, toEventRow } from "@uptimizr/db";
 import type {
   AgentAuditEntry,
   ApiKeyCapability,
+  BucketEventLike,
   SceneRegionRecord,
   SceneRepresentation,
   SessionMeta,
@@ -71,6 +73,35 @@ export function createMemoryStore({
   };
   const inRange = (e: AnyEvent, opts: { since?: number; until?: number }): boolean =>
     (opts.since == null || e.ts >= opts.since) && (opts.until == null || e.ts < opts.until);
+
+  /**
+   * Project a captured event onto the promoted columns an insight bucket
+   * measure reads (ADR 0051 §4). `toEventRow` is the same mapping the
+   * persistent stores insert through, so the in-memory series is computed from
+   * the same columns the SQL series is — the one payload field a measure needs
+   * (`ar_placement.scale`) is lifted alongside it.
+   */
+  const toBucketEvent = (e: AnyEvent): BucketEventLike => {
+    const row = toEventRow(e);
+    const scale = (e as AnyEvent & { scale?: unknown }).scale;
+    return {
+      ts: e.ts,
+      event_type: row.event_type,
+      scene_id: row.scene_id,
+      session_id: row.session_id,
+      mesh: row.mesh,
+      name: row.name,
+      source: row.source,
+      fps: row.fps,
+      visible_ms: row.visible_ms,
+      js_heap_bytes: row.js_heap_bytes,
+      position: row.position,
+      direction: row.direction,
+      hit_point: row.hit_point,
+      screen: row.screen,
+      ...(typeof scale === "number" ? { ar_placement_scale: scale } : {}),
+    };
+  };
 
   return {
     resolveApiKey: async (key) =>
@@ -251,6 +282,13 @@ export function createMemoryStore({
         .map(([event_type, count]) => ({ event_type, count }))
         .sort((a, b) => b.count - a.count);
     },
+    // The bucket series behind `baseline` and `movers` (ADR 0051 §4). The
+    // persistent stores render the declarative measure to SQL; here the same
+    // measure is evaluated over the in-memory events, so the insight endpoints
+    // answer in the playground and the E2E harness rather than reporting an
+    // empty series — which would read as "no data", a different claim.
+    metricBuckets: async (_projectId, opts) =>
+      evaluateBucketMeasure(forProject().map(toBucketEvent), opts),
     funnel: async (_projectId, opts) => {
       const steps = opts.steps ?? [];
       if (steps.length === 0) return [];

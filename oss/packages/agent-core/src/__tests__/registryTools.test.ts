@@ -17,8 +17,8 @@ describe("registryToTools", () => {
     expect(tools.map((t) => t.name)).toEqual(withEndpoint.map((m) => m.id));
   });
 
-  it("covers the whole collector read surface — 69 tools, uniquely named", () => {
-    expect(tools).toHaveLength(69);
+  it("covers the whole collector read surface — 71 tools, uniquely named", () => {
+    expect(tools).toHaveLength(71);
     expect(new Set(tools.map((t) => t.name)).size).toBe(tools.length);
     for (const tool of tools) expect(tool.name).toMatch(/^[a-z][a-z0-9_]*$/);
   });

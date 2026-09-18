@@ -14,10 +14,10 @@
 ## Key exports
 
 - `METRIC_REGISTRY` / `METRIC_IDS` — every metric, keyed by its stable snake_case id (which is also the MCP tool name).
-- `allMetrics()`, `getMetric(id)`, `isMetricId(value)`, `metricForBuilder(name)`, `isResourceMetric(metric)`.
+- `allMetrics()`, `getMetric(id)`, `isMetricId(value)`, `metricForBuilder(name)`, and the three entry-kind predicates `isResourceMetric` (a store read: no builder, no querystring, no `format`), `isDerivedMetric` (computed in TypeScript over other metrics — the insight primitives, ADR 0051 §4) and `isAggregateMetric` (either, i.e. "takes a querystring"). Prefer `isAggregateMetric` over `metric.builder != null`, or a derived metric silently drops out of the envelope and OpenAPI surfaces.
 - `FILTER_TARGETS` — every request parameter and what it does; `DIMENSION_COLUMNS` — every group-by dimension.
 - `AGGREGATION_BUILDER_NAMES` — the closed set of `build*` aggregations in `@uptimizr/db`.
-- Types: `MetricDefinition`, `MetricId`, `MetricEndpoint`, `ColumnSemantics`, `ColumnUnit`, `DimensionId`, `FilterId`, `MetricCategory`, `MetricGrain`.
+- Types: `MetricDefinition`, `MetricId`, `MetricEndpoint`, `MetricDerivation`, `ColumnSemantics`, `ColumnUnit`, `DimensionId`, `FilterId`, `MetricCategory`, `MetricGrain`.
 
 ## Rules
 

@@ -16,6 +16,8 @@ import {
   buildCameraGestures,
   buildDistinctScenes,
   buildEventTypeCounts,
+  buildMetricBuckets,
+  toMetricBucketRows,
   buildFlowHeatmap,
   buildFunnel,
   buildSceneRetention,
@@ -342,6 +344,14 @@ export async function createMssqlStore(): Promise<CollectorStore> {
       runMssqlQuery<TimeseriesBucketRow>(msc, buildTimeseries(projectId, opts, d)),
     eventTypeCounts: (projectId, opts = {}) =>
       runMssqlQuery<EventTypeCountRow>(msc, buildEventTypeCounts(projectId, opts, d)),
+    // The one bucket series behind `baseline` and `movers` (ADR 0051 §4). The
+    // spec carries no registry metric of its own, so the store edge has no row
+    // schema to coerce it against — `toMetricBucketRows` parses the numbers,
+    // which is what keeps the engines that string-encode 64-bit counts honest.
+    metricBuckets: async (projectId, opts) =>
+      toMetricBucketRows(
+        await runMssqlQuery<Record<string, unknown>>(msc, buildMetricBuckets(projectId, opts, d)),
+      ),
     funnel: (projectId, opts) =>
       runMssqlQuery<FunnelStepResultRow>(msc, buildFunnel(projectId, opts, d)),
     sceneRetention: (projectId, opts) =>

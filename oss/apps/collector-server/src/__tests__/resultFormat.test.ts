@@ -33,7 +33,12 @@ import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PARITY_EVENTS, PARITY_PROJECT_ID } from "@uptimizr/db";
 import { resultSummarySchema, tableResultSchema } from "@uptimizr/db";
-import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
+import {
+  allMetrics,
+  isAggregateMetric,
+  isDerivedMetric,
+  type MetricDefinition,
+} from "@uptimizr/metrics";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildApp } from "../app.js";
@@ -66,6 +71,11 @@ const OFF_REQUEST_PATH = new Set(["recordAudit", "pruneAudit"]);
  * paste what it prints.
  */
 const PRE_CHANGE_BODY_HASHES: Readonly<Record<string, string>> = {
+  // The two derived insight metrics (ADR 0051 §4) are recorded at their
+  // introduction rather than before it: they had no prior body to preserve, but
+  // from here their default shape is pinned like every other endpoint.
+  "/api/v1/insights/baseline": "70da6e75dbce179a14e5ba83ac7f5db3f33dbaf1e15dd0a451d1695587f9aca2",
+  "/api/v1/insights/movers": "db847696207abb389e259c5a7af2c40a3ac787cd8f47871dab46b3e73628038b",
   "/api/v1/sessions": "fc8a8b1690f001672de3e9dd0b336eb9c874ad55555577cfd9b9402358b326cd",
   "/api/v1/scenes": "7aba7bfa05c14a726c4667868c75e8f053c4fb2b0c8dedf6a775a58ef3bd556a",
   "/api/v1/timeseries": "956599592dac1cf3753392d03d113b7657687f12a2080ebad6822a87a2b63162",
@@ -170,9 +180,13 @@ function canonicalBody(value: unknown): string {
   return JSON.stringify(rows.map((row) => JSON.stringify(stable(row))).sort());
 }
 
-/** The two resource reads take no querystring, so they are outside `format`. */
+/**
+ * The two resource reads take no querystring, so they are outside `format`.
+ * Everything else served on an endpoint accepts the envelope — the aggregations
+ * and the derived insight primitives alike (ADR 0051 §4).
+ */
 const FORMATTED_METRICS = allMetrics().filter(
-  (metric) => metric.endpoint != null && metric.builder != null,
+  (metric) => metric.endpoint != null && isAggregateMetric(metric),
 );
 
 /** Every endpoint, including the two resource reads, for the `full` sweep. */
@@ -257,18 +271,26 @@ describe("result format envelopes", () => {
         // Every key the store produced is still on the wire with an equal value.
         // (The three spatial `stats` routes add the resolved `cellSize`, so the
         // response is a superset rather than an exact match.)
-        const producedRows = Array.isArray(produced)
-          ? produced
-          : produced == null
-            ? []
-            : [produced];
+        //
+        // A **derived** metric is exempt from *this* comparison only: its handler
+        // reads a bucket series and computes its row in TypeScript, so the last
+        // store result is not the row. The two assertions that actually carry the
+        // negative promise — default equals `format=full`, and both still hash to
+        // the recorded body — apply to it unchanged.
         const bodyValue: unknown = implicit.json();
-        const bodyRows = Array.isArray(bodyValue) ? bodyValue : [bodyValue];
-        expect(bodyRows.length, `${id}: row count changed`).toBe(producedRows.length);
-        for (const [index, row] of producedRows.entries()) {
-          expect(bodyRows[index], `${id}: row ${index} changed`).toMatchObject(
-            row as Record<string, unknown>,
-          );
+        if (!isDerivedMetric(metric)) {
+          const producedRows = Array.isArray(produced)
+            ? produced
+            : produced == null
+              ? []
+              : [produced];
+          const bodyRows = Array.isArray(bodyValue) ? bodyValue : [bodyValue];
+          expect(bodyRows.length, `${id}: row count changed`).toBe(producedRows.length);
+          for (const [index, row] of producedRows.entries()) {
+            expect(bodyRows[index], `${id}: row ${index} changed`).toMatchObject(
+              row as Record<string, unknown>,
+            );
+          }
         }
 
         if (RESOURCE_METRICS.has(id)) return;

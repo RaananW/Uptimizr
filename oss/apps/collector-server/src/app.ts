@@ -15,6 +15,7 @@ import { attachApiKey } from "./auth.js";
 import { registerAuditHooks, startAuditRetention } from "./audit.js";
 import { buildDashboardCsp } from "./csp.js";
 import { collectRoutes } from "./routes/collect.js";
+import { insightRoutes } from "./routes/insights.js";
 import { liveRoutes } from "./routes/live.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
 import { queryRoutes } from "./routes/query.js";
@@ -141,6 +142,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(collectRoutes, { store, config, liveBus });
   await app.register(liveRoutes, { store, config, liveBus });
   await app.register(queryRoutes, { store, config });
+  // Derived reads over the query surface (ADR 0051 §4): `baseline` and `movers`.
+  // Its own plugin so the envelope hook and the metric-resolution 400s stay
+  // scoped to the two insight routes.
+  await app.register(insightRoutes, { store });
   await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API

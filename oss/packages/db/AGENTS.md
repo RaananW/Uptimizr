@@ -172,6 +172,51 @@ row plus its `rateOf` rates). Everything is bounded by `limits.maxSummaryRows`.
 - Adding `format` to a metric's `filters` and to the collector's querystring is one change — the
   collector's `registryRoutes.test.ts` fails if they drift.
 
+### Insight primitives (ADR 0051 §4, `src/insights/`)
+
+`baseline` and `movers` — "what is normal here" and "what changed" — as two derived registry
+metrics. The shape of the directory is the design:
+
+```ts
+import {
+  buildMetricBuckets, // the ONE dialect-authored query both primitives consume
+  computeBaseline,
+  rankMovers,
+  resolveBaselineWindow,
+  resolveMoversWindows,
+  BUCKET_MEASURES, // metric id -> how its primary column buckets
+  BUCKETABLE_METRIC_IDS,
+  MOVERS_DEFAULT_METRICS,
+  MOVERS_MAX_METRICS,
+} from "@uptimizr/db";
+```
+
+**Rules for agents:**
+
+- **No statistic may be computed in SQL.** Five dialects disagree about `quantile`, `median` and
+  `stddev`; an insight that changes with the storage engine is not an insight. The query returns raw
+  per-bucket values and `stats.ts` does the rest in TypeScript.
+- `buildMetricBuckets` lives in `src/insights/`, **not** in `query/aggregations.ts`. The `build*`
+  exports of that module are the registry's closed list of _metrics_, each of which must have its own
+  entry and endpoint; this is the shared _input_ of two metrics and has neither.
+- A metric is bucketable only if it has an entry in `measures.ts`, and that entry's `column` must be
+  the metric's `comparable.primary` (asserted in `src/__tests__/insights.test.ts`). Widening the
+  catalog is additive: add the measure, add a parity case, done.
+- **Never approximate a series to widen the catalog.** Funnels, cohort metrics and anything defined
+  by the relationship between consecutive events have no faithful per-bucket form; a `400` naming the
+  ids that do is a better answer than a plausible wrong number.
+- Predicates come from a **closed vocabulary** over promoted columns, with constant values bound as
+  parameters. Do not add a free-SQL escape hatch.
+- Window bounds snap **down** to whole buckets, so the day or hour in progress is excluded and a
+  default reference really is an equal window.
+- `movers` reports a sub-`minSample` delta with `aboveMinSample: false` and ranks it below every
+  gated mover. It must never be dropped — "we cannot tell" and "nothing changed" are different
+  answers — and never reported as a finding.
+- Cost is bounded by `MOVERS_MAX_METRICS` (one grouped scan per scanned metric). Raising it is a
+  deliberate change, not a default.
+- `anomalies`, `significance` and `scene_health` (ADR 0051 §4) slot in here the same way: a new pure
+  module over the same bucket series, with no new per-dialect SQL.
+
 ## Cross-engine parity (ADR 0020)
 
 The dialect-agnostic aggregations (`buildX(projectId, opts, dialect)`) are rendered per engine
@@ -203,7 +248,8 @@ service). The scale tier reuses the same exported `PARITY_CASES`/golden to run
    `day` strings (`YYYY-MM-DD`) render identically and are compared.
 
 When adding an aggregation or event type, extend `PARITY_EVENTS`/`PARITY_CASES` with golden so both
-engines stay covered.
+engines stay covered. The `metricBuckets:*` cases cover the insight bucket series — one per aggregate
+shape its measure catalog can render, which is what makes `baseline`/`movers` portable.
 
 ## More
 

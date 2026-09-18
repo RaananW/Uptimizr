@@ -30,6 +30,8 @@ import type {
   CapabilityChangeRow,
   CameraGestureRow,
   MeshCountRow,
+  MetricBucketOptions,
+  MetricBucketRow,
   MeshDwellRow,
   MeshBlindSpotRow,
   MeshInteractionKindRow,
@@ -685,6 +687,21 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions,
   ): Promise<EventTypeCountRow[]>;
+  /**
+   * The per-bucket series of one metric's comparable headline column — the one
+   * store read both insight primitives are built on (ADR 0051 §4).
+   *
+   * A single generic aggregation rather than one store method per insight: what
+   * differs between metrics is the *series*, and that difference is declared as
+   * data in `@uptimizr/db`'s `src/insights/measures.ts`. Everything computed
+   * from the series — mean, median, MAD, quantiles, slope, robust z — is pure
+   * TypeScript, so no two engines can disagree about an insight.
+   *
+   * `opts.metric` must name a metric that has a portable bucket series; the
+   * route validates that at the edge and answers `400` with the list of ids that
+   * do, so an implementation may assume it.
+   */
+  metricBuckets(projectId: string, opts: MetricBucketOptions): Promise<MetricBucketRow[]>;
   /**
    * Single-project configurator funnel (#78, ADR 0038): ordered, per-session
    * step-reach with the drop-off between consecutive steps. Each row is

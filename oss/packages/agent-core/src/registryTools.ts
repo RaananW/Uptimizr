@@ -228,6 +228,48 @@ const FILTER_FIELDS: Readonly<Record<FilterId, z.ZodType>> = {
     .max(2048)
     .optional()
     .describe("JSON funnel-step predicate for the success event. Omit to report views only."),
+  // --- insight primitives (ADR 0051 §4) ---
+  // `metric` / `metrics` are the only arguments whose value is itself a
+  // registry metric id, so their descriptions point at the capabilities
+  // resource rather than listing 40 ids inline.
+  metric: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .describe(
+      "The registry metric to compute the insight over. Must be a comparable metric that has a " +
+        "portable bucket series; an id that has none is rejected with the list of ids that do.",
+    ),
+  metrics: z
+    .string()
+    .min(1)
+    .max(1024)
+    .optional()
+    .describe(
+      "Comma-separated allowlist of registry metric ids to scan instead of the curated default " +
+        "set. Capped per request; a longer list is rejected rather than silently truncated.",
+    ),
+  window: z
+    .number()
+    .int()
+    .positive()
+    .max(365)
+    .optional()
+    .describe("Baseline window length in days, counted back from `until`. Defaults to 28."),
+  refSince: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      "Start of the reference window a change is measured against, epoch milliseconds. " +
+        "Defaults to the equal-length window immediately before the current range.",
+    ),
+  refUntil: z
+    .number()
+    .int()
+    .optional()
+    .describe("End of the reference window, epoch milliseconds. Defaults to `since`."),
   // The shared result envelope (ADR 0051 §2). Declared literally rather than
   // imported from `@uptimizr/db/summary`, which would put a database driver back
   // on this package's dependency graph. `full` stays the default here: switching
@@ -256,6 +298,32 @@ const FILTER_FIELDS: Readonly<Record<FilterId, z.ZodType>> = {
 const REQUIRED_FILTERS: Readonly<Record<string, readonly FilterId[]>> = {
   funnel: ["steps"],
   mesh_uv_heatmap: ["mesh"],
+  insight_baseline: ["metric"],
+};
+
+/**
+ * Per-metric overrides of {@link FILTER_FIELDS}, for the one filter id whose
+ * *type* depends on the metric that accepts it.
+ *
+ * `bucket` is a histogram bin width in FPS on `fps_histogram` and the time
+ * grain (`day` | `hour`) on the insight primitives. Declaring a union in the
+ * shared table would weaken `fps_histogram`'s advertised schema for no reason
+ * and change bytes a shipped MCP client already validates against; an override
+ * keeps every existing tool exactly as it was.
+ */
+const METRIC_FILTER_FIELDS: Readonly<Record<string, Partial<Record<FilterId, z.ZodType>>>> = {
+  insight_baseline: {
+    bucket: z
+      .enum(["day", "hour"])
+      .optional()
+      .describe("Time grain of the series: `day` (default) or `hour`."),
+  },
+  insight_movers: {
+    bucket: z
+      .enum(["day", "hour"])
+      .optional()
+      .describe("Time grain of the series the spread is measured over: `day` (default) or `hour`."),
+  },
 };
 
 /**
@@ -266,6 +334,15 @@ const REQUIRED_FILTERS: Readonly<Record<string, readonly FilterId[]>> = {
 const REQUIRED_FILTER_FIELDS: Readonly<Partial<Record<FilterId, z.ZodType>>> = {
   steps,
   mesh: z.string().min(1).max(256).describe("The mesh/object name to bin. Required."),
+  metric: z
+    .string()
+    .min(1)
+    .max(64)
+    .describe(
+      "The registry metric to compute the baseline of. Required. Must be a comparable metric " +
+        "with a portable bucket series; an id that has none is rejected with the list of ids " +
+        "that do.",
+    ),
 };
 
 /**
@@ -296,7 +373,7 @@ function filterField(metric: MetricDefinition, filter: FilterId): z.ZodType {
     if (!required) throw new Error(`no required field defined for filter '${filter}'`);
     return required;
   }
-  return FILTER_FIELDS[filter];
+  return METRIC_FILTER_FIELDS[metric.id]?.[filter] ?? FILTER_FIELDS[filter];
 }
 
 /**
