@@ -61,7 +61,7 @@ describe.skipIf(!available)("mssql parity (vs golden, vs duckdb)", () => {
     if (duck) await duck.close();
   });
 
-  it("covers all 68 aggregations", () => {
+  it("covers all 69 aggregations", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
@@ -87,6 +87,7 @@ describe.skipIf(!available)("mssql parity (vs golden, vs duckdb)", () => {
       "meshInteractionKinds",
       "reachability",
       "topInputActions",
+      "customEventVocabulary",
       "perfSummary",
       "renderScaleTruth",
       "perfDistribution",

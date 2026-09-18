@@ -47,6 +47,26 @@ export const PARITY_ABS_TOLERANCE = 1e-6;
 /** Relative tolerance for floating-point column comparison. */
 export const PARITY_REL_TOLERANCE = 1e-9;
 
+/**
+ * Columns that carry an engine's **own rendering of stored data** rather than a
+ * computed result, and so cannot be compared byte-for-byte across engines — the
+ * same reason the wall-clock projections (`started_at`, `last_seen`, …) are
+ * excluded.
+ *
+ * Today there is exactly one: `sample_payload` from
+ * `buildCustomEventVocabulary` (ADR 0051 §5), the raw `custom` event document
+ * a name's most recent rows carry. DuckDB, ClickHouse and SQL Server hand back
+ * the stored text unchanged; the Postgres driver hands back an already-parsed
+ * `jsonb` object with its keys reordered. Nothing downstream depends on that
+ * rendering — `foldCustomEventVocabulary` reads only the prop keys and value
+ * kinds out of it, and the collector never serves it — so what must agree across
+ * engines is the counting and the sampling *shape*, which stays compared.
+ *
+ * Declared here rather than in each engine's suite so the exclusion is stated
+ * once, with its reason.
+ */
+export const ENGINE_FORMATTED_COLUMNS: ReadonlySet<string> = new Set(["sample_payload"]);
+
 export type ParityRow = Record<string, unknown>;
 
 export interface ParityCompareOptions {

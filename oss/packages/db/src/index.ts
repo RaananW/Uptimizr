@@ -326,6 +326,7 @@ export {
   PARITY_EVENTS,
 } from "./parity/fixtures.js";
 export {
+  ENGINE_FORMATTED_COLUMNS,
   PARITY_ABS_TOLERANCE,
   PARITY_REL_TOLERANCE,
   diffParity,
