@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { AGENT_SKILLS, type AgentSkill } from "@uptimizr/agent-core";
 import { z } from "zod";
 
 /**
@@ -7,129 +8,45 @@ import { z } from "zod";
  * read-only tools in a sensible order — no data is fetched here; the agent runs
  * the tools. Templates are intentionally tool-agnostic about exact arguments so
  * the agent can adapt (e.g. resolve the current epoch-ms range itself).
+ *
+ * The templates themselves are the **agent skills** of `@uptimizr/agent-core`
+ * (`AGENT_SKILLS`). They live there because the headless `uptimizr agent report`
+ * CLI seeds its transcript with the same text (ADR 0051 §6, design sketch §F.4)
+ * and the eval bank asks the same questions; this module is the MCP *binding* —
+ * it turns each skill's argument list into a Zod `argsSchema` and its `render`
+ * into the single user message `prompts/get` returns. Reword a skill once and
+ * every client changes with it.
  */
 
-const sceneArg = z
-  .string()
-  .optional()
-  .describe("Optional scene id to scope the analysis to (see the uptimizr://scenes resource).");
-
-const requiredSceneArg = z
-  .string()
-  .describe("The scene id to analyse (see the uptimizr://scenes resource).");
-
-/**
- * The first instruction in every template (ADR 0051 §5): orient on the project
- * before asking anything about it. Without it an agent guesses scene ids and
- * custom-event names, and reports a disabled capture channel's zero as a finding.
- */
-const READ_CONTEXT_FIRST =
-  "Read the `uptimizr://context` resource first: it gives the real scene ids, region ids and " +
-  "custom-event names for this project, and tells you which metrics are empty because their " +
-  "capture channel is off.\n\n";
-
-const forScene = (scene: string | undefined): string =>
-  scene ? `scene "${scene}"` : "the project (all scenes)";
+/** Build a prompt template's Zod `argsSchema` from a skill's argument list. */
+function argsSchemaFor(skill: AgentSkill): Record<string, z.ZodType> {
+  const shape: Record<string, z.ZodType> = {};
+  for (const arg of skill.args) {
+    shape[arg.name] = arg.required
+      ? z.string().describe(arg.description)
+      : z.string().optional().describe(arg.description);
+  }
+  return shape;
+}
 
 /** Register the curated prompt templates on the server. */
 export function registerPrompts(server: McpServer): void {
-  server.registerPrompt(
-    "weekly_scene_health",
-    {
-      title: "Weekly scene health",
-      description:
-        "A weekly health check for a scene (or the whole project): traffic, event mix, " +
-        "performance, and the most-interacted meshes.",
-      argsSchema: { scene: sceneArg },
-    },
-    ({ scene }) => ({
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text:
-              `Give me a weekly health report for ${forScene(scene)} covering the last 7 days.\n\n` +
-              READ_CONTEXT_FIRST +
-              "Use these read-only tools and summarise the findings:\n" +
-              "- `event_counts` for the per-event-type mix" +
-              (scene ? ` (scene="${scene}")` : "") +
-              ".\n" +
-              "- `timeseries` (interval ~86400s) to show the day-by-day event volume and average FPS trend.\n" +
-              "- `perf_summary` for avg/min/p50 FPS.\n" +
-              "- `top_meshes` for the most-interacted meshes.\n" +
-              "- `list_sessions` for how many sessions were recorded.\n\n" +
-              "Call out anything unusual (traffic spikes/drops, FPS regressions, error events) and " +
-              "end with 2–3 concrete recommendations.",
+  for (const skill of AGENT_SKILLS) {
+    server.registerPrompt(
+      skill.name,
+      {
+        title: skill.title,
+        description: skill.description,
+        argsSchema: argsSchemaFor(skill) as never,
+      },
+      ((args: Record<string, string | undefined>) => ({
+        messages: [
+          {
+            role: "user" as const,
+            content: { type: "text" as const, text: skill.render(args) },
           },
-        },
-      ],
-    }),
-  );
-
-  server.registerPrompt(
-    "attention_hotspots",
-    {
-      title: "Attention hot-spots for a scene",
-      description:
-        "Find where visitors look and click in a scene: view-direction concentration, " +
-        "gaze→mesh flow, and the objects that draw the most interaction.",
-      argsSchema: { scene: requiredSceneArg },
-    },
-    ({ scene }) => ({
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text:
-              `Where does attention concentrate in scene "${scene}"?\n\n` +
-              READ_CONTEXT_FIRST +
-              'Use these read-only tools (all scoped with scene="' +
-              scene +
-              '") and synthesise the result:\n' +
-              "- `camera_heatmap` for the view-direction distribution (what people look at).\n" +
-              "- `flow_links` for how gaze flows into clicked meshes.\n" +
-              "- `click_rays` for view-gated clicks per voxel/mesh.\n" +
-              "- `top_meshes` for the most-interacted objects.\n\n" +
-              "Describe the main hot-spots, any ignored/cold areas, and what that implies for the " +
-              "scene's layout or call-to-action placement.",
-          },
-        },
-      ],
-    }),
-  );
-
-  server.registerPrompt(
-    "xr_comfort_review",
-    {
-      title: "XR comfort & drop-off review",
-      description:
-        "Review VR/AR comfort signals for a scene (or the whole project): rapid head rotation, " +
-        "locomotion style, session abandonment, and input-source mix.",
-      argsSchema: { scene: sceneArg },
-    },
-    ({ scene }) => ({
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text:
-              `Review XR/immersive comfort and drop-off for ${forScene(scene)}.\n\n` +
-              READ_CONTEXT_FIRST +
-              "Use these read-only tools" +
-              (scene ? ` (scene="${scene}")` : "") +
-              " and correlate the signals:\n" +
-              "- `xr_rotation` for rapid head/view turns (a motion-sickness proxy).\n" +
-              "- `xr_locomotion` for the fly/navigate/teleport mix and session span.\n" +
-              "- `xr_abandonment` for short XR sessions that signal headset drop-off.\n" +
-              "- `xr_sources` for the hand vs. controller vs. gaze input split.\n\n" +
-              "Flag likely-uncomfortable patterns (heavy rapid rotation or continuous locomotion " +
-              "paired with early exits) and suggest comfort mitigations.",
-          },
-        },
-      ],
-    }),
-  );
+        ],
+      })) as never,
+    );
+  }
 }

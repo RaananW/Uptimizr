@@ -11,6 +11,7 @@ import type {
   AgentToolCall,
   AgentToolSchema,
   ProviderResponse,
+  ProviderUsage,
 } from "../provider.js";
 
 /** OpenAI chat message (request side). */
@@ -35,6 +36,12 @@ export interface OpenAiTool {
   function: { name: string; description: string; parameters: Record<string, unknown> };
 }
 
+/** OpenAI's token accounting, as the chat-completions API spells it. */
+export interface OpenAiUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+}
+
 /** The subset of an OpenAI chat-completion response this module reads. */
 export interface OpenAiCompletion {
   choices?: Array<{
@@ -43,6 +50,21 @@ export interface OpenAiCompletion {
       tool_calls?: OpenAiToolCall[] | null;
     };
   }>;
+  usage?: OpenAiUsage;
+}
+
+/**
+ * Normalise OpenAI's `usage` into {@link ProviderUsage}, or `undefined` when the
+ * response carried none — so a caller can tell "not reported" from zero.
+ */
+export function toProviderUsage(usage: OpenAiUsage | undefined): ProviderUsage | undefined {
+  const input = usage?.prompt_tokens;
+  const output = usage?.completion_tokens;
+  if (typeof input !== "number" && typeof output !== "number") return undefined;
+  return {
+    ...(typeof input === "number" ? { inputTokens: input } : {}),
+    ...(typeof output === "number" ? { outputTokens: output } : {}),
+  };
 }
 
 /** Map the agent conversation to OpenAI request messages. */
@@ -105,6 +127,7 @@ export function parseOpenAiCompletion(completion: OpenAiCompletion): ProviderRes
   const message = completion.choices?.[0]?.message;
   const toolCalls = message?.tool_calls ?? [];
   const content = message?.content ?? "";
+  const usage = toProviderUsage(completion.usage);
 
   if (toolCalls.length > 0) {
     return {
@@ -115,10 +138,11 @@ export function parseOpenAiCompletion(completion: OpenAiCompletion): ProviderRes
         arguments: parseArguments(call.function.arguments),
       })),
       ...(content ? { content } : {}),
+      ...(usage ? { usage } : {}),
     };
   }
 
-  return { kind: "final", content };
+  return { kind: "final", content, ...(usage ? { usage } : {}) };
 }
 
 /**
@@ -128,6 +152,8 @@ export function parseOpenAiCompletion(completion: OpenAiCompletion): ProviderRes
  * ones append to `function.arguments`. WebLLM's streamed tool calls omit `id`.
  */
 export interface OpenAiStreamChunk {
+  /** Present on the trailing chunk when the endpoint reports streamed usage. */
+  usage?: OpenAiUsage;
   choices?: Array<{
     delta?: {
       content?: string | null;
@@ -158,9 +184,13 @@ export function createOpenAiStreamAssembler(): OpenAiStreamAssembler {
   let content = "";
   // Keyed by `index` so gapped or out-of-order indices still assemble.
   const calls = new Map<number, OpenAiToolCall>();
+  // An endpoint that reports streamed usage puts it on a trailing chunk with no
+  // delta, so it is read before the early return below.
+  let usage: OpenAiUsage | undefined;
 
   return {
     push(chunk) {
+      if (chunk.usage) usage = chunk.usage;
       const delta = chunk.choices?.[0]?.delta;
       if (!delta) return "";
       const text = typeof delta.content === "string" ? delta.content : "";
@@ -196,6 +226,7 @@ export function createOpenAiStreamAssembler(): OpenAiStreamAssembler {
             },
           },
         ],
+        ...(usage ? { usage } : {}),
       };
     },
   };

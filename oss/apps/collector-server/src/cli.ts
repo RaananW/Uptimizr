@@ -28,6 +28,10 @@ import {
  *                          rate limit (#309, ADR 0051 §7).
  * - `migrate`            — apply store migrations.
  * - `regions set|get`    — declare / read a scene's named regions (ADR 0051 §2).
+ * - `agent report`       — run a read-only analytics agent once and write a
+ *                          Markdown report (#312, ADR 0051 §6). Implemented in
+ *                          `agentReport.ts` and imported lazily, so the agent
+ *                          stack is never loaded by `serve`.
  *
  * Every command targets the store selected by `COLLECTOR_STORE` — the OSS
  * DuckDB default (no Docker, no external database; ADR 0020), or the optional
@@ -386,6 +390,29 @@ async function cmdRegionsGet(args: string[]): Promise<void> {
   }
 }
 
+/**
+ * Dispatch the `agent` sub-namespace. Today it has one command, `report`; the
+ * namespace exists so later agent-side commands land beside it rather than at
+ * the top level.
+ *
+ * The implementation lives in `agentReport.ts` and is imported **lazily**: it
+ * pulls in `@uptimizr/agent-core` (the tool catalog and the provider adapters),
+ * which `serve`, `init` and the store commands have no business loading.
+ */
+async function cmdAgent(args: string[]): Promise<number> {
+  const [sub, ...rest] = args;
+  if (sub !== "report") {
+    console.error(
+      `Unknown agent command ${JSON.stringify(sub ?? "")}. ` +
+        "Expected: uptimizr agent report --skill <name> (see --list-skills).",
+    );
+    return 1;
+  }
+  loadLocalEnv();
+  const { runAgentReport } = await import("./agentReport.js");
+  return runAgentReport(rest);
+}
+
 /** Dispatch the `regions` sub-namespace (`set` / `get`). */
 async function cmdRegions(args: string[]): Promise<void> {
   const [sub, ...rest] = args;
@@ -420,6 +447,9 @@ function printUsage(): void {
       "                                declare a scene's named regions (replaces the set)",
       "  uptimizr regions get <sceneId>",
       "                                print a scene's named regions as JSON",
+      "  uptimizr agent report --skill <name>",
+      "                                run a read-only analytics agent once and write a",
+      "                                Markdown report (see: uptimizr agent report --help)",
       "  uptimizr help                 show this help",
       "",
       "`init` / `new-project` mint the operator's own key with query, query:raw and annotate —",
@@ -442,6 +472,11 @@ function printUsage(): void {
       "Every command targets the store selected by COLLECTOR_STORE (duckdb | postgres | mssql |",
       "clickhouse), using the same connection variables as `serve` (DUCKDB_PATH, POSTGRES_URL,",
       "MSSQL_URL, CLICKHOUSE_*). Unset = duckdb.",
+      "",
+      "`agent report` runs the headless agent loop in THIS process against the collector's",
+      "query API, with the provider you configure in the environment (never persisted).",
+      "Scheduling is yours — cron, a systemd timer or a GitHub Action. See",
+      "`uptimizr agent report --help` for the flags, the environment and the exit codes.",
       "",
       "Quick start:  uptimizr init  &&  uptimizr serve",
     ].join("\n"),
@@ -473,6 +508,11 @@ async function main(): Promise<void> {
     case "regions":
       await cmdRegions(rest);
       return;
+    case "agent": {
+      const code = await cmdAgent(rest);
+      if (code !== 0) process.exit(code);
+      return;
+    }
     case "help":
     case "--help":
     case "-h":

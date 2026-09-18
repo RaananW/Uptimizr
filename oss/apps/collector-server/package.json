@@ -53,6 +53,7 @@
     "@fastify/helmet": "^13.1.1",
     "@fastify/rate-limit": "^11.2.0",
     "@fastify/static": "^10.1.3",
+    "@uptimizr/agent-core": "workspace:*",
     "@uptimizr/db": "workspace:*",
     "@uptimizr/db-clickhouse": "workspace:*",
     "@uptimizr/db-mssql": "workspace:*",

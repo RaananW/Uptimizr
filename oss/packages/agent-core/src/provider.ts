@@ -37,10 +37,36 @@ export interface AgentToolSchema {
   parameters: Record<string, unknown>;
 }
 
+/**
+ * Token accounting for one provider turn, when the provider reports it.
+ *
+ * Every field is optional: a provider may report neither, one or both, and a
+ * local backend reports nothing at all. Consumers therefore treat a missing
+ * number as "not reported" and never as zero — the distinction matters in the
+ * cost line of a scheduled report.
+ */
+export interface ProviderUsage {
+  /** Prompt tokens billed for this turn. */
+  inputTokens?: number;
+  /** Generated tokens billed for this turn. */
+  outputTokens?: number;
+}
+
 /** The two possible outcomes of a provider turn. */
 export type ProviderResponse =
-  | { kind: "tool_calls"; toolCalls: AgentToolCall[]; content?: string }
-  | { kind: "final"; content: string };
+  | {
+      kind: "tool_calls";
+      toolCalls: AgentToolCall[];
+      content?: string;
+      /** Token accounting for this turn, when the provider reported any. */
+      usage?: ProviderUsage;
+    }
+  | {
+      kind: "final";
+      content: string;
+      /** Token accounting for this turn, when the provider reported any. */
+      usage?: ProviderUsage;
+    };
 
 /** A single provider completion request. */
 export interface ProviderRequest {

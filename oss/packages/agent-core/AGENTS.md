@@ -84,6 +84,28 @@ pure, tolerant of a partial or unfamiliar document, and returns `""` when there 
 so a collector too old to serve the endpoint degrades to the prompt you had before rather than
 failing. Append it unconditionally.
 
+## Agent skills (ADR 0050 §7, ADR 0051 §6)
+
+`AGENT_SKILLS` is the catalog of curated investigations — `weekly_scene_health`,
+`attention_hotspots`, `xr_comfort_review` — each carrying a title, a description, the registry
+tools its method relies on, the arguments it accepts and a pure `render(args)` that produces the
+single user turn. They live here because two clients drive them and must not drift:
+`@uptimizr/mcp` registers each one as an MCP prompt template, and `uptimizr agent report --skill`
+seeds its headless transcript with the same text.
+
+`getAgentSkill(name)` is a **resolver**, not an object lookup, so packaged `SKILL.md` methodology
+files can be registered later without any consumer changing shape. Reword a skill once and every
+client changes with it; do not copy a skill's text anywhere else.
+
+## Shared system-prompt fragments
+
+`ANALYTICS_AGENT_GUIDELINES` is what every analytics agent says about the _data_ — figures come
+from tools and are never invented, everything is aggregate and privacy-preserving, timestamps are
+epoch milliseconds, a tool error is explained rather than papered over. `renderCurrentTimeLine(nowMs)`
+gives the model a clock so it can resolve "this week" into `since`/`until`. The browser assistant
+and the report CLI both build their system prompt from these plus their own role sentence; only the
+role and the output format legitimately differ.
+
 ## Rules for agents
 
 - **Read-only and privacy-preserving.** Never add ingestion, mutation, or raw per-session event
@@ -103,13 +125,18 @@ failing. Append it unconditionally.
   `src/__tests__/shippedToolCompat.test.ts` pins them against a frozen fixture. Widening a tool with
   a new **optional** argument is fine; renaming one or making an argument required is not.
 - Keep provider adapters thin and out of this package: implement `LlmProvider` in the consumer.
+- `ProviderResponse.usage` is **optional on every field**: a provider may report neither, one or
+  both token counts, and a local backend reports nothing. Treat a missing number as "not reported",
+  never as zero — a cost line that prints `0` when nothing was measured is a lie.
 
 ## Programmatic API
 
 `readTools`, `coreReadTools`, `selectReadTools(kind)`, `filterReadTools(names)`,
 `registryToTools(metrics?)`, `createCollectorClient(config)`, `toToolSchemas(tools?)`,
-`runAgent(options)`, `renderContextForPrompt(context, nowMs?)`, plus the `LlmProvider` /
-`AgentMessage` / `AgentToolCall` / `ProviderResponse` / `PromptContextDocument` types.
+`runAgent(options)`, `renderContextForPrompt(context, nowMs?)`, `AGENT_SKILLS` /
+`getAgentSkill(name)` / `renderAgentSkill(name, args)`, `ANALYTICS_AGENT_GUIDELINES` /
+`renderCurrentTimeLine(nowMs)`, plus the `LlmProvider` / `AgentMessage` / `AgentToolCall` /
+`ProviderResponse` / `ProviderUsage` / `AgentSkill` / `PromptContextDocument` types.
 
 The catalog is ~70 tools. A small local model cannot hold every schema in its function-calling
 prompt — hand a run `coreReadTools` or `filterReadTools([...])` rather than the full catalog.
