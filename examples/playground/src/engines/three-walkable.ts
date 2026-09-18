@@ -52,8 +52,14 @@ function mat(rgb: [number, number, number]): MeshStandardMaterial {
   return new MeshStandardMaterial({ color: new Color(rgb[0], rgb[1], rgb[2]) });
 }
 
-function addWall(scene: Scene, x: number, z: number, w: number, d: number): void {
+/**
+ * A wall slab centred at (x,z). Named (like the Babylon/PlayCanvas atriums) so the
+ * scene proxy registers each wall under a stable label and the dashboard's
+ * per-mesh views can tell them apart.
+ */
+function addWall(scene: Scene, name: string, x: number, z: number, w: number, d: number): void {
   const wall = new Mesh(new BoxGeometry(w, WALL_HEIGHT, d), mat([0.22, 0.26, 0.34]));
+  wall.name = name;
   wall.position.set(x, WALL_HEIGHT / 2, z);
   scene.add(wall);
 }
@@ -89,12 +95,12 @@ export function buildWalkableScene(
   scene.add(ground);
 
   // Perimeter + interior walls.
-  addWall(scene, 0, ROOM, ROOM * 2, 1);
-  addWall(scene, 0, -ROOM, ROOM * 2, 1);
-  addWall(scene, ROOM, 0, 1, ROOM * 2);
-  addWall(scene, -ROOM, 0, 1, ROOM * 2);
-  addWall(scene, -8, 6, 1, ROOM - 6);
-  addWall(scene, 10, -6, 1, ROOM - 6);
+  addWall(scene, "wall-n", 0, ROOM, ROOM * 2, 1);
+  addWall(scene, "wall-s", 0, -ROOM, ROOM * 2, 1);
+  addWall(scene, "wall-e", ROOM, 0, 1, ROOM * 2);
+  addWall(scene, "wall-w", -ROOM, 0, 1, ROOM * 2);
+  addWall(scene, "wall-div-1", -8, 6, 1, ROOM - 6);
+  addWall(scene, "wall-div-2", 10, -6, 1, ROOM - 6);
 
   // Interactable item pedestals.
   const itemSpots: Array<[number, number]> = [
@@ -107,6 +113,7 @@ export function buildWalkableScene(
   const pickTargets: Object3D[] = [];
   itemSpots.forEach(([x, z], i) => {
     const pedestal = new Mesh(new BoxGeometry(2, 1, 2), mat([0.16, 0.18, 0.24]));
+    pedestal.name = `pedestal-${i}`;
     pedestal.position.set(x, 0.5, z);
     scene.add(pedestal);
     if (!options?.skipDefaultItems) {
