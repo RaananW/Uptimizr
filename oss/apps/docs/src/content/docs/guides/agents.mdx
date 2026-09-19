@@ -20,7 +20,8 @@ This page is the map. Each section links to the reference for that piece.
     grain, units and caveats.
   </Card>
   <Card title="Connect" icon="puzzle">
-    Run [`@uptimizr/mcp`](/docs/guides/mcp/) over stdio, or embed the [in-browser
+    Run [`@uptimizr/mcp`](/docs/guides/mcp/) over stdio, let the collector [host it over
+    HTTP](/docs/guides/mcp/#hosted-transport-streamable-http), or embed the [in-browser
     assistant](/docs/guides/assistant/).
   </Card>
   <Card title="Ask for `format=summary`" icon="seti:json">
@@ -104,8 +105,14 @@ ingestion, mutation or raw-event tools. It also ships three curated prompts —
 `weekly_scene_health`, `attention_hotspots`, `xr_comfort_review` — that sequence the tools for a
 common investigation. See the [MCP guide](/docs/guides/mcp/).
 
-A collector-**hosted** MCP endpoint over Streamable HTTP (so a remote client needs no local process)
-is planned, not shipped — [#313](https://github.com/RaananW/Uptimizr/issues/313).
+### Hosted MCP — `/mcp` on your collector
+
+The collector can serve that same MCP server itself, over Streamable HTTP, so a remote client needs
+no local process at all. Start it with `COLLECTOR_MCP_HTTP=1` (off by default) and point a client at
+`https://collect.example.com/mcp` with `x-api-key` or `Authorization: Bearer <key>`. Same tools,
+same resources, same prompts; every request is authenticated, sessions are capped, and tool calls
+land in the audit log as `surface: mcp-http`. See
+[hosted transport](/docs/guides/mcp/#hosted-transport-streamable-http).
 
 ### In-browser assistant
 
@@ -298,7 +305,6 @@ real today versus planned. Nothing below is available yet.
 | 2     | [#307](https://github.com/RaananW/Uptimizr/issues/307) | Insight primitives: significance and `scene_health`.                          |
 | 2     | [#308](https://github.com/RaananW/Uptimizr/issues/308) | A project **context** resource and custom-event vocabulary.                   |
 | 3     | [#311](https://github.com/RaananW/Uptimizr/issues/311) | Conditional subscriptions, an SSE stream and signed webhooks.                 |
-| 3     | [#313](https://github.com/RaananW/Uptimizr/issues/313) | Collector-hosted MCP over Streamable HTTP.                                    |
 | 3     | [#315](https://github.com/RaananW/Uptimizr/issues/315) | Declarative **panel specs** and "pin as panel".                               |
 | 3     | [#316](https://github.com/RaananW/Uptimizr/issues/316) | Packaged methodology **skills**, exposed as MCP prompts.                      |
 

@@ -380,3 +380,48 @@ describe("result envelopes", () => {
     expect((result.content as { text: string }[])[0]?.text).toContain("meta");
   });
 });
+
+/**
+ * The `capabilities` option (#313) carries the API key's capability set from the
+ * collector-hosted Streamable HTTP transport into the shared server factory, so
+ * one session's surface can be shaped by what its key may actually do. The stdio
+ * entry point omits it and must be unaffected.
+ */
+describe("createMcpServer options", () => {
+  async function connectWith(options?: Parameters<typeof createMcpServer>[1]): Promise<Client> {
+    const paired = new Client({ name: "options-test", version: "0.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      paired.connect(clientTransport),
+      createMcpServer(stubCollector, options).connect(serverTransport),
+    ]);
+    return paired;
+  }
+
+  it("registers the same catalog with or without a capability set", async () => {
+    const withOption = await connectWith({ capabilities: ["query"] });
+    const withoutOption = await connectWith();
+    const listed = (await withOption.listTools()).tools.map((tool) => tool.name).sort();
+    expect(listed).toEqual((await withoutOption.listTools()).tools.map((t) => t.name).sort());
+    expect(listed).toHaveLength(readTools.length);
+    await withOption.close();
+    await withoutOption.close();
+  });
+
+  it("names the granted capabilities in the server instructions", async () => {
+    const reader = await connectWith({ capabilities: ["query"] });
+    expect(reader.getInstructions()).toContain("query");
+    expect(reader.getInstructions()).not.toContain("annotate");
+    await reader.close();
+
+    const writer = await connectWith({ capabilities: ["query", "annotate"] });
+    expect(writer.getInstructions()).toContain("annotate");
+    await writer.close();
+  });
+
+  it("leaves the stdio server's initialize result untouched when omitted", async () => {
+    const plain = await connectWith();
+    expect(plain.getInstructions()).toBeUndefined();
+    await plain.close();
+  });
+});

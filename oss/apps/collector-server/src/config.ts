@@ -64,6 +64,27 @@ export interface CollectorConfig {
    */
   auditDashboardRequests: boolean;
   /**
+   * Serve MCP over Streamable HTTP at `/mcp` (ADR 0051 §7). **Off by default**:
+   * it is an additional authenticated, long-lived surface, so an operator opts
+   * into it rather than discovering it. When off the route is not registered at
+   * all — `/mcp` simply 404s.
+   */
+  mcpHttpEnabled: boolean;
+  /**
+   * Max concurrent MCP sessions across the collector, the `/mcp` equivalent of
+   * {@link liveMaxConnections}. Each session holds an MCP server and may hold an
+   * open SSE stream, so the count is bounded; a request that would open the
+   * (cap + 1)-th session is refused with `503`.
+   */
+  mcpMaxSessions: number;
+  /**
+   * How long an MCP session may go without a request before it is closed and
+   * evicted, in ms. Streamable HTTP has no keep-alive a server can rely on —
+   * a client that disappears without `DELETE /mcp` would otherwise hold its slot
+   * forever.
+   */
+  mcpSessionTtlMs: number;
+  /**
    * Absolute path to a pre-built static dashboard (`out/`) to serve as an
    * all-in-one bundle. Unset (the default) keeps the collector headless.
    */
@@ -74,6 +95,16 @@ type Env = Record<string, string | undefined>;
 
 function bool(value: string | undefined): boolean {
   return value === "1" || value?.toLowerCase() === "true";
+}
+
+/**
+ * Read a strictly positive numeric setting, falling back to `fallback` when it
+ * is unset, unparseable or non-positive. Used for the caps a zero or a typo
+ * must not silently turn into "no sessions allowed".
+ */
+function positive(value: string | undefined, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 /**
@@ -139,6 +170,9 @@ export function loadConfig(env: Env = process.env): CollectorConfig {
     cspMode: env.COLLECTOR_CSP === "off" ? "off" : "strict",
     auditRetentionDays: Math.max(0, Number(env.AUDIT_RETENTION_DAYS ?? 30) || 0),
     auditDashboardRequests: bool(env.AUDIT_DASHBOARD_REQUESTS),
+    mcpHttpEnabled: bool(env.COLLECTOR_MCP_HTTP),
+    mcpMaxSessions: positive(env.COLLECTOR_MCP_MAX_SESSIONS, 50),
+    mcpSessionTtlMs: positive(env.COLLECTOR_MCP_SESSION_TTL_MS, 1_800_000),
     dashboardDir: env.COLLECTOR_DASHBOARD_DIR ? resolve(env.COLLECTOR_DASHBOARD_DIR) : undefined,
   };
 }

@@ -62,6 +62,9 @@ const EVAL_CONFIG: CollectorConfig = {
   // dashboard's own requests — the harness has no dashboard.
   auditRetentionDays: 30,
   auditDashboardRequests: false,
+  mcpHttpEnabled: false,
+  mcpMaxSessions: 50,
+  mcpSessionTtlMs: 1_800_000,
 };
 
 /** A booted, seeded collector plus the read-only client an agent run uses. */

@@ -61,6 +61,35 @@ export function isDashboardRequest(request: FastifyRequest): boolean {
   return request.headers[CLIENT_HEADER] === "dashboard";
 }
 
+/** The route the bearer-header alias below is accepted on, and only that one. */
+export const MCP_ROUTE_URL = "/mcp";
+
+/**
+ * Accept `Authorization: Bearer <key>` as an alias for `x-api-key` **on the
+ * hosted MCP route only** (ADR 0051 §7, design sketch §G.1).
+ *
+ * MCP clients configure a remote server as a URL plus headers and send the
+ * bearer form the MCP specification describes; the rest of the collector has
+ * always used `x-api-key`. Normalising one into the other here — in the same
+ * `onRequest` hook, *before* {@link attachApiKey} — keeps exactly one
+ * key-resolution path, so the capability check, the audit row and the per-key
+ * rate-limit bucket all work for a bearer-authenticated MCP client too.
+ *
+ * Scoped to `/mcp` on purpose: this is an alias for one route, not a new
+ * site-wide authentication scheme. An explicit `x-api-key` always wins, and a
+ * malformed or empty bearer value is ignored rather than rejected, so the usual
+ * "no key → 401" path handles it.
+ */
+export function normalizeMcpBearer(request: FastifyRequest): void {
+  if (request.routeOptions.url !== MCP_ROUTE_URL) return;
+  const existing = request.headers["x-api-key"];
+  if (typeof existing === "string" && existing.length > 0) return;
+  const authorization = request.headers.authorization;
+  if (typeof authorization !== "string") return;
+  const match = /^Bearer[ \t]+(\S+)$/i.exec(authorization.trim());
+  if (match) request.headers["x-api-key"] = match[1];
+}
+
 /**
  * Resolve the request's `x-api-key` into {@link FastifyRequest.resolvedKey}.
  * Never replies and never throws: an absent, unknown or revoked key simply

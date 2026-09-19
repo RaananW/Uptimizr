@@ -37,6 +37,9 @@ export const TEST_CONFIG: CollectorConfig = {
   cspMode: "strict",
   auditRetentionDays: 30,
   auditDashboardRequests: false,
+  mcpHttpEnabled: false,
+  mcpMaxSessions: 50,
+  mcpSessionTtlMs: 1_800_000,
 };
 
 /** Fixture scene proxy, so the `scene_representation` resource has a hit. */

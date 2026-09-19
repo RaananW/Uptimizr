@@ -1299,8 +1299,11 @@ recorded too — they are precisely what a project owner wants to see.
 - `params` is a bounded (512-byte) JSON document with credential-shaped keys
   (`token`, `apiKey`, `secret`, `password`, `authorization`, …) dropped, nested
   values summarized, and long strings clipped. **A key never appears in a row.**
-- `surface` is `http` today; `mcp-http` / `mcp-stdio` / `assistant` are reserved
-  for the later agent transports.
+- `surface` records **how** the request reached the collector: `http` for a plain
+  HTTP read — including the `npx @uptimizr/mcp` stdio server, which is an
+  ordinary HTTP client of the collector — and `mcp-http` for a tool call that
+  arrived over the collector-hosted MCP transport at `/mcp` (below).
+  `mcp-stdio` / `assistant` stay reserved.
 - "The dashboard's own session" means a request carrying
   `x-uptimizr-client: dashboard` — the header `@uptimizr/react`'s `CollectorApi`
   sends by default, so a dashboard's panel refreshes do not drown the agent
@@ -1324,6 +1327,36 @@ curl -H "x-api-key: $KEY" \
 | ------ | ---------------- | -------------------------------------------------------------------------------- | ---------- | ------------------------- |
 | `GET`  | `/api/v1/whoami` | The calling key's project, key id, capabilities, label and effective rate limit. | `query`    | —                         |
 | `GET`  | `/api/v1/audit`  | The project's agent audit trail, newest first.                                   | `query`    | `since`, `until`, `limit` |
+
+### Hosted MCP (`/mcp`, Streamable HTTP)
+
+With `COLLECTOR_MCP_HTTP=1` the collector also speaks the **Model Context
+Protocol** over its own HTTP surface (ADR 0051 §7), so a remote agent connects
+with a URL plus a key instead of running `npx @uptimizr/mcp` locally. It is
+**off by default** — without the variable the route is not registered and `/mcp`
+404s. The tools, resources and prompts are exactly the stdio server's: both are
+built by the same `createMcpServer()` factory in `@uptimizr/mcp`.
+
+| Method   | Path   | Purpose                                                                | Capability |
+| -------- | ------ | ---------------------------------------------------------------------- | ---------- |
+| `POST`   | `/mcp` | JSON-RPC. Without `Mcp-Session-Id`, only `initialize` opens a session. | `query`    |
+| `GET`    | `/mcp` | The server→client SSE stream for an existing session.                  | `query`    |
+| `DELETE` | `/mcp` | End a session and release its slot.                                    | `query`    |
+
+- **Auth on every request**, via `x-api-key` or `Authorization: Bearer <key>`
+  (the bearer form is an alias accepted on this route only). Missing/unknown key
+  → `401`; a key without `query` → `403`. A session id presented by a different
+  key than opened it → `403`, so a leaked session id is not a credential.
+- **One MCP server per session**, constructed with the key's resolved capability
+  set, so a session's surface can only narrow to what its key may do.
+- **Tool calls are dispatched in process** to the collector's own query routes —
+  not over a loopback socket — so a tool call and the equivalent `curl` run the
+  same handler, validation, project scoping and result envelope.
+- **Bounded**: `COLLECTOR_MCP_MAX_SESSIONS` (default `50`, one too many → `503`),
+  `COLLECTOR_MCP_SESSION_TTL_MS` (default 30 min idle), `COLLECTOR_BODY_LIMIT`
+  for bodies, and the caller's ordinary per-key rate-limit budget.
+- **Audited** with `surface: "mcp-http"` and the underlying route pattern as
+  `toolOrPath`.
 
 ### Storage backends (`COLLECTOR_STORE`)
 
@@ -1376,8 +1409,8 @@ full walkthrough of each store.
 > `uptimizr://capabilities` (a machine-readable descriptor of event types, the tool catalog, and
 > parameter semantics) and `uptimizr://scenes` (the live scene ids) — plus curated **prompts**
 > (`weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`) that drive the existing tools.
-> A Streamable HTTP
-> transport is a deferred, auth-gated follow-up (ADR 0050 §7). See the
+> The collector can also **host that same server itself** over MCP's Streamable HTTP transport (see
+> below), so a remote agent connects with a URL and a key. See the
 > [MCP guide](https://uptimizr.com/docs/guides/mcp/) for the full resource/prompt/tool reference.
 
 All query endpoints take `x-api-key` and the shared params `since`, `until`

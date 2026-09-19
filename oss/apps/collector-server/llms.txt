@@ -36,4 +36,5 @@
 - **Audit retention:** `AUDIT_RETENTION_DAYS` (default `30`, `0` = forever); `AUDIT_DASHBOARD_REQUESTS` to also record dashboard traffic.
 - **Stores:** `COLLECTOR_STORE=duckdb` (default, single-file, single-writer, `DUCKDB_PATH`) | `memory` | `postgres` | `mssql` | `clickhouse` — identical analytics on all four (parity suite).
 - **Required:** `VISITOR_HASH_SECRET`. The server fails fast without it; the raw IP is never stored.
+- **Hosted MCP:** `COLLECTOR_MCP_HTTP=1` serves the Model Context Protocol over Streamable HTTP at `POST`/`GET`/`DELETE` `/mcp` (off by default) — the same server `@uptimizr/mcp` runs over stdio, so a remote agent needs only a URL + `x-api-key` (or `Authorization: Bearer`). Bounded by `COLLECTOR_MCP_MAX_SESSIONS` (50) and `COLLECTOR_MCP_SESSION_TTL_MS` (30 min); tool calls are audited with `surface: mcp-http`.
 - **Bins:** `uptimizr` (`dist/cli.js`) and the legacy `uptimizr-collector` (`dist/server.js`).

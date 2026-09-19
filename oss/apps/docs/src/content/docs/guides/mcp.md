@@ -29,6 +29,10 @@ AI agent ──stdio──▶ @uptimizr/mcp ──HTTPS GET + x-api-key──▶
 Because the collector resolves the project from the API key, an agent can only ever read **its own
 project's** aggregated data — no cross-project access, no raw events, no PII (ADR 0003 / ADR 0017).
 
+The collector can also **host this same server itself** over Streamable HTTP, so a remote agent
+connects with a URL and a key instead of running the package locally — see
+[hosted transport](#hosted-transport-streamable-http).
+
 ## Get an API key
 
 The MCP server needs a project API key (`utk_…`) holding the **`query`** capability — and nothing
@@ -425,12 +429,115 @@ tools in a sensible order — the agent runs the tools; the prompt just frames t
 | `attention_hotspots`  | `scene`  | Where visitors look and click: `camera_heatmap`, `flow_links`, `click_rays`, `top_meshes`.                                                    |
 | `xr_comfort_review`   | `scene?` | VR/AR comfort & drop-off: `xr_rotation`, `xr_locomotion`, `xr_abandonment`, `xr_sources`.                                                     |
 
-## Transport & roadmap
+## Hosted transport (Streamable HTTP)
 
-The server speaks **stdio** — the transport MCP clients (Claude Desktop, VS Code, Cursor, Copilot
-CLI) launch. A remote **Streamable HTTP** transport (so browser/remote MCP clients could reach a
-self-hosted collector) is a tracked follow-up and is only worth adding behind proper auth
-([ADR 0050](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0050-in-browser-analytics-assistant.md) §7).
+Everything above runs the MCP server **next to the client**, over stdio. The collector can also
+**host** the very same server itself, over the MCP
+[Streamable HTTP](https://modelcontextprotocol.io/specification/basic/transports) transport at
+`/mcp` — so a remote or containerised agent connects with a **URL and a key**, with no `npx` step
+and nothing installed on the client machine
+([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md) §7,
+which resolves the transport ADR 0050 §7 deferred pending auth).
+
+```text
+AI agent ──HTTPS POST/GET /mcp + x-api-key──▶ collector ─(in-process)─▶ query API ──▶ store
+```
+
+Both transports serve an **identical** surface — the same 69 tools, the same resources, the same
+prompts — because both are built by the same factory in `@uptimizr/mcp`. Pick stdio for a laptop
+pointed at a local collector, and the hosted transport when the agent is not on the same machine as
+the client, or when you would rather not distribute a key into a desktop config.
+
+### Turn it on
+
+It is **off by default**: an extra authenticated, long-lived surface is something an operator opts
+into. Set one environment variable on the collector and restart it:
+
+```bash
+COLLECTOR_MCP_HTTP=1
+```
+
+| Environment variable           | Default   | Notes                                                                    |
+| ------------------------------ | --------- | ------------------------------------------------------------------------ |
+| `COLLECTOR_MCP_HTTP`           | off       | `1`/`true` serves MCP at `/mcp`. Unset → the route does not exist.       |
+| `COLLECTOR_MCP_MAX_SESSIONS`   | `50`      | Concurrent MCP sessions. One too many is refused with `503`.             |
+| `COLLECTOR_MCP_SESSION_TTL_MS` | `1800000` | Idle timeout before a session is closed and its slot reclaimed (30 min). |
+
+See [deploying the collector](/docs/deploy/collector/#hosted-mcp-streamable-http) for the
+reverse-proxy requirements — chiefly that the proxy must **not buffer** the response.
+
+### Authenticate
+
+Every request is authenticated; the session id is never a credential on its own. Send the same
+project API key the stdio server uses, as either header:
+
+- `x-api-key: utk_…` — the collector's own header, or
+- `Authorization: Bearer utk_…` — the form MCP clients send, accepted as an alias on `/mcp` only.
+
+The key must hold `query`. A missing or unknown key is `401`, a key without `query` (an
+`ingest`-only key, say) is `403`, and a session may only ever be driven by the key that opened it —
+so a leaked session id buys nothing on its own. Mint a dedicated, labelled key exactly as for stdio:
+
+```bash
+npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
+  --capabilities query --label "mcp-remote"
+```
+
+### Configure an MCP client
+
+Clients that support remote servers take a URL and a header map. Claude Desktop, VS Code and Cursor
+all accept this shape:
+
+```jsonc
+{
+  "mcpServers": {
+    "uptimizr": {
+      "type": "http",
+      "url": "https://collect.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer utk_…",
+      },
+    },
+  },
+}
+```
+
+Some client versions spell the transport `"transport": "http"` (or `"streamable-http"`) rather than
+`"type"`, and a client that cannot send a custom `Authorization` header can use `"x-api-key"` in the
+same `headers` map instead. Clients with no remote support keep using the stdio block
+[above](#configure-an-mcp-client) — the same tools either way.
+
+Verify from a shell before wiring a client in; a successful `initialize` returns the session id in
+the `Mcp-Session-Id` response header:
+
+```bash
+curl -sS -D- -o/dev/null https://collect.example.com/mcp \
+  -H "x-api-key: utk_…" \
+  -H "content-type: application/json" \
+  -H "accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+```
+
+### What the collector does with a session
+
+- **One MCP server per session**, built with the capability set the key resolved to, so a session's
+  surface can only narrow to what its key may actually do.
+- **Tool calls run the ordinary read path.** The collector answers a tool call by dispatching to its
+  own query route **in process** — no loopback socket, no second TLS hop — so a tool call and the
+  equivalent `curl` are answered by the same handler, with the same validation, the same project
+  scoping and the same result envelope.
+- **Rate limits apply per key**, exactly as for HTTP reads, including a key's own
+  `--rate-limit-max` budget. The inner read is not charged a second time.
+- **Audit rows are tagged `mcp-http`**, so [the audit log](/docs/api/overview/#agent-audit-log)
+  tells a hosted-MCP tool call apart from a plain HTTP read. The stdio server is an ordinary HTTP
+  client of the collector, so its calls are recorded as `http`: the surface records how a request
+  reached the collector, not which program made it.
+- **`DELETE /mcp`** ends a session, and an idle one is reclaimed after
+  `COLLECTOR_MCP_SESSION_TTL_MS`.
+
+Sessions live in the collector process, so if you run several collector instances behind a load
+balancer, pin MCP traffic to one instance (sticky sessions) or point the client at a single
+instance's URL.
 
 ## Programmatic use
 
