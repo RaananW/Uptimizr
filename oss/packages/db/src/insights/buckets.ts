@@ -32,11 +32,13 @@ import { ParamBag, rangeClause, sceneClause } from "../query/dialect.js";
 import type { QuerySpec, RangeOptions, SceneOptions } from "../query/types.js";
 import {
   BUCKET_SECONDS,
+  BUCKET_SPLIT_COLUMNS,
   bucketMeasureFor,
   type BucketAggregate,
   type BucketGrain,
   type BucketMeasure,
   type BucketPredicate,
+  type BucketSplitDimension,
   type BucketValueColumn,
 } from "./measures.js";
 
@@ -46,6 +48,17 @@ export interface MetricBucketOptions extends RangeOptions, SceneOptions {
   metric: string;
   /** Time grain; defaults to `day`. */
   bucket?: BucketGrain;
+  // --- anomalies (#306) ---------------------------------------------------
+  /**
+   * Split the series by one promoted dimension — the measure's own
+   * {@link BucketMeasure.splitBy}, never a caller-supplied column.
+   *
+   * With it, each row additionally carries `dimension_value` and the grouped
+   * scan answers "which mesh / channel / source accounts for this bucket?" in
+   * one extra read rather than one read per candidate value. Without it the
+   * query, its rows and its cost are exactly what they were before (#305).
+   */
+  groupBy?: BucketSplitDimension;
 }
 
 /**
@@ -64,6 +77,12 @@ export interface MetricBucketRow {
   value: number | null;
   /** The denominator behind `value` — what `minSample` is compared against. */
   sample_size: number;
+  /**
+   * The split dimension's value for this row, present only on a grouped read
+   * (`groupBy`). `''` is the store's "unknown"/unattributed, exactly as it is
+   * in every other aggregation.
+   */
+  dimension_value?: string;
 }
 
 /** The SQL expression for a promoted value column, per aggregate. */
@@ -182,20 +201,44 @@ export function buildMetricBuckets(
   const predicates = (measure.where ?? [])
     .map((predicate, index) => predicateClause(bag, d, predicate, index))
     .join("");
+  // --- anomalies (#306): the optional grouped split ------------------------
+  // The column comes from the measure's own declaration via a compile-time
+  // union, so the only way a name reaches the SQL text is by being in
+  // `BUCKET_SPLIT_COLUMNS`. The grouping key is projected, grouped and ordered
+  // by so the rows arrive in a stable order on every engine.
+  const splitColumn = opts.groupBy == null ? null : BUCKET_SPLIT_COLUMNS[opts.groupBy];
+  const splitSelect = splitColumn == null ? "" : `,\n        ${splitColumn} AS dimension_value`;
+  const splitGroup = splitColumn == null ? "" : `, ${splitColumn}`;
+  const splitOrder = splitColumn == null ? "" : `, ${splitColumn} ASC`;
 
   return {
     query: `
       SELECT
         ${d.timeBucketMs("ts", interval)} AS bucket,
         ${aggregateExpr(measure.aggregate, d)} AS value,
-        ${sampleSizeExpr(measure.aggregate)} AS sample_size
+        ${sampleSizeExpr(measure.aggregate)} AS sample_size${splitSelect}
       FROM events
       WHERE project_id = ${pid}${types}${range}${scene}${predicates}
-      GROUP BY bucket
-      ORDER BY bucket ASC
+      GROUP BY bucket${splitGroup}
+      ORDER BY bucket ASC${splitOrder}
     `,
     query_params: bag.values,
   };
+}
+
+/**
+ * Total order over bucket rows: by bucket, then by the split value on a grouped
+ * read (#306).
+ *
+ * Compared by code point rather than `localeCompare`, so the order is a property
+ * of the data instead of the ICU build the collector happens to run on — the same
+ * reason every statistic in this directory is computed in TypeScript.
+ */
+export function byBucketThenDimension(a: MetricBucketRow, b: MetricBucketRow): number {
+  if (a.bucket !== b.bucket) return a.bucket - b.bucket;
+  const left = a.dimension_value ?? "";
+  const right = b.dimension_value ?? "";
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 /**
@@ -216,9 +259,16 @@ export function toMetricBucketRows(rows: readonly Record<string, unknown>[]): Me
       bucket,
       value: toNumber(row.value),
       sample_size: toNumber(row.sample_size) ?? 0,
+      // Present only on a grouped read (#306); a null group key is the store's
+      // "unknown", which every other aggregation also renders as `''`.
+      ...(Object.prototype.hasOwnProperty.call(row, "dimension_value")
+        ? { dimension_value: row.dimension_value == null ? "" : String(row.dimension_value) }
+        : {}),
     });
   }
-  return out.sort((a, b) => a.bucket - b.bucket);
+  // Stable on both shapes: bucket first, then the split value, so a grouped
+  // series is grouped in TypeScript in the order the engines returned it.
+  return out.sort(byBucketThenDimension);
 }
 
 /** A finite number from a driver cell, or `null`. */

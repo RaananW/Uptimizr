@@ -82,3 +82,44 @@ export {
   spanningWindow,
 } from "./windows.js";
 export type { ResolvedWindow } from "./windows.js";
+
+// --- anomalies (#306) ------------------------------------------------------
+// The third insight primitive: which *bucket* was abnormal, in what way, and
+// which dimension value inside the metric accounts for it. Two pure modules over
+// the same bucket series — `changepoint.ts` holds the generic algorithms,
+// `anomalies.ts` the primitive itself. The only new store-facing surface is the
+// optional `groupBy` on `buildMetricBuckets`, exported above.
+export {
+  ANOMALY_MAX_CONTRIBUTOR_SCANS,
+  ANOMALY_MIN_TRAILING,
+  ANOMALY_PRECISION,
+  ANOMALY_TRAILING_BUCKETS,
+  DEFAULT_ANOMALY_SENSITIVITY,
+  MAX_ANOMALY_SENSITIVITY,
+  MIN_ANOMALY_SENSITIVITY,
+  attributeContributor,
+  clampSensitivity,
+  contributorDimensionFor,
+  contributorWindows,
+  detectAnomalies,
+  inContributorWindow,
+} from "./anomalies.js";
+export type {
+  AnomalyContributor,
+  AnomalyKind,
+  AnomalyRow,
+  AnomalyWindow,
+  DetectAnomaliesOptions,
+} from "./anomalies.js";
+
+export {
+  CUSUM_DECISION_FACTOR,
+  CUSUM_SLACK,
+  cusumChangePoints,
+  rollingRobustStats,
+} from "./changepoint.js";
+export type { ChangePoint, RollingRobustPoint } from "./changepoint.js";
+
+export { byBucketThenDimension } from "./buckets.js";
+export { BUCKET_SPLIT_COLUMNS, isBucketSplitDimension } from "./measures.js";
+export type { BucketSplitDimension } from "./measures.js";

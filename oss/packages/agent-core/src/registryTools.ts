@@ -323,6 +323,17 @@ const FILTER_FIELDS: Readonly<Record<FilterId, z.ZodType>> = {
     .int()
     .optional()
     .describe("End of the reference window, epoch milliseconds. Defaults to `since`."),
+  // --- anomalies (#306) ---
+  sensitivity: z
+    .number()
+    .min(1)
+    .max(10)
+    .optional()
+    .describe(
+      "How far out of line a bucket must be before it is reported, in standard deviations of " +
+        "the trailing window (a rescaled median absolute deviation). Higher means fewer, more " +
+        "extreme findings. 1-10, default 3.",
+    ),
   // The shared result envelope (ADR 0051 §2), reusing the registry's own Zod
   // mirror so the values a tool accepts and the shapes it returns cannot drift.
   //

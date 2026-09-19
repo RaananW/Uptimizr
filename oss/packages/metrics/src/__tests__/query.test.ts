@@ -84,6 +84,7 @@ describe("every metric is reachable through the DSL", () => {
     // aggregation, this suite must grow with it — and the entries that are
     // deliberately outside the DSL are pinned by name rather than by a count.
     expect(OUTSIDE_THE_DSL).toEqual([
+      "insight_anomalies",
       "insight_baseline",
       "insight_movers",
       "scene_representation",
@@ -364,6 +365,7 @@ describe("the filter vocabulary cannot drift from the registry", () => {
     "window",
     "refSince",
     "refUntil",
+    "sensitivity",
   ];
   /** DSL-only grammar keys with no `FilterId` (deferred to #304). */
   const GRAMMAR_ONLY = ["event", "device"];

@@ -282,6 +282,8 @@ export type FilterId =
   | "window"
   | "refSince"
   | "refUntil"
+  // --- anomalies (#306) ---
+  | "sensitivity"
   // Cross-cutting result shaping (ADR 0051 §2, design sketch §B.1). Unlike every
   // other filter this one narrows nothing: it selects the *envelope* the
   // collector wraps the rows in, and is consumed by the response layer rather
@@ -573,6 +575,14 @@ export const FILTER_TARGETS: Readonly<Record<FilterId, FilterTarget>> = {
     field: "refUntil",
     description:
       "Exclusive upper bound of the reference window, epoch milliseconds. Defaults to `since`.",
+  },
+  // --- anomalies (#306) ---
+  sensitivity: {
+    option: "InsightOptions",
+    field: "sensitivity",
+    description:
+      "How far out of line a bucket must be before it is reported, in median-absolute-deviations " +
+      "of the trailing window. Higher means fewer, more extreme findings. 1-10, default 3.",
   },
   format: {
     option: "ResultEnvelope",
@@ -946,7 +956,9 @@ export type MetricId =
   | "session_narrative"
   // --- insights (ADR 0051 §4) ---
   | "insight_baseline"
-  | "insight_movers";
+  | "insight_movers"
+  // --- anomalies (#306) ---
+  | "insight_anomalies";
 
 // --- Row-schema building blocks ------------------------------------------
 //
@@ -4794,6 +4806,118 @@ export const METRIC_REGISTRY = {
     ],
     sourceChannels: [],
     related: ["insight_baseline", "events_daily", "perf_daily", "event_counts"],
+    category: "insights",
+  },
+  // =========================================================================
+  // --- anomalies (#306) ---
+  // =========================================================================
+  insight_anomalies: {
+    id: "insight_anomalies",
+    title: "Anomalous buckets",
+    description:
+      "When one metric stopped behaving, and what inside it accounts for that. Walks a comparable " +
+      "metric's day or hour bucket series and returns only the buckets that do not belong in it: " +
+      "a `spike` or a `drop` when a single bucket sits more than `sensitivity` median absolute " +
+      "deviations from the buckets just before it, and a `shift` at the bucket where a CUSUM " +
+      "change-point says the level moved and stayed moved. Where the metric declares a dimension " +
+      "it can be split by, the row also names the dimension value holding the largest share of " +
+      "the excess — the difference between 'errors tripled on the 14th' and 'graphics " +
+      "diagnostics tripled on the 14th'.",
+    derived: "insight",
+    endpoint: { method: "GET", path: "/api/v1/insights/anomalies" },
+    grain: "row",
+    dimensions: ["scene"],
+    // One row per anomalous bucket; `scene` is the only registry dimension the
+    // row carries (the metric id and the bucket start are not) (#304).
+    grainDimensions: ["scene"],
+    filters: ["metric", "scene", "window", "bucket", "sensitivity", "since", "until", "format"],
+    row: z.object({
+      metric: text,
+      scene: text,
+      bucketStart: num,
+      value: numOrNull,
+      expected: numOrNull,
+      z: numOrNull,
+      kind: text,
+      contributor: z.object({ dimension: text, value: text, share: numOrNull }).nullable(),
+      sampleSize: num,
+    }),
+    columns: {
+      metric: { description: "The registry metric the series is of.", unit: "id", label: true },
+      scene: {
+        description: "The scene it was scoped to; empty when the series spans every scene.",
+        unit: "id",
+      },
+      bucketStart: {
+        description:
+          "Start of the anomalous bucket, epoch milliseconds (UTC, aligned to the grain). For a " +
+          "`shift` this is the bucket the level changed at, not the bucket the change was detected in.",
+        unit: "timestamp",
+      },
+      value: {
+        description:
+          "The observed value. For a `shift`, the level that held after the change-point rather " +
+          "than one bucket's reading.",
+      },
+      expected: {
+        description:
+          "What the bucket should have read: the median of the trailing window, or for a " +
+          "`shift` the level that held before the change-point.",
+      },
+      z: {
+        description:
+          "Signed robust z-score: `(value - expected)` divided by the trailing window's median " +
+          "absolute deviation rescaled to a standard deviation (x1.4826) and floored at 1% of the " +
+          "level. It is measured in standard deviations, so `sensitivity: 3` means 'beyond three " +
+          "sigma'. `insight_movers` reports the same ratio *unscaled* because it ranks rather " +
+          "than thresholds, so the two columns differ by that constant factor.",
+        unit: "ratio",
+        measure: true,
+      },
+      kind: {
+        description:
+          "`spike` (one bucket far above the trailing window), `drop` (far below) or `shift` (the " +
+          "level moved and stayed moved).",
+        unit: "label",
+      },
+      contributor: {
+        description:
+          "The dimension value accounting for the excess: `{ dimension, value, share }`, where " +
+          "`share` is its fraction of the total same-signed excess. Null when the metric declares " +
+          "no split dimension, when the split would be degenerate, or when no value moved with the " +
+          "finding.",
+      },
+      sampleSize: {
+        description:
+          "The anomalous bucket's own denominator — events, or distinct sessions for a " +
+          "session-valued metric.",
+        unit: "count",
+      },
+    },
+    limits: { maxRows: 200, maxSummaryRows: 8 },
+    interpretation:
+      "Rows are ordered by bucket, oldest first, so the result reads as a timeline. |z| is 'how " +
+      "many typical swings out': at the default `sensitivity` of 3 nothing under 3 appears at all, " +
+      "and a `shift` is usually the more important finding than a `spike` because it is still " +
+      "true today. Read `contributor.share`: above ~0.8 the anomaly *is* that dimension value and " +
+      "the investigation has one place to start; near the reciprocal of the number of values it is " +
+      "spread evenly and the cause is more likely to be global. An empty result means the series " +
+      "held together over the window, not that there was no data - check `insight_baseline`'s " +
+      "`buckets` for that.",
+    caveats: [
+      "Only `comparable` metrics with a portable bucket series can be scored; a metric whose value is defined by a join, a window function or a caller-supplied funnel predicate is rejected with the list of ids that are available, rather than approximated.",
+      "A bucket is judged against the buckets before it (14 at day grain, 168 at hour grain), never against itself, and a bucket with fewer than 5 buckets of history behind it is not judged at all. The first days of a project are therefore silent by construction rather than a wall of findings.",
+      "The spread is floored at 1% of the trailing level, so a perfectly flat metric does not report every subsequent bucket as an infinite z. A series that is flat at *zero* has no level to floor against, so the first data of its kind can read as a very large spike.",
+      "Buckets with no matching events are absent from the series rather than zero, so a gap in capture is not reported as a drop. A metric that genuinely fell to zero *did* record events, so it is.",
+      "Change-points are detected sequentially, so a shift is reported at the bucket the level moved at but can only be found once enough buckets after it have accumulated. The most recent few buckets of a window are therefore under-covered for `shift` - re-read after more data lands.",
+      "Contributor attribution costs at most 3 extra grouped scans per request whatever the data looks like: adjacent findings share one window, and only the three most extreme windows are re-read. Quieter findings carry `contributor: null` - narrow `since` / `until` around one to attribute it.",
+      "The contributor is one dimension, chosen per metric from the promoted columns (mesh, source, name, event type, scene). It is not a cause: it is where the excess sits. A metric whose real explanation is the device or the release has no column for it and reports null.",
+      "Window bounds are snapped down to whole buckets, so the incomplete day or hour in progress is never scored - otherwise every morning would report a drop.",
+      "A sustained level change is reported twice over: once as the `shift` at its change-point, and again as `drop`/`spike` rows for the buckets right after it, until the trailing window has caught up with the new level. Those are two true statements about one event ('it moved on the 14th' and 'the 15th was far below what the fortnight before it predicted'), not a duplicate row - read the `shift` as the finding and the points as its first days.",
+      "`z` is measured in standard deviations (the MAD rescaled by 1.4826), so it is directly comparable with a normal-distribution intuition but **not** byte-comparable with `insight_movers`' `z`, which is the same ratio unscaled.",
+    ],
+    sourceChannels: [],
+    related: ["insight_baseline", "insight_movers", "timeseries", "error_heatmap"],
     category: "insights",
   },
 } satisfies Readonly<Record<MetricId, MetricDefinition>>;

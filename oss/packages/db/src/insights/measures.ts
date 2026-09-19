@@ -119,6 +119,36 @@ export type BucketRollup =
   /** Levels (an FPS median, a heap percentile, a scale): the window value is the mean of the buckets. */
   | "mean";
 
+// --- anomalies (#306): the optional split dimension --------------------------
+//
+// `anomalies` answers "what inside this metric accounts for the excess?" by
+// re-running the *same* measure grouped by one promoted column. That column is
+// declared here, per metric, for the same reason the rest of the measure is: a
+// closed, compile-time vocabulary can never become an injection surface, and a
+// metric whose excess has no honest single explanation declares none and reports
+// `contributor: null` rather than inventing one.
+//
+// Exactly **one** dimension per metric, deliberately. Attribution across two
+// dimensions is a different (and much more expensive) question — "was it mobile,
+// or was it the lobby?" — and answering it badly is worse than not answering it.
+
+/** The promoted dimensions a bucket series may be split by. A `DimensionId` subset. */
+export type BucketSplitDimension = "scene" | "mesh" | "name" | "source" | "event_type";
+
+/** The `events` column behind each split dimension. */
+export const BUCKET_SPLIT_COLUMNS: Readonly<Record<BucketSplitDimension, string>> = {
+  scene: "scene_id",
+  mesh: "mesh",
+  name: "name",
+  source: "source",
+  event_type: "event_type",
+};
+
+/** Whether an arbitrary string names a supported split dimension. */
+export function isBucketSplitDimension(value: string): value is BucketSplitDimension {
+  return Object.prototype.hasOwnProperty.call(BUCKET_SPLIT_COLUMNS, value);
+}
+
 /** How to reproduce one metric's `comparable.primary` as a per-bucket series. */
 export interface BucketMeasure {
   /**
@@ -132,6 +162,12 @@ export interface BucketMeasure {
   readonly where?: readonly BucketPredicate[];
   readonly aggregate: BucketAggregate;
   readonly rollup: BucketRollup;
+  /**
+   * The one dimension this series can be split by, for `anomalies`' contributor
+   * attribution (#306). Absent means the metric's excess has no single promoted
+   * column that explains it, and the contributor is reported as `null`.
+   */
+  readonly splitBy?: BucketSplitDimension;
   /** Where the bucket form differs in emphasis from the metric's own endpoint. */
   readonly note?: string;
 }
@@ -158,12 +194,29 @@ function geometry(column: string, arity: 2 | 3): BucketPredicate {
   return { kind: "geometry", column, arity };
 }
 
+/**
+ * Declare the dimension a measure's excess can be attributed to (#306).
+ *
+ * A wrapper rather than an extra parameter, so the catalog below stays one
+ * expression per metric and giving a metric attribution is a purely additive
+ * edit to its own line.
+ */
+function split(measure: BucketMeasure, splitBy: BucketSplitDimension): BucketMeasure {
+  return { ...measure, splitBy };
+}
+
 /** The median-FPS series shared by every metric whose primary is `p50_fps`. */
 const P50_FPS: BucketMeasure = {
   column: "p50_fps",
   eventTypes: ["frame_perf"],
   aggregate: { kind: "quantile", column: "fps", q: 0.5 },
   rollup: "mean",
+  // The only promoted dimension a frame rate can be attributed to: an FPS drop
+  // confined to one scene is a scene problem, one spread across them is a build
+  // problem. Device is the split a reader would ask for next, but it lives in
+  // the `session_start` payload rather than on the frame, so it is not reachable
+  // from a single grouped scan of `events` (#306).
+  splitBy: "scene",
   note:
     "The bucket series is the median over the bucket's raw `frame_perf` samples. The metric's own " +
     "endpoint computes per session and then aggregates (ADR 0028 §1), so a bucket median and the " +
@@ -176,21 +229,27 @@ const P50_FPS: BucketMeasure = {
  */
 export const BUCKET_MEASURES: Readonly<Partial<Record<MetricId, BucketMeasure>>> = {
   // --- volume / orientation ------------------------------------------------
-  list_sessions: counted("events", []),
-  list_scenes: counted("events", []),
-  timeseries: counted("events", []),
-  event_counts: counted("count", []),
-  events_daily: counted("events", []),
+  list_sessions: split(counted("events", []), "event_type"),
+  list_scenes: split(counted("events", []), "scene"),
+  timeseries: split(counted("events", []), "event_type"),
+  event_counts: split(counted("count", []), "event_type"),
+  events_daily: split(counted("events", []), "event_type"),
 
   // --- attention / spatial -------------------------------------------------
   // Each counts exactly the events its heatmap bins, geometry guard included, so
   // the series total equals the sum of the heatmap's own bin counts.
-  pointer_heatmap: counted("count", ["pointer_move", "pointer_click"], [geometry("screen", 2)]),
-  world_heatmap: counted("count", ["pointer_move", "pointer_click"], [geometry("hit_point", 3)]),
-  gaze_heatmap: counted("count", ["camera_sample"], [geometry("hit_point", 3)]),
-  camera_heatmap: counted("count", ["camera_sample"], [geometry("direction", 3)]),
-  position_heatmap: counted("count", ["camera_sample"], [geometry("position", 3)]),
-  scene_coverage: counted("count", ["camera_sample"], [geometry("position", 3)]),
+  pointer_heatmap: split(
+    counted("count", ["pointer_move", "pointer_click"], [geometry("screen", 2)]),
+    "event_type",
+  ),
+  world_heatmap: split(
+    counted("count", ["pointer_move", "pointer_click"], [geometry("hit_point", 3)]),
+    "mesh",
+  ),
+  gaze_heatmap: split(counted("count", ["camera_sample"], [geometry("hit_point", 3)]), "mesh"),
+  camera_heatmap: split(counted("count", ["camera_sample"], [geometry("direction", 3)]), "scene"),
+  position_heatmap: split(counted("count", ["camera_sample"], [geometry("position", 3)]), "scene"),
+  scene_coverage: split(counted("count", ["camera_sample"], [geometry("position", 3)]), "scene"),
   view_coverage_histogram: {
     column: "sessions",
     eventTypes: ["camera_sample"],
@@ -202,25 +261,33 @@ export const BUCKET_MEASURES: Readonly<Partial<Record<MetricId, BucketMeasure>>>
   },
 
   // --- meshes / interaction -----------------------------------------------
-  top_meshes: counted(
-    "count",
-    ["mesh_interaction", "pointer_click", "camera_sample"],
-    [{ kind: "ne", column: "mesh", value: "" }],
+  top_meshes: split(
+    counted(
+      "count",
+      ["mesh_interaction", "pointer_click", "camera_sample"],
+      [{ kind: "ne", column: "mesh", value: "" }],
+    ),
+    "mesh",
   ),
-  mesh_sources: counted(
-    "count",
-    ["mesh_interaction", "pointer_click"],
-    [{ kind: "ne", column: "mesh", value: "" }],
+  mesh_sources: split(
+    counted(
+      "count",
+      ["mesh_interaction", "pointer_click"],
+      [{ kind: "ne", column: "mesh", value: "" }],
+    ),
+    "source",
   ),
-  mesh_trend: counted(
-    "count",
-    ["mesh_interaction", "pointer_click"],
-    [{ kind: "ne", column: "mesh", value: "" }],
+  mesh_trend: split(
+    counted(
+      "count",
+      ["mesh_interaction", "pointer_click"],
+      [{ kind: "ne", column: "mesh", value: "" }],
+    ),
+    "mesh",
   ),
-  mesh_interaction_kinds: counted(
-    "count",
-    ["mesh_interaction"],
-    [{ kind: "ne", column: "mesh", value: "" }],
+  mesh_interaction_kinds: split(
+    counted("count", ["mesh_interaction"], [{ kind: "ne", column: "mesh", value: "" }]),
+    "name",
   ),
   mesh_dwell: {
     column: "visible_ms",
@@ -228,28 +295,31 @@ export const BUCKET_MEASURES: Readonly<Partial<Record<MetricId, BucketMeasure>>>
     where: [{ kind: "ne", column: "mesh", value: "" }],
     aggregate: { kind: "sum", column: "visible_ms" },
     rollup: "sum",
+    splitBy: "mesh",
   },
-  dead_clicks: counted(
-    "dead_clicks",
-    ["pointer_click"],
-    [{ kind: "eq", column: "mesh", value: "" }],
-    "Counts the clicks that hit nothing. The metric's own `total_clicks` denominator is not part " +
-      "of the series — read `pointer_heatmap` alongside it for click volume.",
+  dead_clicks: split(
+    counted(
+      "dead_clicks",
+      ["pointer_click"],
+      [{ kind: "eq", column: "mesh", value: "" }],
+      "Counts the clicks that hit nothing. The metric's own `total_clicks` denominator is not " +
+        "part of the series — read `pointer_heatmap` alongside it for click volume.",
+    ),
+    "source",
   ),
   hover_dwell: {
     column: "dwell_ms",
     eventTypes: ["hover_dwell"],
     aggregate: { kind: "sum", column: "visible_ms" },
     rollup: "sum",
+    splitBy: "mesh",
   },
-  interaction_sources: counted("count", [
-    "pointer_click",
-    "pointer_move",
-    "mesh_interaction",
-    "input_action",
-  ]),
-  top_input_actions: counted("count", ["input_action"]),
-  camera_gestures: counted("gestures", ["camera_gesture"]),
+  interaction_sources: split(
+    counted("count", ["pointer_click", "pointer_move", "mesh_interaction", "input_action"]),
+    "source",
+  ),
+  top_input_actions: split(counted("count", ["input_action"]), "name"),
+  camera_gestures: split(counted("gestures", ["camera_gesture"]), "name"),
 
   // --- performance ---------------------------------------------------------
   perf_summary: P50_FPS,
@@ -262,12 +332,14 @@ export const BUCKET_MEASURES: Readonly<Partial<Record<MetricId, BucketMeasure>>>
     eventTypes: ["frame_perf"],
     aggregate: { kind: "avg", column: "fps" },
     rollup: "mean",
+    splitBy: "scene",
   },
   fps_histogram: {
     column: "sessions",
     eventTypes: ["frame_perf"],
     aggregate: { kind: "sessions" },
     rollup: "sum",
+    splitBy: "scene",
     note:
       "Distinct sessions with perf samples, counted within each bucket; a session spanning two " +
       "buckets contributes to both.",
@@ -277,6 +349,7 @@ export const BUCKET_MEASURES: Readonly<Partial<Record<MetricId, BucketMeasure>>>
     eventTypes: ["compile_stall"],
     aggregate: { kind: "sum", column: "visible_ms" },
     rollup: "sum",
+    splitBy: "name",
   },
   resource_summary: {
     column: "max_js_heap_bytes",
@@ -293,15 +366,16 @@ export const BUCKET_MEASURES: Readonly<Partial<Record<MetricId, BucketMeasure>>>
   },
 
   // --- errors / stability --------------------------------------------------
-  stability_counts: counted("incidents", ["context_lost", "compile_stall"]),
-  graphics_diagnostics: counted("incidents", ["graphics_diagnostic"]),
-  error_heatmap: counted("count", ["runtime_error", "graphics_diagnostic"]),
-  capability_changes: counted("changes", ["capability_change"]),
+  stability_counts: split(counted("incidents", ["context_lost", "compile_stall"]), "event_type"),
+  graphics_diagnostics: split(counted("incidents", ["graphics_diagnostic"]), "scene"),
+  error_heatmap: split(counted("count", ["runtime_error", "graphics_diagnostic"]), "event_type"),
+  capability_changes: split(counted("changes", ["capability_change"]), "name"),
   rendering_technology: {
     column: "sessions",
     eventTypes: ["session_start"],
     aggregate: { kind: "sessions" },
     rollup: "sum",
+    splitBy: "scene",
   },
 
   // --- XR / AR -------------------------------------------------------------
@@ -311,6 +385,7 @@ export const BUCKET_MEASURES: Readonly<Partial<Record<MetricId, BucketMeasure>>>
     where: [{ kind: "in", column: "name", values: ["fly", "navigate"] }],
     aggregate: { kind: "sum", column: "visible_ms" },
     rollup: "sum",
+    splitBy: "name",
   },
   xr_tracking_quality: {
     column: "degraded_ms",
@@ -319,7 +394,7 @@ export const BUCKET_MEASURES: Readonly<Partial<Record<MetricId, BucketMeasure>>>
     aggregate: { kind: "sum", column: "visible_ms" },
     rollup: "sum",
   },
-  boundary_heatmap: counted("count", ["xr_boundary_proximity"]),
+  boundary_heatmap: split(counted("count", ["xr_boundary_proximity"]), "scene"),
   ar_placement_time_to_place: counted("placements", ["ar_placement"]),
   ar_placement_attempts: counted("placements", ["ar_placement"]),
   ar_placement_surfaces: {

@@ -163,6 +163,10 @@ describe.skipIf(!available)("postgres parity (vs golden, vs duckdb)", () => {
       "metricBuckets:geometry",
       "metricBuckets:emptySeries",
       "metricBuckets:dayGrain",
+      // --- anomalies (#306): the grouped split behind contributor attribution.
+      "metricBuckets:splitEventType",
+      "metricBuckets:splitMesh",
+      "metricBuckets:splitScene",
     ]);
   });
 

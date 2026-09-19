@@ -300,8 +300,8 @@ that way when adding an event type — adding a field to the switch is a privacy
 
 ### Insight primitives (ADR 0051 §4, `src/insights/`)
 
-`baseline` and `movers` — "what is normal here" and "what changed" — as two derived registry
-metrics. The shape of the directory is the design:
+`baseline`, `movers` and `anomalies` — "what is normal here", "what changed" and "_when_ did it go
+wrong" — as three derived registry metrics. The shape of the directory is the design:
 
 ```ts
 import {
@@ -314,6 +314,11 @@ import {
   BUCKETABLE_METRIC_IDS,
   MOVERS_DEFAULT_METRICS,
   MOVERS_MAX_METRICS,
+  detectAnomalies, // #306: robust z per bucket + CUSUM change-points
+  contributorDimensionFor, // the ONE dimension a metric's excess may be split by
+  contributorWindows, // the windows attribution is allowed to re-scan
+  attributeContributor,
+  ANOMALY_MAX_CONTRIBUTOR_SCANS,
 } from "@uptimizr/db";
 ```
 
@@ -340,8 +345,17 @@ import {
   answers — and never reported as a finding.
 - Cost is bounded by `MOVERS_MAX_METRICS` (one grouped scan per scanned metric). Raising it is a
   deliberate change, not a default.
-- `anomalies`, `significance` and `scene_health` (ADR 0051 §4) slot in here the same way: a new pure
-  module over the same bucket series, with no new per-dialect SQL.
+- `anomalies` (#306) adds **one** piece of per-dialect SQL and no more: an optional `groupBy` on
+  `buildMetricBuckets` that adds one promoted column to the `SELECT`/`GROUP BY`. The column comes
+  from the measure's own `splitBy`, a compile-time union — never from request input — and the shape
+  has its own `metricBuckets:split*` parity cases on all four engines.
+- `anomalies`' `z` divides by the MAD **rescaled to a standard deviation** (`MAD_TO_SIGMA`), because
+  `sensitivity` is a threshold and an uncalibrated one reports ordinary days. `movers` divides by the
+  raw MAD because it ranks. Do not "unify" them without moving the default with it.
+- Attribution is capped at `ANOMALY_MAX_CONTRIBUTOR_SCANS` extra grouped scans per request, whatever
+  the data looks like. The cap, not the data, is what bounds the endpoint.
+- `significance` and `scene_health` (ADR 0051 §4) slot in here the same way: a new pure module over
+  the same bucket series.
 
 ## Cross-engine parity (ADR 0020)
 

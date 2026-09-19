@@ -107,6 +107,7 @@ export const AGENT_SKILLS: readonly AgentSkill[] = [
     tools: [
       "insight_movers",
       "insight_baseline",
+      "insight_anomalies",
       "event_counts",
       "timeseries",
       "perf_summary",
@@ -129,6 +130,14 @@ export const AGENT_SKILLS: readonly AgentSkill[] = [
       "- `insight_baseline` for each metric that moved, to say whether the new level is " +
       "actually outside what is normal here — compare it with `median` give or take a " +
       "few `mad`, or with the p10..p90 band.\n" +
+      // --- anomalies (#306) ---
+      "- `insight_anomalies` (metric=`perf_summary`, then `error_heatmap`" +
+      (scene ? `, scene="${scene}"` : "") +
+      ", window=28) to put a **date** on whatever moved: it returns the individual days " +
+      "that were out of line (`spike` / `drop`) and the day a level changed and stayed " +
+      "changed (`shift`), with the `contributor` naming the mesh, channel or source " +
+      "holding most of the excess. Quote the `bucketStart` and the `contributor` rather " +
+      "than saying 'recently'.\n" +
       "- `event_counts` for the per-event-type mix" +
       (scene ? ` (scene="${scene}")` : "") +
       ".\n" +

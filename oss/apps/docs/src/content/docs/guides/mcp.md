@@ -372,10 +372,11 @@ grain, column units, limits and caveats.
 
 #### insights
 
-| Tool               | Endpoint                    | Returns         |
-| ------------------ | --------------------------- | --------------- |
-| `insight_baseline` | `/api/v1/insights/baseline` | Metric baseline |
-| `insight_movers`   | `/api/v1/insights/movers`   | What changed    |
+| Tool                | Endpoint                     | Returns           |
+| ------------------- | ---------------------------- | ----------------- |
+| `insight_baseline`  | `/api/v1/insights/baseline`  | Metric baseline   |
+| `insight_movers`    | `/api/v1/insights/movers`    | What changed      |
+| `insight_anomalies` | `/api/v1/insights/anomalies` | Anomalous buckets |
 
 <!-- generated:registry-guide-tools:end -->
 

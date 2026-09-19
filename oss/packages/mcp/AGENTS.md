@@ -85,7 +85,7 @@ resources and prompts:
 `xr_locomotion`, `xr_tracking_quality`, `boundary_heatmap`, `boundary_heatmap_stats`,
 `xr_boundary_contacts`, `ar_placement_time_to_place`, `ar_placement_attempts`,
 `ar_placement_surfaces`, `funnel`, `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`,
-`insight_baseline`, `insight_movers`
+`insight_baseline`, `insight_movers`, `insight_anomalies`
 
 Only on a key holding `query:raw`, and only when the collector runs with
 `ENABLE_RAW_SESSION_RETENTION` (ADR 0003):
@@ -255,6 +255,14 @@ and why is worth keeping, a note per query is noise.
   registry's opinion of what a _rise_ means (so a rise in a `down` metric is a regression, not an
   improvement), and `aboveMinSample: false` means the delta is arithmetic but not evidence — those
   rows are returned rather than dropped, and must never be reported as findings.
+- **Then `insight_anomalies` to put a date on it.** `insight_movers` compares two windows you
+  chose; `insight_anomalies` walks one metric's whole series and names the buckets that do not
+  belong — `spike` / `drop` for a single bucket far from the ones before it, and `shift` at the
+  bucket where the level moved and _stayed_ moved, which is the shape a release regression has and
+  the one no per-bucket threshold can see. Quote `bucketStart`, and read `contributor`: where the
+  metric declares a dimension it can be split by, the row names the mesh, source, input action,
+  event type or scene holding the largest share of the excess. Its `z` is in standard deviations
+  while `insight_movers`' is the same ratio unscaled, so the two columns are not comparable.
 - Tool definitions are pure (`buildRequest`) and must stay unit-testable without a live collector.
 
 ## Programmatic API

@@ -49,7 +49,14 @@ describe("registerPrompts", () => {
     const cb = prompts.get("weekly_scene_health")!.cb;
     const withScene = textOf(cb, { scene: "lobby" });
     expect(withScene).toContain('scene "lobby"');
-    for (const tool of ["event_counts", "timeseries", "perf_summary", "top_meshes"]) {
+    for (const tool of [
+      "event_counts",
+      "timeseries",
+      "perf_summary",
+      "top_meshes",
+      // --- anomalies (#306): the prompt must put a date on whatever moved.
+      "insight_anomalies",
+    ]) {
       expect(withScene).toContain(tool);
     }
     const allScenes = textOf(cb, {});

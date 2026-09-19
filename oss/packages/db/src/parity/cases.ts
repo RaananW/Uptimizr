@@ -1352,6 +1352,65 @@ const INSIGHT_PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["bucket"],
     golden: [{ bucket: Date.UTC(2024, 5, 16), value: 23, sample_size: 23 }],
   },
+
+  // --- anomalies (#306): the grouped split --------------------------------
+  //
+  // The same measure, the same predicates, plus one promoted column in the
+  // `SELECT` / `GROUP BY` / `ORDER BY`. It is what `anomalies` re-reads to say
+  // *which* value inside a metric accounts for an anomalous bucket, and it is
+  // the only new per-dialect SQL the primitive involves — so parity here is
+  // parity for contributor attribution as a whole. One case per shape the split
+  // has to survive: a multi-channel count, a summed value column, and a distinct
+  // count (where the grouping key also changes what "distinct" ranges over).
+  {
+    // Split a two-channel error count by the channel: one diagnostic, one
+    // runtime error, in the same hour bucket.
+    name: "metricBuckets:splitEventType",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "error_heatmap", bucket: "hour", groupBy: "event_type" },
+        d,
+      ),
+    sortKeys: ["bucket", "dimension_value"],
+    golden: [
+      { bucket: PARITY_T0, dimension_value: "graphics_diagnostic", value: 1, sample_size: 1 },
+      { bucket: PARITY_T0, dimension_value: "runtime_error", value: 1, sample_size: 1 },
+    ],
+  },
+  {
+    // sum(visible_ms) split by mesh: the 6000 ms the ungrouped case reports is
+    // 4000 on `box` and 2000 on `sphere` — the shares an attribution reads.
+    name: "metricBuckets:splitMesh",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "mesh_dwell", bucket: "hour", groupBy: "mesh" },
+        d,
+      ),
+    sortKeys: ["bucket", "dimension_value"],
+    golden: [
+      { bucket: PARITY_T0, dimension_value: "box", value: 4000, sample_size: 1 },
+      { bucket: PARITY_T0, dimension_value: "sphere", value: 2000, sample_size: 1 },
+    ],
+  },
+  {
+    // count(DISTINCT session_id) split by scene: the grouping key narrows what
+    // "distinct" ranges over, so the two sessions become one per scene rather
+    // than two in both.
+    name: "metricBuckets:splitScene",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "rendering_technology", bucket: "hour", groupBy: "scene" },
+        d,
+      ),
+    sortKeys: ["bucket", "dimension_value"],
+    golden: [
+      { bucket: PARITY_T0, dimension_value: "arena", value: 1, sample_size: 1 },
+      { bucket: PARITY_T0, dimension_value: "lobby", value: 1, sample_size: 1 },
+    ],
+  },
 ];
 
 /** Every case the cross-engine harness runs: delegated, then generic, then insights. */
