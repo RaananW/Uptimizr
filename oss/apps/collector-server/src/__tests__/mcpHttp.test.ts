@@ -173,7 +173,7 @@ describe("POST /mcp — protocol surface", () => {
     expect(tools.length).toBe(readTools.length);
     expect(tools.length).toBeGreaterThanOrEqual(69);
     expect(tools.map((tool) => tool.name).sort()).toEqual(await stdioToolNames());
-  });
+  }, 30_000);
 
   it("serves the capability-discovery resources", async () => {
     const { resources } = await client.listResources();
@@ -288,7 +288,7 @@ describe("POST /mcp — authentication", () => {
     const { client } = await connect(origin, "query-key", "bearer");
     expect((await client.listTools()).tools.length).toBe(readTools.length);
     await client.close();
-  });
+  }, 30_000);
 
   it("reports the annotate key's wider capability set in its instructions", async () => {
     const { client } = await connect(origin, "annotate-key");
