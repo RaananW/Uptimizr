@@ -1,8 +1,10 @@
 /**
- * Live project-metadata tests for `@uptimizr/db-clickhouse` (#310, ADR 0051 §5).
+ * Live project-metadata tests for `@uptimizr/db-clickhouse` (#310, ADR 0051 §5;
+ * #315, §7).
  *
  * ClickHouse has no row `DELETE` and no `ON CONFLICT`, so annotations, the
- * glossary and saved analyses are `ReplacingMergeTree(version)` tables where an
+ * glossary, saved analyses and panel specs are `ReplacingMergeTree(version)`
+ * tables where an
  * update inserts a newer version and a delete inserts a `deleted = 1` tombstone,
  * read back with `FINAL`. That is engine-specific machinery the pure unit tests
  * cannot exercise, so it is proven here against a real server — including the
@@ -15,6 +17,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { PanelSpecV1 } from "@uptimizr/schema";
 import { createClickhouseClient, type ClickhouseClient } from "../client.js";
 import { migrateClickhouse } from "../migrations.js";
 import {
@@ -28,6 +31,12 @@ import {
   listSavedAnalyses,
   putGlossaryEntry,
 } from "../projectMetadata.js";
+import {
+  createPanelSpec,
+  deletePanelSpec,
+  listPanelSpecs,
+  updatePanelSpec,
+} from "../panelSpecs.js";
 
 const CH_URL = process.env.CLICKHOUSE_URL ?? "http://localhost:8123";
 const CH_USER = process.env.CLICKHOUSE_USER ?? "default";
@@ -81,6 +90,7 @@ describe.skipIf(!available)("clickhouse project metadata", () => {
     await ch.command(`TRUNCATE TABLE IF EXISTS annotations`);
     await ch.command(`TRUNCATE TABLE IF EXISTS glossary`);
     await ch.command(`TRUNCATE TABLE IF EXISTS saved_analyses`);
+    await ch.command(`TRUNCATE TABLE IF EXISTS panel_specs`);
   });
 
   afterAll(async () => {
@@ -217,5 +227,49 @@ describe.skipIf(!available)("clickhouse project metadata", () => {
     });
     expect(saved.conclusion).toBeNull();
     expect(saved.query).toEqual({});
+  });
+
+  it("round-trips a panel spec, oldest first and updatable in place (#315)", async () => {
+    const spec = (title: string, span: 1 | 2 = 1) =>
+      ({
+        v: 1,
+        title,
+        chart: "bar",
+        span,
+        query: { v: 1, metric: "top_meshes", range: "inherit", limit: 10 },
+      }) as PanelSpecV1;
+
+    const first = await createPanelSpec(ch, PID, { ...agentAuthor, spec: spec("First") });
+    expect(first).toMatchObject({ projectId: PID, authorKind: "agent", authorKeyId: "key_2" });
+    expect(first.spec.query.range).toBe("inherit");
+    const second = await createPanelSpec(ch, PID, { ...author, spec: spec("Second") });
+
+    // Oldest first: a pinned panel keeps its place when another is added.
+    expect((await listPanelSpecs(ch, PID)).map((row) => row.spec.title)).toEqual([
+      "First",
+      "Second",
+    ]);
+    expect(await listPanelSpecs(ch, OTHER_PID)).toEqual([]);
+
+    // The replacement row is a read-modify-write on this engine, so the thing
+    // most likely to be lost is what it carries forward: who pinned it, and when
+    // it first appeared.
+    const updated = await updatePanelSpec(ch, PID, first.id, { spec: spec("First, wider", 2) });
+    expect(updated).toMatchObject({ id: first.id, authorKind: "agent", authorKeyId: "key_2" });
+    expect(updated?.spec.span).toBe(2);
+    expect(updated?.createdAt.getTime()).toBe(first.createdAt.getTime());
+    expect((await listPanelSpecs(ch, PID)).map((row) => row.spec.title)).toEqual([
+      "First, wider",
+      "Second",
+    ]);
+
+    expect(await updatePanelSpec(ch, OTHER_PID, first.id, { spec: spec("Hijacked") })).toBeNull();
+    expect(await deletePanelSpec(ch, OTHER_PID, first.id)).toBe(false);
+
+    // The tombstone must outrank the update it followed, even in the same
+    // millisecond — the one thing a `ReplacingMergeTree` delete can get wrong.
+    expect(await deletePanelSpec(ch, PID, first.id)).toBe(true);
+    expect(await deletePanelSpec(ch, PID, first.id)).toBe(false);
+    expect((await listPanelSpecs(ch, PID)).map((row) => row.id)).toEqual([second.id]);
   });
 });
