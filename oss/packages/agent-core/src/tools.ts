@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { QueryParams } from "./client.js";
 import { registryToTools } from "./registryTools.js";
+import { NON_REGISTRY_READ_TOOLS } from "./nonRegistryTools.js";
 
 /** A resolved read request: the collector path and its query parameters. */
 export interface ReadToolRequest {
@@ -52,7 +53,14 @@ export interface ReadTool {
  * pins that against a frozen fixture, so an MCP client written against the old
  * catalog keeps working.
  */
-export const readTools: readonly ReadTool[] = registryToTools();
+export const readTools: readonly ReadTool[] = [
+  ...registryToTools(),
+  // The one deliberate exception to "generated, not hand-written": collector
+  // reads that are configuration rather than measurements and so have no
+  // registry entry to generate from (#311). See `nonRegistryTools.ts` for why
+  // inventing a registry entry for them would be worse.
+  ...NON_REGISTRY_READ_TOOLS,
+];
 
 /**
  * Names of the **core** read tools — a small, single-step-friendly subset of

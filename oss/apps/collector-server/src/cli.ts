@@ -28,6 +28,8 @@ import {
  *                          rate limit (#309, ADR 0051 §7).
  * - `migrate`            — apply store migrations.
  * - `regions set|get`    — declare / read a scene's named regions (ADR 0051 §2).
+ * - `subscriptions …`    — list / add / remove / dry-run the project's
+ *                          conditional subscriptions (#311, ADR 0051 §6).
  *
  * Every command targets the store selected by `COLLECTOR_STORE` — the OSS
  * DuckDB default (no Docker, no external database; ADR 0020), or the optional
@@ -405,6 +407,52 @@ async function cmdRegions(args: string[]): Promise<void> {
   }
 }
 
+/**
+ * Dispatch the `subscriptions` sub-namespace (#311, ADR 0051 §6).
+ *
+ * Thin by design: every implementation lives in `subscriptions/cli.ts`, which is
+ * where the store is opened and the evaluator is called, so this file stays a
+ * parser and a switch. Loaded lazily — the subscriptions module pulls in the
+ * evaluator and the whole store factory, which `uptimizr init` has no use for.
+ */
+async function cmdSubscriptions(args: string[]): Promise<void> {
+  loadLocalEnv();
+  const [sub, ...rest] = args;
+  const projectId = resolveProjectId(rest);
+  const positional = positionalArgs(rest, ["file", "project"]);
+  const cli = await import("./subscriptions/cli.js");
+
+  switch (sub) {
+    case "list":
+      await cli.cmdSubscriptionsList(projectId);
+      return;
+    case "add": {
+      const file = flagArg(rest, "file");
+      if (!file) throw new Error("`uptimizr subscriptions add` needs --file <sub.json>.");
+      await cli.cmdSubscriptionsAdd(projectId, file);
+      return;
+    }
+    case "remove": {
+      const id = positional[0];
+      if (!id) throw new Error("`uptimizr subscriptions remove` needs a subscription id.");
+      await cli.cmdSubscriptionsRemove(projectId, id);
+      return;
+    }
+    case "test": {
+      const id = positional[0];
+      if (!id) throw new Error("`uptimizr subscriptions test` needs a subscription id.");
+      await cli.cmdSubscriptionsTest(projectId, id);
+      return;
+    }
+    default:
+      throw new Error(
+        `Unknown subscriptions command ${JSON.stringify(sub ?? "")}. ` +
+          "Expected: uptimizr subscriptions list | add --file <sub.json> | " +
+          "remove <id> | test <id>",
+      );
+  }
+}
+
 function printUsage(): void {
   console.error(
     [
@@ -420,6 +468,15 @@ function printUsage(): void {
       "                                declare a scene's named regions (replaces the set)",
       "  uptimizr regions get <sceneId>",
       "                                print a scene's named regions as JSON",
+      "  uptimizr subscriptions list   list this project's conditional subscriptions",
+      "  uptimizr subscriptions add --file <sub.json>",
+      "                                store a conditional subscription (ADR 0051 §6)",
+      "  uptimizr subscriptions remove <id>",
+      "                                delete a subscription and its firing log",
+      "  uptimizr subscriptions test <id>",
+      "                                evaluate one now and print why it would (not) fire;",
+      "                                never delivers — use POST /api/v1/subscriptions/:id/test",
+      "                                ?deliver=true to exercise a webhook receiver",
       "  uptimizr help                 show this help",
       "",
       "`init` / `new-project` mint the operator's own key with query, query:raw and annotate —",
@@ -434,8 +491,8 @@ function printUsage(): void {
       "  --rate-limit-max <n>          per-key request budget (needs --rate-limit-window-ms)",
       "  --rate-limit-window-ms <ms>   per-key rate-limit window (needs --rate-limit-max)",
       "",
-      "The regions commands target a project: pass --project <projectId> or set",
-      "UPTIMIZR_PROJECT_ID. The file is either a bare array of",
+      "The regions and subscriptions commands target a project: pass --project <projectId> or",
+      "set UPTIMIZR_PROJECT_ID. The file is either a bare array of",
       "{ id, label, bounds: [minX,minY,minZ,maxX,maxY,maxZ], description? } or a",
       '{ "regions": [...] } envelope.',
       "",
@@ -472,6 +529,9 @@ async function main(): Promise<void> {
       return;
     case "regions":
       await cmdRegions(rest);
+      return;
+    case "subscriptions":
+      await cmdSubscriptions(rest);
       return;
     case "help":
     case "--help":

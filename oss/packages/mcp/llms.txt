@@ -117,3 +117,9 @@ key holds; a key missing a required capability is refused with `403`.
 - `readTools` — the read-only tool catalog (one entry per query endpoint), generated from the
   `@uptimizr/metrics` metric registry: 69 tools, each with an input schema, an MCP `outputSchema` and the
   metric's interpretation notes and caveats in its description (ADR 0051).
+
+## Non-metric reads
+
+- `list_subscriptions` — the project's conditional subscriptions (ADR 0051 §6): what the
+  collector is watching for and how each one last went. No arguments. Read-only; creating or
+  deleting one needs `annotate` and is not exposed as a tool.

@@ -308,6 +308,9 @@ full list):
 | `COLLECTOR_RATE_LIMIT_MAX` / `_WINDOW_MS`          | Default request budget per client (`600` per `60000` ms). A key's own budget overrides it.      |
 | `AUDIT_RETENTION_DAYS`                             | How long agent-audit rows are kept (default `30`; `0` keeps them forever).                      |
 | `AUDIT_DASHBOARD_REQUESTS`                         | Also audit the dashboard's own requests (default off — see below).                              |
+| `COLLECTOR_SUBSCRIPTIONS`                          | Run the conditional-subscription scheduler (default **on**; `0` keeps the API, runs no timers). |
+| `COLLECTOR_SUBSCRIPTIONS_MAX_CONCURRENT`           | Subscription evaluations allowed at once (default `4`).                                        |
+| `COLLECTOR_WEBHOOK_ALLOWED_HOSTS`                  | Hosts a subscription webhook may POST to. **Empty by default — no webhook egress at all.**      |
 
 See [Privacy & configuration](/docs/deploy/privacy/) for the privacy-relevant settings.
 
@@ -370,6 +373,179 @@ bucketed on the key id instead of the client IP. Keys without one fall back to
 **`GET /api/v1/whoami`** returns the calling key's `projectId`, `keyId`, `capabilities`, `label`
 and effective `rateLimit` — how an agent or MCP client discovers what it is allowed to do. The
 key itself is never echoed back.
+
+## Subscriptions & webhooks
+
+A **conditional subscription** is a standing question — "tell me when the lobby's median FPS drops
+below 40" — that the collector evaluates in-process and delivers over SSE, a signed webhook, or
+both. It is how an agent stops polling (ADR 0051 §6).
+
+```json title="fps-drop.json"
+{
+  "name": "FPS drop in lobby",
+  "metric": "perf_summary",
+  "filters": { "scene": "lobby" },
+  "evaluate": { "every": "5m", "window": "1h" },
+  "predicate": { "kind": "threshold", "column": "p50_fps", "op": "<", "value": 40 },
+  "cooldown": "1h",
+  "delivery": [
+    { "kind": "sse" },
+    { "kind": "webhook", "url": "https://hooks.example/uptimizr", "secret": "…" }
+  ]
+}
+```
+
+```bash
+uptimizr subscriptions add --file fps-drop.json --project <projectId>
+uptimizr subscriptions list
+uptimizr subscriptions test <id>     # evaluate once, print why; never delivers
+```
+
+or over HTTP with an `annotate` key:
+
+```bash
+curl -X POST "$COLLECTOR/api/v1/subscriptions" \
+  -H "x-api-key: $UPTIMIZR_API_KEY" -H 'content-type: application/json' \
+  --data @fps-drop.json
+```
+
+### Predicate kinds
+
+| Kind         | Fires when                                                                       |
+| ------------ | -------------------------------------------------------------------------------- |
+| `threshold`  | the metric's headline column crosses a level over the window (`column op value`) |
+| `anomaly`    | the `anomalies` primitive reports a bucket inside the window as abnormal          |
+| `movers`     | the metric moved by more than `pct` % against the immediately preceding window    |
+| `new_value`  | a value of `dimension` appears that the previous window never saw                 |
+| `presence`   | live concurrent sessions cross a level (read from the live bus, no store query)   |
+
+`threshold.column` must be the metric's registry **headline column** (`perf_summary` →
+`p50_fps`); anything else is a `400` that names the right one.
+
+`evaluate.window` is at least `1h`, because the portable per-bucket series the evaluator reads has
+hour and day grains only — a shorter window would have to be silently widened, and a subscription
+that measures something other than what it says is worse than one that refuses to be created. The
+window's start is snapped down to a bucket boundary and its end is the moment of evaluation, so a
+`1h` window on an hourly grain covers the previous complete hour plus the current partial one.
+`evaluate.every` can be as low as `1m`.
+
+Every predicate but `presence` is gated by `minSample`: the window must carry at least that many
+observations before the comparison counts, defaulting to the metric's own registry
+`comparable.minSample`. Without it, one straggling session at 3am fires every "FPS below 30"
+alert ever written.
+
+### Configuration
+
+The scheduler runs by default and costs one store read at boot when a project has no
+subscriptions. Set `COLLECTOR_SUBSCRIPTIONS=0` to keep the API while running no timers — the
+right setting when several collector instances share one database and only one should evaluate.
+`COLLECTOR_SUBSCRIPTIONS_MAX_CONCURRENT` (default `4`) caps how many evaluations run at once;
+each is one grouped store read, and at most one evaluation per subscription is ever in flight.
+
+A project may hold at most **100** subscriptions, and each keeps its **last 100 firings**
+(`GET /api/v1/subscriptions/:id/events`).
+
+### Webhook egress is opt-in
+
+`COLLECTOR_WEBHOOK_ALLOWED_HOSTS` is **empty by default, and that disables webhook delivery
+entirely**. Until you name the hosts your collector may POST to, a firing is recorded and fanned
+out over SSE and nothing leaves the process.
+
+This is deliberate, and it is an SSRF boundary rather than a convenience. A subscription is
+created over HTTP by an `annotate`-capable key, so its URL is request-controlled input to an
+outbound request: without the allow-list, anyone holding such a key could aim your collector at
+`http://169.254.169.254/` or at anything else reachable from where it runs. Naming the hosts is
+your explicit consent to reach them.
+
+```bash
+COLLECTOR_WEBHOOK_ALLOWED_HOSTS=hooks.slack.com,api.github.com
+```
+
+Matching is on the hostname, case-insensitively and independently of port. `*` allows every host
+and is an explicit opt-out for a collector on a closed network. Only `http` and `https` URLs are
+accepted at all, and redirects are not followed.
+
+### Signing and verification
+
+Every delivery is a `POST` carrying the firing and a bounded `format=summary` result of the
+metric, so the receiver can act without a second call:
+
+```http
+POST /uptimizr HTTP/1.1
+Content-Type: application/json
+X-Uptimizr-Signature: sha256=<hex HMAC-SHA-256 of the raw body>
+X-Uptimizr-Delivery: 0f1c…
+```
+
+```json
+{
+  "type": "subscription.firing",
+  "firing": {
+    "subscriptionId": "sub_…",
+    "name": "FPS drop in lobby",
+    "metric": "perf_summary",
+    "predicate": "threshold",
+    "at": 1767225600000,
+    "window": { "since": 1767222000000, "until": 1767225600000 },
+    "value": 21.5,
+    "expected": 40,
+    "sampleSize": 32,
+    "scene": "lobby",
+    "reason": "perf_summary.p50_fps is 21.5 — < 40 over 1h"
+  },
+  "summary": { "metric": "insight_baseline", "reading": "Metric baseline: median is 21.5. …" }
+}
+```
+
+`X-Uptimizr-Delivery` is unique per delivery attempt — dedupe on it. Verify the signature over the
+**raw body, before parsing it** (re-serialising changes bytes) and compare in constant time:
+
+```js
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+export function verify(secret, rawBody, header) {
+  const digest = createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
+  const expected = Buffer.from(`sha256=${digest}`);
+  const received = Buffer.from(header ?? "");
+  return expected.length === received.length && timingSafeEqual(expected, received);
+}
+```
+
+The `secret` is **write-only**: you supply it when you create the subscription, and no read
+endpoint ever returns it again — every response carries a masked placeholder. Rotate it by
+replacing the subscription, which makes the change visible in the listing rather than silent.
+
+### Retries and failures
+
+A delivery is attempted up to **3 times** with exponential backoff (500 ms, then 1 s), and only
+for failures that can plausibly succeed on a retry: a network error, `408`, `429`, or any `5xx`.
+A different `4xx` is the receiver saying "not like that", so it is not repeated. Every attempt
+carries the same `X-Uptimizr-Delivery` id. Each attempt times out after 10 s.
+
+Failures are recorded on the subscription as `failures` (consecutive, reset on success) and
+`lastError` (bounded and flattened), both visible in `GET /api/v1/subscriptions` and in the
+dashboard's **Subscriptions** panel. `lastFiredAt` is stamped whether or not delivery succeeded:
+the condition fired, and a receiver that is down must not turn the cooldown off and let the
+subscription re-fire on every tick.
+
+To prove a receiver works without waiting for the condition:
+
+```bash
+curl -X POST "$COLLECTOR/api/v1/subscriptions/<id>/test?deliver=true" -H "x-api-key: $KEY"
+```
+
+### The SSE stream
+
+```bash
+TOKEN=$(curl -s -X POST "$COLLECTOR/api/v1/live/token" -H "x-api-key: $KEY" | jq -r .token)
+curl -N "$COLLECTOR/api/v1/subscriptions/stream?token=$TOKEN"
+```
+
+It uses the same short-lived live token as the live endpoints (an `EventSource` cannot send a
+header, and the raw key must never appear in a URL) and shares their connection budget
+(`LIVE_MAX_CONNECTIONS`). Add `&id=<subscriptionId>` to follow one subscription. Each message is
+an `event: subscription` frame whose data is `{ firing, summary }` — the same body a webhook
+receives, minus the `type` marker.
 
 ## Agent audit log
 

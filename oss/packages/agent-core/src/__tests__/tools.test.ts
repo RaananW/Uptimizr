@@ -6,6 +6,7 @@ import {
   filterReadTools,
   CORE_READ_TOOL_NAMES,
 } from "../tools.js";
+import { NON_REGISTRY_READ_TOOLS } from "../nonRegistryTools.js";
 import { registryToTools } from "../registryTools.js";
 
 const byName = (name: string) => {
@@ -15,9 +16,17 @@ const byName = (name: string) => {
 };
 
 describe("read tools catalog", () => {
-  it("is the catalog generated from the metric registry", () => {
-    expect(readTools.map((t) => t.name)).toEqual(registryToTools().map((t) => t.name));
-    expect(readTools.length).toBe(72);
+  it("is the catalog generated from the metric registry, plus the non-metric reads", () => {
+    // The registry is the source for every *metric* tool, and the generated
+    // list must still be a prefix of the catalog in order — the exception is
+    // the short, deliberate tail of collector reads that are configuration
+    // rather than measurements (#311, `nonRegistryTools.ts`).
+    const generated = registryToTools().map((t) => t.name);
+    expect(readTools.slice(0, generated.length).map((t) => t.name)).toEqual(generated);
+    expect(readTools.slice(generated.length).map((t) => t.name)).toEqual(
+      NON_REGISTRY_READ_TOOLS.map((t) => t.name),
+    );
+    expect(readTools.length).toBe(73);
   });
 
   it("gives every tool an output schema", () => {

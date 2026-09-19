@@ -77,6 +77,7 @@ import type {
   SceneRepresentationSummary,
   SceneRow,
   SourceOptions,
+  SubscriptionStore,
   SessionOptions,
   MeshOptions,
   SessionMeta,
@@ -93,7 +94,7 @@ import type {
  * interface keeps handlers thin and lets tests inject a fake store without a
  * live ClickHouse/Postgres (the framework and the DB stay swappable — ADR 0005).
  */
-export interface CollectorStore {
+export interface CollectorStore extends SubscriptionStore {
   /**
    * Resolve a plaintext API key to its project id, key id, capability set and
    * optional per-key rate limit, or `null` if invalid/revoked. The capability

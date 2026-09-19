@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readTools } from "@uptimizr/agent-core";
+import { readTools, NON_REGISTRY_READ_TOOLS } from "@uptimizr/agent-core";
 import { allMetrics, isResourceMetric } from "@uptimizr/metrics";
 import { buildCapabilities } from "../capabilities.js";
 
@@ -20,9 +20,14 @@ describe("buildCapabilities", () => {
   });
 
   it("represents every served registry metric exactly once", () => {
-    expect(cap.tools).toHaveLength(served.length);
-    const names = cap.tools.map((t) => t.name).sort();
-    expect(names).toEqual(served.map((metric) => metric.id).sort());
+    // Plus the short tail of non-metric collector reads (#311), which have no
+    // registry entry by design — see `agent-core`'s `nonRegistryTools.ts`.
+    const nonRegistry = NON_REGISTRY_READ_TOOLS.map((tool) => tool.name);
+    const names = cap.tools.map((t) => t.name);
+    expect(names.filter((name) => !nonRegistry.includes(name)).sort()).toEqual(
+      served.map((metric) => metric.id).sort(),
+    );
+    expect(cap.tools).toHaveLength(served.length + nonRegistry.length);
   });
 
   it("matches the shipped tool catalog exactly (sketch §A.4)", () => {

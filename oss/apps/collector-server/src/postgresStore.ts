@@ -149,6 +149,16 @@ import {
   getSceneRepresentation as pgGetSceneRepresentation,
   listSceneRepresentations as pgListSceneRepresentations,
   putSceneRegions as pgPutSceneRegions,
+  listSubscriptions as pgListSubscriptions,
+  listEnabledSubscriptions as pgListEnabledSubscriptions,
+  getSubscription as pgGetSubscription,
+  createSubscription as pgCreateSubscription,
+  setSubscriptionEnabled as pgSetSubscriptionEnabled,
+  deleteSubscription as pgDeleteSubscription,
+  recordSubscriptionOutcome as pgRecordSubscriptionOutcome,
+  getWebhookSecret as pgGetWebhookSecret,
+  recordSubscriptionEvent as pgRecordSubscriptionEvent,
+  listSubscriptionEvents as pgListSubscriptionEvents,
   getSceneRegions as pgGetSceneRegions,
   listSceneRegions as pgListSceneRegions,
   type PostgresClient,
@@ -371,6 +381,19 @@ export async function createPostgresStore(): Promise<CollectorStore> {
       pgPutSceneRegions(pgc, projectId, sceneId, regions),
     getSceneRegions: (projectId, sceneId) => pgGetSceneRegions(pgc, projectId, sceneId),
     listSceneRegions: (projectId) => pgListSceneRegions(pgc, projectId),
+    listSubscriptions: (projectId) => pgListSubscriptions(pgc, projectId),
+    listEnabledSubscriptions: (limit) => pgListEnabledSubscriptions(pgc, limit),
+    getSubscription: (projectId, id) => pgGetSubscription(pgc, projectId, id),
+    createSubscription: (projectId, sub) => pgCreateSubscription(pgc, projectId, sub),
+    setSubscriptionEnabled: (projectId, id, enabled) =>
+      pgSetSubscriptionEnabled(pgc, projectId, id, enabled),
+    deleteSubscription: (projectId, id) => pgDeleteSubscription(pgc, projectId, id),
+    recordSubscriptionOutcome: (projectId, id, outcome) =>
+      pgRecordSubscriptionOutcome(pgc, projectId, id, outcome),
+    getWebhookSecret: (projectId, id) => pgGetWebhookSecret(pgc, projectId, id),
+    recordSubscriptionEvent: (entry) => pgRecordSubscriptionEvent(pgc, entry),
+    listSubscriptionEvents: (projectId, id, opts) =>
+      pgListSubscriptionEvents(pgc, projectId, id, opts),
     async close() {
       await pgc.close();
     },

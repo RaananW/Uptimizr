@@ -15,6 +15,9 @@ export {
   type ReadToolRequest,
   type ReadToolSetKind,
 } from "./tools.js";
+// Collector reads that are configuration rather than measurements, and so have
+// no registry entry to generate a tool from (#311, ADR 0051 §6).
+export { NON_REGISTRY_READ_TOOLS } from "./nonRegistryTools.js";
 export { registryToTools, metricToTool, describeMetric } from "./registryTools.js";
 export type {
   AgentMessage,

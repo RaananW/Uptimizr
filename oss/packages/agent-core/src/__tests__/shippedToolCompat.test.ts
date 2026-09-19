@@ -16,6 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 import { readTools } from "../tools.js";
+import { NON_REGISTRY_READ_TOOLS } from "../nonRegistryTools.js";
 import { registryToTools } from "../registryTools.js";
 import { toToolSchemas } from "../loop.js";
 import shippedSchemas from "./fixtures/shippedToolSchemas.json" with { type: "json" };
@@ -82,8 +83,14 @@ describe("shipped tool compatibility", () => {
     for (const shipped of Object.keys(frozen)) expect(generated.has(shipped)).toBe(true);
   });
 
-  it("is the catalog the package actually exports", () => {
-    expect(readTools.map((tool) => tool.name)).toEqual([...generated.keys()]);
+  it("is the catalog the package actually exports, ahead of the non-metric reads", () => {
+    // Every registry-generated tool is exported, in registry order; the tail is
+    // the non-metric reads (#311), which have no frozen fixture because they
+    // were never part of the hand-written catalog this file pins.
+    const names = readTools.map((tool) => tool.name);
+    const nonRegistry = NON_REGISTRY_READ_TOOLS.map((tool) => tool.name);
+    expect(names.filter((name) => !nonRegistry.includes(name))).toEqual([...generated.keys()]);
+    expect(names.slice(-nonRegistry.length)).toEqual(nonRegistry);
   });
 
   for (const [name, expected] of Object.entries(frozen)) {

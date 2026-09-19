@@ -37,6 +37,11 @@ export const TEST_CONFIG: CollectorConfig = {
   cspMode: "strict",
   auditRetentionDays: 30,
   auditDashboardRequests: false,
+  // The sweeps build an app per case; leaving the scheduler off keeps them free
+  // of timers they never assert on. Webhook egress stays disallowed by default.
+  subscriptions: false,
+  subscriptionsMaxConcurrent: 4,
+  webhookAllowedHosts: [],
 };
 
 /** Fixture scene proxy, so the `scene_representation` resource has a hit. */

@@ -218,8 +218,27 @@ describe("GET /api/v1/openapi.json", () => {
     expect(Object.keys(paths)).not.toContain("/api/v1/collect");
     expect(Object.keys(paths)).not.toContain("/api/v1/sessions/{id}/events");
     expect(Object.keys(paths).filter((path) => path.startsWith("/api/v1/live"))).toEqual([]);
-    for (const methods of Object.values(paths)) {
-      expect(Object.keys(methods).filter((method) => method !== "get")).toEqual([]);
+    // The subscriptions SSE stream is omitted for the same reason the live ones
+    // are: a hijacked `text/event-stream` response is not honestly describable
+    // as a JSON operation.
+    expect(Object.keys(paths)).not.toContain("/api/v1/subscriptions/stream");
+  });
+
+  it("describes only reads, apart from the subscriptions resource (#311)", () => {
+    // The document was GET-only until conditional subscriptions, which are a
+    // genuine CRUD resource rather than a query — and the one place a caller
+    // needs a written contract for a request *body*. Nothing else may grow a
+    // write method without a deliberate change here.
+    for (const [path, methods] of Object.entries(paths)) {
+      const writes = Object.keys(methods as object).filter((method) => method !== "get");
+      if (path.startsWith("/api/v1/subscriptions")) continue;
+      expect(writes, path).toEqual([]);
     }
+    expect(Object.keys(paths["/api/v1/subscriptions"] as object).sort()).toEqual(["get", "post"]);
+    expect(Object.keys(paths["/api/v1/subscriptions/{id}"] as object).sort()).toEqual([
+      "delete",
+      "get",
+      "patch",
+    ]);
   });
 });

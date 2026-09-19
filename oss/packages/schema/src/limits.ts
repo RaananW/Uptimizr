@@ -73,6 +73,19 @@ export const LIMITS = {
   /** Number of regions one scene may declare (curated metadata, not a payload). */
   maxSceneRegions: 200,
 
+  /** Human name of a conditional subscription (ADR 0051 §6 / sketch §F.1). */
+  maxSubscriptionNameLength: 120,
+  /** Delivery targets one subscription may declare (`webhook`, `sse`). */
+  maxSubscriptionDeliveries: 4,
+  /**
+   * Subscriptions one project may hold. Each is a standing timer and, when it
+   * fires, an outbound request — so the count is bounded for the same reason
+   * every other agent surface is (ADR 0051 §9, "bounded outputs").
+   */
+  maxSubscriptionsPerProject: 100,
+  /** Firings retained per subscription; the oldest are dropped past this. */
+  maxSubscriptionEvents: 100,
+
   /** Developer-declared scene-actor id on `node_transform` (ADR 0027). */
   maxNodeIdLength: 128,
   /** Skeleton bone name on `node_transform` Tier-2 samples (ADR 0027). */

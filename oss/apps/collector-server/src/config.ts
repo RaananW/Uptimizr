@@ -64,6 +64,34 @@ export interface CollectorConfig {
    */
   auditDashboardRequests: boolean;
   /**
+   * Run the conditional-subscription scheduler (#311, ADR 0051 §6). **On by
+   * default**, and free until a project actually has an enabled subscription:
+   * the scheduler's whole startup cost is one store read, and it schedules
+   * nothing when that read comes back empty. Set `COLLECTOR_SUBSCRIPTIONS=0` to
+   * keep the API (create, list, test) while running no timers at all — the right
+   * setting when several collector instances share one database and only one of
+   * them should evaluate.
+   */
+  subscriptions: boolean;
+  /**
+   * How many subscription evaluations may run at once (default 4). Each is one
+   * grouped store read, so this is the knob that keeps a hundred standing
+   * subscriptions from behaving like a hundred concurrent dashboard users.
+   */
+  subscriptionsMaxConcurrent: number;
+  /**
+   * Hosts a subscription webhook may POST to (`COLLECTOR_WEBHOOK_ALLOWED_HOSTS`,
+   * comma-separated; `*` allows any host).
+   *
+   * **Empty by default, which disables webhook egress entirely.** A subscription
+   * is created over HTTP by an `annotate`-capable key, so its URL is
+   * request-controlled input to an outbound request — the scheme check in
+   * `parseWebhookUrl` is not on its own an SSRF boundary. Naming the hosts is
+   * the operator's explicit consent to reach them; until then a firing is still
+   * recorded and fanned out over SSE, and nothing leaves the process.
+   */
+  webhookAllowedHosts: string[];
+  /**
    * Absolute path to a pre-built static dashboard (`out/`) to serve as an
    * all-in-one bundle. Unset (the default) keeps the collector headless.
    */
@@ -139,6 +167,18 @@ export function loadConfig(env: Env = process.env): CollectorConfig {
     cspMode: env.COLLECTOR_CSP === "off" ? "off" : "strict",
     auditRetentionDays: Math.max(0, Number(env.AUDIT_RETENTION_DAYS ?? 30) || 0),
     auditDashboardRequests: bool(env.AUDIT_DASHBOARD_REQUESTS),
+    // Default on: an operator who never creates a subscription pays one store
+    // read at boot, and `0`/`false` turns the scheduler off without touching the
+    // API surface.
+    subscriptions: env.COLLECTOR_SUBSCRIPTIONS == null ? true : bool(env.COLLECTOR_SUBSCRIPTIONS),
+    subscriptionsMaxConcurrent: Math.max(
+      1,
+      Number(env.COLLECTOR_SUBSCRIPTIONS_MAX_CONCURRENT ?? 4) || 4,
+    ),
+    webhookAllowedHosts: (env.COLLECTOR_WEBHOOK_ALLOWED_HOSTS ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
     dashboardDir: env.COLLECTOR_DASHBOARD_DIR ? resolve(env.COLLECTOR_DASHBOARD_DIR) : undefined,
   };
 }

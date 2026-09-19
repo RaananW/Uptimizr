@@ -291,6 +291,66 @@ export const CLICKHOUSE_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> =
       ORDER BY (project_id, scene_id, region_id);
     `,
   },
+  // Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1–F.2). One row per
+  // standing question; the declaration lives in a JSON `config` column and the
+  // scalars beside it are what the store filters, orders or updates.
+  //
+  // Mutable metadata, so the `scene_regions` shape: a ReplacingMergeTree keyed
+  // by (project, id) where every write inserts a complete replacement row with a
+  // higher `version`, a delete inserts a `deleted = 1` tombstone, and reads take
+  // `FINAL` filtered on `deleted = 0`.
+  //
+  // `last_fired_at_ms` is a plain UInt64 rather than a Nullable(DateTime64):
+  // "never fired" is `0`, which keeps the replacement-row write a straight
+  // copy-with-patch and avoids a nullable column in the sort-adjacent payload.
+  //
+  // `webhook_secret` is the shared HMAC key: deliberately NOT hashed — a one-way
+  // digest cannot sign an outbound body — and never selected by any read path
+  // other than `getWebhookSecret` (and the internal read-modify-write that
+  // carries it forward).
+  {
+    id: "0012_subscriptions",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        id               String,
+        project_id       String,
+        name             String DEFAULT '',
+        metric           LowCardinality(String) DEFAULT '',
+        config           String DEFAULT '{}',
+        webhook_secret   Nullable(String) DEFAULT NULL,
+        enabled          UInt8 DEFAULT 1,
+        created_at       DateTime64(3) DEFAULT now64(3),
+        updated_at       DateTime64(3) DEFAULT now64(3),
+        last_fired_at_ms UInt64 DEFAULT 0,
+        last_error       String DEFAULT '',
+        failures         UInt64 DEFAULT 0,
+        deleted          UInt8 DEFAULT 0,
+        version          UInt64 DEFAULT 0
+      )
+      ENGINE = ReplacingMergeTree(version)
+      ORDER BY (project_id, id);
+    `,
+  },
+  // The firing log: `{ subscriptionId, at, payload }`. Append-only, so a plain
+  // MergeTree. Retention to the last 100 per subscription is enforced by a
+  // lightweight DELETE that only runs once the log has overshot the bound
+  // (`recordSubscriptionEvent`) — a mutation per firing would turn a cheap
+  // append into a part rewrite — and every read is capped by LIMIT regardless.
+  {
+    id: "0013_subscription_events",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS subscription_events (
+        id              String,
+        subscription_id String,
+        project_id      String,
+        at              DateTime64(3) DEFAULT now64(3),
+        payload         String DEFAULT '{}'
+      )
+      ENGINE = MergeTree
+      PARTITION BY toYYYYMM(at)
+      ORDER BY (subscription_id, at);
+    `,
+  },
 ];
 
 /**

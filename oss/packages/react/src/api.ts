@@ -695,6 +695,50 @@ export interface LiveToken {
   expiresAt: number;
 }
 
+/**
+ * A conditional subscription as the collector's read API returns it (#311,
+ * ADR 0051 §6).
+ *
+ * Deliberately read-only in `@uptimizr/react`: OSS ships no authoring UI for
+ * subscriptions (ADR 0038's stance on configuration that belongs in a file or a
+ * CLI), so the panel shows what is standing and how it last went, and creation
+ * happens through the API, `uptimizr subscriptions add` or an agent.
+ *
+ * A webhook target's `secret` is always the collector's mask, never the secret.
+ */
+export interface Subscription {
+  id: string;
+  projectId: string;
+  name: string;
+  /** Registry metric id the subscription watches. */
+  metric: string;
+  filters: { scene?: string };
+  evaluate: { every: string; window: string; bucket?: "hour" | "day" };
+  /** Closed union, discriminated on `kind` (see `@uptimizr/schema`). */
+  predicate: { kind: string } & Record<string, unknown>;
+  cooldown: string;
+  delivery: ({ kind: string } & Record<string, unknown>)[];
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** ISO timestamp of the last firing, or `null` if it never has. */
+  lastFiredAt: string | null;
+  /** Bounded, redacted text of the last delivery failure, or `null`. */
+  lastError: string | null;
+  /** Consecutive delivery failures since the last success. */
+  failures: number;
+}
+
+/** One recorded firing of a subscription (bounded to the last 100 per id). */
+export interface SubscriptionEvent {
+  id: string;
+  subscriptionId: string;
+  projectId: string;
+  /** ISO timestamp of the firing. */
+  at: string;
+  payload: Record<string, unknown>;
+}
+
 /** Shared time-range + binning query parameters. */
 export interface QueryParams {
   since?: number;
@@ -1259,6 +1303,23 @@ export class CollectorApi {
    * counts crossed by `(api, backend, apiVersion, shadingLanguage)`. Always-on, so
    * a populated array is the common case.
    */
+  /**
+   * The project's conditional subscriptions (#311, ADR 0051 §6), oldest first.
+   * A `query` key is enough — a subscription is project configuration, not a
+   * credential, and any webhook secret is masked by the collector.
+   */
+  subscriptions(): Promise<Subscription[]> {
+    return this.get<Subscription[]>("api/v1/subscriptions");
+  }
+
+  /** One subscription's recent firings, newest first. */
+  subscriptionEvents(id: string, params?: QueryParams): Promise<SubscriptionEvent[]> {
+    return this.get<SubscriptionEvent[]>(
+      `api/v1/subscriptions/${encodeURIComponent(id)}/events`,
+      params,
+    );
+  }
+
   renderingTechnology(params?: QueryParams): Promise<RenderingTechnologyCount[]> {
     return this.get<Record<string, unknown>[]>("api/v1/rendering-technology", params).then((rows) =>
       rows.map((r) => ({

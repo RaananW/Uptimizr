@@ -142,6 +142,31 @@ set is carried **inside the signed token**, so `GET /api/v1/live/sessions/:id` c
 All four return **identical analytics** (the cross-engine parity suite). Aggregations are computed
 at **query time** in v1 — no materialized views.
 
+## Conditional subscriptions (ADR 0051 §6)
+
+Standing predicates over a registry metric, delivered over SSE and signed webhooks.
+
+- `GET /api/v1/subscriptions` · `GET /api/v1/subscriptions/:id` ·
+  `GET /api/v1/subscriptions/:id/events` — need `query`.
+- `POST /api/v1/subscriptions` · `PATCH /api/v1/subscriptions/:id` (`{ enabled }` only) ·
+  `DELETE /api/v1/subscriptions/:id` · `POST /api/v1/subscriptions/:id/test[?deliver=true]` —
+  need **`annotate`**: creating one is how a caller asks the collector to make an outbound
+  request on its behalf.
+- `GET /api/v1/subscriptions/stream?token=…` — SSE, live-token auth (ADR 0032 §7), optional
+  `&id=` filter, shares `LIVE_MAX_CONNECTIONS`.
+
+Predicates: `threshold` (on the metric's registry headline column only), `anomaly`, `movers`,
+`new_value`, `presence`. `evaluate.every` ≥ 1m, `evaluate.window` ≥ 1h. 100 per project, last
+100 firings each.
+
+**A webhook secret is write-only** — accepted on create, never returned; reads carry a mask.
+**Webhook egress is off until `COLLECTOR_WEBHOOK_ALLOWED_HOSTS` names the hosts**, because a
+subscription URL arrives over HTTP and is therefore request-controlled input to an outbound
+request. Bodies are signed `X-Uptimizr-Signature: sha256=<hex>` over the raw bytes; verify before
+parsing, in constant time.
+
+`POST …/test` is a dry run by default and answers with _why_ it did or did not fire.
+
 ## Other configuration
 
 - Server / browser access: `COLLECTOR_HOST` (`0.0.0.0`), `COLLECTOR_PORT` (`4318`),
@@ -151,6 +176,9 @@ at **query time** in v1 — no materialized views.
   `LIVE_MAX_CONNECTIONS`, `LIVE_PRESENCE_INTERVAL_MS`.
 - Rate limits: `COLLECTOR_RATE_LIMIT_MAX`, `COLLECTOR_RATE_LIMIT_WINDOW_MS`,
   `COLLECTOR_INGEST_RATE_LIMIT_MAX`, `COLLECTOR_INGEST_RATE_LIMIT_WINDOW_MS`.
+- Subscriptions: `COLLECTOR_SUBSCRIPTIONS` (default on; `0` keeps the API and runs no timers),
+  `COLLECTOR_SUBSCRIPTIONS_MAX_CONCURRENT` (default `4`),
+  **`COLLECTOR_WEBHOOK_ALLOWED_HOSTS`** (empty = no webhook egress at all).
 - Agent audit: **`AUDIT_RETENTION_DAYS`** (default `30`; `0` = keep forever),
   `AUDIT_DASHBOARD_REQUESTS` (default off — requests carrying `x-uptimizr-client: dashboard` are
   skipped as a volume filter, **not** a security boundary).

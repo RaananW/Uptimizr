@@ -104,3 +104,9 @@ not aggregations, and declare no `format`.
 - `runAgent(options)` — the headless tool-calling loop (LLM ↔ tools ↔ collector).
 - `toToolSchemas(tools?)` — convert catalog tools to JSON-Schema tool descriptors for an LLM.
 - `LlmProvider` — the pluggable, user-controlled LLM backend interface (no bundled model or key).
+
+## Non-metric reads
+
+- `list_subscriptions` — the project's conditional subscriptions (ADR 0051 §6). Not a registry
+  metric: configuration, not a measurement. No arguments, no time range. Creating/deleting one
+  needs `annotate` and is not a tool.

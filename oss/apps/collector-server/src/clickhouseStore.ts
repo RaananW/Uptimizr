@@ -149,6 +149,16 @@ import {
   getSceneRepresentation as chGetSceneRepresentation,
   listSceneRepresentations as chListSceneRepresentations,
   putSceneRegions as chPutSceneRegions,
+  listSubscriptions as chListSubscriptions,
+  listEnabledSubscriptions as chListEnabledSubscriptions,
+  getSubscription as chGetSubscription,
+  createSubscription as chCreateSubscription,
+  setSubscriptionEnabled as chSetSubscriptionEnabled,
+  deleteSubscription as chDeleteSubscription,
+  recordSubscriptionOutcome as chRecordSubscriptionOutcome,
+  getWebhookSecret as chGetWebhookSecret,
+  recordSubscriptionEvent as chRecordSubscriptionEvent,
+  listSubscriptionEvents as chListSubscriptionEvents,
   getSceneRegions as chGetSceneRegions,
   listSceneRegions as chListSceneRegions,
   type ClickhouseClient,
@@ -368,6 +378,19 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       chPutSceneRegions(ch, projectId, sceneId, regions),
     getSceneRegions: (projectId, sceneId) => chGetSceneRegions(ch, projectId, sceneId),
     listSceneRegions: (projectId) => chListSceneRegions(ch, projectId),
+    listSubscriptions: (projectId) => chListSubscriptions(ch, projectId),
+    listEnabledSubscriptions: (limit) => chListEnabledSubscriptions(ch, limit),
+    getSubscription: (projectId, id) => chGetSubscription(ch, projectId, id),
+    createSubscription: (projectId, sub) => chCreateSubscription(ch, projectId, sub),
+    setSubscriptionEnabled: (projectId, id, enabled) =>
+      chSetSubscriptionEnabled(ch, projectId, id, enabled),
+    deleteSubscription: (projectId, id) => chDeleteSubscription(ch, projectId, id),
+    recordSubscriptionOutcome: (projectId, id, outcome) =>
+      chRecordSubscriptionOutcome(ch, projectId, id, outcome),
+    getWebhookSecret: (projectId, id) => chGetWebhookSecret(ch, projectId, id),
+    recordSubscriptionEvent: (entry) => chRecordSubscriptionEvent(ch, entry),
+    listSubscriptionEvents: (projectId, id, opts) =>
+      chListSubscriptionEvents(ch, projectId, id, opts),
     async close() {
       await ch.close();
     },

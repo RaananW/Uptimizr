@@ -20,6 +20,7 @@
 
 import type { FastifyInstance } from "fastify";
 import { generateApiKey } from "@uptimizr/db";
+import type { Subscription } from "@uptimizr/schema";
 import { buildApp } from "@uptimizr/collector-server/dist/app.js";
 import type { CollectorConfig } from "@uptimizr/collector-server/dist/config.js";
 import type { CollectorStore } from "@uptimizr/collector-server/dist/store.js";
@@ -60,6 +61,31 @@ const EVAL_CONFIG: CollectorConfig = {
   // dashboard's own requests — the harness has no dashboard.
   auditRetentionDays: 30,
   auditDashboardRequests: false,
+  // Conditional subscriptions (#311): the API is up so `list_subscriptions` has
+  // something to read, but the scheduler is off — an eval run must not grow
+  // background timers, and nothing here would ever fire. Webhook egress stays
+  // disallowed, which is also the default.
+  subscriptions: false,
+  subscriptionsMaxConcurrent: 4,
+  webhookAllowedHosts: [],
+};
+
+/**
+ * The one conditional subscription the fixtures carry (#311).
+ *
+ * Seeded directly through the store rather than over HTTP: the harness's key is
+ * `query`-only by design, and `POST /api/v1/subscriptions` rightly refuses it.
+ * It is `sse`-only, so nothing an eval run does can produce outbound traffic.
+ */
+const EVAL_SUBSCRIPTION: Subscription = {
+  name: "FPS drop in lobby",
+  metric: "perf_summary",
+  filters: { scene: "lobby" },
+  evaluate: { every: "5m", window: "1h" },
+  predicate: { kind: "threshold", column: "p50_fps", op: "<", value: 40, minSample: 1 },
+  cooldown: "1h",
+  delivery: [{ kind: "sse" }],
+  enabled: true,
 };
 
 /** A booted, seeded collector plus the read-only client an agent run uses. */
@@ -121,6 +147,7 @@ export async function startHarness(): Promise<EvalHarness> {
   };
   await store.insertEvents(EVAL_EVENTS);
   await store.putSceneProxy(EVAL_PROJECT_ID, EVAL_SCENE_PROXY, EVAL_SCENE_PROXY_LABEL);
+  await store.createSubscription(EVAL_PROJECT_ID, EVAL_SUBSCRIPTION);
 
   const app = await buildApp({ store, config: EVAL_CONFIG });
   await app.ready();
