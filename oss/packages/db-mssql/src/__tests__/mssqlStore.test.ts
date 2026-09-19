@@ -54,11 +54,7 @@ import {
 import { getSceneRegions, listSceneRegions, putSceneRegions } from "../sceneRegions.js";
 import {
   createAnnotation,
-  createPanelSpec,
   createSavedAnalysis,
-  deletePanelSpec,
-  listPanelSpecs,
-  updatePanelSpec,
   deleteAnnotation,
   deleteGlossaryEntry,
   deleteSavedAnalysis,
@@ -67,6 +63,12 @@ import {
   listSavedAnalyses,
   putGlossaryEntry,
 } from "../projectMetadata.js";
+import {
+  createPanelSpec,
+  deletePanelSpec,
+  listPanelSpecs,
+  updatePanelSpec,
+} from "../panelSpecs.js";
 import { runMssqlQuery } from "../queries.js";
 import { discardTestDatabase, mssqlReachable, openTestDatabase } from "./probe.js";
 
