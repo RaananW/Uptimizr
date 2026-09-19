@@ -56,7 +56,11 @@ function callable(metricId: string): QueryV1 {
   return query(metricId, Object.keys(filters).length > 0 ? { filters } : {});
 }
 
-const aggregations = allMetrics().filter((metric) => !isResourceMetric(metric));
+// Everything the delegated compiler can reach: a metric with a `build*`. The
+// two resource reads have none, and neither do the derived insight primitives
+// (#305), which are computed over another metric's bucket series rather than by
+// SQL of their own — `validateQuery` refuses both with `metric_not_queryable`.
+const aggregations = allMetrics().filter((metric) => metric.builder !== undefined);
 
 describe("the DSL compiles to exactly the canned aggregation", () => {
   it.each(aggregations.map((metric) => metric.id))(

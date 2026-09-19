@@ -33,7 +33,13 @@ import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PARITY_EVENTS, PARITY_PROJECT_ID } from "@uptimizr/db";
 import { resultSummarySchema, tableResultSchema } from "@uptimizr/db";
-import { allMetrics, metricCapability, type MetricDefinition } from "@uptimizr/metrics";
+import {
+  allMetrics,
+  isAggregateMetric,
+  isDerivedMetric,
+  metricCapability,
+  type MetricDefinition,
+} from "@uptimizr/metrics";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildApp } from "../app.js";
@@ -75,6 +81,11 @@ const OFF_REQUEST_PATH = new Set(["recordAudit", "pruneAudit"]);
  * is new in the same change, so its entry is recorded at introduction.
  */
 const PRE_CHANGE_BODY_HASHES: Readonly<Record<string, string>> = {
+  // The derived insight metrics (ADR 0051 §4) are recorded at their
+  // introduction rather than before it: they had no prior body to preserve, but
+  // from here their default shape is pinned like every other endpoint.
+  "/api/v1/insights/baseline": "70da6e75dbce179a14e5ba83ac7f5db3f33dbaf1e15dd0a451d1695587f9aca2",
+  "/api/v1/insights/movers": "db847696207abb389e259c5a7af2c40a3ac787cd8f47871dab46b3e73628038b",
   "/api/v1/sessions": "7d38d880d2ab531a28d1ec3ac71fb96f03f7fcc29539ec8eaf6f54c6a0b186a7",
   "/api/v1/scenes": "064b8168045bdb7976a46c1eee39421ec9a33dbb06caa5a8ed051d5b27fd5190",
   "/api/v1/timeseries": "9176b8732485a635e4fee508764f49662fc8349582e58679bde9dd164784fd55",
@@ -193,8 +204,13 @@ const REACHABLE_METRICS = allMetrics().filter(
   (metric) => metric.endpoint != null && metricCapability(metric) === "query",
 );
 
-/** The two resource reads take no querystring, so they are outside `format`. */
-const FORMATTED_METRICS = REACHABLE_METRICS.filter((metric) => metric.builder != null);
+/**
+ * The two resource reads take no querystring, so they are outside `format`.
+ * Everything else reachable accepts the envelope — the aggregations and the
+ * derived insight primitives alike (ADR 0051 §4), which is why this asks
+ * `isAggregateMetric` rather than `builder != null`.
+ */
+const FORMATTED_METRICS = REACHABLE_METRICS.filter((metric) => isAggregateMetric(metric));
 
 /** Every reachable endpoint, including the two resource reads, for the `full` sweep. */
 const METRICS_WITH_ENDPOINTS = REACHABLE_METRICS;
@@ -278,18 +294,26 @@ describe("result format envelopes", () => {
         // Every key the store produced is still on the wire with an equal value.
         // (The three spatial `stats` routes add the resolved `cellSize`, so the
         // response is a superset rather than an exact match.)
-        const producedRows = Array.isArray(produced)
-          ? produced
-          : produced == null
-            ? []
-            : [produced];
+        //
+        // A **derived** metric is exempt from *this* comparison only: its handler
+        // reads a bucket series and computes its row in TypeScript, so the last
+        // store result is not the row. The two assertions that actually carry the
+        // negative promise — default equals `format=full`, and both still hash to
+        // the recorded body — apply to it unchanged.
         const bodyValue: unknown = implicit.json();
-        const bodyRows = Array.isArray(bodyValue) ? bodyValue : [bodyValue];
-        expect(bodyRows.length, `${id}: row count changed`).toBe(producedRows.length);
-        for (const [index, row] of producedRows.entries()) {
-          expect(bodyRows[index], `${id}: row ${index} changed`).toMatchObject(
-            row as Record<string, unknown>,
-          );
+        if (!isDerivedMetric(metric)) {
+          const producedRows = Array.isArray(produced)
+            ? produced
+            : produced == null
+              ? []
+              : [produced];
+          const bodyRows = Array.isArray(bodyValue) ? bodyValue : [bodyValue];
+          expect(bodyRows.length, `${id}: row count changed`).toBe(producedRows.length);
+          for (const [index, row] of producedRows.entries()) {
+            expect(bodyRows[index], `${id}: row ${index} changed`).toMatchObject(
+              row as Record<string, unknown>,
+            );
+          }
         }
 
         if (RESOURCE_METRICS.has(id)) return;

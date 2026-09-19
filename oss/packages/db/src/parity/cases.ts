@@ -81,6 +81,7 @@ import {
   buildGazeHeatmap,
   buildGazeHeatmapStats,
 } from "../query/aggregations.js";
+import { buildMetricBuckets } from "../insights/buckets.js";
 import type { Dialect } from "../query/dialect.js";
 import type { QuerySpec } from "../query/types.js";
 import { compileQuery } from "../query/dsl/index.js";
@@ -1262,10 +1263,102 @@ const GENERIC_PARITY_CASES: readonly ParityCase[] = [
   },
 ];
 
-/** Every case the cross-engine harness runs, delegated tier then generic. */
+/**
+ * **Insight bucket series** (ADR 0051 §4, design sketch §D).
+ *
+ * `buildMetricBuckets` is the single query both insight primitives consume, and
+ * the only per-dialect SQL they involve: every statistic over the series is pure
+ * TypeScript. So parity here is parity for `baseline` and `movers` as a whole.
+ * One case per *aggregate shape* the measure catalog can render — count,
+ * distinct sessions, sum, quantile, and a geometry-guarded count — because the
+ * shapes are what differ between engines, not the metrics.
+ *
+ * Every fixture event lands in the same UTC hour (2024-06-16 10:00), so each
+ * series is a single bucket at `PARITY_T0`. That is the point: the fixtures fix
+ * the *values*, and these cases fix the fact that four dialects render and
+ * execute the same bucketing, the same aggregates and the same predicate
+ * vocabulary to the same numbers.
+ *
+ * Appended last, as its own block, so the delegated and generic goldens stay
+ * exactly where #349 and #304 left them.
+ */
+const INSIGHT_PARITY_CASES: readonly ParityCase[] = [
+  {
+    // count(*) over every event type: all 23 fixture events in one hour bucket.
+    name: "metricBuckets:count",
+    build: (d) =>
+      buildMetricBuckets(PID, { ...PARITY_RANGE, metric: "list_sessions", bucket: "hour" }, d),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 23, sample_size: 23 }],
+  },
+  {
+    // count(DISTINCT session_id) over `session_start`: s1 and s2.
+    name: "metricBuckets:sessions",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "rendering_technology", bucket: "hour" },
+        d,
+      ),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 2, sample_size: 2 }],
+  },
+  {
+    // quantile(fps, 0.5) over the three `frame_perf` samples (60, 30, 45) → 45.
+    name: "metricBuckets:quantile",
+    build: (d) =>
+      buildMetricBuckets(PID, { ...PARITY_RANGE, metric: "perf_summary", bucket: "hour" }, d),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 45, sample_size: 3 }],
+  },
+  {
+    // sum(visible_ms) over `mesh_visibility` with a non-empty mesh: 4000 + 2000.
+    name: "metricBuckets:sum",
+    build: (d) =>
+      buildMetricBuckets(PID, { ...PARITY_RANGE, metric: "mesh_dwell", bucket: "hour" }, d),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 6000, sample_size: 2 }],
+  },
+  {
+    // The geometry guard: `camera_sample` rows whose `direction` carries all
+    // three components — the same predicate `buildCameraDirectionHeatmap` applies
+    // before it bins, so the series total equals that heatmap's own row total.
+    name: "metricBuckets:geometry",
+    build: (d) =>
+      buildMetricBuckets(PID, { ...PARITY_RANGE, metric: "camera_heatmap", bucket: "hour" }, d),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 3, sample_size: 3 }],
+  },
+  {
+    // Scene scoping plus an equality predicate: clicks in `lobby` that hit
+    // nothing. Both lobby clicks hit a mesh, so the series is empty — a bucket
+    // with no matching events is absent, never a zero row.
+    name: "metricBuckets:emptySeries",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "dead_clicks", bucket: "hour", scene: "lobby" },
+        d,
+      ),
+    sortKeys: ["bucket"],
+    golden: [],
+  },
+  {
+    // Day grain over the day-wide range: the same 19 events, one calendar-day
+    // bucket, proving the grain is a parameter rather than a second query.
+    name: "metricBuckets:dayGrain",
+    build: (d) =>
+      buildMetricBuckets(PID, { ...PARITY_DAY_RANGE, metric: "list_sessions", bucket: "day" }, d),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: Date.UTC(2024, 5, 16), value: 23, sample_size: 23 }],
+  },
+];
+
+/** Every case the cross-engine harness runs: delegated, then generic, then insights. */
 export const PARITY_CASES: readonly ParityCase[] = [
   ...DELEGATED_PARITY_CASES,
   ...GENERIC_PARITY_CASES,
+  ...INSIGHT_PARITY_CASES,
 ];
 
 /** The subset compiled through the generic group-by tier (#304). */

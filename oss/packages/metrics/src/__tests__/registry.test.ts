@@ -29,6 +29,8 @@ import {
   METRIC_REGISTRY,
   allMetrics,
   getMetric,
+  isAggregateMetric,
+  isDerivedMetric,
   isMetricId,
   isResourceMetric,
   metricForBuilder,
@@ -104,6 +106,27 @@ describe("metric registry — coverage", () => {
     expect(resources).toEqual(["scene_representation", "session_meta", "session_narrative"]);
   });
 
+  it("marks the insight primitives as derived rather than as resources", () => {
+    const derived = allMetrics()
+      .filter(isDerivedMetric)
+      .map((metric) => metric.id)
+      .sort();
+    expect(derived).toEqual(["insight_baseline", "insight_movers"]);
+    for (const metric of allMetrics().filter(isDerivedMetric)) {
+      // A derived metric has no `build*` aggregation, but unlike a resource it
+      // is a real aggregate: an endpoint, a querystring, a time range and the
+      // `format` envelope. Confusing the two would drop it out of the summary
+      // surface and out of OpenAPI's parameter list.
+      expect(metric.builder, `${metric.id} must not claim a builder`).toBeUndefined();
+      expect(isResourceMetric(metric), `${metric.id} is not a resource`).toBe(false);
+      expect(isAggregateMetric(metric), `${metric.id} is an aggregate`).toBe(true);
+      expect(metric.endpoint?.path, `${metric.id} endpoint`).toMatch(/^\/api\/v1\/insights\//);
+      expect(metric.filters, `${metric.id} range`).toContain("since");
+      expect(metric.filters, `${metric.id} range`).toContain("until");
+      expect(metric.category).toBe("insights");
+    }
+  });
+
   it("resolves a metric from its builder name", () => {
     expect(metricForBuilder("buildTopMeshes")?.id).toBe("top_meshes");
     expect(getMetric("top_meshes")?.builder).toBe("buildTopMeshes");
@@ -171,10 +194,11 @@ describe("metric registry — internal consistency", () => {
 
   it("offers every aggregate endpoint the shared `format` filter", () => {
     for (const metric of metrics) {
-      // The two metadata resource reads take no querystring at all; the daily
-      // rollups are not served on an endpoint. Everything that *is* served with
-      // parameters must accept an envelope — including the builder-less session
-      // narrative, whose querystring shapes the compaction (ADR 0051 §7).
+      // The two resource reads take no querystring at all; the daily rollups
+      // are not served on an endpoint. Everything that *is* served with
+      // parameters must accept an envelope — aggregations, the derived insight
+      // primitives (ADR 0051 §4) and the builder-less session narrative, whose
+      // querystring shapes the compaction (ADR 0051 §7), alike.
       const servedOnAQuerystring = metric.endpoint != null && metric.filters.length > 0;
       expect(
         metric.filters.includes("format"),

@@ -186,7 +186,7 @@ describe("uptimizr agent report", () => {
     expect(captured.stdout).toContain("xr_comfort_review");
     // The tools a skill's method relies on are part of the listing, so an
     // operator can see what a scheduled run will read before scheduling it.
-    expect(captured.stdout).toContain("Tools: event_counts");
+    expect(captured.stdout).toContain("Tools: insight_movers");
   });
 
   it("prints usage on --help without touching the collector", async () => {

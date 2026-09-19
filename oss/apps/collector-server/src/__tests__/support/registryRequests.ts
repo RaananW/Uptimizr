@@ -70,13 +70,17 @@ export const PATH_PARAM_VALUES: Readonly<Record<string, string>> = {
 
 /**
  * Query parameters an endpoint needs beyond the shared range. Only the genuinely
- * required ones: `mesh` for the per-mesh UV heatmap and `steps` for the funnel.
+ * required ones: `mesh` for the per-mesh UV heatmap, `steps` for the funnel and
+ * `metric` for the baseline.
  */
 export const REQUIRED_QUERY: Readonly<Record<string, Record<string, string>>> = {
   "/api/v1/heatmaps/mesh-uv": { mesh: "box" },
   "/api/v1/funnel": {
     steps: JSON.stringify([{ type: "session_start" }, { type: "pointer_click" }]),
   },
+  // A baseline is a baseline *of* something: the metric is the subject rather
+  // than a filter, so it is the one insight parameter with no default.
+  "/api/v1/insights/baseline": { metric: "list_sessions" },
 };
 
 /** The two resource reads, which legitimately 404 when nothing is registered. */

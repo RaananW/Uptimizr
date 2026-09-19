@@ -274,6 +274,14 @@ export type FilterId =
   // above and so are not repeated here.
   | "minDwellMs"
   | "maxEntries"
+  // Insight primitives (ADR 0051 §4, design sketch §D). `metric` and `metrics`
+  // are the only filters whose *value* is itself a registry id: an insight is a
+  // metric computed over another metric, so its subject has to be named.
+  | "metric"
+  | "metrics"
+  | "window"
+  | "refSince"
+  | "refUntil"
   // Cross-cutting result shaping (ADR 0051 §2, design sketch §B.1). Unlike every
   // other filter this one narrows nothing: it selects the *envelope* the
   // collector wraps the rows in, and is consumed by the response layer rather
@@ -306,6 +314,13 @@ export type FilterOptionInterface =
    * SQL builder.
    */
   | "SessionNarrativeOptions"
+  /**
+   * The option bag of an insight primitive (ADR 0051 §4). Not an aggregation
+   * option: it is consumed by `@uptimizr/db`'s pure `src/insights/` layer, which
+   * runs *over* another metric's bucket series rather than producing SQL of its
+   * own.
+   */
+  | "InsightOptions"
   /**
    * Not an aggregation option at all: the parameter is consumed by the
    * collector's response layer and never reaches a builder. Only `format`
@@ -401,7 +416,9 @@ export const FILTER_TARGETS: Readonly<Record<FilterId, FilterTarget>> = {
   bucket: {
     option: "BuilderOptions",
     field: "bucket",
-    description: "Histogram bin width in FPS.",
+    description:
+      "Bucket width. On `fps_histogram` a histogram bin width in FPS; on the insight " +
+      "primitives the time grain of the series, `day` or `hour`.",
   },
   bucketMs: {
     option: "BuilderOptions",
@@ -523,6 +540,40 @@ export const FILTER_TARGETS: Readonly<Record<FilterId, FilterTarget>> = {
       "Session narrative only: the maximum number of entries, oldest first. The closing `summary` " +
       "entry always survives and reports whether anything was dropped.",
   },
+  metric: {
+    option: "InsightOptions",
+    field: "metric",
+    description:
+      "The registry metric the insight is computed over. Must be a `comparable` metric that has a " +
+      "portable bucket series; a metric without one is rejected with the list of ids that do.",
+  },
+  metrics: {
+    option: "InsightOptions",
+    field: "metrics",
+    description:
+      "Comma-separated allowlist of registry metric ids to scan instead of the curated default " +
+      "set. Bounded by the per-request metric cap the registry `limits` declare.",
+  },
+  window: {
+    option: "InsightOptions",
+    field: "windowDays",
+    description:
+      "Length of the baseline window in days, counted back from `until`. Ignored when `since` is " +
+      "given explicitly.",
+  },
+  refSince: {
+    option: "InsightOptions",
+    field: "refSince",
+    description:
+      "Inclusive lower bound of the reference window a change is measured against, epoch " +
+      "milliseconds. Defaults to the equal-length window immediately before the current range.",
+  },
+  refUntil: {
+    option: "InsightOptions",
+    field: "refUntil",
+    description:
+      "Exclusive upper bound of the reference window, epoch milliseconds. Defaults to `since`.",
+  },
   format: {
     option: "ResultEnvelope",
     field: "(response layer)",
@@ -588,7 +639,9 @@ export type MetricCategory =
   | "xr"
   | "ar"
   | "sessions"
-  | "conversion";
+  | "conversion"
+  /** Derived readings *about* other metrics — baselines, movers (ADR 0051 §4). */
+  | "insights";
 
 /**
  * The API-key capability an endpoint requires (ADR 0051 §7).
@@ -703,6 +756,14 @@ export interface MetricComparison {
 }
 
 /**
+ * How a **derived** metric is computed, when it has no `build*` aggregation of
+ * its own. One value per module in `@uptimizr/db`'s `src/insights/`
+ * (ADR 0051 §4) — statistics over another metric's portable bucket series,
+ * evaluated in TypeScript so no two SQL engines can disagree about them.
+ */
+export type MetricDerivation = "insight";
+
+/**
  * Everything a consumer needs to call a metric, read its result and judge how
  * far to trust it.
  */
@@ -718,6 +779,19 @@ export interface MetricDefinition {
    * aggregations, but are part of the agent surface.
    */
   builder?: AggregationBuilderName;
+  /**
+   * Marks a **derived** entry: a metric computed in pure TypeScript *over other
+   * metrics' data* rather than by a `build*` aggregation of its own — the insight
+   * primitives (ADR 0051 §4). Like a resource it has no builder; unlike a
+   * resource it is a real aggregate, served on an endpoint with a querystring,
+   * a time range and the `format` envelope. The two are distinguished by this
+   * flag rather than by `builder === undefined`, so the registry guards that
+   * pin the resource set and the envelope surface stay exact.
+   *
+   * The value names where the computation lives, for a reader following the
+   * trail from a tool description to the code.
+   */
+  derived?: MetricDerivation;
   /** The canned collector route, when one exists. */
   endpoint?: MetricEndpoint;
   /** What one row represents. */
@@ -869,7 +943,10 @@ export type MetricId =
   | "load_bounce_funnel"
   | "variant_leaderboard"
   // --- raw per-session (`query:raw` + retention only, ADR 0051 §7) ---
-  | "session_narrative";
+  | "session_narrative"
+  // --- insights (ADR 0051 §4) ---
+  | "insight_baseline"
+  | "insight_movers";
 
 // --- Row-schema building blocks ------------------------------------------
 //
@@ -4535,6 +4612,190 @@ export const METRIC_REGISTRY = {
     comparable: { primary: "conversions", direction: "up", minSample: 50 },
     category: "conversion",
   },
+
+  // =========================================================================
+  // Insights (ADR 0051 §4, design sketch §D)
+  //
+  // Derived metrics: computed in pure TypeScript over *another* metric's
+  // portable bucket series (`@uptimizr/db`'s `src/insights/`) rather than by a
+  // `build*` aggregation of their own. They are the answer to the two questions
+  // an agent otherwise re-derives from raw rows on every turn — "what is normal
+  // here" and "what changed" — computed once, the same way, on every engine.
+  // =========================================================================
+  insight_baseline: {
+    id: "insight_baseline",
+    title: "Metric baseline",
+    description:
+      "What is normal for one metric in one scene. Buckets a comparable metric's headline column " +
+      "into days or hours over a trailing window and reduces the series to its centre (mean, " +
+      "median), its ordinary spread (MAD, p10, p90) and its drift (least-squares slope per " +
+      "bucket). One row per request: the reference distribution a single later observation should " +
+      "be judged against, so 'is 42 FPS bad here?' has an answer that does not depend on the " +
+      "reader's memory.",
+    derived: "insight",
+    endpoint: { method: "GET", path: "/api/v1/insights/baseline" },
+    grain: "project",
+    dimensions: ["scene"],
+    // One row per request; `scene` is both the filter and the key the row
+    // carries, so it is the grain (#304).
+    grainDimensions: ["scene"],
+    filters: ["metric", "scene", "window", "bucket", "since", "until", "format"],
+    row: z.object({
+      metric: text,
+      scene: text,
+      sampleSize: int,
+      buckets: int,
+      mean: numOrNull,
+      median: numOrNull,
+      mad: numOrNull,
+      p10: numOrNull,
+      p90: numOrNull,
+      slope: numOrNull,
+    }),
+    columns: {
+      metric: { description: "The registry metric the baseline is of.", unit: "id" },
+      scene: {
+        description: "The scene it was scoped to; empty when the baseline spans every scene.",
+        unit: "id",
+      },
+      sampleSize: {
+        description:
+          "Events (or distinct sessions, for a session-valued metric) behind the whole series.",
+        unit: "count",
+      },
+      buckets: { description: "How many buckets carried a value.", unit: "count" },
+      mean: { description: "Arithmetic mean of the bucket values." },
+      median: { description: "Median bucket value — the headline 'normal'.", measure: true },
+      mad: {
+        description:
+          "Median absolute deviation: the typical bucket-to-bucket swing, and the unit a robust " +
+          "z-score is measured in.",
+      },
+      p10: { description: "10th percentile of the bucket values — the ordinary floor." },
+      p90: { description: "90th percentile of the bucket values — the ordinary ceiling." },
+      slope: {
+        description:
+          "Least-squares slope against the bucket index: change per bucket over the window.",
+      },
+    },
+    limits: { maxRows: 1, maxSummaryRows: 1 },
+    interpretation:
+      "Read `median` as the centre and `mad` as the tolerance: a later observation more than a few " +
+      "MADs from the median is unusual for this scene, one inside p10..p90 is ordinary. `slope` is " +
+      "the drift *within* the window — a baseline with a steep slope is not a stable reference and " +
+      "should be re-read over a shorter window before it is used to judge anything.",
+    caveats: [
+      "Only `comparable` metrics with a portable bucket series can be baselined; a metric whose value is defined by a join, a window function or a caller-supplied funnel predicate is rejected rather than approximated, and the error names every id that is available.",
+      "Window bounds are snapped down to whole buckets, so the current (incomplete) day or hour is excluded — otherwise every morning would look like a collapse. The snapped window is echoed in the `table` / `summary` envelopes.",
+      "Buckets with no matching events are absent from the series rather than zero: a metric that was silent for a week has a narrower baseline, not a lower one.",
+      "Every statistic is `null` when the window carried no values, and `slope` is `null` under two buckets. Read `null` as 'no data', never as 0.",
+      "The series reproduces the metric's headline column per bucket; where the metric's own endpoint aggregates per session first (ADR 0028 §1), a bucket value and that endpoint's headline can differ slightly.",
+    ],
+    sourceChannels: [],
+    related: ["insight_movers", "timeseries", "perf_summary", "events_daily"],
+    category: "insights",
+  },
+  insight_movers: {
+    id: "insight_movers",
+    title: "What changed",
+    description:
+      "What moved, ranked. For every comparable metric in scope, compares the current range with a " +
+      "reference range (the previous equal window by default) and ranks the differences by a " +
+      "robust z-score — the change divided by how much that metric normally swings, so a metric " +
+      "that is always volatile has to move much further than a steady one before it is called a " +
+      "mover. One row per metric: the top risers, the top fallers, and the ones that did not move.",
+    derived: "insight",
+    endpoint: { method: "GET", path: "/api/v1/insights/movers" },
+    grain: "row",
+    dimensions: ["scene"],
+    // One row per metric. Its rows carry no registry dimension column at all —
+    // the key is the metric id, which is not one — so there is nothing for the
+    // generic group-by tier to regroup by (#304).
+    grainDimensions: [],
+    filters: [
+      "scene",
+      "metrics",
+      "bucket",
+      "limit",
+      "since",
+      "until",
+      "refSince",
+      "refUntil",
+      "format",
+    ],
+    row: z.object({
+      metric: text,
+      dimensionValue: z.string().nullable(),
+      current: numOrNull,
+      previous: numOrNull,
+      delta: numOrNull,
+      deltaPct: numOrNull,
+      z: numOrNull,
+      direction: text,
+      aboveMinSample: z.boolean(),
+      sampleSize: num,
+    }),
+    columns: {
+      metric: { description: "The registry metric that moved.", unit: "id", label: true },
+      dimensionValue: {
+        description:
+          "The dimension value the move is attributed to. Always null in v1 — movers are computed " +
+          "at the scene (or project) level; per-dimension attribution arrives with `anomalies`.",
+        unit: "id",
+      },
+      current: { description: "The metric's headline column over the current range." },
+      previous: { description: "The same over the reference range." },
+      delta: { description: "`current - previous`, in the metric's own unit." },
+      deltaPct: {
+        description: "Relative change; null when the reference value was zero or missing.",
+        unit: "ratio",
+      },
+      z: {
+        description:
+          "Robust z-score: `delta` divided by the median absolute deviation of the reference " +
+          "bucket series. The ranking key.",
+        unit: "ratio",
+        measure: true,
+      },
+      direction: {
+        description:
+          "Whether a rise is good (`up`), bad (`down`) or merely a fact (`neutral`), from the " +
+          "moved metric's own registry entry. It qualifies the sign of `delta`; it is not the " +
+          "direction this metric actually moved in.",
+        unit: "label",
+      },
+      aboveMinSample: {
+        description:
+          "Whether the current range cleared the metric's declared minimum denominator. False " +
+          "means the delta is real arithmetic but not evidence.",
+      },
+      sampleSize: {
+        description:
+          "The current range's denominator — events, or distinct sessions for a session-valued " +
+          "metric — that `aboveMinSample` was decided on.",
+      },
+    },
+    limits: { maxRows: 150, maxSummaryRows: 10 },
+    interpretation:
+      "Read the rows in order: risers first, then fallers, then the ones that did not move. |z| is " +
+      "'how many typical swings': under ~2 the move is inside this metric's ordinary noise, over " +
+      "~3 it is worth explaining. Combine `direction` with the sign of `delta` to know whether a " +
+      "move is good or bad — a rise in a `down` metric (errors, dead clicks, jank) is a " +
+      "regression. Rows with `aboveMinSample: false` are sorted last and must not be reported as " +
+      "findings.",
+    caveats: [
+      "Cost is bounded by a per-request cap on how many metrics are scanned (one grouped scan each); without a `metrics` allowlist a curated default set is used, so a move in a metric outside that set is not reported. Name it explicitly to include it.",
+      "Only metrics with a portable bucket series participate. Funnels, cohort metrics and anything defined by the relationship between consecutive events are outside the scan by construction.",
+      "`aboveMinSample: false` means the denominator is too small for the delta to be evidence — the row is kept rather than dropped so 'we cannot tell' stays distinguishable from 'nothing changed', but it must not be read as a finding.",
+      "The spread is taken over the *reference* window's buckets, floored at 1% of that window's level — so a one-bucket or perfectly flat reference cannot make every metric score in the billions and turn the ranking into a comparison of raw deltas across incompatible units. A reference that is flat *at zero* has no level to floor against, so the first data of its kind scores a very large |z|: correct (it is unprecedented) but only meaningful once `aboveMinSample` is true.",
+      "Window bounds are snapped down to whole buckets, so the current incomplete day or hour is excluded from both ranges and the two stay exactly comparable.",
+      "`deltaPct` is null when the reference value was zero: a percentage change from nothing is undefined. Read `delta` in that case.",
+      "A metric is compared with itself over time, never across projects or scenes: sampling rates (ADR 0012) make absolute counts incomparable between them.",
+    ],
+    sourceChannels: [],
+    related: ["insight_baseline", "events_daily", "perf_daily", "event_counts"],
+    category: "insights",
+  },
 } satisfies Readonly<Record<MetricId, MetricDefinition>>;
 
 /** The registry's own type, with each entry's literal `builder` preserved. */
@@ -4618,5 +4879,22 @@ export function metricForBuilder(builder: AggregationBuilderName): MetricDefinit
  * catalog stays a superset of the hand-written one (design sketch §A.4).
  */
 export function isResourceMetric(metric: MetricDefinition): boolean {
-  return metric.builder === undefined;
+  return metric.builder === undefined && metric.derived === undefined;
+}
+
+/**
+ * A **derived** entry is computed in TypeScript over another metric's data
+ * rather than by a `build*` aggregation (ADR 0051 §4): the insight primitives.
+ * It has no builder, but — unlike a {@link isResourceMetric resource} — it is a
+ * real aggregate with a querystring, a time range and the `format` envelope, so
+ * every consumer that treats `builder != null` as "is an aggregate" should ask
+ * this instead.
+ */
+export function isDerivedMetric(metric: MetricDefinition): boolean {
+  return metric.derived !== undefined;
+}
+
+/** Whether a metric is served as an aggregate over a querystring (not a resource read). */
+export function isAggregateMetric(metric: MetricDefinition): boolean {
+  return metric.builder !== undefined || metric.derived !== undefined;
 }

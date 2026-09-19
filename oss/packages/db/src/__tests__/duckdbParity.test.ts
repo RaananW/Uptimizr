@@ -35,7 +35,7 @@ describe("duckdb parity (vs golden)", () => {
     await db.close();
   });
 
-  it("covers all 69 aggregations, plus the query DSL", () => {
+  it("covers all 69 aggregations, plus the query DSL and the insight bucket series", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
@@ -119,6 +119,15 @@ describe("duckdb parity (vs golden)", () => {
       "dsl:genericEventCountsByEngine",
       "dsl:genericMeshSourcesByScene",
       "dsl:genericInteractionsByCameraMode",
+      // The one query behind both insight primitives (ADR 0051 §4), one case per
+      // aggregate shape its measure catalog can render.
+      "metricBuckets:count",
+      "metricBuckets:sessions",
+      "metricBuckets:quantile",
+      "metricBuckets:sum",
+      "metricBuckets:geometry",
+      "metricBuckets:emptySeries",
+      "metricBuckets:dayGrain",
     ]);
   });
 

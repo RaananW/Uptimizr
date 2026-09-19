@@ -334,8 +334,103 @@ const CONVERSION_SESSION: AnyEvent[] = [
  */
 export const EVAL_SUPPLEMENT_EVENTS: readonly AnyEvent[] = [...XR_SESSION, ...CONVERSION_SESSION];
 
-/** Every event the harness seeds: the parity fixtures, then the supplement. */
-export const EVAL_EVENTS: readonly AnyEvent[] = [...PARITY_EVENTS, ...EVAL_SUPPLEMENT_EVENTS];
+/** One day, in milliseconds — the grain the insight primitives default to. */
+const DAY_MS = 86_400_000;
+
+/**
+ * A **previous day** in `lobby`, so "what changed?" has something to change
+ * *from* (ADR 0051 §4).
+ *
+ * `baseline` and `movers` are the only metrics that compare one window with
+ * another, and every other fixture event lands inside a single 18-second span —
+ * against which any reference window is empty and every mover reads "cannot
+ * tell". This batch gives the bank a real yesterday: a busier, healthier lobby
+ * session, so today reads as fewer interactions at a worse frame rate, which is
+ * exactly the shape of finding the primitives exist to surface.
+ *
+ * **It is invisible to every other case.** The events sit a full day before
+ * {@link EVAL_T0}, and {@link EVAL_RANGE} — the two-minute window every other
+ * question is asked over — cannot reach them. That is why extending the fixtures
+ * here perturbs no derived expectation.
+ */
+const PRIOR_DAY_SESSION: AnyEvent[] = (() => {
+  const t = (offsetMs: number): number => EVAL_T0 - DAY_MS + offsetMs;
+  const events: AnyEvent[] = [
+    ev("session_start", t(0), "s0", "lobby", {
+      scene: { cameraType: "arc-rotate", cameraName: "cam", meshCount: 3 },
+      user: { id: "anon-0" },
+      device: {
+        engine: "webgpu",
+        renderer: "Apple M2",
+        isMobile: false,
+        browser: "Chrome",
+        os: "macOS",
+      },
+      graphics: { api: "webgpu", backend: "metal", apiVersion: "1.0", shadingLanguage: "wgsl" },
+    }),
+  ];
+  // A healthy frame rate: six samples around 60 FPS. Today's lobby medians 45.
+  for (const [index, fps] of [58, 60, 62, 59, 61, 60].entries()) {
+    events.push(
+      ev("frame_perf", t(1_000 + index * 1_000), "s0", "lobby", {
+        fps,
+        frameTimeMs: 1000 / fps,
+        frameTimeP95Ms: 20,
+        longFrames: 0,
+        dpr: 2,
+        renderScale: 1,
+        position: [0, 0, 0],
+      }),
+    );
+  }
+  // Eight clicks, every one of which hit something. Today's lobby has two.
+  for (let index = 0; index < 8; index += 1) {
+    events.push(
+      ev("pointer_click", t(10_000 + index * 500), "s0", "lobby", {
+        screen: [0.4, 0.4],
+        hitPoint: [1, 1, 1],
+        hitMesh: index % 2 === 0 ? "box" : "sphere",
+        uv: [0.4, 0.4],
+        button: 0,
+        source: "mouse",
+      }),
+    );
+  }
+  // Mesh interactions and camera samples, so the interaction and attention
+  // movers have a reference of their own rather than only a total.
+  for (let index = 0; index < 4; index += 1) {
+    events.push(
+      ev("mesh_interaction", t(15_000 + index * 500), "s0", "lobby", {
+        mesh: "box",
+        kind: "click",
+        source: "mouse",
+      }),
+    );
+  }
+  for (let index = 0; index < 2; index += 1) {
+    events.push(
+      ev("camera_sample", t(18_000 + index * 1_000), "s0", "lobby", {
+        position: [index, 0, 0],
+        direction: [1, 0, 0],
+        hitPoint: [2, 2, 2],
+      }),
+    );
+  }
+  events.push(
+    ev("session_end", t(20_000), "s0", "lobby", { durationMs: 20_000, reason: "unload" }),
+  );
+  return events;
+})();
+
+/**
+ * Every event the harness seeds: the previous day, then the parity fixtures and
+ * the supplement that share {@link EVAL_T0}'s day.
+ */
+export const EVAL_EVENTS: readonly AnyEvent[] = [
+  ...PRIOR_DAY_SESSION,
+  ...PARITY_EVENTS,
+  ...EVAL_SUPPLEMENT_EVENTS,
+];
 
 /**
  * A registered scene proxy for `lobby` (ADR 0040). Without one the collector's

@@ -29,7 +29,8 @@
 `rendering_technology`, `capability_changes`, `xr_rotation`, `xr_sources`, `xr_abandonment`,
 `xr_locomotion`, `xr_tracking_quality`, `boundary_heatmap`, `boundary_heatmap_stats`,
 `xr_boundary_contacts`, `ar_placement_time_to_place`, `ar_placement_attempts`,
-`ar_placement_surfaces`, `funnel`, `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
+`ar_placement_surfaces`, `funnel`, `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`,
+`insight_baseline`, `insight_movers`
 
 Only on a key holding `query:raw`, and only when the collector runs with
 `ENABLE_RAW_SESSION_RETENTION` (ADR 0003):
@@ -51,6 +52,44 @@ input actions, camera gestures); a spatial heatmap or a percentile has one fixed
 `deltaPct`, plus a significance test where the measure is a count); `explain: true` returns the
 plan and its warnings instead of the rows; every `summary` row carries a runnable `drillQuery`.
 Its `structuredContent` is `{ result }`, not `{ rows }`.
+`hover_dwell`, `interaction_sources`, `top_input_actions`, `camera_gestures`, `navigation_stats`,
+`backtrack_ratio`, `perf_summary`, `render_scale_truth`, `perf_distribution`, `fps_histogram`,
+`frame_time_percentiles`, `jank_rate`, `perf_churn`, `perf_by_device`, `perf_by_scene`,
+`perf_heatmap`, `compile_stalls`, `resource_summary`, `resource_percentiles`, `stability_counts`,
+`graphics_diagnostics`, `error_heatmap`, `rendering_technology`, `capability_changes`,
+`xr_rotation`, `xr_sources`, `xr_abandonment`, `xr_locomotion`, `xr_tracking_quality`,
+`boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
+`ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
+`scene_retention`, `load_bounce_funnel`, `variant_leaderboard`, `insight_baseline`,
+`insight_movers`
+
+<!-- generated:registry-tool-names:end -->
+
+## Insight primitives (ADR 0051 §4)
+
+Two of the tools are readings *about* the other metrics, and they are the right first call on an
+open-ended question — "how are things?" does not mean "call thirty tools".
+
+- `insight_movers` — what changed against a reference window (the previous equal one by default),
+  for every comparable metric in scope, ranked by a robust z-score: the change divided by how much
+  that metric normally swings, so a noisy metric must move much further than a steady one to reach
+  the top. Bounded: at most 24 metrics are scanned per request.
+- `insight_baseline` — what is normal for one metric in one scene: `median` and `mad`, the
+  `p10`..`p90` band, and the drift `slope`. Call it on whatever moved, to say whether the new level
+  is actually outside normal rather than merely different.
+
+Two fields decide whether a mover is worth reporting, and both are easy to misread:
+
+- `direction` is the registry's opinion of what a **rise** in that metric means — `up` (good),
+  `down` (bad) or `neutral`. It is *not* the direction of the move: read it with the sign of
+  `delta`, so a rise in a `down` metric (errors, dead clicks, jank) is a regression.
+- `aboveMinSample: false` means the delta is real arithmetic but the denominator is below the
+  metric's declared minimum. Such rows are returned rather than dropped — "we cannot tell" and
+  "nothing changed" are different answers — and must never be reported as findings.
+
+Statistics are computed in pure TypeScript over portable day/hour buckets, so the same data yields
+the same answer on every storage engine. Only `comparable` metrics with a faithful per-bucket form
+participate; asking for one that has none returns `400` naming every id that does.
 
 ## Result formats (`format`)
 

@@ -123,6 +123,9 @@ export function dimensionColumn(metric: MetricDefinition, dimension: DimensionId
 export const REQUIRED_FILTERS: Readonly<Record<string, readonly FilterId[]>> = {
   funnel: ["steps"],
   mesh_uv_heatmap: ["mesh"],
+  // An insight is a metric computed *over* another metric, so `baseline` has no
+  // meaning until its subject is named (ADR 0051 §4).
+  insight_baseline: ["metric"],
 };
 
 /**
@@ -371,13 +374,22 @@ export function validateQuery(query: QueryV1): QueryValidation {
     });
     return { issues };
   }
-  if (isResourceMetric(metric)) {
+  if (metric.builder === undefined) {
+    // Two kinds of entry have no `build*` for the DSL to delegate to: a stored
+    // record (`session_meta`, `scene_representation`) and a **derived** insight
+    // primitive, which is computed in TypeScript *over* another metric's bucket
+    // series (ADR 0051 §4). Neither can be grouped, filtered or summarised by a
+    // query, and both are served on an endpoint of their own — so the honest
+    // answer names it rather than failing later in the compiler.
     issues.push({
       code: "metric_not_queryable",
       path: "metric",
-      message:
-        `"${metric.id}" is a stored record rather than an aggregation, so it has nothing to ` +
-        `group, filter or summarise. Read it from its own endpoint (${metric.endpoint?.path ?? "—"}).`,
+      message: isResourceMetric(metric)
+        ? `"${metric.id}" is a stored record rather than an aggregation, so it has nothing to ` +
+          `group, filter or summarise. Read it from its own endpoint (${metric.endpoint?.path ?? "—"}).`
+        : `"${metric.id}" is a derived insight computed over another metric rather than an ` +
+          `aggregation of its own, so the query DSL cannot compile it. Read it from its own ` +
+          `endpoint (${metric.endpoint?.path ?? "—"}), naming the metric to analyse there.`,
     });
     return { issues };
   }

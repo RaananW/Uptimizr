@@ -18,6 +18,7 @@ import { buildDashboardCsp } from "./csp.js";
 import { isInternalDispatch, newInternalDispatchToken } from "./internalDispatch.js";
 import { collectRoutes } from "./routes/collect.js";
 import { contextRoutes } from "./routes/context.js";
+import { insightRoutes } from "./routes/insights.js";
 import { liveRoutes } from "./routes/live.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
@@ -200,6 +201,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     config,
     metadata: deps.projectMetadata ?? storeProjectMetadata(store),
   });
+  // Derived reads over the query surface (ADR 0051 §4): `baseline` and `movers`.
+  // Its own plugin so the envelope hook and the metric-resolution 400s stay
+  // scoped to the two insight routes.
+  await app.register(insightRoutes, { store });
   await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API

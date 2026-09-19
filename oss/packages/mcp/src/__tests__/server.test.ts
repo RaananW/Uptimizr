@@ -219,6 +219,9 @@ const REQUIRED_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   session_meta: { sessionId: "s1" },
   session_trajectory: { sessionId: "s4" },
   scene_representation: { sceneId: "lobby" },
+  // An insight is computed *over* another metric, so its subject is required
+  // (ADR 0051 §4).
+  insight_baseline: { metric: "perf_summary" },
 };
 
 /**

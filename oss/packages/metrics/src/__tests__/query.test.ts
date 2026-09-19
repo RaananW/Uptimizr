@@ -58,13 +58,21 @@ function callable(metricId: string): QueryV1 {
   return query(metricId, Object.keys(filters).length > 0 ? { filters } : {});
 }
 
-// The DSL answers the ordinary `query` surface. Two registry entries are
-// resource reads rather than aggregations, and `session_narrative` (#314) is a
-// `query:raw` compaction of one session — `POST /api/v1/query` carries the
-// ordinary `query` capability, so it is deliberately not reachable there.
+// The DSL answers the ordinary `query` surface, and only what it can compile:
+// a metric with a `build*` builder. Four registry entries are outside it — the
+// two resource reads, the derived insight primitives (#305, computed over
+// another metric rather than by SQL of their own) and `session_narrative`
+// (#314, a `query:raw` compaction of one session, while `POST /api/v1/query`
+// carries the ordinary `query` capability).
 const aggregations = allMetrics().filter(
-  (metric) => !isResourceMetric(metric) && metricCapability(metric) === "query",
+  (metric) => metric.builder !== undefined && metricCapability(metric) === "query",
 );
+
+/** Every registry entry the DSL deliberately does not answer, by id. */
+const OUTSIDE_THE_DSL = allMetrics()
+  .filter((metric) => !aggregations.includes(metric))
+  .map((metric) => metric.id)
+  .sort();
 
 describe("every metric is reachable through the DSL", () => {
   it.each(aggregations.map((metric) => metric.id))("%s validates", (id) => {
@@ -73,15 +81,25 @@ describe("every metric is reachable through the DSL", () => {
 
   it("covers the whole aggregation surface, not a subset of it", () => {
     // Guards against the list above silently shrinking: if the registry grows an
-    // aggregation, this suite must grow with it. Exactly three entries are
-    // outside the DSL — the two resource reads and `session_narrative`.
-    expect(allMetrics().length - aggregations.length).toBe(3);
-    expect(
-      allMetrics()
-        .filter((metric) => !aggregations.includes(metric))
-        .map((metric) => metric.id)
-        .sort(),
-    ).toEqual(["scene_representation", "session_meta", "session_narrative"]);
+    // aggregation, this suite must grow with it — and the entries that are
+    // deliberately outside the DSL are pinned by name rather than by a count.
+    expect(OUTSIDE_THE_DSL).toEqual([
+      "insight_baseline",
+      "insight_movers",
+      "scene_representation",
+      "session_meta",
+      "session_narrative",
+    ]);
+  });
+
+  it("refuses the entries it cannot compile, naming the endpoint that answers them", () => {
+    for (const id of OUTSIDE_THE_DSL) {
+      if (metricCapability(getMetric(id)!) !== "query") continue;
+      const [issue, ...rest] = validateQuery(query(id)).issues;
+      expect(issue?.code, id).toBe("metric_not_queryable");
+      expect(issue?.message, id).toContain(getMetric(id)!.endpoint!.path);
+      expect(rest, id).toEqual([]);
+    }
   });
 
   it("accepts each metric's own grain as explicit dimensions", () => {
@@ -334,7 +352,19 @@ describe("the filter vocabulary cannot drift from the registry", () => {
    * compaction bounds (#314). A `query:raw` read is not reachable through
    * `POST /api/v1/query`, so the grammar has no key for them.
    */
-  const NOT_IN_DSL: readonly FilterId[] = ["minDwellMs", "maxEntries"];
+  const NOT_IN_DSL: readonly FilterId[] = [
+    // `session_narrative`'s compaction bounds (#314).
+    "minDwellMs",
+    "maxEntries",
+    // The insight primitives' own parameters (#305): they name a *subject*
+    // metric and a reference window, which only make sense on an endpoint the
+    // DSL does not compile.
+    "metric",
+    "metrics",
+    "window",
+    "refSince",
+    "refUntil",
+  ];
   /** DSL-only grammar keys with no `FilterId` (deferred to #304). */
   const GRAMMAR_ONLY = ["event", "device"];
 

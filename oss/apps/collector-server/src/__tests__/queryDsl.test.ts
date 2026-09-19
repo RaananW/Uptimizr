@@ -39,7 +39,11 @@ const REQUIRED_VALUES: Readonly<Record<string, unknown>> = {
   steps: [{ type: "camera_sample" }, { type: "pointer_click", mesh: "sphere" }],
 };
 
-const AGGREGATIONS = allMetrics().filter((metric) => !isResourceMetric(metric));
+// Everything `POST /api/v1/query` can compile: a metric with a `build*`. The
+// two resource reads have none, and neither do the derived insight primitives
+// (#305) — they are computed over another metric's bucket series and are served
+// on `/api/v1/insights/*`, which is what their 400 says.
+const AGGREGATIONS = allMetrics().filter((metric) => metric.builder !== undefined);
 
 let app: FastifyInstance;
 
@@ -330,6 +334,17 @@ describe("every registry aggregation is reachable through the DSL", () => {
     const res = await post(query(id, { format: "full" }));
     expect(res.statusCode, res.body).toBe(200);
   });
+
+  it.each(["insight_baseline", "insight_movers"])(
+    "%s answers 400, naming the endpoint that does serve it",
+    async (id) => {
+      const res = await post(query(id, { format: "full" }));
+      expect(res.statusCode).toBe(400);
+      const body = res.json() as { issues?: { code: string }[]; error?: string };
+      expect(body.issues?.[0]?.code).toBe("metric_not_queryable");
+      expect(body.error).toContain("/api/v1/insights/");
+    },
+  );
 
   it("returns exactly what the canned endpoint returns", async () => {
     // Three metrics whose canned endpoints take no parameter the DSL spells

@@ -276,6 +276,14 @@ export type {
 // carries no DuckDB driver and no `node:` import.
 export * from "./query/summary/index.js";
 
+// --- Insight primitives (ADR 0051 §4, design sketch §D) ---
+// `baseline` and `movers`: one generic, dialect-agnostic bucket query
+// (`buildMetricBuckets`) plus pure-TypeScript statistics over the series it
+// returns. Re-exported on the root barrel rather than a subpath because the
+// bucket builder is authored against the same `Dialect` contract as every other
+// aggregation, and the statistics are what the collector imports beside them.
+export * from "./insights/index.js";
+
 export type {
   QuerySpec,
   RangeOptions,

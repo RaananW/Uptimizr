@@ -17,6 +17,8 @@ import {
   buildCameraGestures,
   buildDistinctScenes,
   buildEventTypeCounts,
+  buildMetricBuckets,
+  toMetricBucketRows,
   buildFlowHeatmap,
   buildFunnel,
   buildSceneRetention,
@@ -413,6 +415,17 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       runDuckdbQuery<TimeseriesBucketRow>(db, buildTimeseries(projectId, opts, duckdbDialect)),
     eventTypeCounts: (projectId, opts = {}) =>
       runDuckdbQuery<EventTypeCountRow>(db, buildEventTypeCounts(projectId, opts, duckdbDialect)),
+    // The one bucket series behind `baseline` and `movers` (ADR 0051 §4). The
+    // spec carries no registry metric of its own, so the store edge has no row
+    // schema to coerce it against — `toMetricBucketRows` parses the numbers,
+    // which is what keeps the engines that string-encode 64-bit counts honest.
+    metricBuckets: async (projectId, opts) =>
+      toMetricBucketRows(
+        await runDuckdbQuery<Record<string, unknown>>(
+          db,
+          buildMetricBuckets(projectId, opts, duckdbDialect),
+        ),
+      ),
     funnel: (projectId, opts) =>
       runDuckdbQuery<FunnelStepResultRow>(db, buildFunnel(projectId, opts, duckdbDialect)),
     sceneRetention: (projectId, opts) =>

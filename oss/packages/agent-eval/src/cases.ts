@@ -40,6 +40,7 @@ export const CASE_CATEGORIES = [
   "ar",
   "sessions",
   "conversion",
+  "insights",
 ] as const;
 
 /** One registry category. */

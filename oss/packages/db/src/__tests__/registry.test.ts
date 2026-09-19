@@ -163,8 +163,16 @@ function callBuilder(build: (...args: unknown[]) => QuerySpec, name: string): Qu
  * Which registry metric each parity case exercises. Several cases are filter
  * variants of the same aggregation (a region drill-down, a by-mesh UV heatmap),
  * so the mapping is many-to-one.
+ *
+ * `null` means the case exercises no metric's row schema: the `metricBuckets:*`
+ * cases render the shared insight bucket series (ADR 0051 §4), whose
+ * `{ bucket, value, sample_size }` shape is an *input* to `insight_baseline` /
+ * `insight_movers` rather than either metric's output row. Those two rows are
+ * computed in TypeScript and are covered by the collector's response-schema
+ * suite. The mapping still has to name every case, so a new parity case cannot
+ * skip this check by omission.
  */
-const PARITY_CASE_METRIC: Readonly<Record<string, MetricId>> = {
+const PARITY_CASE_METRIC: Readonly<Record<string, MetricId | null>> = {
   listSessions: "list_sessions",
   pointerHeatmap: "pointer_heatmap",
   meshUvHeatmap: "mesh_uv_heatmap",
@@ -251,6 +259,14 @@ const PARITY_CASE_METRIC: Readonly<Record<string, MetricId>> = {
   "dsl:genericEventCountsByEngine": "event_counts",
   "dsl:genericMeshSourcesByScene": "mesh_sources",
   "dsl:genericInteractionsByCameraMode": "interaction_sources",
+  // The shared insight bucket series — an input, not a metric's output row.
+  "metricBuckets:count": null,
+  "metricBuckets:sessions": null,
+  "metricBuckets:quantile": null,
+  "metricBuckets:sum": null,
+  "metricBuckets:geometry": null,
+  "metricBuckets:emptySeries": null,
+  "metricBuckets:dayGrain": null,
 };
 
 /** The dimensions each generic parity case grouped by, for the column check. */
@@ -498,8 +514,13 @@ describe("metric registry — row schemas against real DuckDB output", () => {
     await insertEvents(db, [...PARITY_EVENTS, ...REGISTRY_EXTRA_EVENTS]);
 
     const queries: ReadonlyArray<{ metric: MetricId; build: (d: Dialect) => QuerySpec }> = [
+      // Generic group-by rows are keyed by the dimensions that were asked for
+      // rather than by the metric's own `row`, and the `metricBuckets:*` cases
+      // are not a metric's rows at all — both are checked separately below.
       ...PARITY_CASES.filter(
-        (parityCase) => !GENERIC_PARITY_CASE_NAMES.includes(parityCase.name),
+        (parityCase) =>
+          !GENERIC_PARITY_CASE_NAMES.includes(parityCase.name) &&
+          PARITY_CASE_METRIC[parityCase.name] != null,
       ).map((parityCase) => ({
         metric: PARITY_CASE_METRIC[parityCase.name] as MetricId,
         build: parityCase.build.bind(parityCase),

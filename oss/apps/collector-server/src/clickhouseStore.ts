@@ -17,6 +17,8 @@ import {
   buildCameraGestures,
   buildDistinctScenes,
   buildEventTypeCounts,
+  buildMetricBuckets,
+  toMetricBucketRows,
   buildFlowHeatmap,
   buildFunnel,
   buildSceneRetention,
@@ -370,6 +372,17 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<TimeseriesBucketRow>(ch, buildTimeseries(projectId, opts, d)),
     eventTypeCounts: (projectId, opts = {}) =>
       runClickhouseQuery<EventTypeCountRow>(ch, buildEventTypeCounts(projectId, opts, d)),
+    // The one bucket series behind `baseline` and `movers` (ADR 0051 §4). The
+    // spec carries no registry metric of its own, so the store edge has no row
+    // schema to coerce it against — `toMetricBucketRows` parses the numbers,
+    // which is what keeps the engines that string-encode 64-bit counts honest.
+    metricBuckets: async (projectId, opts) =>
+      toMetricBucketRows(
+        await runClickhouseQuery<Record<string, unknown>>(
+          ch,
+          buildMetricBuckets(projectId, opts, d),
+        ),
+      ),
     funnel: (projectId, opts) =>
       runClickhouseQuery<FunnelStepResultRow>(ch, buildFunnel(projectId, opts, d)),
     sceneRetention: (projectId, opts) =>
