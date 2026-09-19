@@ -20,6 +20,7 @@ function makeCase(overrides: Partial<EvalCase> = {}): EvalCase {
     question: "How is frame rate?",
     file: "performance.yaml",
     context: {},
+    capability: "query",
     expectedTools: [["perf_summary"]],
     expectedArgs: {},
     expectedAnswer: { numbers: [], phrases: [], forbiddenPhrases: [] },

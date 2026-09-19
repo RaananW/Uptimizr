@@ -446,9 +446,10 @@ describe("OpenAPI describes the metadata group", () => {
     expect(doc.components.schemas.GlossaryEntry).toBeDefined();
     expect(doc.components.schemas.SavedAnalysis).toBeDefined();
     expect(doc.components.responses.Conflict).toBeDefined();
-    // The read API's promise is unchanged; the metadata group is the exception
-    // the document now names.
-    expect(doc.info.description).toMatch(/read-only and aggregate-only/);
+    // The read API's promise is unchanged; the metadata group is one of the two
+    // exceptions the document now names (the other is `session_narrative`).
+    expect(doc.info.description).toMatch(/read-only/);
+    expect(doc.info.description).toMatch(/aggregate-only/);
     expect(doc.info.description).toMatch(/metadata/);
   });
 });

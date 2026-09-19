@@ -14,7 +14,11 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
-import * as db from "@uptimizr/db";
+// The aggregation module specifically, not the package barrel: the barrel also
+// re-exports pure helpers whose names begin with `build` but which emit no
+// `QuerySpec` (`buildSessionNarrative`, ADR 0051 §7), and this sweep is about
+// SQL parity.
+import * as aggregations from "@uptimizr/db/query";
 import {
   PARITY_EVENTS,
   PARITY_PROJECT_ID,
@@ -561,7 +565,7 @@ describe.skipIf(!available)("mssql store", () => {
 
   describe("every aggregation matches DuckDB on the extended fixtures", () => {
     type Builder = (projectId: string, opts: never, d: Dialect) => QuerySpec;
-    const builders = Object.entries(db)
+    const builders = Object.entries(aggregations)
       .filter(([name, value]) => /^build[A-Z]/.test(name) && typeof value === "function")
       .map(([name, value]) => [name, value as Builder] as const);
 

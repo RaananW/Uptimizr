@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { allMetrics, metricCapability } from "@uptimizr/metrics";
 import type { QueryParams } from "./client.js";
 import { registryToTools } from "./registryTools.js";
 import { queryTool } from "./queryTool.js";
@@ -66,6 +67,10 @@ export interface ReadTool {
  * resource entries (`session_meta`, `scene_representation`) are coarse
  * descriptors, never an event stream.
  *
+ * This is the **`query`** surface: every metric whose endpoint needs nothing
+ * more than the ordinary read capability. Metrics that require more are not
+ * silently mixed in — see {@link rawTools}.
+ *
  * The 20 tool names the hand-written catalog shipped are registry ids verbatim
  * and their argument schemas are unchanged — `__tests__/shippedToolCompat.test.ts`
  * pins that against a frozen fixture, so an MCP client written against the old
@@ -77,7 +82,32 @@ export interface ReadTool {
  * anything that needs a filter the canned tool does not expose. See
  * `queryTool.ts`.
  */
-export const readTools: readonly ReadTool[] = [...registryToTools(), queryTool];
+export const readTools: readonly ReadTool[] = [
+  ...registryToTools(allMetrics().filter((metric) => metricCapability(metric) === "query")),
+  queryTool,
+];
+
+/**
+ * The **`query:raw`** tools: generated from exactly the registry metrics whose
+ * endpoint declares that capability (ADR 0051 §7, design sketch §G.2). Today
+ * that is `session_narrative`, the compacted account of one session.
+ *
+ * Kept as a separate catalog rather than folded into {@link readTools} because
+ * the capability is not a property of the *agent*, it is a property of the **key
+ * the agent was handed**. A host registers these tools only after confirming the
+ * key holds `query:raw` — `@uptimizr/mcp`'s `createMcpServer(client, {
+ * capabilities })` does exactly that, and `GET /api/v1/whoami` is where the
+ * capability set comes from. Registering them unconditionally would advertise a
+ * tool that answers 403, which is worse for a model than not having it: it burns
+ * a turn and invites a retry.
+ *
+ * The collector refuses these endpoints unless it *also* has
+ * `ENABLE_RAW_SESSION_RETENTION` enabled, so holding the capability is necessary
+ * but never sufficient (ADR 0003).
+ */
+export const rawTools: readonly ReadTool[] = registryToTools(
+  allMetrics().filter((metric) => metricCapability(metric) === "query:raw"),
+);
 
 /**
  * Names of the **core** read tools — a small, single-step-friendly subset of

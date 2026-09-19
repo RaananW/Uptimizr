@@ -13,7 +13,13 @@
  * partial report is far more useful than none.
  */
 
-import { runAgent, readTools, type LlmProvider, type ReadTool } from "@uptimizr/agent-core";
+import {
+  runAgent,
+  rawTools,
+  readTools,
+  type LlmProvider,
+  type ReadTool,
+} from "@uptimizr/agent-core";
 import type { AgentMessage } from "@uptimizr/agent-core";
 import type { EvalCase } from "./cases.js";
 import { EVAL_PROJECT_ID, EVAL_RANGE, EVAL_SCENES } from "./fixtures.js";
@@ -111,6 +117,10 @@ function observedCalls(messages: readonly AgentMessage[]): ObservedToolCall[] {
 /** Run the whole bank and return the graded result. */
 export async function runEval(options: RunEvalOptions): Promise<EvalRun> {
   const tools = options.tools ?? readTools;
+  // A `query:raw` case is asked through a key that holds the capability and
+  // sees the raw-gated tools as well; every other case keeps the aggregate-only
+  // surface, so the bank measures the default deployment by default.
+  const rawCatalog = [...tools, ...rawTools];
   const harness = options.harness ?? (await startHarness());
   const ownsHarness = options.harness === undefined;
   const startedAt = new Date();
@@ -120,11 +130,13 @@ export async function runEval(options: RunEvalOptions): Promise<EvalRun> {
     for (const [index, evalCase] of options.cases.entries()) {
       const began = Date.now();
       let run: ObservedRun;
+      const raw = evalCase.capability === "query:raw";
+      const caseTools = raw ? rawCatalog : tools;
       try {
         const result = await runAgent({
-          provider: options.makeProvider(evalCase, tools),
-          client: harness.client,
-          tools,
+          provider: options.makeProvider(evalCase, caseTools),
+          client: raw ? harness.rawClient : harness.client,
+          tools: caseTools,
           maxSteps: MAX_STEPS,
           messages: [
             { role: "system", content: systemPrompt(evalCase) },

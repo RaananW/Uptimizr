@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CollectorClient } from "@uptimizr/agent-core";
-import { buildCapabilities } from "./capabilities.js";
+import { buildCapabilities, type BuildCapabilitiesOptions } from "./capabilities.js";
 
 /** URI of the static, machine-readable capabilities/schema descriptor. */
 export const CAPABILITIES_URI = "uptimizr://capabilities";
@@ -20,7 +20,11 @@ export const SCENES_URI = "uptimizr://scenes";
  *
  * Both are read-only; resources never mutate or expose raw per-session events.
  */
-export function registerResources(server: McpServer, client: CollectorClient): void {
+export function registerResources(
+  server: McpServer,
+  client: CollectorClient,
+  options: BuildCapabilitiesOptions = {},
+): void {
   server.registerResource(
     "capabilities",
     CAPABILITIES_URI,
@@ -36,7 +40,7 @@ export function registerResources(server: McpServer, client: CollectorClient): v
         {
           uri: uri.href,
           mimeType: "application/json",
-          text: JSON.stringify(buildCapabilities(), null, 2),
+          text: JSON.stringify(buildCapabilities(options), null, 2),
         },
       ],
     }),

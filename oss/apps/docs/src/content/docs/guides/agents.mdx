@@ -295,8 +295,14 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 - A key carries a **capability set** — `query`, `query:raw`, `annotate`, `ingest` — and a key that
   is authenticated but lacks the capability a route needs is refused with `403`.
 - `query` alone is enough for every aggregate read, and for the MCP server. **`query:raw` is
-  deliberately separate**: raw per-session streams (replay, live-follow) need it _and_
+  deliberately separate**: raw per-session streams (replay, live-follow) and the
+  [session narrative](/docs/guides/sessions/#session-narrative) need it *and*
   `ENABLE_RAW_SESSION_RETENTION` on the collector.
+- A `query:raw` key also unlocks one extra **tool**: `session_narrative`, the ordered account of
+  what a single session did. It is not in the default catalog, because a tool that always answers
+  `403` costs a model a turn and invites a retry. `createMcpServer(client, { capabilities })`
+  registers it only when the capability is really there, and the `uptimizr-mcp` binary discovers
+  that for you by calling `/api/v1/whoami` at start-up.
 - `--rate-limit-*` gives the key its own budget, bucketed on the key id, so one busy agent cannot
   spend another's allowance.
 - `GET /api/v1/whoami` tells an agent what its key holds, so it can register only the tools it may

@@ -35,16 +35,21 @@ import {
 } from "./fixtures.js";
 
 /**
- * Collector configuration for an eval run: headless, no CORS, raw retention off
- * (the agent surface is aggregate-only, ADR 0003), and rate limits lifted so a
- * 40-case run with several tool calls each is never throttled.
+ * Collector configuration for an eval run: headless, no CORS, and rate limits
+ * lifted so a 40-case run with several tool calls each is never throttled.
+ *
+ * Raw-session retention is **on** so the `query:raw` half of the gate can be
+ * exercised (ADR 0051 §7). That is not a widening of the agent surface: the
+ * default key the harness hands out still holds `query` alone, so every
+ * ordinary case sees exactly the aggregate-only collector it saw before, and a
+ * case that asks for a narrative must opt in to {@link EvalHarness.rawClient}.
  */
 const EVAL_CONFIG: CollectorConfig = {
   host: "127.0.0.1",
   port: 0,
   corsOrigins: [],
   visitorHashSecret: "agent-eval-visitor-salt",
-  enableRawSessionRetention: false,
+  enableRawSessionRetention: true,
   liveWindowMs: 30_000,
   liveTokenSecret: "agent-eval-live-secret",
   liveTokenSecretIsDedicated: true,
@@ -78,10 +83,21 @@ export interface StartHarnessOptions {
   capabilities?: readonly ApiKeyCapability[];
 }
 
-/** A booted, seeded collector plus the client an agent run uses. */
+/** A booted, seeded collector plus the clients an agent run uses. */
 export interface EvalHarness {
-  /** Client over the in-process collector (Fastify `inject`). */
+  /**
+   * Client over the in-process collector (Fastify `inject`), bound to a key
+   * holding {@link StartHarnessOptions.capabilities} — `query` by default, the
+   * ordinary aggregate surface.
+   */
   client: CollectorClient;
+  /**
+   * The same collector through a key holding `query,query:raw`. Only a case
+   * that needs a raw-gated tool should use it; everything else is scored against
+   * the aggregate-only surface, which is the one a project owner hands out by
+   * default (ADR 0003).
+   */
+  rawClient: CollectorClient;
   /** Shut the Fastify instance down. */
   close(): Promise<void>;
 }
@@ -140,19 +156,31 @@ function injectClient(app: FastifyInstance, apiKey: string): CollectorClient {
 export async function startHarness(options: StartHarnessOptions = {}): Promise<EvalHarness> {
   const capabilities = options.capabilities ?? (["query"] as const);
   const apiKey = generateApiKey();
+  const rawApiKey = generateApiKey();
   const duckdb = await createDuckdbStore(":memory:");
   const store: CollectorStore = {
     ...duckdb,
-    resolveApiKey: async (key: string) =>
-      key === apiKey
-        ? {
-            projectId: EVAL_PROJECT_ID,
-            keyId: "eval-key",
-            capabilities: [...capabilities],
-            label: "agent-eval",
-            rateLimit: null,
-          }
-        : null,
+    resolveApiKey: async (key: string) => {
+      if (key === apiKey) {
+        return {
+          projectId: EVAL_PROJECT_ID,
+          keyId: "eval-key",
+          capabilities: [...capabilities],
+          label: "agent-eval",
+          rateLimit: null,
+        };
+      }
+      if (key === rawApiKey) {
+        return {
+          projectId: EVAL_PROJECT_ID,
+          keyId: "eval-raw-key",
+          capabilities: ["query", "query:raw"],
+          label: "agent-eval-raw",
+          rateLimit: null,
+        };
+      }
+      return null;
+    },
     projectExists: async (projectId: string) => projectId === EVAL_PROJECT_ID,
   };
   await store.insertEvents(EVAL_EVENTS);
@@ -164,5 +192,9 @@ export async function startHarness(options: StartHarnessOptions = {}): Promise<E
   const app = await buildApp({ store, config: EVAL_CONFIG });
   await app.ready();
 
-  return { client: injectClient(app, apiKey), close: () => app.close() };
+  return {
+    client: injectClient(app, apiKey),
+    rawClient: injectClient(app, rawApiKey),
+    close: () => app.close(),
+  };
 }

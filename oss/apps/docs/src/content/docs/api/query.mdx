@@ -127,6 +127,7 @@ including each column's unit and each metric's caveats.
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/v1/sessions` | `list_sessions` | session | `since`, `until`, `bins`, `limit`, `cameraMode`, `format` | One row per session seen in the range: its id, the server-derived daily-rotating visitor hash, how many events it produced, and its first/last event timestamps. The entry point for 'what traffic did this project get' and for picking a session to drill into. |
 | `GET` | `/api/v1/sessions/:id/meta` | `session_meta` | session | `session` | The coarse descriptor for one session — start time, the device/graphics block reported at `session_start`, the scene metadata and the app-supplied anonymous user descriptor. A single-object resource read from the store, not an aggregation, and deliberately not the raw event stream. |
+| `GET` | `/api/v1/sessions/:id/narrative` | `session_narrative` | row | `session`, `minDwellMs`, `fpsThreshold`, `maxEntries`, `format` | An ordered, compacted account of what one session did — scene changes, the meshes it dwelled on, its interactions, performance dips, errors and how it ended — timestamps relative to its first event, plus a closing totals entry. A compaction of the raw per-session stream, gated on `query:raw` and raw-session retention (ADR 0003). |
 | `GET` | `/api/v1/scenes/:sceneId/representation` | `scene_representation` | scene | `scene` | The registered proxy geometry for one scene (ADR 0014): its world bounds, up-axis and unit scale, and the named proxy boxes when one was uploaded. A metadata resource read, not an aggregation — it is what turns the voxel coordinates of the spatial metrics into named places. |
 | `GET` | `/api/v1/scenes` | `list_scenes` | scene | `since`, `until`, `limit`, `format` | The distinct developer-assigned scenes (ADR 0010) that saw activity in the range, with their event count and most recent activity. One row per scene; the orientation query before any scene-scoped question. |
 | `GET` | `/api/v1/timeseries` | `timeseries` | bucket | `since`, `until`, `interval`, `scene`, `type`, `format` | Event volume bucketed into fixed `interval`-second windows, with the average FPS of any `frame_perf` samples in the same bucket. One row per bucket: the shape of traffic with the coarse perf trend beside it. |
@@ -403,6 +404,7 @@ developer-only path.
 | Method | Path                          | Purpose                                                       | Capability  | Extra params           |
 | ------ | ----------------------------- | ------------------------------------------------------------- | ----------- | ---------------------- |
 | `GET`  | `/api/v1/sessions/:id/events` | Ordered raw event stream for replay.                          | `query:raw` | `format=json\|ndjson`  |
+| `GET`  | `/api/v1/sessions/:id/narrative` | Ordered, compacted account of what one session did.       | `query:raw` | `minDwellMs`, `fpsThreshold`, `maxEntries`, `format=full\|table\|text` |
 | `GET`  | `/api/v1/live/sessions/:id`   | Live per-session follow — an SSE tail of that same raw stream. | `query:raw` | `token`                |
 | `POST` | `/api/v1/live/token`          | Exchange the API key for the short-lived live-stream `token`.  | `query`     | —                      |
 
@@ -424,6 +426,14 @@ token, so `query:raw` is enforced there too.
 The aggregate endpoints never expose raw events — don't reach for the raw stream to build an
 aggregate.
 :::
+
+`/api/v1/sessions/:id/narrative` is the readable sibling of the event stream: the same gates, but
+it returns an ordered, bounded account of the session (scene changes, dwell, interactions, perf
+dips, errors, how it ended, then a totals entry) instead of every sampled event. It is the only
+route on this page that accepts **`format=text`** — a line per entry, for putting a whole session
+in a model's context — alongside the usual `full` and `table`. See
+[Session narrative](/docs/guides/sessions/#session-narrative) for the parameters and
+[Privacy & retention](/docs/deploy/privacy/#what-a-session-narrative-shows) for what it omits.
 
 ## Example
 

@@ -12,9 +12,12 @@ import { createMcpServer, fetchKeyCapabilities } from "./server.js";
 async function main(): Promise<void> {
   const config = readMcpConfig();
   const client = createCollectorClient(config);
-  // Ask the collector what this key may do before building the server: the
-  // metadata write tools of #310 are registered only for a key that holds
-  // `annotate`, so a read-only key never sees a tool it would be refused for.
+  // Ask the collector what this key may do before building the server, so the
+  // capability-gated tools match the key: the raw-session tools of #314 only for
+  // `query:raw`, the metadata write tools of #310 only for `annotate`. Best
+  // effort — a collector older than `/api/v1/whoami`, an offline start or a
+  // transient failure yields "no extra capabilities", which serves the ordinary
+  // `query` surface this binary has always served.
   const capabilities = await fetchKeyCapabilities(client);
   const server = createMcpServer(client, { capabilities });
   const transport = new StdioServerTransport();

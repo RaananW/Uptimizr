@@ -45,6 +45,11 @@ methods exist for the metadata write tools alone, and the collector gates those 
 `ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
 `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
 
+Only on a key holding `query:raw`, and only when the collector runs with
+`ENABLE_RAW_SESSION_RETENTION` (ADR 0003):
+
+`session_narrative`
+
 <!-- generated:registry-tool-names:end -->
 
 Each name is a metric in the collector's semantic metric registry (ADR 0051) and maps one-to-one to
@@ -146,7 +151,7 @@ A tool's `outputSchema` describes all three envelopes, so whichever one comes ba
 
 ## Programmatic API
 
-`readTools`, `coreReadTools`, `selectReadTools(kind)`, `filterReadTools(names)`,
+`readTools`, `rawTools`, `coreReadTools`, `selectReadTools(kind)`, `filterReadTools(names)`,
 `registryToTools(metrics?)`, `createCollectorClient(config)`, `toToolSchemas(tools?)`,
 `runAgent(options)`, plus the `LlmProvider` / `AgentMessage` / `AgentToolCall` /
 `ProviderResponse` types.
@@ -159,6 +164,17 @@ rather than a `buildRequest`, because a write is one call rather than a request 
 
 The catalog is ~69 tools. A small local model cannot hold every schema in its function-calling
 prompt — hand a run `coreReadTools` or `filterReadTools([...])` rather than the full catalog.
+
+### Capability-gated tools
+
+`readTools` is the **`query`** surface — every tool a plain read key may call. `rawTools` is
+generated from the registry metrics whose endpoint declares `capability: "query:raw"` (today just
+`session_narrative`, the compacted account of one session) and is kept separate on purpose: the
+capability belongs to the _key the agent was handed_, not to the agent. Register it only after
+confirming the key holds `query:raw` via `GET /api/v1/whoami` — a tool that always answers `403`
+costs a model a turn and invites a retry. The collector refuses those endpoints unless it also runs
+with `ENABLE_RAW_SESSION_RETENTION`, so the capability is necessary but never sufficient
+(ADR 0003 / ADR 0051 §7).
 
 ## More
 

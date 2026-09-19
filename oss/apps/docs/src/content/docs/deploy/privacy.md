@@ -30,7 +30,8 @@ collector:
 ENABLE_RAW_SESSION_RETENTION=true
 ```
 
-With it off, the collector keeps only aggregates; `/api/v1/sessions/:id/events` returns `403`. The
+With it off, the collector keeps only aggregates; `/api/v1/sessions/:id/events` and
+`/api/v1/sessions/:id/narrative` return `403`. The
 aggregate endpoints never expose raw events.
 
 Retention is only **half** the gate. Reading a raw per-session stream — the replay timeline
@@ -41,6 +42,33 @@ aggregates only, whatever retention is set to, so "who may see raw sessions" is 
 per-key decision rather than a collector-wide switch.
 
 :::caution[Breaking change]
+
+### What a session narrative shows
+
+`GET /api/v1/sessions/:id/narrative` sits behind the same two gates and returns a **projection**
+of the raw stream, not the stream itself. It is an allow-list, not a redactor: it reads only the
+fields below, so a future event type cannot widen it by accident.
+
+It **shows** relative timestamps (milliseconds since the session's first event, never a wall-clock
+time), scene ids, mesh/object names, interaction kinds and input sources, custom-event and
+input-action **names**, frame-rate dips, runtime-error messages (truncated), graphics-diagnostic
+category and severity, capability transitions, and the rendering engine / graphics API.
+
+It **never** carries:
+
+- the daily-rotating `visitorId`, or any identifier for a person;
+- the page URL, referrer, title, language or any other `pageMeta` field;
+- anything from the app-supplied `user` descriptor (`user.id`, traits);
+- any position, hit point, ray, UV or screen coordinate;
+- any `device` detail beyond the engine — no renderer or vendor string, OS, browser, memory or
+  core count;
+- custom-event property **values** — only their keys, which are developer-chosen field names;
+- a runtime error's `source` (a URL) or `stack`, or a graphics diagnostic's message text.
+
+If your app attaches personal data to a custom-event property or to an error message, that is the
+one place it could reach a narrative — error messages are truncated but not filtered, which is the
+same trade-off as the raw stream and the dashboard's error panels.
+
 This is a tightening: previously `ENABLE_RAW_SESSION_RETENTION` alone was enough and any `query`
 key could read the raw stream. Existing keys keep working for every aggregate endpoint; a key that
 drives replay or live-follow must be re-minted with

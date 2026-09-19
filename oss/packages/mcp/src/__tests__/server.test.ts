@@ -10,10 +10,11 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CollectorClient, QueryParams } from "@uptimizr/agent-core";
-import { QUERY_TOOL_NAME, readTools } from "@uptimizr/agent-core";
+import { QUERY_TOOL_NAME, rawTools, readTools } from "@uptimizr/agent-core";
 import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createMcpServer } from "../server.js";
+import { CAPABILITIES_URI } from "../resources.js";
 
 /** What the stub collector was asked for, so a test can assert the mapping. */
 interface Recorded {
@@ -423,5 +424,83 @@ describe("createMcpServer options", () => {
     const plain = await connectWith();
     expect(plain.getInstructions()).toBeUndefined();
     await plain.close();
+  });
+});
+
+describe("capability-gated tools (#314, ADR 0051 §7)", () => {
+  /** Connect a fresh client to a server built for the given key capabilities. */
+  async function listFor(capabilities?: readonly string[]): Promise<string[]> {
+    const scoped = new Client({ name: "test", version: "0.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      scoped.connect(clientTransport),
+      createMcpServer(stubCollector, capabilities ? { capabilities } : {}).connect(serverTransport),
+    ]);
+    try {
+      return (await scoped.listTools()).tools.map((tool) => tool.name);
+    } finally {
+      await scoped.close();
+    }
+  }
+
+  it("hides session_narrative from a query-only key", async () => {
+    const names = await listFor(["query"]);
+    expect(names).not.toContain("session_narrative");
+    expect(names).toHaveLength(readTools.length);
+  });
+
+  it("hides it when the caller did not look the key up at all", async () => {
+    // The safe default: no capability information means the `query` surface.
+    expect(await listFor()).not.toContain("session_narrative");
+  });
+
+  it("registers it for a key holding query:raw", async () => {
+    const names = await listFor(["query", "query:raw"]);
+    expect(names).toContain("session_narrative");
+    expect(names).toHaveLength(readTools.length + rawTools.length);
+  });
+
+  it("calls the narrative endpoint when the tool is registered", async () => {
+    const scoped = new Client({ name: "test", version: "0.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      scoped.connect(clientTransport),
+      createMcpServer(stubCollector, { capabilities: ["query", "query:raw"] }).connect(
+        serverTransport,
+      ),
+    ]);
+    respond = () => [
+      { tMs: 0, kind: "scene", summary: 'Session started in scene "lobby".', refs: {} },
+    ];
+    try {
+      await scoped.listTools();
+      await scoped.callTool({
+        name: "session_narrative",
+        arguments: { sessionId: "s1", maxEntries: 50 },
+      });
+    } finally {
+      await scoped.close();
+    }
+    const call = requests.at(-1)!;
+    expect(call.path).toBe("api/v1/sessions/s1/narrative");
+    expect(call.params).toMatchObject({ maxEntries: 50 });
+  });
+
+  it("scopes the capabilities resource to the same surface", async () => {
+    const scoped = new Client({ name: "test", version: "0.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      scoped.connect(clientTransport),
+      createMcpServer(stubCollector, { capabilities: ["query"] }).connect(serverTransport),
+    ]);
+    try {
+      const resource = await scoped.readResource({ uri: CAPABILITIES_URI });
+      const descriptor = JSON.parse(String(resource.contents[0]!.text)) as {
+        tools: { name: string }[];
+      };
+      expect(descriptor.tools.map((tool) => tool.name)).not.toContain("session_narrative");
+    } finally {
+      await scoped.close();
+    }
   });
 });

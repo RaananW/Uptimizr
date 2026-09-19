@@ -252,6 +252,32 @@ runMetric: (projectId, metric, options) =>
   parameters by name and logical type and never by value; the SQL text carries placeholders only,
   which is exactly the property a reader uses `explain` to check.
 
+## Session narrative (ADR 0051 §7)
+
+`buildSessionNarrative(events, opts)` compacts one session's `AnyEvent[]` into an ordered,
+bounded account of what it did; `renderSessionNarrativeText(narrative)` renders it as one line per
+entry. Both are **pure** — no store, no request, no I/O — and live in `src/narrative/`.
+
+```ts
+import { buildSessionNarrative, renderSessionNarrativeText } from "@uptimizr/db";
+
+const narrative = buildSessionNarrative(events, { minDwellMs: 2000, maxEntries: 200 });
+narrative.entries; // ordered { tMs, kind, summary, refs }, ending with the `summary` entry
+narrative.totals; // { events, durationMs, scenes, meshes, interactions, dips, errors }
+console.log(renderSessionNarrativeText(narrative));
+```
+
+Shapes, defaults and hard caps live in `@uptimizr/metrics` (`NARRATIVE_LIMITS`,
+`sessionNarrativeEntrySchema`) so the collector route, the generated `session_narrative` tool and
+this implementation cannot drift.
+
+**It is an allow-list, not a redactor** (ADR 0003). It reads only: relative timestamps, scene ids,
+mesh names, interaction kinds and input sources, custom-event/input-action names, FPS, truncated
+runtime-error messages, diagnostic category/severity, capability transitions, and the rendering
+engine. It never reads `visitorId`, `url`, `pageMeta`, `user`, any position/ray/UV, any other
+`device` field, or custom-event property values (keys only, unless `includeCustomProps`). Keep it
+that way when adding an event type — adding a field to the switch is a privacy decision.
+
 ## Cross-engine parity (ADR 0020)
 
 The dialect-agnostic aggregations (`buildX(projectId, opts, dialect)`) are rendered per engine

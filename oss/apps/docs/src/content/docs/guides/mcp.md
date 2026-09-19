@@ -260,6 +260,7 @@ grain, column units, limits and caveats.
 | ---------------------- | ---------------------------------------- | ---------------------- |
 | `list_sessions`        | `/api/v1/sessions`                       | Recent sessions        |
 | `session_meta`         | `/api/v1/sessions/:id/meta`              | Session descriptor     |
+| `session_narrative`    | `/api/v1/sessions/:id/narrative`         | Session narrative      |
 | `scene_representation` | `/api/v1/scenes/:sceneId/representation` | Scene representation   |
 | `list_scenes`          | `/api/v1/scenes`                         | Active scenes          |
 | `timeseries`           | `/api/v1/timeseries`                     | Event volume over time |

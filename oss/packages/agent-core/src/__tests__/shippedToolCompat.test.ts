@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readTools } from "../tools.js";
+import { rawTools, readTools } from "../tools.js";
 import { DEFAULT_TOOL_FORMAT, registryToTools } from "../registryTools.js";
 import { toToolSchemas } from "../loop.js";
 import shippedSchemas from "./fixtures/shippedToolSchemas.json" with { type: "json" };
@@ -117,9 +117,23 @@ describe("shipped tool compatibility", () => {
   });
 
   it("is the catalog the package actually exports, plus the query tool", () => {
-    // `generated` is the per-metric catalog; `readTools` appends the one tool
-    // that is not per-metric, the query DSL (ADR 0051 §3).
-    expect(readTools.map((tool) => tool.name)).toEqual([...generated.keys(), "query"]);
+    // `generated` is every metric with an endpoint. `readTools` is the `query`
+    // half of it plus the one tool that is not per-metric — the query DSL
+    // (ADR 0051 §3) — and the capability-gated tools are split out into
+    // `rawTools` (ADR 0051 §7).
+    expect(
+      [...readTools, ...rawTools]
+        .map((tool) => tool.name)
+        .filter((name) => name !== "query")
+        .sort(),
+    ).toEqual([...generated.keys()].sort());
+    expect(readTools.at(-1)?.name).toBe("query");
+    for (const shipped of Object.keys(frozen)) {
+      expect(
+        readTools.some((tool) => tool.name === shipped),
+        shipped,
+      ).toBe(true);
+    }
   });
 
   for (const [name, expected] of Object.entries(frozen)) {

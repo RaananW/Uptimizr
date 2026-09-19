@@ -41,6 +41,7 @@ import {
 } from "@uptimizr/schema";
 import {
   FILTER_TARGETS,
+  metricCapability,
   allMetrics,
   isResourceMetric,
   type FilterId,
@@ -255,6 +256,7 @@ function vendorExtensions(metric: MetricDefinition): Record<string, unknown> {
     ...(label ? { "x-uptimizr-label": label } : {}),
     "x-uptimizr-limits": metric.limits,
     "x-uptimizr-interpretation": metric.interpretation,
+    "x-uptimizr-capability": metricCapability(metric),
     "x-uptimizr-caveats": metric.caveats,
     "x-uptimizr-source-channels": metric.sourceChannels,
     "x-uptimizr-related": metric.related,
@@ -707,7 +709,7 @@ function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unk
         in: "header",
         name: "x-api-key",
         description:
-          "A project API key with the `query` capability. Reads are always scoped to the project the key resolves to; a client-supplied project id is ignored.",
+          "A project API key with the `query` capability. Reads are always scoped to the project the key resolves to; a client-supplied project id is ignored. An operation whose `x-uptimizr-capability` is `query:raw` needs a key holding that capability as well, on a collector started with `ENABLE_RAW_SESSION_RETENTION` (ADR 0003 / ADR 0051 §7).",
       },
     },
     responses: {
@@ -715,7 +717,11 @@ function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unk
       Unauthorized: { description: "Missing or unknown API key.", content: errorContent },
       Forbidden: {
         description:
-          "The key lacks the capability this operation needs — `query` to read, `annotate` to write metadata.",
+          "The key does not hold the capability this operation requires — an ingest-only key " +
+          "trying to read, a `query` key asking for a `query:raw` operation, or a key without " +
+          "`annotate` trying to write metadata. A `query:raw` operation also answers 403 when " +
+          "the collector was started without `ENABLE_RAW_SESSION_RETENTION` (ADR 0003). Check " +
+          "each operation's `x-uptimizr-capability`.",
         content: errorContent,
       },
       NotFound: { description: "No such session, scene or metadata row.", content: errorContent },
@@ -771,11 +777,14 @@ export function buildOpenApiDocument(
         "(`grain`), what its columns mean (`units`), the capture channels that must be enabled " +
         "for it to have data (`source-channels`), how far to trust it (`caveats`) and how to " +
         "read it (`interpretation`).\n\n" +
-        "The analytics API is **read-only and aggregate-only**: no endpoint here returns raw " +
-        "per-session events or personal data, and nothing can write, alter or delete an event " +
-        "(ADR 0003, ADR 0051 §9). The one writable surface is the `metadata` group — " +
-        "annotations, the glossary and saved analyses — which stores what a project's own " +
-        "people and agents write, requires the `annotate` capability, and is audited.",
+        "The analytics API is **read-only**: no endpoint here ingests, mutates or returns " +
+        "personal data, and nothing can write, alter or delete an event (ADR 0003, " +
+        "ADR 0051 §9). It is aggregate-only with exactly one, doubly-gated exception — " +
+        "`session_narrative`, a bounded compaction of one session, which requires both a " +
+        "`query:raw` key and `ENABLE_RAW_SESSION_RETENTION`. The one writable surface is the " +
+        "`metadata` group — annotations, the glossary and saved analyses — which stores what a " +
+        "project's own people and agents write, requires the `annotate` capability, and is " +
+        "audited. Check each operation's `x-uptimizr-capability`.",
       license: { name: "Apache-2.0", identifier: "Apache-2.0" },
       contact: { name: "Uptimizr", url: "https://uptimizr.com/docs/" },
     },

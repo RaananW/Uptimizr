@@ -65,12 +65,12 @@ Installed as a dependency, the package exposes the `uptimizr` CLI plus the legac
 A key carries a **set of capabilities**, not a single role. `new-key` defaults to `query`;
 `init` / `new-project` mint their single key with `query`, `query:raw` and `annotate`.
 
-| Capability  | Unlocks                                                                                                   |
-| ----------- | --------------------------------------------------------------------------------------------------------- |
-| `query`     | The aggregate analytics API, the scene registry, the live token exchange, and `GET /api/v1/audit`.        |
-| `query:raw` | Raw per-session streams: `GET /api/v1/sessions/:id/events` and `GET /api/v1/live/sessions/:id`.           |
-| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events.   |
-| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys. |
+| Capability  | Unlocks                                                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query`     | The aggregate analytics API, the scene registry, the live token exchange, and `GET /api/v1/audit`.                                                |
+| `query:raw` | Raw per-session data: `GET /api/v1/sessions/:id/events`, `GET /api/v1/live/sessions/:id`, and the compacted `GET /api/v1/sessions/:id/narrative`. |
+| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events.                                           |
+| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys.                                         |
 
 The raw endpoints are gated **twice**: the collector must run with `ENABLE_RAW_SESSION_RETENTION`
 **and** the key must hold `query:raw` — otherwise `403`. Retention alone is not enough.
@@ -154,6 +154,23 @@ Every aggregate endpoint accepts `format`. It **filters nothing** — it picks t
   spatial clusters, with shares, the metric's caveats and a templated `reading` sentence, capped at
   the registry's `maxSummaryRows`. **This is what makes a 500-bin heatmap affordable for an LLM** —
   prefer it over `full` when feeding a model.
+
+### Session narrative: `GET /api/v1/sessions/:id/narrative` (`query:raw`)
+
+The one per-session read worth an agent's time. It compacts the raw stream into an ordered account
+of what the session did — scene changes, per-mesh dwell above `minDwellMs`, interactions, frame
+dips below `fpsThreshold`, errors, capability changes, XR entry/exit, the end reason — with
+timestamps **relative to the session's first event** and a closing `summary` entry of totals.
+Bounded by `maxEntries` (default 200, hard cap 1000).
+
+`format` here is `full` | `table` | **`text`**. Prefer `text`: one line per entry, about a third of
+the tokens of the JSON, which is what makes a whole session affordable in a context window. There
+is no `summary` envelope — a narrative is already one.
+
+Gated **twice**, like the raw stream: `ENABLE_RAW_SESSION_RETENTION` **and** `query:raw`, either
+missing is `403`; an unknown session is `404`. It is a projection, never the stream: no
+`visitorId`, no URL or page metadata, no positions or rays, no `device` detail beyond the engine,
+and custom-event property **keys** only — never their values.
 
 ### Filters
 

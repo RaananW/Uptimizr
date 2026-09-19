@@ -25,7 +25,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PARITY_EVENTS, PARITY_PROJECT_ID, numericColumns } from "@uptimizr/db";
-import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
+import { allMetrics, metricCapability, type MetricDefinition } from "@uptimizr/metrics";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { createDuckdbStore } from "../duckdbStore.js";
@@ -108,7 +108,19 @@ function expectNumbersOnTheWire(metric: MetricDefinition, body: unknown): void {
   }
 }
 
-const METRICS_WITH_ENDPOINTS = allMetrics().filter((metric) => metric.endpoint != null);
+/**
+ * Every endpoint this sweep can call with an ordinary `query` key.
+ *
+ * `session_narrative` is excluded: it needs `ENABLE_RAW_SESSION_RETENTION` and a
+ * `query:raw` key (ADR 0051 §7), so the sweep would only ever see its 403. It
+ * also declares no 200 response schema — the narrative is computed in memory by
+ * `buildSessionNarrative` rather than projected out of a store row, so there is
+ * no serialisation seam for this suite to guard. `narrative.test.ts` covers it
+ * against the full gate matrix instead.
+ */
+const METRICS_WITH_ENDPOINTS = allMetrics().filter(
+  (metric) => metric.endpoint != null && metricCapability(metric) === "query",
+);
 
 interface Scenario {
   label: string;

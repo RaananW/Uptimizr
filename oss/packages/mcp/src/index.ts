@@ -3,6 +3,7 @@ export {
   createCollectorClient,
   CollectorError,
   readTools,
+  rawTools,
   type CollectorClient,
   type CollectorClientConfig,
   type QueryParams,
@@ -16,6 +17,7 @@ export { writeTools, mutatingWriteTools, type WriteTool } from "@uptimizr/agent-
 export { createMcpServer, fetchKeyCapabilities, type CreateMcpServerOptions } from "./server.js";
 export {
   buildCapabilities,
+  type BuildCapabilitiesOptions,
   type CapabilitiesDescriptor,
   type CapabilityToolDescriptor,
   type CapabilityParamDescriptor,

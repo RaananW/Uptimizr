@@ -7,6 +7,7 @@ export {
 } from "./client.js";
 export {
   readTools,
+  rawTools,
   coreReadTools,
   selectReadTools,
   filterReadTools,

@@ -21,6 +21,7 @@ import Fastify from "fastify";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
+import { narrativeRoutes } from "../routes/narrative.js";
 import { queryRoutes } from "../routes/query.js";
 import type { CollectorConfig } from "../config.js";
 import type { CollectorStore } from "../store.js";
@@ -63,7 +64,7 @@ function querystringKeys(schema: unknown): readonly string[] | null {
   return Object.keys(querystring.shape);
 }
 
-/** Boot the query plugin in-process and capture its route table. */
+/** Boot the read-route plugins in-process and capture their route table. */
 async function collectRoutes(): Promise<RegisteredRoute[]> {
   const routes: RegisteredRoute[] = [];
   const app = Fastify();
@@ -82,6 +83,12 @@ async function collectRoutes(): Promise<RegisteredRoute[]> {
     }
   });
   await app.register(queryRoutes, {
+    store: {} as CollectorStore,
+    config: {} as CollectorConfig,
+  });
+  // The session narrative is its own plugin (#314) but is still a registry
+  // endpoint, so it belongs in the same contract check.
+  await app.register(narrativeRoutes, {
     store: {} as CollectorStore,
     config: {} as CollectorConfig,
   });

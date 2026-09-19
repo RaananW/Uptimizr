@@ -1,5 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { readTools, writeTools, type CollectorClient, type ReadTool } from "@uptimizr/agent-core";
+import {
+  rawTools,
+  readTools,
+  writeTools,
+  type CollectorClient,
+  type ReadTool,
+} from "@uptimizr/agent-core";
 import { registerResources } from "./resources.js";
 import { registerPrompts } from "./prompts.js";
 import { version } from "./version.js";
@@ -69,7 +75,12 @@ function structuredResult(tool: ReadTool, data: unknown, format: unknown): Recor
 }
 
 /**
- * Options for {@link createMcpServer}.
+ * How to build the server for one session.
+ *
+ * Deliberately an **options bag**: the collector-hosted transport (#313) builds
+ * one server per authenticated MCP session, and both the `query:raw` tools
+ * (#314) and the metadata write tools (#310) key off the same field, so this is
+ * the one place a per-key decision is threaded through.
  */
 export interface CreateMcpServerOptions {
   /**
@@ -84,12 +95,12 @@ export interface CreateMcpServerOptions {
    * omitted set means "register the read-only catalog and let the collector
    * refuse anything the key may not do".
    *
-   * Tools outside the set are simply not registered; the metadata write tools
-   * of #310 are registered **only** for a key holding `annotate`, so an agent is
-   * never offered a tool its key would be refused for, and omitting the set
-   * keeps the server read-only — exactly what every caller written before #310
-   * gets. Deliberately typed as plain strings
-   * so this package keeps its dependency-free footprint — it must not reach into
+   * Tools outside the set are simply not registered: the raw-session tools of
+   * #314 only for a key holding `query:raw`, the metadata write tools of #310
+   * only for one holding `annotate`. Unknown values are ignored, and omitting
+   * the option serves the ordinary `query` surface — exactly what every caller
+   * written before #310/#313/#314 gets. Deliberately typed as plain strings so
+   * this package keeps its dependency-free footprint — it must not reach into
    * `@uptimizr/db` for the capability union (see `__tests__/dependencies.test.ts`).
    */
   capabilities?: readonly string[];
@@ -155,9 +166,14 @@ export async function fetchKeyCapabilities(client: CollectorClient): Promise<rea
  * read-only: **events cannot be written, altered or deleted through this
  * server** (ADR 0051 §9).
  *
- * The **metadata** tools (#310) — annotations, glossary, saved analyses — are
- * added only when `options.capabilities` includes `annotate`, so a read-only key
- * yields a read-only server.
+ * `options.capabilities` is what the **key** behind `client` is allowed to do
+ * (`GET /api/v1/whoami`). Tools whose endpoint needs more than the ordinary
+ * `query` capability are registered only when the key really holds it, so
+ * `tools/list` describes what this session can actually do rather than what the
+ * collector could do for somebody else: the raw-session tools of #314 behind
+ * `query:raw`, the **metadata** tools of #310 — annotations, glossary, saved
+ * analyses — behind `annotate`. Omit it and only the `query` surface is served,
+ * the safe default for a caller that has not looked the key up.
  *
  * The factory is **transport-agnostic**: `bin.ts` connects it to stdio, and the
  * collector connects one instance per authenticated Streamable HTTP session at
@@ -168,16 +184,28 @@ export function createMcpServer(
   client: CollectorClient,
   options: CreateMcpServerOptions = {},
 ): McpServer {
-  const { capabilities } = options;
+  // The default is the ordinary read surface, never "nothing": a caller that has
+  // not looked the key up still gets every `query` tool, exactly as before.
+  // `instructions`, by contrast, keys off the *supplied* set, so a stdio server
+  // built without one keeps the `initialize` result it has always had.
+  const capabilities = options.capabilities ?? ["query"];
   const server = new McpServer(
     { name: "uptimizr-mcp", version },
     {
       capabilities: { tools: {}, resources: {}, prompts: {} },
-      ...(capabilities ? { instructions: instructionsFor(capabilities) } : {}),
+      ...(options.capabilities ? { instructions: instructionsFor(options.capabilities) } : {}),
     },
   );
 
-  for (const tool of readTools) {
+  const tools: ReadTool[] = [
+    ...readTools,
+    // `query:raw` additionally requires `ENABLE_RAW_SESSION_RETENTION` on the
+    // collector (ADR 0003), which this process cannot see — a narrative tool on
+    // a retention-disabled collector still answers 403, and says so.
+    ...(capabilities.includes("query:raw") ? rawTools : []),
+  ];
+
+  for (const tool of tools) {
     server.registerTool(
       tool.name,
       {
@@ -214,7 +242,7 @@ export function createMcpServer(
   // Nothing here can write, alter or delete an event: the tools call the three
   // metadata endpoints and nothing else, and every call is audited by the
   // collector (ADR 0051 §7/§9).
-  if (options.capabilities?.includes("annotate")) {
+  if (capabilities.includes("annotate")) {
     for (const tool of writeTools) {
       server.registerTool(
         tool.name,
@@ -232,7 +260,7 @@ export function createMcpServer(
     }
   }
 
-  registerResources(server, client);
+  registerResources(server, client, { capabilities });
   registerPrompts(server);
 
   return server;

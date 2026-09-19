@@ -16,7 +16,13 @@
 
 import { describe, expect, it } from "vitest";
 import { queryFiltersSchema, queryV1Schema, type QueryV1 } from "@uptimizr/schema";
-import { FILTER_TARGETS, allMetrics, getMetric, isResourceMetric } from "../registry.js";
+import {
+  FILTER_TARGETS,
+  allMetrics,
+  getMetric,
+  isResourceMetric,
+  metricCapability,
+} from "../registry.js";
 import type { FilterId } from "../registry.js";
 import {
   genericDimensions,
@@ -52,7 +58,13 @@ function callable(metricId: string): QueryV1 {
   return query(metricId, Object.keys(filters).length > 0 ? { filters } : {});
 }
 
-const aggregations = allMetrics().filter((metric) => !isResourceMetric(metric));
+// The DSL answers the ordinary `query` surface. Two registry entries are
+// resource reads rather than aggregations, and `session_narrative` (#314) is a
+// `query:raw` compaction of one session — `POST /api/v1/query` carries the
+// ordinary `query` capability, so it is deliberately not reachable there.
+const aggregations = allMetrics().filter(
+  (metric) => !isResourceMetric(metric) && metricCapability(metric) === "query",
+);
 
 describe("every metric is reachable through the DSL", () => {
   it.each(aggregations.map((metric) => metric.id))("%s validates", (id) => {
@@ -61,8 +73,15 @@ describe("every metric is reachable through the DSL", () => {
 
   it("covers the whole aggregation surface, not a subset of it", () => {
     // Guards against the list above silently shrinking: if the registry grows an
-    // aggregation, this suite must grow with it.
-    expect(aggregations.length).toBe(allMetrics().length - 2);
+    // aggregation, this suite must grow with it. Exactly three entries are
+    // outside the DSL — the two resource reads and `session_narrative`.
+    expect(allMetrics().length - aggregations.length).toBe(3);
+    expect(
+      allMetrics()
+        .filter((metric) => !aggregations.includes(metric))
+        .map((metric) => metric.id)
+        .sort(),
+    ).toEqual(["scene_representation", "session_meta", "session_narrative"]);
   });
 
   it("accepts each metric's own grain as explicit dimensions", () => {
@@ -310,6 +329,12 @@ describe("the filter vocabulary cannot drift from the registry", () => {
    * envelope is `format`, and the row cap is `limit` — all top-level fields.
    */
   const NOT_FILTERS: readonly FilterId[] = ["since", "until", "format", "limit"];
+  /**
+   * Filter ids whose only metric is outside the DSL: `session_narrative`'s
+   * compaction bounds (#314). A `query:raw` read is not reachable through
+   * `POST /api/v1/query`, so the grammar has no key for them.
+   */
+  const NOT_IN_DSL: readonly FilterId[] = ["minDwellMs", "maxEntries"];
   /** DSL-only grammar keys with no `FilterId` (deferred to #304). */
   const GRAMMAR_ONLY = ["event", "device"];
 
@@ -318,7 +343,7 @@ describe("the filter vocabulary cannot drift from the registry", () => {
       .filter((key) => !GRAMMAR_ONLY.includes(key))
       .sort();
     const registryKeys = (Object.keys(FILTER_TARGETS) as FilterId[])
-      .filter((id) => !NOT_FILTERS.includes(id))
+      .filter((id) => !NOT_FILTERS.includes(id) && !NOT_IN_DSL.includes(id))
       .sort();
     expect(schemaKeys).toEqual(registryKeys);
   });

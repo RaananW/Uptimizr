@@ -95,6 +95,14 @@ const rawCaseSchema = z
     question: z.string().min(1).optional(),
     prompt: promptRefSchema.optional(),
     context: contextSchema.default({}),
+    /**
+     * The API-key capability this case needs (ADR 0051 §7). `query` — the
+     * default — scores against the aggregate-only surface with the aggregate
+     * tool catalog, which is what a project owner hands an agent by default.
+     * `query:raw` additionally exposes the raw-gated tools and runs the case
+     * through a `query,query:raw` key on the same retention-enabled collector.
+     */
+    capability: z.enum(["query", "query:raw"]).default("query"),
     expectedTools: z.array(z.array(z.string().min(1)).min(1)).min(1),
     expectedArgs: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
     expectedAnswer: expectedAnswerSchema.default({

@@ -38,6 +38,7 @@ export {
   getMetric,
   isMetricId,
   isResourceMetric,
+  metricCapability,
   metricForBuilder,
 } from "./registry.js";
 
@@ -70,6 +71,7 @@ export type {
   GenericMeasure,
   GenericMeasureKind,
   GenericScope,
+  MetricCapability,
   MetricCategory,
   MetricComparison,
   MetricDefinition,
@@ -95,3 +97,24 @@ export {
   tableEnvelopeSchema,
   tableMetaSchema,
 } from "./envelopes.js";
+
+// --- Session narrative (ADR 0051 §7, design sketch §G.2) -------------------
+//
+// The shapes and bounds of the `query:raw`-gated session narrative, shared by
+// the compaction in `@uptimizr/db`, the collector route that serves it and the
+// `session_narrative` registry entry above.
+export {
+  NARRATIVE_ENTRY_KINDS,
+  NARRATIVE_LIMITS,
+  narrativeEntryKindSchema,
+  narrativeRefsSchema,
+  sessionNarrativeEntrySchema,
+  sessionNarrativeTotalsSchema,
+} from "./narrative.js";
+
+export type {
+  NarrativeEntryKind,
+  NarrativeRefs,
+  SessionNarrativeEntry,
+  SessionNarrativeTotals,
+} from "./narrative.js";

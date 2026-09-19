@@ -20,6 +20,7 @@ import { liveRoutes } from "./routes/live.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
 import { metadataRoutes } from "./routes/metadata.js";
+import { narrativeRoutes } from "./routes/narrative.js";
 import { queryRoutes } from "./routes/query.js";
 import { queryDslRoutes } from "./routes/query-dsl.js";
 
@@ -179,6 +180,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   if (config.mcpHttpEnabled && internalDispatchToken != null) {
     await app.register(mcpRoutes, { store, config, internalDispatchToken });
   }
+  // Session narrative (#314): its own plugin so it does not inherit the query
+  // plugin's `format` hook, which knows only the three shared envelopes.
+  await app.register(narrativeRoutes, { store, config });
   await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API
