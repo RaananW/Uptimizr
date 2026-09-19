@@ -595,14 +595,21 @@ describe("anomalies: bounded cost", () => {
     values[1_500] = 9_000;
     const rows = series(values, HOUR);
 
-    const started = performance.now();
+    // One untimed pass warms the JIT, then the best of three timed runs is
+    // judged: a single cold run on a loaded CI runner measured over 2 s once,
+    // which is runner noise, not the algorithm.
     const found = detectAnomalies("timeseries", "lobby", rows, { bucket: "hour" });
-    const elapsed = performance.now() - started;
+    let elapsed = Number.POSITIVE_INFINITY;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const started = performance.now();
+      detectAnomalies("timeseries", "lobby", rows, { bucket: "hour" });
+      elapsed = Math.min(elapsed, performance.now() - started);
+    }
 
     expect(found.some((row) => row.kind === "spike" && indexOf(row, HOUR) === 1_500)).toBe(true);
-    // Generous by two orders of magnitude against the measured cost, so this
-    // fails on an algorithmic regression (a quadratic rewrite) rather than on a
-    // slow CI runner.
+    // Generous by two orders of magnitude against the measured warm cost, so
+    // this fails on an algorithmic regression (a quadratic rewrite) rather than
+    // on a slow CI runner.
     expect(elapsed).toBeLessThan(2_000);
     expect(ANOMALY_TRAILING_BUCKETS.hour).toBe(168);
   });
