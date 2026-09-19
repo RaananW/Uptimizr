@@ -1,7 +1,7 @@
 {
   "scripted": {
     "passRate": 1,
-    "recordedAt": "2026-09-18T21:47:53.679Z",
+    "recordedAt": "2026-09-19T06:22:20.014Z",
     "tolerance": 0,
     "cases": {
       "ar_placement_effort": true,
@@ -12,6 +12,8 @@
       "attention_view_directions": true,
       "attention_mesh_dwell": true,
       "attention_hover_and_uv": true,
+      "attention_top_meshes_summary": true,
+      "attention_world_hotspots_summary": true,
       "conversion_funnel": true,
       "conversion_scene_retention": true,
       "conversion_load_bounce": true,
@@ -40,6 +42,7 @@
       "perf_memory_footprint": true,
       "perf_stalls_and_render_scale": true,
       "perf_churn_and_stack": true,
+      "perf_summary_record_digest": true,
       "prompt_weekly_scene_health": true,
       "prompt_attention_hotspots": true,
       "prompt_xr_comfort_review": true,

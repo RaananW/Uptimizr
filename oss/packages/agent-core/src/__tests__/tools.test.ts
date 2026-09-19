@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   readTools,
@@ -20,8 +21,11 @@ describe("read tools catalog", () => {
     expect(readTools.length).toBe(69);
   });
 
-  it("gives every tool an output schema", () => {
-    for (const tool of readTools) expect(Object.keys(tool.outputSchema ?? {})).toEqual(["rows"]);
+  it("gives every tool an object output schema", () => {
+    for (const tool of readTools) {
+      expect(tool.outputSchema, tool.name).toBeDefined();
+      expect(z.toJSONSchema(tool.outputSchema!).type, tool.name).toBe("object");
+    }
   });
 
   it("exposes uniquely named tools", () => {

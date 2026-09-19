@@ -36,17 +36,19 @@
 ## Result formats (`format`)
 
 Every aggregate tool declares a `format` argument — the envelope its rows arrive in, not a filter
-(ADR 0051 §2).
+(ADR 0051 §2). `buildRequest` applies `DEFAULT_TOOL_FORMAT` (`table`) when the caller names none
+and sends it explicitly, so the collector's own default stays `full`. A tool's output schema
+describes all three envelopes, so whichever one comes back validates.
 
 - `summary` — **prefer this whenever a model reads the result.** A bounded digest: `ranked` top
   rows, a `series` trend, merged spatial `clusters`, or a single `record`, with shares, a sample
   size, the metric's `caveats` and a templated `reading` sentence. Capped at the metric's
   `limits.maxSummaryRows`, so a 500-bin heatmap costs the same as a 5-bin one — which is what keeps
   one heatmap from filling a small local model's whole context.
-- `table` — `{ meta, rows }`: every row plus the metric, range, applied filters, sample size, row
-  count, a truncation flag and the registry limits.
-- `full` — the bare rows. Today's default, so existing consumers such as the dashboard are
-  unaffected; pass `format` explicitly from an agent path.
+- `table` — **the tools' default.** `{ meta, rows }`: every row plus the metric, range, applied
+  filters, sample size, row count, a truncation flag and the registry limits. Self-describing but
+  not bounded — ask for `summary` when the result could be large.
+- `full` — the bare rows, with no envelope at all.
 
 `reading` and `caveats` are templated by pure code, never a model, so identical rows always produce
 identical words. Shares appear only where the measure can honestly be summed (an FPS or ratio metric
@@ -57,8 +59,9 @@ not aggregations, and declare no `format`.
 ## Key exports
 
 - `readTools` — the read-only tool catalog (one entry per query endpoint), generated from the
-  `@uptimizr/metrics` metric registry: 69 tools, each with an input schema, an output schema and the
-  metric's interpretation notes and caveats in its description (ADR 0051).
+  `@uptimizr/metrics` metric registry: 69 tools, each with an input schema, an output schema
+  covering all three `format` envelopes, and the metric's interpretation notes and caveats in its
+  description (ADR 0051).
 - `coreReadTools` / `selectReadTools(kind)` / `filterReadTools(names)` — narrowed views of the
   catalog for models that cannot carry every tool schema.
 - `registryToTools(metrics?)` — generate the catalog from metric-registry definitions.

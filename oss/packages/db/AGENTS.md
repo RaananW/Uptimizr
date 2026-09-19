@@ -159,6 +159,12 @@ import {
 } from "@uptimizr/db/summary";
 ```
 
+The **Zod mirrors** of the envelopes (`tableResultSchema`, `resultSummarySchema`,
+`resultEnvelopeSchema`, `resultFormatSchema`) are still exported from the same subpath, but they
+are now defined in [`@uptimizr/metrics`](../metrics) and re-exported here: `@uptimizr/agent-core`
+and `@uptimizr/mcp` describe the same envelopes in their tool output schemas and may not depend on
+this package. Change a shape **there**, never here.
+
 The `grain` selects the shape — `ranked` (top rows + `rest`), `series` (first/last/min/max/trend/
 slope over the `axis` column), `clusters` (`clusterCells`: deterministic greedy merge of adjacent
 occupied cells above a density threshold, 8-neighbourhood in 2D / 26 in 3D), or `record` (the single
@@ -195,6 +201,9 @@ per-axis early exit; `spatialLabels.test.ts` holds the largest shape under 50 ms
   ascending, never by array order, and report `null` rather than a far-away guess.
 - Adding `format` to a metric's `filters` and to the collector's querystring is one change — the
   collector's `registryRoutes.test.ts` fails if they drift.
+- The collector's `format` default is **`full`** and must stay that way — it is what keeps the
+  feature invisible to the dashboard. The generated agent tools apply their own `table` default
+  and send it explicitly (`DEFAULT_TOOL_FORMAT` in `@uptimizr/agent-core`).
 
 ## Cross-engine parity (ADR 0020)
 

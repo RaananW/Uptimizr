@@ -8,6 +8,8 @@
 The **semantic metric registry**: one machine-readable `MetricDefinition` per Uptimizr analytics
 metric. It is the single source of truth for _what can be asked_ of a collector — the endpoint, the
 filters, the shape and units of a row, the row caps, how to read the answer and what not to trust.
+It also owns the Zod mirrors of the three **result envelopes** (`format=full | table | summary`,
+ADR 0051 §2), so the collector, the tool catalog and the MCP server describe one set of shapes.
 
 It is **pure data**: `zod` and a type-only `@uptimizr/schema` import, nothing else. No `node:`
 built-in, no DOM, no database driver. Import it from a browser bundle, a worker or an `npx` CLI.
@@ -35,6 +37,18 @@ for (const metric of allMetrics()) {
 const metric: MetricDefinition | undefined = getMetric("perf_summary");
 ```
 
+```ts
+import { resultEnvelopeSchema, structuredEnvelopeSchema, getMetric } from "@uptimizr/metrics";
+
+const row = getMetric("top_meshes")!.row;
+// Union of the three envelopes, for a caller that can express one (a route's
+// 200 schema, a parser): rows[] | { meta, rows } | a summary digest.
+resultEnvelopeSchema(row).parse(await response.json());
+// The merged OBJECT form of the same union, for an MCP `outputSchema` — the
+// SDK drops an output schema that is not an object, unions included.
+structuredEnvelopeSchema(row);
+```
+
 ## Rules for agents
 
 - **Derive, never restate.** Tool catalogs, OpenAPI paths, capability lists and docs tables are
@@ -51,6 +65,10 @@ const metric: MetricDefinition | undefined = getMetric("perf_summary");
   calls. Rename nothing; add instead.
 - **Respect `limits`.** `maxRows` is the registry's promise that no answer is unbounded;
   `maxSummaryRows` is what a model should be shown.
+- **Describe a result with the envelope schemas, never a hand-written copy.** `tableEnvelopeSchema`,
+  `summaryEnvelopeSchema`, `resultEnvelopeSchema` and `structuredEnvelopeSchema` are the one
+  definition; `@uptimizr/db/summary` re-exports them under its established names, and the summariser
+  that _builds_ an envelope still lives there.
 - **Read `caveats` before you conclude anything.** They record small-sample, sampling-rate and
   capture-gating conditions — a metric with no enabled source channel returns an honest empty
   result, not a zero.

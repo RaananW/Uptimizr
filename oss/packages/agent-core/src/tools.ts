@@ -20,15 +20,25 @@ export interface ReadTool {
   description: string;
   inputSchema: z.ZodRawShape;
   /**
-   * Zod raw shape describing what the tool **returns**, derived from the metric
-   * registry's `row` schema (ADR 0051 §1). It is always the single-key envelope
-   * `{ rows: Row[] }`: a single-object result (a session descriptor, a one-row
-   * summary) is reported as a one-element array so every tool has the same
-   * shape. Consumers that speak MCP register it as the tool's `outputSchema`
-   * and return matching `structuredContent`; consumers that do not can ignore
-   * it. Optional so a hand-built tool stays valid.
+   * Zod schema describing what the tool **returns**, derived from the metric
+   * registry's `row` schema (ADR 0051 §1) and the `format` result envelope
+   * (ADR 0051 §2).
+   *
+   * It is a single **object** schema, because that is what an MCP
+   * `outputSchema` must be. For a metric that honours `format` it is
+   * `structuredEnvelopeSchema(row)`: the merged, every-key-optional object form
+   * of the three envelopes — `{ rows }` for `full`, `{ meta, rows }` for
+   * `table`, the `kind`-tagged digest for `summary` — so a client validating
+   * `structuredContent` accepts whichever one the collector returns (#350). The
+   * two resource metrics, which declare no `format`, keep the single-key
+   * `{ rows: Row[] }` envelope: a single-object result (a session descriptor) is
+   * reported as a one-element array so every tool has the same shape.
+   *
+   * Consumers that speak MCP register it as the tool's `outputSchema`;
+   * consumers that do not can ignore it. Optional so a hand-built tool stays
+   * valid.
    */
-  outputSchema?: z.ZodRawShape;
+  outputSchema?: z.ZodType;
   buildRequest: (args: Record<string, unknown>) => ReadToolRequest;
 }
 

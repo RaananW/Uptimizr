@@ -1,7 +1,8 @@
 # @uptimizr/metrics
 
 > The semantic metric registry for Uptimizr: one machine-readable definition per analytics metric —
-> endpoint, filters, Zod row schema, per-column units, row limits, interpretation and caveats.
+> endpoint, filters, Zod row schema, per-column units, row limits, interpretation and caveats,
+> plus the Zod mirrors of the `format=full | table | summary` result envelopes.
 > Pure data, browser-safe: the only runtime dependencies are `zod` and `@uptimizr/schema`.
 
 ## Docs
@@ -17,6 +18,8 @@
 - `allMetrics()`, `getMetric(id)`, `isMetricId(value)`, `metricForBuilder(name)`, `isResourceMetric(metric)`.
 - `FILTER_TARGETS` — every request parameter and what it does; `DIMENSION_COLUMNS` — every group-by dimension.
 - `AGGREGATION_BUILDER_NAMES` — the closed set of `build*` aggregations in `@uptimizr/db`.
+- `resultFormatSchema`, `tableEnvelopeSchema(row)`, `summaryEnvelopeSchema`, `tableMetaSchema` — the `format` envelopes as Zod (ADR 0051 §2).
+- `resultEnvelopeSchema(row, full?)` — the union of the three; `structuredEnvelopeSchema(row)` — the merged object form an MCP `outputSchema` needs.
 - Types: `MetricDefinition`, `MetricId`, `MetricEndpoint`, `ColumnSemantics`, `ColumnUnit`, `DimensionId`, `FilterId`, `MetricCategory`, `MetricGrain`.
 
 ## Rules

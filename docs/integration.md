@@ -1368,7 +1368,8 @@ full walkthrough of each store.
 > catalog is **generated** from the semantic metric registry in
 > [`@uptimizr/metrics`](../oss/packages/metrics/README.md) (ADR 0051 §1): every read endpoint with a registry
 > entry is a tool (69 today), each carrying the metric's interpretation notes and caveats and an
-> output schema for its rows. Adding an endpoint without a registry entry fails the build, so the
+> output schema covering every `format` envelope it can answer with (rows, `table`, `summary`).
+> Adding an endpoint without a registry entry fails the build, so the
 > agent surface cannot fall behind this table.
 >
 > Beyond tools, the MCP server exposes capability-discovery **resources** —
@@ -1412,8 +1413,13 @@ silently empty result). The dashboard's 3D world heatmap also normalizes color/s
 
 Every aggregate endpoint in the table below accepts a shared `format` parameter
 (ADR 0051 §2). It narrows nothing — it selects the **envelope** the rows come
-back in. Omit it and nothing changes: `full` is the default and returns exactly
-the bare rows it always has, which is what the dashboard uses.
+back in. Omit it on the HTTP endpoint and nothing changes: `full` is the default
+and returns exactly the bare rows it always has, which is what the dashboard
+uses.
+
+The generated **agent tools** (`@uptimizr/agent-core`, `@uptimizr/mcp`) default
+to `table` instead and send it explicitly, so a model always gets the `meta`
+context alongside its rows; the endpoint default is untouched by that.
 
 `table` keeps the rows and adds a `meta` envelope, so a result is
 self-describing without a second lookup:

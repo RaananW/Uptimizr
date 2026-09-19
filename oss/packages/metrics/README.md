@@ -7,7 +7,9 @@
 
 Everything that used to restate the query surface by hand is **derived** from this package: the
 agent tool catalog in [`@uptimizr/agent-core`](../agent-core), the `uptimizr://capabilities`
-resource and tool output schemas in [`@uptimizr/mcp`](../mcp), the collector's
+resource and tool output schemas in [`@uptimizr/mcp`](../mcp) — which describe a row **and** the
+`format=full | table | summary` result envelopes this package also defines (ADR 0051 §2) — the
+collector's
 `GET /api/v1/openapi.json` document, and the endpoint/tool tables in the docs. Coverage therefore
 cannot drift: CI fails when an aggregation has no registry entry, when a row schema does not match
 real query output, or when an endpoint's querystring keys diverge from its declared filters.
@@ -53,7 +55,7 @@ const byCategory = Object.groupBy(allMetrics(), (m) => m.category);
 | `grain`                 | What one row represents (`project`, `scene`, `session`, `mesh`, `bin`, `voxel`, `bucket`, `row`).                                                                     |
 | `dimensions`            | The `DimensionId`s the rows are keyed by. Closed vocabulary.                                                                                                          |
 | `filters`               | The `FilterId`s the endpoint accepts — exactly its Zod querystring keys.                                                                                              |
-| `row`                   | `z.ZodObject` for one row: the source for OpenAPI, tool output schemas and numeric coercion.                                                                          |
+| `row`                   | `z.ZodObject` for one row: the source for OpenAPI, tool output schemas (wrapped in the result envelopes below) and numeric coercion.                                  |
 | `columns`               | Per-column `{ description, unit, measure, label, rateOf }`.                                                                                                           |
 | `limits`                | `{ maxRows, maxSummaryRows }` — no consumer can ask for an unbounded payload.                                                                                         |
 | `interpretation`        | How to read the result.                                                                                                                                               |
@@ -76,6 +78,23 @@ const byCategory = Object.groupBy(allMetrics(), (m) => m.category);
 
 - `allMetrics()`, `getMetric(id)`, `isMetricId(value)`
 - `metricForBuilder(builder)`, `isResourceMetric(metric)`
+
+**Result envelopes** (ADR 0051 §2)
+
+The Zod mirrors of `format=full | table | summary`. They live here, next to the row schemas they
+wrap, because the collector (`@uptimizr/db`, which re-exports them from `@uptimizr/db/summary`
+under its own names), the generated tool catalog and the MCP server all need them and none of
+those may depend on the others. The summariser that _builds_ an envelope stays in
+`@uptimizr/db/summary`.
+
+- `resultFormatSchema` — the `full | table | summary` enum.
+- `tableEnvelopeSchema(row)` — `{ meta, rows }`; `tableMetaSchema` — the `meta` block alone.
+- `summaryEnvelopeSchema` — the four grain-driven digests, discriminated on `kind`.
+- `resultEnvelopeSchema(row, full?)` — the union of the three, for a caller that can express one
+  (a route's 200 response schema, a parser). `full` defaults to an array of `row`.
+- `structuredEnvelopeSchema(row)` — the same union merged into **one loose object**, every key
+  optional. An MCP `outputSchema` must be an object schema: the SDK drops anything else, a
+  top-level union included, and then advertises no schema at all.
 
 **Types**
 

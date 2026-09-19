@@ -98,3 +98,17 @@
       - { value: 1, label: churned sessions }
     phrases: ["webgpu", "webgl2", "wgsl"]
     forbiddenPhrases: ["no data"]
+
+- id: perf_summary_record_digest
+  category: performance
+  question: Summarise rendering performance as a single self-describing record — the average FPS, the worst sampled frame, and how many samples stand behind them.
+  expectedTools:
+    - [perf_summary]
+  expectedArgs:
+    perf_summary: { format: summary }
+  expectedAnswer:
+    numbers:
+      - { value: 42.2, label: average fps }
+      - { value: 24, label: worst sampled fps }
+      - { value: 5, label: perf samples }
+    phrases: ["record", "avg fps is 42.2 fps"]

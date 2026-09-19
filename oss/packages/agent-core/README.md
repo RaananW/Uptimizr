@@ -100,8 +100,10 @@ Each tool carries:
   caveats (sample-size limits, which capture channel must be on);
 - an **input schema** built from the endpoint's filters — most accept `since`/`until` (epoch ms)
   plus `scene`, `session`, `source`, `bins`, `cellSize`, `limit`, `cameraMode`, `region`, …;
-- an **output schema** (`{ rows: Row[] }`) derived from the metric's row schema, which
-  `@uptimizr/mcp` registers as the MCP `outputSchema`.
+- an **output schema** derived from the metric's row schema and the `format` result envelopes —
+  `{ rows }`, the `{ meta, rows }` table envelope, or a `summary` digest — which `@uptimizr/mcp`
+  registers as the MCP `outputSchema`. A tool asks for `table` (`DEFAULT_TOOL_FORMAT`) unless the
+  caller names another format.
 
 The registry lives in `@uptimizr/metrics`, a dependency-free package (`zod` +
 `@uptimizr/schema`), so installing this one never downloads a database driver: `@uptimizr/db` and

@@ -80,8 +80,13 @@ describe("runAgent", () => {
 
     const result = await runAgent({ provider, client, messages: [user("recent sessions?")] });
 
+    // The tool applies its own default envelope (#336), so the call carries
+    // an explicit `format=table` the model never had to name.
     expect(calls).toEqual([
-      { path: "api/v1/sessions", params: { since: undefined, until: undefined, limit: 5 } },
+      {
+        path: "api/v1/sessions",
+        params: { since: undefined, until: undefined, limit: 5, format: "table" },
+      },
     ]);
     expect(result.steps).toBe(2);
     expect(result.content).toBe("Found 2 sessions.");

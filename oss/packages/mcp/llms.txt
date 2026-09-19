@@ -35,16 +35,18 @@
 ## Result formats (`format`)
 
 Every aggregate tool takes `format` — the envelope its rows arrive in, not a filter (ADR 0051 §2).
+Omit it and you get `table`: the tools' own default, sent explicitly, so the HTTP endpoints still
+default to `full` for every other client. All three validate against the tool's `outputSchema`.
 
 - `summary` — **prefer this.** A bounded digest: `ranked` top rows, a `series` trend, merged spatial
   `clusters`, or a single `record`, with shares, a sample size, the metric's `caveats` and a
   templated `reading` sentence. Capped at the metric's `limits.maxSummaryRows`, so a 500-bin heatmap
   costs the same as a 5-bin one. `reading` and `caveats` are templated by pure code — no model —
   so identical rows always produce identical words.
-- `table` — `{ meta, rows }`: every row plus the metric, range, applied filters, sample size, row
-  count, a truncation flag and the registry limits. Use it when you need the rows *and* the context
-  to judge them.
-- `full` — the bare rows, unchanged. Today's catalog default; pass `format` explicitly.
+- `table` — **the default.** `{ meta, rows }`: every row plus the metric, range, applied filters,
+  sample size, row count, a truncation flag and the registry limits. Self-describing, but not
+  bounded — the rows are still all of them, so ask for `summary` when the answer could be large.
+- `full` — the bare rows, unchanged, with no envelope at all.
 
 Shares appear only where the measure can honestly be summed (an FPS or ratio metric reports
 `total: null` and no shares). Cluster coordinates are grid indices — multiply by the effective
@@ -82,5 +84,6 @@ key holds; a key missing a required capability is refused with `403`.
 - `createCollectorClient(config)` — the thin GET-only collector client.
 - `readMcpConfig()` — read `UPTIMIZR_COLLECTOR_URL` + `UPTIMIZR_API_KEY` from the environment.
 - `readTools` — the read-only tool catalog (one entry per query endpoint), generated from the
-  `@uptimizr/metrics` metric registry: 69 tools, each with an input schema, an MCP `outputSchema` and the
-  metric's interpretation notes and caveats in its description (ADR 0051).
+  `@uptimizr/metrics` metric registry: 69 tools, each with an input schema, an MCP `outputSchema`
+  covering all three `format` envelopes, and the metric's interpretation notes and caveats in its
+  description (ADR 0051).

@@ -12,10 +12,18 @@ import { EVAL_EVENTS, EVAL_RANGE, EVAL_SUPPLEMENT_EVENTS } from "../fixtures.js"
 
 const toolsByName = new Map(readTools.map((tool) => [tool.name, tool]));
 
+/**
+ * Call one generated tool against the harness and return the bare rows.
+ *
+ * The tools ask for `format=table` unless told otherwise (#336), so these
+ * assertions — which are about the collector's aggregations, not the envelope
+ * around them — ask for `full` explicitly. The envelope itself is covered in
+ * `@uptimizr/mcp` and by the summary cases in the bank.
+ */
 async function call(harness: EvalHarness, name: string, args: Record<string, unknown> = {}) {
   const tool = toolsByName.get(name);
   if (!tool) throw new Error(`no such tool ${name}`);
-  const { path, params } = tool.buildRequest({ ...EVAL_RANGE, ...args });
+  const { path, params } = tool.buildRequest({ ...EVAL_RANGE, format: "full", ...args });
   return harness.client.get(path, params);
 }
 

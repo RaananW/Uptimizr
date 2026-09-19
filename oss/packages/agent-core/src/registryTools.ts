@@ -17,7 +17,7 @@
  * | `description`  | `description` + `interpretation` + `caveats`                |
  * | `inputSchema`  | `filters` + `endpoint.pathParams`, via {@link FILTER_FIELDS} |
  * | `buildRequest` | `endpoint.path` (with `:param` substitution) + `filters`    |
- * | `outputSchema` | `row`, wrapped as `{ rows: Row[] }`                         |
+ * | `outputSchema` | `row`, in the `format` result envelope (ADR 0051 §2)        |
  *
  * **Browser safety (ADR 0050).** This module imports `@uptimizr/metrics` — the
  * registry's own dependency-free package, whose only runtime dependencies are
@@ -30,7 +30,13 @@
  */
 
 import { z } from "zod";
-import { allMetrics, type FilterId, type MetricDefinition } from "@uptimizr/metrics";
+import {
+  allMetrics,
+  resultFormatSchema,
+  structuredEnvelopeSchema,
+  type FilterId,
+  type MetricDefinition,
+} from "@uptimizr/metrics";
 import type { QueryParams } from "./client.js";
 import type { ReadTool, ReadToolRequest } from "./tools.js";
 
@@ -49,6 +55,22 @@ import type { ReadTool, ReadToolRequest } from "./tools.js";
 // (`src/__tests__/shippedToolCompat.test.ts` pins that against a frozen
 // fixture). Bounds on the new fields mirror the collector's own Zod querystring
 // in `oss/apps/collector-server/src/routes/query.ts`.
+
+/**
+ * The result envelope a generated tool asks the collector for when the caller
+ * names none (#336).
+ *
+ * `table` — the rows *plus* the `meta` block that says which metric answered,
+ * over what range, with which filters, how many rows came back and whether the
+ * row cap truncated them. An agent that omits `format` therefore gets the
+ * context it needs to judge the answer instead of a bare, unlabelled array; a
+ * caller that wants the old shape asks for `full` explicitly.
+ *
+ * The default lives **here, in the tool**, and travels as an explicit
+ * `format=table` on the wire. The collector's own default is still `full`, so
+ * the dashboard — which never sends the parameter — cannot be affected.
+ */
+export const DEFAULT_TOOL_FORMAT = "table" as const;
 
 const since = z.number().int().optional().describe("Start of the time range, epoch milliseconds.");
 const until = z.number().int().optional().describe("End of the time range, epoch milliseconds.");
@@ -228,19 +250,25 @@ const FILTER_FIELDS: Readonly<Record<FilterId, z.ZodType>> = {
     .max(2048)
     .optional()
     .describe("JSON funnel-step predicate for the success event. Omit to report views only."),
-  // The shared result envelope (ADR 0051 §2). Declared literally rather than
-  // imported from `@uptimizr/db/summary`, which would put a database driver back
-  // on this package's dependency graph. `full` stays the default here: switching
-  // the generated tools to `table` is a separate, documented change (#299).
-  format: z
-    .enum(["full", "table", "summary"])
+  // The shared result envelope (ADR 0051 §2), reusing the registry's own Zod
+  // mirror so the values a tool accepts and the shapes it returns cannot drift.
+  //
+  // **The generated tools default to `table`, not `full`** (#336) — see
+  // {@link DEFAULT_TOOL_FORMAT}. The default is applied by `buildRequest` and
+  // advertised as the JSON Schema `default` keyword rather than baked in with
+  // Zod's `.default()`, which would make the argument *required* in the
+  // schema's output view and force every model to name a format on every call.
+  format: resultFormatSchema
     .optional()
     .describe(
-      "Result envelope. `full` (default) returns the bare rows; `table` wraps them with a " +
-        "`meta` block; `summary` returns a bounded digest — top rows, a trend or merged " +
-        "spatial clusters — with shares, caveats and a plain-language reading. Prefer " +
-        "`summary` for a large result such as a heatmap or a long leaderboard.",
-    ),
+      "Result envelope. `table` (the default the tools apply) returns the rows plus a " +
+        "`meta` block — metric, range, applied filters, row count, and whether the row cap " +
+        "truncated the result; `full` returns the bare rows and nothing else; `summary` " +
+        "returns a bounded digest — top rows, a trend or merged spatial clusters — with " +
+        "shares, caveats and a plain-language reading. Prefer `summary` for a large result " +
+        "such as a heatmap or a long leaderboard.",
+    )
+    .meta({ default: DEFAULT_TOOL_FORMAT }),
 };
 
 /**
@@ -396,14 +424,26 @@ export function metricToTool(metric: MetricDefinition): ReadTool | undefined {
   for (const { argName, field } of pathArgs) inputSchema[argName] = field;
   for (const filter of metric.filters) inputSchema[filter] = filterField(metric, filter);
 
-  // Every row of the collector's response, in one bounded envelope. A single
-  // object result (a session descriptor, a one-row summary) is reported as a
-  // one-element `rows` array so the envelope is the same for every tool.
-  const outputSchema: Record<string, z.ZodType> = {
-    rows: z
-      .array(outputRowSchema(metric))
-      .describe(`Result rows (one row per ${metric.grain}). A column is null when it has no data.`),
-  };
+  // What the tool returns, as **one object schema** — which is what MCP's
+  // `outputSchema` has to be (see `structuredEnvelopeSchema`).
+  //
+  // A metric that honours `format` can answer in any of the three envelopes, so
+  // its tool advertises all three (#350). The bug this replaces advertised only
+  // the row array, and the MCP SDK then rejected every `format=table|summary`
+  // result with `-32602` — the very formats the guides tell agents to prefer.
+  // The two **resource** metrics declare no `format` filter (a stored record has
+  // nothing to summarise), so their tools keep exactly the `{ rows }` schema
+  // they shipped with.
+  const acceptsFormat = metric.filters.includes("format");
+  const row = outputRowSchema(metric);
+  const rowsNote = `Result rows (one row per ${metric.grain}). A column is null when it has no data.`;
+  const outputSchema = acceptsFormat
+    ? structuredEnvelopeSchema(row, metric.id).describe(
+        "The requested `format` envelope: `table` (the tools' default) is `meta` + `rows`, " +
+          "`full` is `rows` alone, `summary` is the `kind`-tagged digest. " +
+          rowsNote,
+      )
+    : z.object({ rows: z.array(row).describe(rowsNote) });
 
   // The collector client strips a leading slash; keep paths root-relative so a
   // tool's `path` reads the same as it always has (`api/v1/...`).
@@ -426,6 +466,11 @@ export function metricToTool(metric: MetricDefinition): ReadTool | undefined {
       }
       const params: QueryParams = {};
       for (const filter of metric.filters) params[filter] = toQueryValue(args[filter]);
+      // The tools default to the `table` envelope (#336). Applied here rather
+      // than by the collector, which still defaults to `full` for every other
+      // client, and only for a metric that declares the filter — the two
+      // resource reads have nothing to wrap.
+      if (acceptsFormat && params.format == null) params.format = DEFAULT_TOOL_FORMAT;
       return { path, params };
     },
   };
