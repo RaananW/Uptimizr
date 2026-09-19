@@ -17,10 +17,18 @@ const HOUR = 3_600_000;
 const START = 1_700_000_000_000;
 
 const buckets: TimeseriesBucket[] = [
-  { bucket: START, events: 10 },
-  { bucket: START + HOUR, events: 20 },
-  { bucket: START + 2 * HOUR, events: 5 },
+  { bucket: START, events: 10, avg_fps: 59 },
+  { bucket: START + HOUR, events: 20, avg_fps: 58 },
+  { bucket: START + 2 * HOUR, events: 5, avg_fps: 60 },
 ];
+
+/**
+ * The same strip as seen by a project whose buckets carry traffic but no
+ * `frame_perf` sample: the collector reports `avg_fps: null` and the client
+ * reads it as `0` (see `api.test.ts`). The strip plots volume, so this is an
+ * ordinary strip — and it must still take markers.
+ */
+const bucketsWithoutPerf: TimeseriesBucket[] = buckets.map((b) => ({ ...b, avg_fps: 0 }));
 
 function annotation(overrides: Partial<AnnotationRow>): AnnotationRow {
   return {
@@ -115,6 +123,25 @@ describe("annotation markers", () => {
     expect(markers).toHaveLength(2);
     expect(markers.map((m) => m.dataset.annotationId)).toEqual(["a", "b"]);
     expect(markers[0]!.style.left).not.toBe(markers[1]!.style.left);
+  });
+
+  // Regression for the E2E failure behind #367: the marker is only ever seen
+  // if the panel loads at all. The panel's bars and its annotations are
+  // fetched together, so a bucket the collector could not serialise took the
+  // whole panel — markers included — down with it. Here the strip is the one
+  // that used to be unserialisable, and the marker is still on the axis.
+  it("marks a strip whose buckets reported no perf samples", () => {
+    render(
+      <VolumeTimeseriesView
+        buckets={bucketsWithoutPerf}
+        intervalMs={HOUR}
+        onBrush={() => {}}
+        annotations={[annotation({})]}
+      />,
+    );
+    const list = screen.getByLabelText("Annotations");
+    expect(list.querySelectorAll("[data-role='annotation-marker']")).toHaveLength(1);
+    expect(screen.getByLabelText("v2.1 shipped").getAttribute("title")).toBe("v2.1 shipped");
   });
 
   it("does not render markers when the strip has no data to place them against", () => {

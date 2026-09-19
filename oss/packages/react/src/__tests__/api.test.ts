@@ -31,6 +31,25 @@ describe("CollectorApi", () => {
     expect((init as RequestInit).headers).toMatchObject({ "x-api-key": "secret-key" });
   });
 
+  // A bucket with traffic and no `frame_perf` sample reports `avg_fps: null`
+  // (the registry's `numOrNull`). The strip plots volume, not FPS, so the
+  // bucket must survive the mapping — dropping it, or throwing on it, is what
+  // emptied the event-volume panel and took the annotation markers with it.
+  it("keeps a timeseries bucket whose avg_fps is null — no perf samples, still traffic", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch([
+        { bucket: 1_700_000_000_000, events: "10", avg_fps: 59.5 },
+        { bucket: 1_700_000_060_000, events: 2, avg_fps: null },
+      ]),
+    );
+    const api = new CollectorApi("http://localhost:4318", "k");
+    expect(await api.timeseries({ interval: 60 })).toEqual([
+      { bucket: 1_700_000_000_000, events: 10, avg_fps: 59.5 },
+      { bucket: 1_700_000_060_000, events: 2, avg_fps: 0 },
+    ]);
+  });
+
   it("coerces string aggregate columns to numbers (sessions.events)", async () => {
     vi.stubGlobal("fetch", mockFetch([{ session_id: "s1", visitor_id: "v1", events: "42" }]));
     const api = new CollectorApi("http://localhost:4318", "k");

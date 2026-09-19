@@ -82,7 +82,11 @@ export const clickhouseDialect: Dialect = {
     return `length(${expr})`;
   },
   avgIf(value, cond) {
-    return `avgIf(${value}, ${cond})`;
+    // `-OrNull`, because bare `avgIf` reports `0` when no row matched, while
+    // the `FILTER` / `CASE` forms the other dialects use report SQL-NULL. The
+    // registry declares these columns nullable and means it: absence is not a
+    // zero average (`numOrNull`), so the engines must not disagree about it.
+    return `avgIfOrNull(${value}, ${cond})`;
   },
   anyValue(expr) {
     return `any(${expr})`;
