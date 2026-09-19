@@ -220,16 +220,17 @@ describe("GET /api/v1/openapi.json", () => {
     expect(Object.keys(paths).filter((path) => path.startsWith("/api/v1/live"))).toEqual([]);
   });
 
-  it("describes a write only where one really exists (#310, #311)", () => {
-    // The document was GET-only until two changes gave it genuine writes: the
-    // `annotate`-gated metadata group (ADR 0051 §5/§9) and conditional
+  it("describes a write only where one really exists (#310, #311, #315)", () => {
+    // The document was GET-only until three changes gave it genuine writes: the
+    // `annotate`-gated metadata group (ADR 0051 §5/§9); conditional
     // subscriptions, a CRUD resource rather than a query and the one place a
-    // caller needs a written contract for a request *body*. There is also one
-    // read-only exception: the query DSL accepts `POST /api/v1/query`, because a
-    // query is a JSON document rather than a querystring (ADR 0051 §3) — same
-    // `query` capability, same aggregations, nothing written. Ingestion is
-    // deliberately not described at all, and nothing else may grow a write
-    // method without a deliberate change here.
+    // caller needs a written contract for a request *body*; and the panel specs
+    // an agent pins to the dashboard (§7), which are metadata written on the
+    // same gate. There is also one read-only exception: the query DSL accepts
+    // `POST /api/v1/query`, because a query is a JSON document rather than a
+    // querystring (ADR 0051 §3) — same `query` capability, same aggregations,
+    // nothing written. Ingestion is deliberately not described at all, and
+    // nothing else may grow a write method without a deliberate change here.
     const METADATA_WRITES = [
       "/api/v1/analyses",
       "/api/v1/analyses/{id}",
@@ -237,6 +238,7 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/annotations/{id}",
       "/api/v1/glossary/{term}",
     ];
+    const PANEL_WRITES = ["/api/v1/panels", "/api/v1/panels/{id}"];
     const written = Object.entries(paths)
       .filter(([, methods]) => Object.keys(methods).some((method) => method !== "get"))
       .map(([path]) => path)
@@ -245,19 +247,30 @@ describe("GET /api/v1/openapi.json", () => {
       expect(
         path === "/api/v1/query" ||
           METADATA_WRITES.includes(path) ||
+          PANEL_WRITES.includes(path) ||
           path.startsWith("/api/v1/subscriptions"),
         `${path} grew a write method`,
       ).toBe(true);
     }
     expect(written.filter((path) => METADATA_WRITES.includes(path))).toEqual(METADATA_WRITES);
+    expect(written.filter((path) => PANEL_WRITES.includes(path))).toEqual(PANEL_WRITES);
 
-    // The DSL's POST is a read, and the metadata group is tagged as such.
+    // The DSL's POST is a read; the two writable groups are tagged as such.
     expect(Object.keys(paths["/api/v1/query"]!).sort()).toEqual(["get", "post"]);
     for (const path of METADATA_WRITES) {
       for (const operation of Object.values(paths[path]!)) {
         expect(operation.tags, path).toEqual(["metadata"]);
       }
     }
+    for (const path of PANEL_WRITES) {
+      for (const operation of Object.values(paths[path]!)) {
+        expect(operation.tags, path).toEqual(["panels"]);
+      }
+    }
+    // A pinned panel is created, replaced and removed — never patched: the spec
+    // is one closed document, and half of one is not a panel.
+    expect(Object.keys(paths["/api/v1/panels"]!).sort()).toEqual(["get", "post"]);
+    expect(Object.keys(paths["/api/v1/panels/{id}"]!).sort()).toEqual(["delete", "put"]);
 
     // The subscriptions resource, in full.
     expect(Object.keys(paths["/api/v1/subscriptions"] as object).sort()).toEqual(["get", "post"]);

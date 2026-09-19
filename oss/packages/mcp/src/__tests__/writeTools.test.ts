@@ -217,19 +217,26 @@ describe("no metadata tool can touch an event", () => {
     annotate: { targetKind: "project", text: "note" },
     define_term: { term: "t", meaning: "m" },
     save_analysis: { title: "t", query: {} },
+    pin_panel: {
+      title: "t",
+      chart: "bar",
+      query: { v: 1, metric: "top_meshes", range: "inherit" },
+    },
+    unpin_panel: { id: "ps_1" },
     list_annotations: {},
     list_glossary: {},
     list_analyses: {},
+    list_panels: {},
   };
 
-  it("every tool in the catalog hits one of the three metadata paths", async () => {
+  it("every tool in the catalog hits one of the four metadata paths", async () => {
     const { client, calls } = stubCollector();
     for (const tool of writeTools) {
       await tool.execute(client, ARGS[tool.name]!);
     }
     expect(calls).toHaveLength(writeTools.length);
     for (const call of calls) {
-      expect(call.path).toMatch(/^\/api\/v1\/(annotations|glossary|analyses)(\/|$)/);
+      expect(call.path).toMatch(/^\/api\/v1\/(annotations|glossary|analyses|panels)(\/|$)/);
     }
   });
 

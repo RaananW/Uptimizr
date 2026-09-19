@@ -176,6 +176,10 @@ import {
   createSavedAnalysis as msCreateSavedAnalysis,
   listSavedAnalyses as msListSavedAnalyses,
   deleteSavedAnalysis as msDeleteSavedAnalysis,
+  createPanelSpec as msCreatePanelSpec,
+  listPanelSpecs as msListPanelSpecs,
+  updatePanelSpec as msUpdatePanelSpec,
+  deletePanelSpec as msDeletePanelSpec,
   type MssqlClient,
 } from "@uptimizr/db-mssql";
 import type { CollectorStore } from "./store.js";
@@ -424,6 +428,10 @@ export async function createMssqlStore(): Promise<CollectorStore> {
     createSavedAnalysis: (projectId, input) => msCreateSavedAnalysis(msc, projectId, input),
     listSavedAnalyses: (projectId, opts) => msListSavedAnalyses(msc, projectId, opts),
     deleteSavedAnalysis: (projectId, id) => msDeleteSavedAnalysis(msc, projectId, id),
+    createPanelSpec: (projectId, input) => msCreatePanelSpec(msc, projectId, input),
+    listPanelSpecs: (projectId, opts) => msListPanelSpecs(msc, projectId, opts),
+    updatePanelSpec: (projectId, id, input) => msUpdatePanelSpec(msc, projectId, id, input),
+    deletePanelSpec: (projectId, id) => msDeletePanelSpec(msc, projectId, id),
     listSubscriptions: (projectId) => msListSubscriptions(msc, projectId),
     listEnabledSubscriptions: (limit) => msListEnabledSubscriptions(msc, limit),
     getSubscription: (projectId, id) => msGetSubscription(msc, projectId, id),

@@ -48,6 +48,7 @@ import {
   LIMITS,
   SCHEMA_VERSION,
   annotationSchema,
+  panelSpecV1Schema,
   queryV1Schema,
   savedAnalysisSchema,
 } from "@uptimizr/schema";
@@ -822,6 +823,101 @@ function metadataPaths(): Record<string, unknown> {
   };
 }
 
+/**
+ * The **panels** paths (#315, ADR 0051 §7): the declarative panel specs an
+ * agent pins to the dashboard. Like the metadata group these are not registry
+ * metrics, so they are described by hand here; the request body is converted
+ * from the very Zod contract that validates it, so the document cannot drift
+ * from the validator.
+ */
+function panelPaths(): Record<string, unknown> {
+  const rows = {
+    "application/json": {
+      schema: { type: "array", items: { $ref: "#/components/schemas/PanelSpec" } },
+    },
+  };
+  const one = { "application/json": { schema: { $ref: "#/components/schemas/PanelSpec" } } };
+  const specBody = {
+    required: true,
+    content: { "application/json": { schema: toJsonSchema(panelSpecV1Schema, "input") } },
+  };
+  const idParam = [{ name: "id", in: "path", required: true, schema: { type: "string" } }];
+  const refusal =
+    "A spec whose query the registry cannot answer — an unknown metric, a filter the metric " +
+    "does not accept — or whose `chart` does not suit the metric's grain, or whose `encoding` " +
+    "names a column the result does not carry, is refused with the validator's issue codes, so " +
+    "the spec can be fixed from the response rather than guessed at.";
+
+  return {
+    "/api/v1/panels": {
+      get: {
+        operationId: "list_panels",
+        summary: "Pinned panels",
+        description:
+          "The project's declarative panel specs, **oldest first** — these are positions in a " +
+          "dashboard grid rather than a feed, so a newly pinned panel is appended instead of " +
+          "displacing the ones already there. Requires the `query` capability.",
+        tags: ["panels"],
+        responses: {
+          "200": { description: "The pinned panels.", content: rows },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+      post: {
+        operationId: "pin_panel",
+        summary: "Pin a panel",
+        description:
+          "Store a query, a chart and a one-line reading as a panel the dashboard renders on " +
+          "every load. The spec is **data, never code**: no module is loaded and nothing is " +
+          "evaluated, so pinning a panel does not widen the dashboard's trust boundary " +
+          "(ADR 0041). Requires the **`annotate`** capability; the stored row records whether a " +
+          "person or an agent pinned it, and the write is recorded in the agent audit log.\n\n" +
+          refusal,
+        tags: ["panels"],
+        requestBody: specBody,
+        responses: {
+          "201": { description: "The stored panel.", content: one },
+          ...AUTHENTICATED_ERRORS,
+          "409": { $ref: "#/components/responses/Conflict" },
+        },
+      },
+    },
+    "/api/v1/panels/{id}": {
+      put: {
+        operationId: "update_panel",
+        summary: "Replace a pinned panel's spec",
+        description:
+          "A full replacement rather than a patch — the spec is one closed document, and half " +
+          "of one is not a panel. The row keeps its id, its place in the grid and its original " +
+          "authorship: an edit is not a new pin. Requires the `annotate` capability.\n\n" +
+          refusal,
+        tags: ["panels"],
+        parameters: idParam,
+        requestBody: specBody,
+        responses: {
+          "200": { description: "The stored panel.", content: one },
+          ...AUTHENTICATED_ERRORS,
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+      delete: {
+        operationId: "unpin_panel",
+        summary: "Unpin a panel",
+        description:
+          "Remove one panel from the project's dashboard. Requires the `annotate` capability. " +
+          "An id that does not exist — or belongs to another project — answers 404.",
+        tags: ["panels"],
+        parameters: idParam,
+        responses: {
+          "204": { description: "Unpinned." },
+          ...AUTHENTICATED_ERRORS,
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+  };
+}
+
 /** The stored-row schemas of the three metadata tables. */
 function metadataSchemas(): Record<string, unknown> {
   const author = {
@@ -895,6 +991,23 @@ function metadataSchemas(): Record<string, unknown> {
         createdAt: { type: "string" },
       },
       required: ["id", "projectId", "title", "query", "createdAt"],
+    },
+    PanelSpec: {
+      type: "object",
+      title: "Pinned panel",
+      properties: {
+        id: { type: "string" },
+        projectId: { type: "string" },
+        spec: {
+          ...(toJsonSchema(panelSpecV1Schema, "output") as Record<string, unknown>),
+          description:
+            "The declarative spec the dashboard renders: a query, a chart, an optional encoding and the agent's one-line reading. Data, never code — nothing here is evaluated.",
+        },
+        ...author,
+        createdAt: { type: "string" },
+        updatedAt: { type: "string" },
+      },
+      required: ["id", "projectId", "spec", "createdAt", "updatedAt"],
     },
   };
 }
@@ -1038,6 +1151,7 @@ export function buildOpenApiDocument(
     ...staticPaths(),
     ...queryDslPath(),
     ...metadataPaths(),
+    ...panelPaths(),
   } as Record<string, Record<string, unknown>>;
   for (const metric of served) {
     const path = toOpenApiPath(metric.endpoint!.path);
@@ -1065,10 +1179,11 @@ export function buildOpenApiDocument(
         "personal data, and nothing can write, alter or delete an event (ADR 0003, " +
         "ADR 0051 §9). It is aggregate-only with exactly one, doubly-gated exception — " +
         "`session_narrative`, a bounded compaction of one session, which requires both a " +
-        "`query:raw` key and `ENABLE_RAW_SESSION_RETENTION`. The one writable surface is the " +
-        "`metadata` group — annotations, the glossary and saved analyses — which stores what a " +
-        "project's own people and agents write, requires the `annotate` capability, and is " +
-        "audited. Check each operation's `x-uptimizr-capability`.",
+        "`query:raw` key and `ENABLE_RAW_SESSION_RETENTION`. The writable surface is the " +
+        "`metadata` group — annotations, the glossary and saved analyses — together with " +
+        "`panels`, the declarative specs pinned to the dashboard. Both store what a project's " +
+        "own people and agents write, require the `annotate` capability, and are audited. " +
+        "Check each operation's `x-uptimizr-capability`.",
       license: { name: "Apache-2.0", identifier: "Apache-2.0" },
       contact: { name: "Uptimizr", url: "https://uptimizr.com/docs/" },
     },
@@ -1084,6 +1199,11 @@ export function buildOpenApiDocument(
         name: "metadata",
         description:
           "What people and agents leave behind: annotations, the project glossary, saved analyses. Reads need `query`; every write needs `annotate` and is audited.",
+      },
+      {
+        name: "panels",
+        description:
+          "Declarative panel specs an agent pins to the dashboard (ADR 0051 §7): a query, a chart and a reading, stored as data and rendered with the panels the dashboard already ships — never as loaded code. Reads need `query`; every write needs `annotate` and is audited.",
       },
       {
         name: "subscriptions",

@@ -310,3 +310,96 @@ failures are isolated and surfaced in a dismissible **"panels failed to load"** 
   panel wins.
 - Even a panel that throws while **rendering** is caught per-panel: it shows an inline error in
   its own card instead of crashing the dashboard.
+
+## Declarative spec panels
+
+There is a second way a panel can reach the grid, and it is the one an **agent** uses: a
+**panel spec** — a small JSON document describing a query, a chart and a reading, stored on the
+collector and rendered by the panel components the dashboard already ships (ADR 0051 §7).
+
+```json
+{
+  "v": 1,
+  "title": "Meshes people actually touch",
+  "query": { "v": 1, "metric": "top_meshes", "range": "inherit", "limit": 10 },
+  "chart": "bar",
+  "encoding": { "x": "mesh", "y": "count" },
+  "span": 1,
+  "note": "The crate outsells everything else three to one."
+}
+```
+
+### Why a spec, and not a module
+
+Because of the trust model above. A remote panel is code that runs with the dashboard's full
+privileges — which is exactly why it is off by default and guarded by an allowlist. A panel
+written by a language model would be that, with your collector key in scope.
+
+So a spec carries **no code at all**. Every field is a closed value: `metric` is a registry id,
+`chart` is one of seven names, `encoding` holds column names. There is no expression to evaluate
+and no module to import. `specPanel(spec)` in `@uptimizr/react` reads the document and picks a
+component from the OSS catalog — the same mesh bar list, pointer-heatmap canvas and
+world-heatmap 3D view the built-in panels use. Pinning a panel widens the dashboard's trust
+boundary by nothing, and none of the cautions above apply to it.
+
+### The chart must suit the metric
+
+A spec is checked against the metric registry before it is stored, because the failure mode it
+prevents is not a crash. A `line` over a ranking draws _something_ — a line through values that
+have no order — and a week later somebody reads that something as a trend. The moment anyone is
+paying attention is the moment the panel is pinned, so that is where the refusal happens.
+
+| `chart`         | Needs                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------- |
+| `table`         | nothing — any metric's rows can be listed                                             |
+| `stat`          | a single-record result (a `project`-grain metric with no grain dimensions)            |
+| `bar`           | a label column, a measure column, and a `mesh`/`scene`/`session`/`row`/`bucket` grain |
+| `line` / `area` | an ordered axis column — in practice a `bucket`-grain metric                          |
+| `heatmap2d`     | a `bin` grain (the metric already bins its input into a grid)                         |
+| `world3d`       | a `voxel` grain (the same, in world space)                                            |
+
+`table` accepts everything, so no metric is unpinnable. A rejected spec comes back as `400` with
+the validator's issue codes — `chart_grain_mismatch` or `unknown_encoding_column` — naming the
+charts that _would_ have worked, so the spec can be fixed from the response.
+
+### `range: "inherit"`
+
+A spec's `query` is an ordinary [query DSL](/docs/api/query/) document with one addition: `range`
+may be the literal `"inherit"`, meaning "whatever the dashboard's filter bar currently says". It
+is resolved at render time, on every load.
+
+This is what keeps a pinned panel worth reading. A spec that froze the window it was pinned at
+would answer the same question forever while the grid around it moved. A spec _may_ still pin an
+explicit `{ since, until }` — a panel about one incident is about one window and nothing else.
+
+### Pinning, unpinning, and how they reach the grid
+
+| Where               | How                                                                          |
+| ------------------- | ---------------------------------------------------------------------------- |
+| The assistant       | **"Pin as panel"**, offered on any answer that came from a `query` tool call |
+| An MCP client       | The `pin_panel`, `list_panels` and `unpin_panel` tools                       |
+| Anything with a key | `POST` / `GET` / `DELETE` on `/api/v1/panels`                                |
+
+Every write needs a key holding `annotate`, and is audited. Reads need `query`.
+
+The dashboard loads the project's specs on mount and merges them with `builtinPanels` through the
+same `mergePanels` the runtime loader uses — a built-in wins an id collision, and a spec panel's
+`spec:` prefix means it could not shadow one anyway. Each is marked **"Pinned by agents"** in its
+chrome so it is never mistaken for a built-in, and carries an unpin control when the configured
+key can actually remove it. Per-panel hide and settings (ADR 0039) work on a spec panel exactly
+as on any other, keyed by its id.
+
+A spec that has stopped being valid — a metric withdrawn, a filter that no longer applies —
+renders the validator's message inside its own card. One bad spec never empties the grid:
+`loadSpecPanels()` validates each independently and reports the failures the same way the runtime
+loader does.
+
+```ts
+import { loadSpecPanels, mergePanels } from "@uptimizr/react";
+
+const { panels, errors } = await loadSpecPanels(api);
+const grid = mergePanels(builtinPanels, panels);
+```
+
+A project holds at most **50** panel specs — lower than the other metadata caps, because every
+spec is a query the dashboard runs on every load.

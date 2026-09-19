@@ -16,6 +16,7 @@ import type {
   Annotation,
   AnyEvent,
   NodeTransformEvent,
+  PanelSpecV1,
   SavedAnalysis,
   SceneProxy,
   SceneRegion,
@@ -291,6 +292,27 @@ export interface DemoGlossaryEntry {
   updatedAt: string;
 }
 
+/** Raw `panel_specs` row as selected (`spec` is JSON text). */
+interface PanelSpecRow {
+  id: string;
+  spec: string;
+  author_kind: string;
+  author_key_id: string | null;
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+/** One pinned panel, in the shape the collector's endpoint returns (#315). */
+export interface DemoPanelSpec {
+  id: string;
+  projectId: string;
+  spec: PanelSpecV1;
+  authorKind: "user" | "agent";
+  authorKeyId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** One stored saved analysis, in the shape the collector's endpoint returns. */
 export interface DemoSavedAnalysis {
   id: string;
@@ -332,6 +354,23 @@ function parseSavedAnalysisQuery(json: string): Record<string, unknown> {
       : {};
   } catch {
     return {};
+  }
+}
+
+/**
+ * Parse a stored `spec` JSON column — the browser twin of `@uptimizr/db`'s
+ * `parsePanelSpec`. `null` rather than `{}` on anything that is not a JSON
+ * object: unlike a saved analysis' opaque query, a panel spec is *rendered*, so
+ * a row that cannot be one is better skipped than drawn.
+ */
+function parseDemoPanelSpec(json: string): PanelSpecV1 | null {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed != null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as PanelSpecV1)
+      : null;
+  } catch {
+    return null;
   }
 }
 
@@ -803,8 +842,82 @@ export class WasmDb {
     return true;
   }
 
+  // --- Declarative panel specs (#315, ADR 0051 §7) -------------------------
+
+  /** Pin one panel and return the stored row. */
+  async createPanelSpec(
+    spec: PanelSpecV1,
+    author: { authorKind: "user" | "agent"; authorKeyId: string | null },
+  ): Promise<DemoPanelSpec> {
+    if ((await this.#count("panel_specs")) >= LIMITS.maxProjectPanelSpecs) {
+      throw new DemoMetadataLimitError("panelSpecs", LIMITS.maxProjectPanelSpecs);
+    }
+    const id = crypto.randomUUID();
+    await this.#conn.query(
+      `INSERT INTO panel_specs
+         (id, project_id, spec, author_kind, author_key_id, created_at, updated_at)
+       VALUES (${sqlString(id)}, ${sqlString(DEMO_PROJECT_ID)},
+               ${sqlString(JSON.stringify(spec))},
+               ${sqlString(author.authorKind)},
+               ${author.authorKeyId == null ? "NULL" : sqlString(author.authorKeyId)},
+               now(), now())`,
+    );
+    return (await this.listPanelSpecs()).find((row) => row.id === id)!;
+  }
+
+  /** The demo project's pinned panels, oldest first — they are grid positions. */
+  async listPanelSpecs(): Promise<DemoPanelSpec[]> {
+    const rows = await this.all<PanelSpecRow>({
+      query: `SELECT id, spec, author_kind, author_key_id,
+                     epoch_ms(created_at) AS created_at_ms,
+                     epoch_ms(updated_at) AS updated_at_ms
+              FROM panel_specs
+              WHERE project_id = ${sqlString(DEMO_PROJECT_ID)}
+              ORDER BY created_at ASC, id ASC
+              LIMIT ${LIMITS.maxProjectPanelSpecs}`,
+      query_params: {},
+    });
+    return rows
+      .map((row) => {
+        const spec = parseDemoPanelSpec(row.spec);
+        // A row that cannot be parsed cannot be drawn; drop it rather than take
+        // the whole grid down with it.
+        if (spec == null) return null;
+        return {
+          id: row.id,
+          projectId: DEMO_PROJECT_ID,
+          spec,
+          authorKind: row.author_kind as "user" | "agent",
+          authorKeyId: row.author_key_id ?? null,
+          createdAt: new Date(row.created_at_ms).toISOString(),
+          updatedAt: new Date(row.updated_at_ms).toISOString(),
+        };
+      })
+      .filter((row): row is DemoPanelSpec => row !== null);
+  }
+
+  /** Replace one panel's spec, keeping its id, its place and its author. */
+  async updatePanelSpec(id: string, spec: PanelSpecV1): Promise<DemoPanelSpec | null> {
+    if (!(await this.listPanelSpecs()).some((row) => row.id === id)) return null;
+    await this.#conn.query(
+      `UPDATE panel_specs SET spec = ${sqlString(JSON.stringify(spec))}, updated_at = now()
+        WHERE project_id = ${sqlString(DEMO_PROJECT_ID)} AND id = ${sqlString(id)}`,
+    );
+    return (await this.listPanelSpecs()).find((row) => row.id === id) ?? null;
+  }
+
+  /** Unpin one panel. Returns whether it existed. */
+  async deletePanelSpec(id: string): Promise<boolean> {
+    if (!(await this.listPanelSpecs()).some((row) => row.id === id)) return false;
+    await this.#conn.query(
+      `DELETE FROM panel_specs
+        WHERE project_id = ${sqlString(DEMO_PROJECT_ID)} AND id = ${sqlString(id)}`,
+    );
+    return true;
+  }
+
   /** `SELECT count(*)` on one of the demo project's metadata tables. */
-  async #count(table: "annotations" | "saved_analyses"): Promise<number> {
+  async #count(table: "annotations" | "saved_analyses" | "panel_specs"): Promise<number> {
     const rows = await this.all<{ n: number | bigint }>({
       query: `SELECT count(*) AS n FROM ${table} WHERE project_id = ${sqlString(DEMO_PROJECT_ID)}`,
       query_params: {},
@@ -821,6 +934,7 @@ export class WasmDb {
     await this.#conn.query("DELETE FROM annotations");
     await this.#conn.query("DELETE FROM glossary");
     await this.#conn.query("DELETE FROM saved_analyses");
+    await this.#conn.query("DELETE FROM panel_specs");
   }
 
   /** Tear down the connection and terminate the worker (proactive teardown). */

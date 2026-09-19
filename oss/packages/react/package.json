@@ -77,6 +77,7 @@
   "dependencies": {
     "@uptimizr/agent-core": "workspace:*",
     "@uptimizr/heatmap": "workspace:*",
+    "@uptimizr/metrics": "workspace:*",
     "@uptimizr/replay": "workspace:*",
     "@uptimizr/schema": "workspace:*"
   },

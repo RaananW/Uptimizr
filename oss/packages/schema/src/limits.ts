@@ -131,6 +131,27 @@ export const LIMITS = {
   maxSavedAnalysisQueryLength: 8000,
   /** Saved analyses one project may hold. */
   maxProjectSavedAnalyses: 200,
+
+  // --- Declarative panel specs (ADR 0051 §7 / sketch §G.3) ------------------
+  // A pinned panel is metadata like the three above — written on the same
+  // `annotate`-gated path, bounded by the same kind of caps. The title bound
+  // matches a saved analysis' because both are the line a person scans a list
+  // for; the note bound matches a glossary meaning because both are one
+  // sentence someone has to take in at a glance.
+
+  /** Panel-spec title, shown in the dashboard grid. */
+  maxPanelSpecTitleLength: 120,
+  /** The agent's one-line reading, shown as the panel's subtitle. */
+  maxPanelSpecNoteLength: 500,
+  /** A column name in a panel spec's `encoding`. */
+  maxPanelEncodingColumnLength: 64,
+  /**
+   * Panel specs one project may hold. Lower than the other metadata caps on
+   * purpose: every spec is a panel the dashboard renders — and therefore a
+   * query it runs — on every load, so this bound is about what a grid can
+   * usefully hold, not merely about what a table can store.
+   */
+  maxProjectPanelSpecs: 50,
 } as const;
 
 /**

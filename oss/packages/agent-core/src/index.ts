@@ -23,17 +23,20 @@ export {
   DEFAULT_TOOL_FORMAT,
 } from "./registryTools.js";
 export { QUERY_TOOL_NAME, queryTool } from "./queryTool.js";
-// Metadata write tools (#310) — a separate export from `readTools` on purpose,
-// so ADR 0017's read-only stance stays inspectable at a glance.
+// Metadata write tools (#310, #315) — a separate export from `readTools` on
+// purpose, so ADR 0017's read-only stance stays inspectable at a glance.
 export {
   writeTools,
   mutatingWriteTools,
   annotateTool,
   defineTermTool,
   saveAnalysisTool,
+  pinPanelTool,
+  unpinPanelTool,
   listAnnotationsTool,
   listGlossaryTool,
   listAnalysesTool,
+  listPanelsTool,
   WriteNotSupportedError,
   type WriteTool,
 } from "./writeTools.js";

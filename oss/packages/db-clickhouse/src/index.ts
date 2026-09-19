@@ -60,6 +60,8 @@ export {
   listSavedAnalyses,
   deleteSavedAnalysis,
 } from "./projectMetadata.js";
+// Declarative panel specs (#315, ADR 0051 §7).
+export { createPanelSpec, listPanelSpecs, updatePanelSpec, deletePanelSpec } from "./panelSpecs.js";
 // Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1–F.2).
 export {
   listSubscriptions,

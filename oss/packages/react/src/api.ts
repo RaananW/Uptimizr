@@ -9,7 +9,7 @@
 // builders. They are intentionally additive: new fields can appear without
 // breaking existing readers.
 
-import type { AnyEvent } from "@uptimizr/schema";
+import type { AnyEvent, PanelSpecV1, PanelSpecV1Input, QueryV1Input } from "@uptimizr/schema";
 import type { LiveEvent, LiveSessionState, LiveStatus } from "./live";
 
 export interface SessionSummary {
@@ -288,6 +288,26 @@ export interface SavedAnalysisRow {
   authorKind: "user" | "agent";
   authorKeyId: string | null;
   createdAt: string;
+}
+
+// --- Declarative panel specs (#315, ADR 0051 §7) ---------------------------
+
+/**
+ * A stored panel spec as the collector returns it (timestamps are ISO 8601).
+ *
+ * `spec` is the wire contract from `@uptimizr/schema` rather than a copy of it:
+ * a panel spec is rendered by `specPanel()` in this very package, so a second,
+ * drifting definition of it would be a bug waiting to happen.
+ */
+export interface PanelSpecRow {
+  id: string;
+  projectId: string;
+  spec: PanelSpecV1;
+  /** Whether a person or an agent pinned it — the collector decides. */
+  authorKind: "user" | "agent";
+  authorKeyId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** Axis-aligned bounding box `[minX, minY, minZ, maxX, maxY, maxZ]`. */
@@ -926,6 +946,12 @@ export interface QueryParams {
    * for the "success" event used to compute conversion rate; omit for no conversion.
    */
   conversion?: string;
+  /**
+   * Query DSL (ADR 0051 §3): the whole `queryV1` document, URL-encoded, for the
+   * GET form of `/api/v1/query`. The one parameter here that is not a filter —
+   * it *is* the request. Supply it via {@link CollectorApi.query}.
+   */
+  q?: string;
 }
 
 export class ApiError extends Error {
@@ -1154,6 +1180,55 @@ export class CollectorApi {
   /** Save an analysis. Requires an `annotate` key. */
   saveAnalysis(analysis: SavedAnalysisInput): Promise<SavedAnalysisRow> {
     return this.send<SavedAnalysisRow>("POST", "api/v1/analyses", analysis);
+  }
+
+  // --- The query DSL and pinned panels (#315, ADR 0051 §3/§7) --------------
+
+  /**
+   * Run one `queryV1` document against `GET /api/v1/query`.
+   *
+   * The GET form — the whole document URL-encoded in `q` — rather than the POST
+   * one, so a spec panel's data load is an ordinary cacheable read that goes
+   * through this class's existing `get`, with its headers, its `no-store` and
+   * its `ApiError`. The collector treats both forms identically.
+   *
+   * `format` defaults to `full` here rather than to the DSL's own `table`: a
+   * panel renders rows, and the envelope's window/sample metadata is something
+   * the host already knows from the filter bar. Pass `format` explicitly to
+   * get an envelope instead.
+   *
+   * The result is `unknown` on purpose. One route can run any metric, so its
+   * row shape is only known at request time — the registry's own `row` schema
+   * is what describes it, and a caller that wants types reaches for the
+   * metric-specific method beside this one.
+   */
+  query(query: QueryV1Input): Promise<unknown> {
+    return this.get<unknown>("api/v1/query", {
+      q: JSON.stringify({ format: "full", ...query }),
+    });
+  }
+
+  /** The project's pinned panels, oldest first. A `query` key is enough. */
+  panels(params?: QueryParams): Promise<PanelSpecRow[]> {
+    return this.get<PanelSpecRow[]>("api/v1/panels", params);
+  }
+
+  /** Pin a panel to the project's dashboard. Requires an `annotate` key. */
+  pinPanel(spec: PanelSpecV1Input): Promise<PanelSpecRow> {
+    return this.send<PanelSpecRow>("POST", "api/v1/panels", spec);
+  }
+
+  /**
+   * Replace a pinned panel's spec, keeping its id and its place in the grid.
+   * Requires an `annotate` key.
+   */
+  updatePanel(id: string, spec: PanelSpecV1Input): Promise<PanelSpecRow> {
+    return this.send<PanelSpecRow>("PUT", `api/v1/panels/${encodeURIComponent(id)}`, spec);
+  }
+
+  /** Unpin a panel. Requires an `annotate` key. */
+  async unpinPanel(id: string): Promise<void> {
+    await this.send<null>("DELETE", `api/v1/panels/${encodeURIComponent(id)}`);
   }
 
   sessions(params?: QueryParams): Promise<SessionSummary[]> {

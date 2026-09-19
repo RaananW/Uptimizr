@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, Component, type ReactNode } from "react";
 import type { PanelContext, PanelDefinition, PanelSurface } from "@uptimizr/react";
-import { resolvePanelSettings, usePanelData } from "@uptimizr/react";
+import { resolvePanelSettings, specIdFromPanelId, usePanelData } from "@uptimizr/react";
 import { Panel } from "@/components/Panel";
 import { PanelSettingsForm } from "@/panels/PanelSettingsForm";
 import { usePanelPrefs } from "@/panels/usePanelPrefs";
@@ -25,12 +25,19 @@ export function PanelHost({
   surface,
   revision = 0,
   exclude,
+  onUnpin,
 }: {
   panels: PanelDefinition<unknown>[];
   ctx: PanelContext;
   surface: PanelSurface;
   /** Bump to force a refetch (e.g. throttled live updates) without changing filters. */
   revision?: number;
+  /**
+   * Unpin an agent-authored panel (#315), removing its stored spec. Supplied
+   * only when the configured key holds `annotate`; without it, spec panels are
+   * still marked as pinned but carry no unpin control.
+   */
+  onUnpin?: (specId: string) => void;
   /**
    * Panel ids the host must NOT render. Use this when the page mounts a catalog
    * panel's view directly at a bespoke position (e.g. Session Replay / Live
@@ -88,27 +95,34 @@ export function PanelHost({
           />
         </div>
       ) : null}
-      {visible.map(({ panel, panelCtx }) => (
-        <div key={panel.id} className={panel.span === 2 ? "lg:col-span-2" : undefined}>
-          <PanelCell
-            panel={panel}
-            ctx={panelCtx}
-            revision={revision}
-            onHide={() => prefs.hide(panel.id)}
-            settingsForm={
-              panel.settings ? (
-                <PanelSettingsForm
-                  panelId={panel.id}
-                  spec={panel.settings}
-                  values={panelCtx.settings}
-                  onChange={(key, value) => prefs.setSetting(panel.id, key, value)}
-                  onReset={() => prefs.resetSettings(panel.id)}
-                />
-              ) : undefined
-            }
-          />
-        </div>
-      ))}
+      {visible.map(({ panel, panelCtx }) => {
+        // A spec panel (#315) is marked so it is never mistaken for a built-in,
+        // and carries an unpin control when the key can actually remove it.
+        const specId = specIdFromPanelId(panel.id);
+        return (
+          <div key={panel.id} className={panel.span === 2 ? "lg:col-span-2" : undefined}>
+            <PanelCell
+              panel={panel}
+              ctx={panelCtx}
+              revision={revision}
+              onHide={() => prefs.hide(panel.id)}
+              badge={specId != null ? "Pinned by agents" : undefined}
+              onUnpin={specId != null && onUnpin != null ? () => onUnpin(specId) : undefined}
+              settingsForm={
+                panel.settings ? (
+                  <PanelSettingsForm
+                    panelId={panel.id}
+                    spec={panel.settings}
+                    values={panelCtx.settings}
+                    onChange={(key, value) => prefs.setSetting(panel.id, key, value)}
+                    onReset={() => prefs.resetSettings(panel.id)}
+                  />
+                ) : undefined
+              }
+            />
+          </div>
+        );
+      })}
     </>
   );
 }
@@ -153,12 +167,16 @@ function PanelCell({
   revision,
   onHide,
   settingsForm,
+  badge,
+  onUnpin,
 }: {
   panel: PanelDefinition<unknown>;
   ctx: PanelContext;
   revision: number;
   onHide: () => void;
   settingsForm?: ReactNode;
+  badge?: string;
+  onUnpin?: () => void;
 }) {
   const { data, loading, error } = usePanelData(panel, ctx, revision);
   const subtitle = typeof panel.subtitle === "function" ? panel.subtitle(ctx) : panel.subtitle;
@@ -188,6 +206,8 @@ function PanelCell({
       defaultCollapsed={panel.defaultCollapsed}
       onHide={onHide}
       settings={settingsForm}
+      badge={badge}
+      onUnpin={onUnpin}
     >
       {!ready ? null : error ? (
         <p className="text-sm text-fg-muted">Could not load: {error.message}</p>

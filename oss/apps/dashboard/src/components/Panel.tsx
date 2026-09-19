@@ -71,6 +71,8 @@ export function Panel({
   defaultCollapsed = false,
   onHide,
   settings,
+  badge,
+  onUnpin,
 }: {
   title: string;
   subtitle?: string;
@@ -86,6 +88,19 @@ export function Panel({
   onHide?: () => void;
   /** When set, renders a settings ("⚙") toggle that reveals this content (ADR 0039). */
   settings?: ReactNode;
+  /**
+   * When set, marks the panel with a small label beside its title (#315), so an
+   * agent-pinned panel is never mistaken for one the dashboard ships.
+   */
+  badge?: string;
+  /**
+   * When set, renders an unpin action that removes the underlying panel spec
+   * (#315). Deliberately distinct from `onHide`: hiding is this viewer's own
+   * preference and is reversible from the hidden-panels bar, while unpinning
+   * removes the panel for everyone on the project. Offered only to a key
+   * holding `annotate`.
+   */
+  onUnpin?: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -93,6 +108,14 @@ export function Panel({
     <header className={collapsed ? "" : "mb-3"}>
       <div className="flex items-center gap-1.5">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-fg">{title}</h2>
+        {badge ? (
+          <span
+            data-role="panel-badge"
+            className="rounded-full border border-amber/50 px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-amber"
+          >
+            {badge}
+          </span>
+        ) : null}
         {collapsible ? (
           <span aria-hidden="true" className="text-xs text-fg-muted">
             {collapsed ? "▸" : "▾"}
@@ -104,7 +127,7 @@ export function Panel({
     </header>
   );
 
-  const hasActions = Boolean(settings) || Boolean(onHide);
+  const hasActions = Boolean(settings) || Boolean(onHide) || Boolean(onUnpin);
 
   return (
     <section
@@ -132,6 +155,11 @@ export function Panel({
                 onClick={() => setSettingsOpen((o) => !o)}
               >
                 <span aria-hidden="true">⚙</span>
+              </ChromeButton>
+            ) : null}
+            {onUnpin ? (
+              <ChromeButton label={`Unpin ${title}`} onClick={onUnpin}>
+                <span aria-hidden="true">📌</span>
               </ChromeButton>
             ) : null}
             {onHide ? (
