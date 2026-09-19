@@ -24,9 +24,16 @@
 // Run locally:   pnpm gen:docs
 // Staleness gate: pnpm gen:docs:check   (exits non-zero when committed output drifted)
 //
-// The registry is imported from `@uptimizr/metrics`' **built** output, so run
-// `pnpm build` (or `pnpm --filter @uptimizr/metrics... build`) first; CI runs
-// this after its build step.
+// A second data source rides along: the **packaged methodology skills**
+// (ADR 0051 §7), compiled from `oss/packages/agent-core/skills/*/SKILL.md` into
+// `@uptimizr/agent-core` by `scripts/gen-agent-skills.mjs`. The skill tables in
+// the guides, the report-CLI reference and the packaged docs render from them
+// for the same reason the metric tables render from the registry: a hand-kept
+// copy drifts the first time a methodology is reworded.
+//
+// Both are imported from **built** output, so run `pnpm build` (or
+// `pnpm --filter @uptimizr/mcp... build`) first; CI runs this after its build
+// step.
 
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -35,19 +42,33 @@ import process from "node:process";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const REGISTRY_ENTRY = "oss/packages/metrics/dist/index.js";
+const AGENT_CORE_ENTRY = "oss/packages/agent-core/dist/index.js";
 
-/** Import the registry from the built `@uptimizr/metrics` output. */
-async function loadRegistry() {
-  const entry = new URL(`file://${path.resolve(ROOT, REGISTRY_ENTRY).split(path.sep).join("/")}`);
+/** Import one package's built entry point by absolute path. */
+async function loadBuilt(relative, buildHint) {
+  const entry = new URL(`file://${path.resolve(ROOT, relative).split(path.sep).join("/")}`);
   try {
     return await import(entry.href);
   } catch (error) {
     throw new Error(
-      `Could not load the metric registry from ${REGISTRY_ENTRY}.\n` +
-        `Build @uptimizr/metrics first:  pnpm --filter @uptimizr/metrics... build\n\n` +
+      `Could not load ${relative}.\nBuild it first:  ${buildHint}\n\n` +
         `Original error: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+/**
+ * The two data sources the blocks render from: the metric registry, and the
+ * packaged agent skills. Merged into one object so each block renderer can
+ * destructure exactly what it needs.
+ */
+async function loadSources() {
+  const registry = await loadBuilt(REGISTRY_ENTRY, "pnpm --filter @uptimizr/metrics... build");
+  const agentCore = await loadBuilt(
+    AGENT_CORE_ENTRY,
+    "pnpm --filter @uptimizr/agent-core... build",
+  );
+  return { ...registry, AGENT_SKILLS: agentCore.AGENT_SKILLS };
 }
 
 // --- rendering helpers ----------------------------------------------------
@@ -78,6 +99,19 @@ function table(headers, rows) {
     `| ${headers.map(() => "---").join(" | ")} |`,
     ...rows.map((row) => `| ${row.join(" | ")} |`),
   ].join("\n");
+}
+
+/**
+ * A skill's description without its trigger phrases.
+ *
+ * A `SKILL.md` description carries three things: what the skill produces, a
+ * `USE FOR:` list, and `Trigger phrases:` — the wording that should make an
+ * agent reach for it. The first two are what a human reader wants; the third is
+ * machine-facing noise in a docs table, and it is still shipped verbatim in the
+ * skill file and in `prompts/list`.
+ */
+function skillSummary(skill) {
+  return skill.description.split(/\s*Trigger phrases:/)[0].trim();
 }
 
 /** Wrap a comma-separated list of inline-code names at `width` columns. */
@@ -248,6 +282,44 @@ const BLOCKS = {
       wrapList(raw),
     ].join("\n");
   },
+
+  /**
+   * The packaged **methodology skills** (ADR 0051 §7, #316): what each one
+   * produces and when to reach for it, the arguments it takes, and the tools its
+   * method names. Rendered from `AGENT_SKILLS`, which is itself compiled from
+   * the `SKILL.md` files — so the only place a skill is described by hand is the
+   * file that *is* the skill.
+   *
+   * The trigger phrases are dropped: they steer an agent's skill selection and
+   * are noise in a human-facing table. The `USE FOR:` half is kept, because it
+   * is the "when to use it" column a reader is looking for.
+   */
+  "registry-skills": ({ AGENT_SKILLS }) =>
+    table(
+      ["Skill", "Arguments", "What it produces, and when to use it", "Tools its method names"],
+      AGENT_SKILLS.map((skill) => [
+        `\`${skill.name}\``,
+        codeList(skill.args.map((arg) => (arg.required ? `${arg.name}*` : `${arg.name}?`))),
+        cell(skillSummary(skill)),
+        codeList(skill.tools),
+      ]),
+    ),
+
+  /**
+   * A compact skill list for the packaged `AGENTS.md` / `llms.txt` (ADR 0017):
+   * one line per skill, naming the file that holds the method so an agent that
+   * has the tarball can open it.
+   */
+  "registry-skill-names": ({ AGENT_SKILLS }) =>
+    AGENT_SKILLS.map((skill) => {
+      const args = skill.args
+        .map((arg) => (arg.required ? `${arg.name} (required)` : `${arg.name}`))
+        .join(", ");
+      return [
+        `- \`${skill.name}\`${args ? ` (${args})` : ""} — ${skillSummary(skill)}`,
+        `  Method: \`skills/${skill.id}/SKILL.md\`. Tools: ${codeList(skill.tools)}.`,
+      ].join("\n");
+    }).join("\n"),
 };
 
 // --- targets --------------------------------------------------------------
@@ -261,14 +333,25 @@ const TARGETS = [
   },
   {
     file: "oss/apps/docs/src/content/docs/guides/mcp.md",
-    blocks: ["registry-guide-tools"],
+    blocks: ["registry-guide-tools", "registry-skills"],
   },
-  { file: "oss/packages/mcp/README.md", blocks: ["registry-tools"] },
-  { file: "oss/packages/mcp/AGENTS.md", blocks: ["registry-tool-names"] },
-  { file: "oss/packages/mcp/llms.txt", blocks: ["registry-tool-names"] },
-  { file: "oss/packages/agent-core/README.md", blocks: ["registry-tool-names"] },
-  { file: "oss/packages/agent-core/AGENTS.md", blocks: ["registry-tool-names"] },
-  { file: "oss/packages/agent-core/llms.txt", blocks: ["registry-tool-names"] },
+  { file: "oss/apps/docs/src/content/docs/guides/agents.mdx", blocks: ["registry-skills"] },
+  { file: "oss/apps/docs/src/content/docs/deploy/collector.mdx", blocks: ["registry-skills"] },
+  { file: "oss/packages/mcp/README.md", blocks: ["registry-tools", "registry-skills"] },
+  { file: "oss/packages/mcp/AGENTS.md", blocks: ["registry-tool-names", "registry-skill-names"] },
+  { file: "oss/packages/mcp/llms.txt", blocks: ["registry-tool-names", "registry-skill-names"] },
+  {
+    file: "oss/packages/agent-core/README.md",
+    blocks: ["registry-tool-names", "registry-skills"],
+  },
+  {
+    file: "oss/packages/agent-core/AGENTS.md",
+    blocks: ["registry-tool-names", "registry-skill-names"],
+  },
+  {
+    file: "oss/packages/agent-core/llms.txt",
+    blocks: ["registry-tool-names", "registry-skill-names"],
+  },
 ];
 
 /** The two marker dialects: MDX cannot carry HTML comments. */
@@ -335,11 +418,11 @@ async function main() {
   // that `--check` detects a stale table without touching committed files.
   const rootFlag = process.argv.indexOf("--root");
   const targetRoot = rootFlag === -1 ? ROOT : path.resolve(process.argv[rootFlag + 1] ?? ".");
-  const registry = await loadRegistry();
+  const sources = await loadSources();
   const prettier = await import("prettier");
 
   const rendered = Object.fromEntries(
-    Object.entries(BLOCKS).map(([name, render]) => [name, render(registry)]),
+    Object.entries(BLOCKS).map(([name, render]) => [name, render(sources)]),
   );
 
   const stale = [];

@@ -27,7 +27,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { z } from "zod";
-import { renderMcpPrompt } from "./mcpPrompts.js";
+import { renderAgentSkill } from "@uptimizr/agent-core";
 
 /** The registry's metric categories — the bank must span all of them. */
 export const CASE_CATEGORIES = [
@@ -82,8 +82,17 @@ const expectedAnswerSchema = z
   })
   .strict();
 
-/** A reference to one of the curated MCP prompt templates. */
-const promptRefSchema = z
+/**
+ * A reference to one of the packaged methodology skills (ADR 0051 §7).
+ *
+ * The question text is never copied into the bank: the harness renders the real
+ * skill through `@uptimizr/agent-core`, so rewording a `SKILL.md` changes the
+ * question the agent is scored on with nothing to keep in step. These are the
+ * same texts `@uptimizr/mcp` serves as prompt templates and `uptimizr agent
+ * report --skill` sends headlessly — the most important questions the agent will
+ * ever be asked, because they are the ones a client puts one click away.
+ */
+const skillRefSchema = z
   .object({
     name: z.string().min(1),
     args: z.record(z.string(), z.string()).default({}),
@@ -98,7 +107,7 @@ const rawCaseSchema = z
       .regex(/^[a-z0-9_]+$/, "case ids are lower_snake_case"),
     category: z.enum(CASE_CATEGORIES),
     question: z.string().min(1).optional(),
-    prompt: promptRefSchema.optional(),
+    skill: skillRefSchema.optional(),
     context: contextSchema.default({}),
     /**
      * The API-key capability this case needs (ADR 0051 §7). `query` — the
@@ -117,8 +126,8 @@ const rawCaseSchema = z
     }),
   })
   .strict()
-  .refine((c) => (c.question == null) !== (c.prompt == null), {
-    message: "a case needs exactly one of `question` or `prompt`",
+  .refine((c) => (c.question == null) !== (c.skill == null), {
+    message: "a case needs exactly one of `question` or `skill`",
   });
 
 /** A case exactly as written in YAML. */
@@ -126,7 +135,7 @@ export type RawEvalCase = z.infer<typeof rawCaseSchema>;
 
 /** A loaded case: the raw entry with `question` always resolved. */
 export interface EvalCase extends Omit<RawEvalCase, "question"> {
-  /** The question text put to the agent (rendered when the case is a prompt). */
+  /** The question text put to the agent (rendered when the case names a skill). */
   question: string;
   /** The YAML file the case came from, for error messages and the report. */
   file: string;
@@ -144,8 +153,8 @@ export function defaultCasesDir(): string {
 
 /**
  * Load and validate every case in a directory of YAML files. Ids must be unique
- * across the whole bank, a prompt case's text is rendered from the real MCP
- * prompt, and any schema violation throws with the offending file and id — a
+ * across the whole bank, a skill case's text is rendered from the real packaged
+ * skill, and any schema violation throws with the offending file and id — a
  * malformed bank is a build failure, not a silently skipped case.
  */
 export function loadCases(dir: string = defaultCasesDir()): EvalCase[] {
@@ -164,7 +173,7 @@ export function loadCases(dir: string = defaultCasesDir()): EvalCase[] {
     for (const raw of list.data) {
       if (seen.has(raw.id)) throw new Error(`duplicate case id "${raw.id}" (${file})`);
       seen.add(raw.id);
-      const question = raw.question ?? renderMcpPrompt(raw.prompt!.name, raw.prompt!.args);
+      const question = raw.question ?? renderAgentSkill(raw.skill!.name, raw.skill!.args);
       cases.push({ ...raw, question, file });
     }
   }

@@ -392,12 +392,13 @@ so an agent can **self-discover** what it can ask instead of guessing:
 | `uptimizr://capabilities` | `application/json` | A machine-readable descriptor: schema version, the canonical **event types**, the **tool catalog**, the **parameter semantics** glossary, and `metrics` — the collector's whole [semantic metric registry](#the-metric-registry). No collector call.                                                         |
 | `uptimizr://context`      | `application/json` | **Read this first.** The live [project context document](/docs/api/context/): the scenes and their named regions, the custom events this application emits and the props they carry, data freshness and retention flags, the store engine, and which metrics are empty because their capture channel is off. |
 | `uptimizr://scenes`       | `application/json` | The **live** list of scene ids with recent activity — the valid values for the `scene` parameter. Fetched via the read-only query API.                                                                                                                                                                       |
+| `uptimizr://skills`       | `application/json` | The packaged **methodology skills** (below): what each investigation produces, when to use it, the tools its method names and the arguments it takes. The method itself comes from `prompts/get`. No collector call.                                                                                         |
 
 Point an agent at `uptimizr://context` first: it is the only one that describes **this** project —
 the real scene ids, region ids and custom-event names it must use, and which metrics cannot have
 data. `uptimizr://capabilities` is the companion: it enumerates every tool, its parameters, and what
-each parameter means, so the agent can plan a query without trial and error. All three curated
-prompts below open by telling the agent to read the context.
+each parameter means, so the agent can plan a query without trial and error. Every packaged skill
+below opens by telling the agent to read the context.
 
 ### The metric registry
 
@@ -442,17 +443,40 @@ npx openapi-typescript https://collect.example.com/api/v1/openapi.json -o collec
 Authenticate ordinary calls with the `apiKey` security scheme the document declares: the `x-api-key`
 header, using a key with the `query` capability.
 
-## Prompts
+## Prompts — the packaged methodology skills
 
-Curated [MCP prompts](https://modelcontextprotocol.io/docs/concepts/prompts) package common analyses
-as one-click templates. Each renders a message that steers the agent to call the right read-only
-tools in a sensible order — the agent runs the tools; the prompt just frames the task.
+Curated [MCP prompts](https://modelcontextprotocol.io/docs/concepts/prompts) package common
+investigations as one-click templates. Each renders a message that steers the agent to call the
+right read-only tools in a sensible order — the agent runs the tools; the prompt frames the task
+and supplies the **method**.
 
-| Prompt                | Argument | What it does                                                                                                                                  |
-| --------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `weekly_scene_health` | `scene?` | A 7-day health report: traffic, event mix, FPS, and top meshes (`event_counts`, `timeseries`, `perf_summary`, `top_meshes`, `list_sessions`). |
-| `attention_hotspots`  | `scene`  | Where visitors look and click: `camera_heatmap`, `flow_links`, `click_rays`, `top_meshes`.                                                    |
-| `xr_comfort_review`   | `scene?` | VR/AR comfort & drop-off: `xr_rotation`, `xr_locomotion`, `xr_abandonment`, `xr_sources`.                                                     |
+They are not written here. Each one is a packaged **skill** — an Agent Skills file,
+`skills/<name>/SKILL.md`, shipped inside both the `@uptimizr/mcp` and `@uptimizr/agent-core`
+tarballs and compiled into the server at build time.
+The same files back `uptimizr agent report --skill` on your collector and the starter prompts in the
+[in-browser assistant](/docs/guides/assistant/), so a scheduled report and a chat session run the
+same investigation. Open one to read (or fork) the method:
+
+```bash
+cat node_modules/@uptimizr/mcp/skills/weekly-scene-health/SKILL.md
+```
+
+`*` marks a required argument.
+
+<!-- generated:registry-skills:start — rendered by scripts/gen-registry-docs.mjs; do not edit by hand -->
+
+| Skill                           | Arguments          | What it produces, and when to use it                                                                                                                                                                                                                                                                                                                                                                                                                     | Tools its method names                                                                                                                                                                                                                                                                                            |
+| ------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `attention_hotspots`            | `scene*`, `range?` | Find where visitors look and click in a scene: view-direction concentration, gaze→mesh flow, the objects that draw the most interaction, and the ones nobody ever notices. USE FOR: deciding where to put a call to action, finding ignored or invisible content, explaining why an object gets no clicks, laying out a scene around what people actually look at.                                                                                       | `camera_heatmap`, `flow_links`, `click_rays`, `top_meshes`, `mesh_dwell`, `mesh_blind_spots`, `query`                                                                                                                                                                                                             |
+| `conversion_investigation`      | `scene?`, `range?` | Find out where a funnel loses people and whether the loss is real: step-by-step drop-off, the bounce that happens before the funnel even starts, scene-to-scene retention, variant performance, and the interaction failures (dead clicks, rage clicks, unreachable meshes) that explain a stalled step. USE FOR: a funnel that converts worse than expected, an A/B variant comparison, "where do people drop off", diagnosing a step nobody completes. | `funnel`, `load_bounce_funnel`, `scene_retention`, `variant_leaderboard`, `dead_clicks`, `rage_clicks`, `mesh_reachability`, `flow_links`, `insight_significance`, `insight_movers`, `query`                                                                                                                      |
+| `performance_regression_triage` | `scene?`, `range?` | Triage a frame-rate or stability regression: confirm it moved, date it, locate it (which scene, device class, place in the scene), and name the mechanism — jank, shader compile stalls, memory pressure, a render-scale change or a rendering-technology shift. USE FOR: "the app got slower", a FPS drop after a release, stutter reports, deciding whether a regression is real or noise.                                                             | `insight_movers`, `insight_anomalies`, `insight_significance`, `insight_baseline`, `perf_summary`, `perf_distribution`, `frame_time_percentiles`, `jank_rate`, `perf_by_device`, `perf_by_scene`, `perf_heatmap`, `compile_stalls`, `resource_percentiles`, `render_scale_truth`, `rendering_technology`, `query` |
+| `weekly_scene_health`           | `scene?`, `range?` | A weekly health check for a scene (or the whole project): a weighted health score with every factor traced back to the metric behind it, what changed against last week, traffic, event mix, performance, and the most-interacted meshes. USE FOR: the recurring "how is the scene doing?" review, a scheduled weekly or monthly report, a first look at a project you do not know yet, deciding which scene to investigate next.                        | `insight_scene_health`, `insight_movers`, `insight_baseline`, `insight_significance`, `insight_anomalies`, `event_counts`, `timeseries`, `perf_summary`, `top_meshes`, `list_sessions`, `query`                                                                                                                   |
+| `xr_comfort_audit`              | `scene?`, `range?` | Audit VR/AR comfort for a scene (or the whole project): rapid head rotation, locomotion style, tracking quality, guardian/boundary contacts, input-source mix, and the short sessions that mean someone took the headset off. USE FOR: motion-sickness complaints, immersive sessions that end early, choosing a locomotion scheme, checking whether a play space is big enough.                                                                         | `xr_rotation`, `xr_locomotion`, `xr_abandonment`, `xr_sources`, `xr_tracking_quality`, `xr_boundary_contacts`, `boundary_heatmap_stats`, `insight_scene_health`, `insight_movers`, `query`                                                                                                                        |
+
+<!-- generated:registry-skills:end -->
+
+The catalog is also readable as the `uptimizr://skills` resource above, for a client whose UI has
+no prompt picker.
 
 ## Leaving something behind (the `annotate` tools)
 

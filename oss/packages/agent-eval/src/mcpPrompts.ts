@@ -1,18 +1,19 @@
 /**
  * Render the curated MCP prompt templates as plain question text.
  *
- * `@uptimizr/mcp` ships three analysis prompts (`weekly_scene_health`,
- * `attention_hotspots`, `xr_comfort_review`) — the canned investigations an MCP
- * client offers a user, and therefore some of the most important questions the
- * agent will ever be asked. The design sketch wants them in the bank, but a copy
- * of their text in a YAML file would drift the moment a prompt is reworded.
+ * `@uptimizr/mcp` serves the packaged methodology skills (ADR 0051 §7) as prompt
+ * templates — the canned investigations an MCP client offers a user, and
+ * therefore some of the most important questions the agent will ever be asked.
  *
- * So the bank references a prompt by name and this module renders the real one:
+ * The bank renders those skills straight from `@uptimizr/agent-core`, which is
+ * where their text lives. This module renders them the *other* way, through the
+ * MCP binding, so the coverage suite can assert the two surfaces agree — if they
+ * ever diverge, the bank has stopped measuring what a real client sends:
  * `registerPrompts` is called with a minimal recorder standing in for an
  * `McpServer`, capturing each template's handler, and
  * {@link renderMcpPrompt} runs the handler and returns the user message it
- * produces. Change a prompt in `@uptimizr/mcp` and the eval question changes
- * with it — there is nothing to keep in step.
+ * produces. Reword a `SKILL.md` and both renderings change with it — there is
+ * nothing to keep in step.
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";

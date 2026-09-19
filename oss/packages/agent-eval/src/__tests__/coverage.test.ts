@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { rawTools, readTools } from "@uptimizr/agent-core";
+import { AGENT_SKILL_NAMES, rawTools, readTools } from "@uptimizr/agent-core";
 import { CASE_CATEGORIES, loadCases, toolsReferenced } from "../cases.js";
 import { coverageReport, loadUncovered } from "../coverage.js";
 import { MCP_PROMPT_NAMES, renderMcpPrompt } from "../mcpPrompts.js";
@@ -42,12 +42,27 @@ describe("the question bank", () => {
     for (const evalCase of cases) expect(evalCase.question.trim().length).toBeGreaterThan(0);
   });
 
-  it("covers the curated MCP prompts, rendered from `@uptimizr/mcp` itself", () => {
-    const promptCases = cases.filter((c) => c.prompt);
-    expect(promptCases.map((c) => c.prompt!.name).sort()).toEqual([...MCP_PROMPT_NAMES].sort());
-    for (const promptCase of promptCases) {
-      expect(promptCase.question).toBe(
-        renderMcpPrompt(promptCase.prompt!.name, promptCase.prompt!.args),
+  it("gives every packaged skill at least two cases", () => {
+    const perSkill = new Map<string, number>(AGENT_SKILL_NAMES.map((name) => [name, 0]));
+    for (const evalCase of cases.filter((c) => c.skill)) {
+      const name = evalCase.skill!.name;
+      expect(perSkill.has(name), `unknown skill "${name}"`).toBe(true);
+      perSkill.set(name, perSkill.get(name)! + 1);
+    }
+    for (const [name, count] of perSkill) {
+      expect(count, `skill "${name}" needs at least two eval cases`).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("asks each skill exactly what an MCP client would receive", () => {
+    // The bank renders a skill through `@uptimizr/agent-core`; `@uptimizr/mcp`
+    // renders the same skill as a prompt template. If those two ever diverge,
+    // the bank stops measuring what a real client sends — so assert they agree
+    // rather than trusting that both read the same array.
+    expect([...MCP_PROMPT_NAMES].sort()).toEqual([...AGENT_SKILL_NAMES].sort());
+    for (const skillCase of cases.filter((c) => c.skill)) {
+      expect(skillCase.question).toBe(
+        renderMcpPrompt(skillCase.skill!.name, skillCase.skill!.args),
       );
     }
   });

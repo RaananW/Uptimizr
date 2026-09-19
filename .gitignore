@@ -10,6 +10,10 @@ out/
 .turbo/
 *.tsbuildinfo
 
+# The packaged methodology skills are authored once, in @uptimizr/agent-core, and
+# copied into @uptimizr/mcp by its build so both tarballs ship them (#316).
+oss/packages/mcp/skills/
+
 # Test / coverage
 coverage/
 .nyc_output/

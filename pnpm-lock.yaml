@@ -50,6 +50,9 @@ importers:
       wawoff2:
         specifier: ^2.0.1
         version: 2.0.1
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
 
   examples/playground:
     dependencies:

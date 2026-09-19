@@ -51,6 +51,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "README.md",
     "LICENSE",
     "AGENTS.md",
