@@ -54,8 +54,14 @@ export interface MetricBucketOptions extends RangeOptions, SceneOptions {
    * Never caller input: `significance` and `scene_health` set it from the
    * registry and from their own fixed factor catalog respectively, so the value
    * is always one of a compile-time union.
+   *
+   * Named `series` rather than `variant` because `variant` is already an
+   * aggregation option elsewhere (the variant-leaderboard's custom-event
+   * predicate), and the store-parity harness builds every aggregation from one
+   * shared option bag: two unrelated meanings under one key would silently
+   * cross over.
    */
-  variant?: BucketVariant;
+  series?: BucketVariant;
 }
 
 /**
@@ -184,12 +190,12 @@ export function buildMetricBuckets(
   opts: MetricBucketOptions,
   d: Dialect,
 ): QuerySpec {
-  const measure = resolveBucketMeasure(opts.metric, opts.variant);
+  const measure = resolveBucketMeasure(opts.metric, opts.series);
   if (measure == null) {
     throw new Error(
-      opts.variant == null
+      opts.series == null
         ? `metric '${opts.metric}' has no portable bucket series`
-        : `metric '${opts.metric}' declares no '${opts.variant}' series`,
+        : `metric '${opts.metric}' declares no '${opts.series}' series`,
     );
   }
   const bag = new ParamBag(d);

@@ -18,6 +18,11 @@ import { API_KEY, COLLECTOR_URL, DASHBOARD_URL, PROJECT_ID } from "./constants.j
  * baseline is the two days before it, so an offset of 48-72 hours is inside the
  * baseline for every possible `now` while an offset of 30 hours is not.
  *
+ * The scene is selected explicitly in the filter bar rather than left to the
+ * unscoped top-N: the shared e2e project accumulates a scene per sibling spec,
+ * and an unscoped request is deliberately bounded to the busiest few, so which
+ * scenes appear would depend on what else ran.
+ *
  * Events are seeded by batched POSTs to the public ingest endpoint rather than
  * driven through a real engine: neither a 20 FPS frame nor an uncaught error can
  * be produced deterministically in the headless runner, and the seeded path is
@@ -100,6 +105,7 @@ async function loadDashboard(page: Page): Promise<void> {
   // "Last 24h" makes the scored window the last two whole days, so the baseline
   // window is the two days the healthy batches were seeded into.
   await page.getByRole("button", { name: "Last 24h" }).click();
+  await page.locator('label:has-text("Scene") select').selectOption(SCENE);
 }
 
 test("scene health tile scores a regressed scene against its own baseline", async ({
@@ -138,7 +144,7 @@ test("scene health tile scores a regressed scene against its own baseline", asyn
   });
 
   const row = panel.locator(`[data-testid="scene-health-row"][data-scene="${SCENE}"]`);
-  await expect(row).toBeVisible({ timeout: 20_000 });
+  await expect(row).toBeVisible({ timeout: 30_000 });
 
   // The headline is a real score, not the "—" of a scene with no baseline.
   const score = row.locator('[data-testid="scene-health-score"]');

@@ -445,7 +445,7 @@ interface HealthRead {
   factor: string;
   side: "numerator" | "denominator";
   metric: MetricId;
-  variant: BucketVariant | undefined;
+  series: BucketVariant | undefined;
   window: ResolvedWindow;
   /** Whether this read is the project baseline rather than the scene's window. */
   baseline: boolean;
@@ -664,10 +664,10 @@ export const insightRoutes: FastifyPluginAsync<Options> = async (app, { store })
       // `movers` uses, and for the same two reasons: half the queries, and both
       // windows are guaranteed to have seen one snapshot of the data.
       const span = spanningWindow(range, reference);
-      const read = (variant?: BucketVariant): Promise<MetricBucketRow[]> =>
+      const read = (series?: BucketVariant): Promise<MetricBucketRow[]> =>
         store.metricBuckets(resolved.projectId, {
           metric: metric.id,
-          variant,
+          series,
           bucket,
           since: span.since,
           until: span.until,
@@ -752,19 +752,19 @@ export const insightRoutes: FastifyPluginAsync<Options> = async (app, { store })
       // cost is `factors x sides x (scenes + 1)` and not `x scenes x 2`.
       const plan: HealthRead[] = [];
       for (const factor of HEALTH_FACTORS) {
-        const sides: readonly { side: "numerator" | "denominator"; variant?: BucketVariant }[] = [
-          { side: "numerator", ...(factor.numerator ? { variant: factor.numerator } : {}) },
+        const sides: readonly { side: "numerator" | "denominator"; series?: BucketVariant }[] = [
+          { side: "numerator", ...(factor.numerator ? { series: factor.numerator } : {}) },
           ...(factor.denominator
-            ? [{ side: "denominator" as const, variant: factor.denominator }]
+            ? [{ side: "denominator" as const, series: factor.denominator }]
             : []),
         ];
-        for (const { side, variant } of sides) {
+        for (const { side, series } of sides) {
           plan.push({
             scene: "",
             factor: factor.id,
             side,
             metric: factor.metric,
-            variant,
+            series,
             window: baselineWindow,
             baseline: true,
           });
@@ -774,7 +774,7 @@ export const insightRoutes: FastifyPluginAsync<Options> = async (app, { store })
               factor: factor.id,
               side,
               metric: factor.metric,
-              variant,
+              series,
               window: range,
               baseline: false,
             });
@@ -785,7 +785,7 @@ export const insightRoutes: FastifyPluginAsync<Options> = async (app, { store })
       const results = await mapPooled(plan, BUCKET_READ_CONCURRENCY, (read) =>
         store.metricBuckets(resolved.projectId, {
           metric: read.metric,
-          variant: read.variant,
+          series: read.series,
           bucket,
           since: read.window.since,
           until: read.window.until,

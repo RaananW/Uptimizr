@@ -55,7 +55,7 @@ export interface BucketEventLike {
 export interface EvaluateBucketOptions {
   metric: string;
   /** A named auxiliary series of the metric rather than its headline one (#307). */
-  variant?: BucketVariant;
+  series?: BucketVariant;
   bucket?: BucketGrain;
   since?: number;
   until?: number;
@@ -110,12 +110,12 @@ export function evaluateBucketMeasure(
   events: Iterable<BucketEventLike>,
   opts: EvaluateBucketOptions,
 ): MetricBucketRow[] {
-  const measure = resolveBucketMeasure(opts.metric, opts.variant);
+  const measure = resolveBucketMeasure(opts.metric, opts.series);
   if (measure == null) {
     throw new Error(
-      opts.variant == null
+      opts.series == null
         ? `metric '${opts.metric}' has no portable bucket series`
-        : `metric '${opts.metric}' declares no '${opts.variant}' series`,
+        : `metric '${opts.metric}' declares no '${opts.series}' series`,
     );
   }
   const width = BUCKET_SECONDS[opts.bucket ?? "day"] * 1000;

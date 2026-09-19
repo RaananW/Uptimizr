@@ -701,7 +701,7 @@ export interface CollectorStore {
    * route validates that at the edge and answers `400` with the list of ids that
    * do, so an implementation may assume it.
    *
-   * `opts.variant` (#307) selects one of that metric’s **named auxiliary
+   * `opts.series` (#307) selects one of that metric’s **named auxiliary
    * series** instead — a rate denominator, an FPS tail — declared beside the
    * main measure in the same catalog. It is a compile-time union set by the
    * insight layer, never a caller-supplied string, and a metric may declare a

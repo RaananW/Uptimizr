@@ -1093,7 +1093,7 @@ export const PARITY_CASES: readonly ParityCase[] = [
     build: (d) =>
       buildMetricBuckets(
         PID,
-        { ...PARITY_RANGE, metric: "dead_clicks", variant: "denominator", bucket: "hour" },
+        { ...PARITY_RANGE, metric: "dead_clicks", series: "denominator", bucket: "hour" },
         d,
       ),
     sortKeys: ["bucket"],
@@ -1106,7 +1106,7 @@ export const PARITY_CASES: readonly ParityCase[] = [
     build: (d) =>
       buildMetricBuckets(
         PID,
-        { ...PARITY_RANGE, metric: "jank_rate", variant: "numerator", bucket: "hour" },
+        { ...PARITY_RANGE, metric: "jank_rate", series: "numerator", bucket: "hour" },
         d,
       ),
     sortKeys: ["bucket"],
@@ -1123,7 +1123,7 @@ export const PARITY_CASES: readonly ParityCase[] = [
     build: (d) =>
       buildMetricBuckets(
         PID,
-        { ...PARITY_RANGE, metric: "perf_summary", variant: "p05", bucket: "hour" },
+        { ...PARITY_RANGE, metric: "perf_summary", series: "p05", bucket: "hour" },
         d,
       ),
     sortKeys: ["bucket"],
