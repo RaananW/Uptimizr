@@ -140,7 +140,8 @@ out of the generated stylesheet and the panels render unstyled:
 The `@uptimizr/react/assistant` subpath ships a drop-in `<AssistantPanel>` and a
 headless `useAssistant()` hook that let anyone ask natural-language questions of
 their 3D analytics — the agent loop runs **entirely in the browser** against the
-same read-only query API the panels use (ADR 0050). It ships **no model and no
+same query API the panels use (ADR 0050) — reading only, and writing project
+metadata when the key allows it (see below). It ships **no model and no
 key**: the user picks a local WebGPU model or a bring-your-own hosted provider.
 
 ```tsx

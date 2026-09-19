@@ -19,6 +19,7 @@ import { collectRoutes } from "./routes/collect.js";
 import { liveRoutes } from "./routes/live.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
+import { metadataRoutes } from "./routes/metadata.js";
 import { queryRoutes } from "./routes/query.js";
 import { queryDslRoutes } from "./routes/query-dsl.js";
 
@@ -96,12 +97,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
     // @fastify/cors defaults `methods` to GET,HEAD,POST — which omits PUT and so
     // breaks the browser preflight for scene-proxy registration
-    // (PUT /api/v1/scenes/:id/representation). List the verbs the HTTP API uses.
-    // DELETE is only added when `/mcp` exists, since ending an MCP session is
-    // the collector's only DELETE.
-    methods: config.mcpHttpEnabled
-      ? ["GET", "HEAD", "POST", "PUT", "DELETE"]
-      : ["GET", "HEAD", "POST", "PUT"],
+    // (PUT /api/v1/scenes/:id/representation). DELETE is needed for the metadata
+    // write path (#310: removing an annotation, a term, a saved analysis) and for
+    // ending an MCP session over `/mcp` (#313). List the verbs the HTTP API uses.
+    methods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
     // Streamable HTTP returns the session id in a response header the client has
     // to echo back; a browser cannot read it unless it is explicitly exposed.
     ...(config.mcpHttpEnabled ? { exposedHeaders: ["Mcp-Session-Id"] } : {}),
@@ -171,6 +170,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(queryRoutes, { store, config });
   // The query DSL (ADR 0051 §3): one route that can run any registry metric.
   await app.register(queryDslRoutes, { store });
+  // The metadata write path (#310) is its own plugin so the read API above stays
+  // exactly what it is — aggregate and read-only — and so the `annotate`-gated
+  // surface is one file to inspect.
+  await app.register(metadataRoutes, { store });
   // Collector-hosted MCP over Streamable HTTP (ADR 0051 §7). Opt-in: without
   // `COLLECTOR_MCP_HTTP` the route does not exist.
   if (config.mcpHttpEnabled && internalDispatchToken != null) {

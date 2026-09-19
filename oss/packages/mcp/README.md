@@ -1,14 +1,21 @@
 # @uptimizr/mcp
 
-A **read-only** [Model Context Protocol](https://modelcontextprotocol.io) server over an
-Uptimizr collector's query API. It lets an AI agent ask natural-language questions about your
+A [Model Context Protocol](https://modelcontextprotocol.io) server over an Uptimizr
+collector's API. It lets an AI agent ask natural-language questions about your
 3D analytics ("what was the most-clicked mesh this week?") and have them answered by querying
 **your own** collector — nothing is sent to any third party.
 
-The server is a thin wrapper: each tool maps one-to-one to a documented collector query endpoint
-(see [integration docs](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md)). It
-performs `GET` requests only — there are **no ingestion, mutation, or raw per-session event
-tools**.
+The server is a thin wrapper: each analytics tool maps one-to-one to a documented collector query
+endpoint (see
+[integration docs](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md)) and performs
+`GET` requests only. There are **no ingestion tools and no raw per-session event tools**, and
+nothing here can write, alter or delete an analytics event — **events are read-only**.
+
+The one exception is gated: when the configured key holds the `annotate` capability the server also
+registers the **project-metadata** tools `annotate`, `define_term` and `save_analysis` (plus
+`list_annotations`, `list_glossary`, `list_analyses`), which leave notes, definitions and saved
+analyses behind. The server asks `GET /api/v1/whoami` once at start-up, so a read-only key yields a
+read-only server, and every metadata write is recorded in the project's agent audit log.
 
 ## How it connects
 
@@ -28,10 +35,10 @@ UPTIMIZR_API_KEY="utk_…" \
 npx @uptimizr/mcp
 ```
 
-| Environment variable     | Required | Notes                                              |
-| ------------------------ | -------- | -------------------------------------------------- |
-| `UPTIMIZR_COLLECTOR_URL` | yes      | Base URL of **your** collector.                    |
-| `UPTIMIZR_API_KEY`       | yes      | Your project API key (`x-api-key`), read-only use. |
+| Environment variable     | Required | Notes                                                                                           |
+| ------------------------ | -------- | ----------------------------------------------------------------------------------------------- |
+| `UPTIMIZR_COLLECTOR_URL` | yes      | Base URL of **your** collector.                                                                 |
+| `UPTIMIZR_API_KEY`       | yes      | Your project API key (`x-api-key`). `query` reads; add `annotate` to enable the metadata tools. |
 
 ### Configure an MCP client
 
@@ -219,7 +226,7 @@ resolved, so a session's surface can only narrow to what its key may do; omittin
 entry point does) registers the whole read catalog and leaves enforcement to the collector.
 
 The package also exports `readTools`, `CollectorError`, `version`, and the related public types.
-The read-only tool catalog (`readTools`) and the `GET`-only collector client are defined in the
+The read-only analytics catalog (`readTools`), the `annotate`-gated `writeTools`, and the collector client are defined in the
 framework-agnostic [`@uptimizr/agent-core`](../agent-core/README.md) package and re-exported here,
 so the agent tool surface is defined once and shared across the MCP server, the dashboard assistant,
 and the demo assistant (ADR 0050). Building a non-MCP agent? Depend on `@uptimizr/agent-core`

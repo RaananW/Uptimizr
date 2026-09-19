@@ -2020,6 +2020,93 @@ uptimizr regions get lobby --project "$PROJECT_ID"
 envelope the endpoint takes, so one file works with both. `--project` may be
 replaced by the `UPTIMIZR_PROJECT_ID` environment variable.
 
+### Metadata: annotations, glossary, saved analyses
+
+Numbers alone do not carry what a team knows. This is where that knowledge goes:
+a note on a spike, a definition of a name only your project uses, a question
+worth re-asking with the answer it got. Three small, project-scoped tables
+(ADR 0051 §5):
+
+| Table            | What it holds                                                                                 |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `annotations`    | Notes pinned to the project, a scene, a mesh, a region, a metric, or a period of time.        |
+| `glossary`       | What a name means **in this project** — a mesh name, a scene id, a custom event, a shorthand. |
+| `saved_analyses` | A titled question plus the conclusion drawn from it, so it need not be re-derived.            |
+
+**These are the only rows a client can write besides events, and they are not
+events.** Nothing on this path can write, alter or delete an analytics event —
+the analytics API stays read-only and aggregate-only (ADR 0051 §9). Every write
+needs a key holding [`annotate`](#api-keys-capabilities-rate-limits-and-the-audit-log);
+reads need `query`. Every write is recorded in the agent audit log.
+
+| Method   | Path                      | Purpose                                            | Capability | Body / params                                       |
+| -------- | ------------------------- | -------------------------------------------------- | ---------- | --------------------------------------------------- |
+| `GET`    | `/api/v1/annotations`     | The project's notes, newest first.                 | `query`    | `targetKind`, `targetId`, `since`, `until`, `limit` |
+| `POST`   | `/api/v1/annotations`     | Leave a note. Answers `201` with the stored row.   | `annotate` | `{ targetKind, targetId?, since?, until?, text }`   |
+| `DELETE` | `/api/v1/annotations/:id` | Remove a note. `204`, or `404` if it is not there. | `annotate` | —                                                   |
+| `GET`    | `/api/v1/glossary`        | The whole glossary, ordered by term.               | `query`    | `limit`                                             |
+| `PUT`    | `/api/v1/glossary/:term`  | Define (or redefine) a term — idempotent.          | `annotate` | `{ meaning }`                                       |
+| `DELETE` | `/api/v1/glossary/:term`  | Undefine a term.                                   | `annotate` | —                                                   |
+| `GET`    | `/api/v1/analyses`        | Saved analyses, newest first.                      | `query`    | `limit`                                             |
+| `POST`   | `/api/v1/analyses`        | Save an analysis. Answers `201`.                   | `annotate` | `{ title, query, conclusion? }`                     |
+| `DELETE` | `/api/v1/analyses/:id`    | Remove a saved analysis.                           | `annotate` | —                                                   |
+
+```bash
+# A note about a period of time
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{"targetKind":"window","since":1757000000000,"until":1757003600000,
+       "text":"CDN incident — ignore the load-time spike here."}' \
+  "https://collect.example.com/api/v1/annotations"
+
+# What a mesh name means in this project
+curl -X PUT -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{"meaning":"the till cluster by the exit"}' \
+  "https://collect.example.com/api/v1/glossary/checkout%20counter"
+
+# A question worth keeping
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{"title":"Lobby FPS after the lighting change",
+       "query":{"metric":"perf_summary","scene":"lobby"},
+       "conclusion":"p50 fell from 58 to 41 on integrated GPUs."}' \
+  "https://collect.example.com/api/v1/analyses"
+```
+
+**An annotation's target.** `targetKind` is one of `project`, `scene`, `mesh`,
+`region`, `metric` or `window`. The four middle ones name something and need a
+`targetId` (the scene id, mesh name, region id or metric id); `window` needs a
+`since`; `project` is a standing note about everything. `since`/`until` are epoch
+milliseconds, and on a read they are an **overlap** filter — a note matches when
+its period intersects the requested window, and a standing note always matches.
+
+**Who wrote it.** Every stored row carries `authorKind` (`user` or `agent`) and
+`authorKeyId` (the key's row id, never the key). The collector decides
+`authorKind` from the calling client, never from the payload: requests carrying
+`x-uptimizr-client: dashboard` — a person clicking in a first-party UI — are
+`user`; everything else holding an `annotate` key, including the in-browser
+assistant writing up its own answer, is `agent`.
+
+**Bounds.** Free text is capped at the boundary (`text` ≤ 2 000 characters,
+`meaning` ≤ 500, `title` ≤ 120, `conclusion` ≤ 4 000, a saved `query` document
+≤ 8 000 serialized characters), and each project holds at most 500 annotations,
+200 glossary terms and 200 saved analyses. A write past a cap answers `409` —
+the payload was fine, the project is full; delete something and retry.
+
+**`query` on a saved analysis** is an opaque JSON object: the collector stores it
+and does not interpret it. Put the endpoint and filters that produced the answer
+in it, so the next reader can re-run what you actually ran.
+
+**Privacy.** These rows are written by your own operators and agents, not
+captured from visitors, so they are the one place in the collector that is not
+machine-bounded to non-PII. They are project-scoped, readable only with that
+project's key, bounded, and audited — but do not paste personal data into them
+(ADR 0003).
+
+**Agents.** `@uptimizr/mcp` exposes the same three writes as the MCP tools
+`annotate`, `define_term` and `save_analysis`, plus `list_annotations`,
+`list_glossary` and `list_analyses`. They are registered **only** when the
+configured key holds `annotate` — the server asks `GET /api/v1/whoami` once at
+start-up — so a read-only key yields a read-only server.
+
 ```bash
 curl -H "x-api-key: $KEY" \
   "https://collect.example.com/api/v1/perf?session=<session-id>"

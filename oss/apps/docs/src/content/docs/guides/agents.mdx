@@ -251,7 +251,38 @@ is the region **id**, so the obvious follow-up is a single parameter. Nothing re
 `null` plus a caveat naming what is missing, never a guess. See
 [labelled spatial clusters](/docs/api/query/#labelled-spatial-clusters).
 
-## 7. Scope the key, then read the audit log
+## 7. Let the agent leave something behind
+
+An agent that can only read re-derives the same context every session: what that mesh name means,
+why last Tuesday spiked, whether this question has been asked before. The **metadata write path**
+gives it somewhere to put what it learned — and gives the next reader, human or agent, somewhere to
+find it.
+
+| Tool            | What it keeps                                                                  |
+| --------------- | ------------------------------------------------------------------------------ |
+| `annotate`      | A note pinned to the project, a scene, a mesh, a region, a metric or a period. |
+| `define_term`   | What a name means in this project.                                             |
+| `save_analysis` | A titled question plus the conclusion drawn from it.                           |
+
+`list_annotations`, `list_glossary` and `list_analyses` read them back — worth calling _before_
+explaining a spike someone has already explained.
+
+Three properties make this safe to hand an agent:
+
+- **Events stay read-only.** Nothing on this path can write, alter or delete an analytics event.
+  Metadata rows are a separate surface with their own tables.
+- **It is gated.** Every write needs a key holding `annotate`; `@uptimizr/mcp` asks
+  `GET /api/v1/whoami` at start-up and registers the write tools only when the key has it, so a
+  read-only key yields a read-only server.
+- **It is audited and bounded.** Every write lands in the agent audit log with the key that made it,
+  every field is length-capped at the edge, and each project holds at most 500 annotations, 200
+  glossary terms and 200 saved analyses.
+
+Stored rows record whether a person or an agent wrote them — the collector decides that from the
+calling client, never from the payload. Full reference:
+[Metadata endpoints](/docs/api/metadata/).
+
+## 8. Scope the key, then read the audit log
 
 Give an agent its own key rather than the dashboard's:
 
@@ -277,7 +308,7 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 
 Full reference: [API keys and capabilities](/docs/api/overview/#api-keys-and-capabilities).
 
-## 8. How the catalog is kept honest
+## 9. How the catalog is kept honest
 
 "AI-first" is a claim until something measures it. The repository carries an **evaluation harness**
 (`oss/packages/agent-eval`, private to the repo — it is an instrument, not a shipped package): a bank

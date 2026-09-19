@@ -2,7 +2,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createCollectorClient } from "@uptimizr/agent-core";
 import { readMcpConfig } from "./config.js";
-import { createMcpServer } from "./server.js";
+import { createMcpServer, fetchKeyCapabilities } from "./server.js";
 
 /**
  * Entry point: read configuration from the environment, build a read-only
@@ -12,7 +12,11 @@ import { createMcpServer } from "./server.js";
 async function main(): Promise<void> {
   const config = readMcpConfig();
   const client = createCollectorClient(config);
-  const server = createMcpServer(client);
+  // Ask the collector what this key may do before building the server: the
+  // metadata write tools of #310 are registered only for a key that holds
+  // `annotate`, so a read-only key never sees a tool it would be refused for.
+  const capabilities = await fetchKeyCapabilities(client);
+  const server = createMcpServer(client, { capabilities });
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

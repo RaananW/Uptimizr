@@ -150,6 +150,15 @@ import {
   putSceneRegions as pgPutSceneRegions,
   getSceneRegions as pgGetSceneRegions,
   listSceneRegions as pgListSceneRegions,
+  createAnnotation as pgCreateAnnotation,
+  listAnnotations as pgListAnnotations,
+  deleteAnnotation as pgDeleteAnnotation,
+  putGlossaryEntry as pgPutGlossaryEntry,
+  listGlossary as pgListGlossary,
+  deleteGlossaryEntry as pgDeleteGlossaryEntry,
+  createSavedAnalysis as pgCreateSavedAnalysis,
+  listSavedAnalyses as pgListSavedAnalyses,
+  deleteSavedAnalysis as pgDeleteSavedAnalysis,
   type PostgresClient,
 } from "@uptimizr/db-postgres";
 import type { CollectorStore } from "./store.js";
@@ -369,6 +378,15 @@ export async function createPostgresStore(): Promise<CollectorStore> {
       pgPutSceneRegions(pgc, projectId, sceneId, regions),
     getSceneRegions: (projectId, sceneId) => pgGetSceneRegions(pgc, projectId, sceneId),
     listSceneRegions: (projectId) => pgListSceneRegions(pgc, projectId),
+    createAnnotation: (projectId, input) => pgCreateAnnotation(pgc, projectId, input),
+    listAnnotations: (projectId, opts) => pgListAnnotations(pgc, projectId, opts),
+    deleteAnnotation: (projectId, id) => pgDeleteAnnotation(pgc, projectId, id),
+    putGlossaryEntry: (projectId, input) => pgPutGlossaryEntry(pgc, projectId, input),
+    listGlossary: (projectId, opts) => pgListGlossary(pgc, projectId, opts),
+    deleteGlossaryEntry: (projectId, term) => pgDeleteGlossaryEntry(pgc, projectId, term),
+    createSavedAnalysis: (projectId, input) => pgCreateSavedAnalysis(pgc, projectId, input),
+    listSavedAnalyses: (projectId, opts) => pgListSavedAnalyses(pgc, projectId, opts),
+    deleteSavedAnalysis: (projectId, id) => pgDeleteSavedAnalysis(pgc, projectId, id),
     async close() {
       await pgc.close();
     },

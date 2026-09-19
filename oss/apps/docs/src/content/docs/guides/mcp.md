@@ -1,6 +1,6 @@
 ---
 title: MCP server (AI agents)
-description: Let an AI agent answer natural-language questions about your 3D analytics with the read-only @uptimizr/mcp server.
+description: Let an AI agent answer natural-language questions about your 3D analytics with the @uptimizr/mcp server — events read-only, metadata writes behind the annotate capability.
 ---
 
 `@uptimizr/mcp` is a **read-only** [Model Context Protocol](https://modelcontextprotocol.io) server over
@@ -8,8 +8,17 @@ your collector's query API. It lets an AI agent answer natural-language question
 ("what was the most-clicked mesh this week?") by querying **your own** collector — nothing is sent to any
 third party.
 
-It's a thin wrapper: each tool maps one-to-one to a documented [query endpoint](/docs/api/query/) and
-performs `GET` requests only. There are **no ingestion, mutation, or raw per-session event tools**.
+It's a thin wrapper: each analytics tool maps one-to-one to a documented
+[query endpoint](/docs/api/query/) and performs `GET` requests only. There are **no ingestion tools
+and no raw per-session event tools**, and nothing in the server can write, alter or delete an
+analytics event — **events are read-only**.
+
+The one exception is deliberate and gated: when the configured key holds the `annotate` capability,
+the server also registers the **project-metadata** tools `annotate`, `define_term` and
+`save_analysis` (plus `list_annotations`, `list_glossary`, `list_analyses`), which write notes,
+definitions and saved analyses through the [metadata endpoints](/docs/api/metadata/). The server
+asks `GET /api/v1/whoami` once at start-up, so a read-only key yields a read-only server — and every
+metadata write is recorded in the project's agent audit log.
 
 The tool catalog itself lives in the framework-agnostic, browser-safe **`@uptimizr/agent-core`**
 package, which `@uptimizr/mcp` imports. That means the agent tool surface is defined **once** and
@@ -429,6 +438,30 @@ tools in a sensible order — the agent runs the tools; the prompt just frames t
 | `attention_hotspots`  | `scene`  | Where visitors look and click: `camera_heatmap`, `flow_links`, `click_rays`, `top_meshes`.                                                    |
 | `xr_comfort_review`   | `scene?` | VR/AR comfort & drop-off: `xr_rotation`, `xr_locomotion`, `xr_abandonment`, `xr_sources`.                                                     |
 
+## Leaving something behind (the `annotate` tools)
+
+Read tools answer a question; these keep the answer. They appear in `tools/list` only when the key
+you configured holds the `annotate` capability.
+
+| Tool               | What it does                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| `annotate`         | Pin a note to the project, a scene, a mesh, a region, a metric or a period of time.                    |
+| `define_term`      | Record what a name means in this project. Idempotent — defining it again replaces the meaning.         |
+| `save_analysis`    | Store a titled question plus the conclusion drawn from it.                                             |
+| `list_annotations` | Read the notes already left — worth doing **before** explaining a spike someone has already explained. |
+| `list_glossary`    | Read the project's vocabulary before interpreting mesh names, scene ids or custom events.              |
+| `list_analyses`    | Read questions this project has asked before, and what they concluded.                                 |
+
+Mint the key with the capability:
+
+```bash
+uptimizr new-key <projectId> --capabilities query,annotate --label "weekly-report-agent"
+```
+
+Without it the server starts read-only and never offers the tools; with it, every write is bounded
+at the collector's edge and recorded in the agent audit log. They write **metadata only** — see
+[Metadata endpoints](/docs/api/metadata/) for the shapes, the bounds and the privacy note.
+
 ## Hosted transport (Streamable HTTP)
 
 Everything above runs the MCP server **next to the client**, over stdio. The collector can also
@@ -547,7 +580,7 @@ The package also exports its building blocks for embedding in your own server:
 import { createCollectorClient, createMcpServer, readMcpConfig } from "@uptimizr/mcp";
 ```
 
-The read-only tool catalog and the `GET`-only collector client come from the framework-agnostic
+The tool catalogs and the collector client come from the framework-agnostic
 [`@uptimizr/agent-core`](https://www.npmjs.com/package/@uptimizr/agent-core) package (re-exported
 here for convenience). If you're building a non-MCP agent — a browser assistant, a Node service, a
 CLI, a bot — depend on `@uptimizr/agent-core` directly: it also ships a headless LLM

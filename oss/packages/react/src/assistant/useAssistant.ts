@@ -58,6 +58,29 @@ export const DEFAULT_ASSISTANT_MAX_STEPS = 12;
 /** Live status of a single tool call the model made during the current turn. */
 export type ToolCallStatus = "running" | "done" | "error";
 
+/** One collector read the model made, recorded so an answer can be saved (#310). */
+export interface AssistantRead {
+  /** The endpoint path, e.g. `api/v1/perf/summary`. */
+  path: string;
+  /** The query parameters it was called with. */
+  params: Record<string, string | number | undefined>;
+}
+
+/**
+ * Where an assistant-written annotation should land. Everything is optional:
+ * the default is a note about the whole project, and a caller that knows the
+ * active filters passes the narrower target so the note is pinned where it
+ * belongs.
+ */
+export interface AssistantAnnotationTarget {
+  targetKind?: "project" | "scene" | "mesh" | "region" | "metric" | "window";
+  targetId?: string;
+  /** Epoch ms. */
+  since?: number;
+  /** Epoch ms. */
+  until?: number;
+}
+
 /** One tool invocation surfaced for progress display. */
 export interface AssistantToolActivity {
   /** Provider-assigned call id (when known). */
@@ -188,6 +211,18 @@ export interface UseAssistantResult {
    * needs the optional `@mlc-ai/web-llm` peer to be installed.
    */
   clearCachedModels: () => Promise<string[]>;
+  /**
+   * Whether the configured key holds the `annotate` capability — i.e. whether
+   * {@link annotate} and {@link saveAnalysis} would succeed (#310). `false`
+   * until `whoami` answers, and `false` for ever if it cannot.
+   */
+  canAnnotate: boolean;
+  /** The collector reads the last turn made, in order — the saved `query`. */
+  lastReads: readonly AssistantRead[];
+  /** Store one of the answers as a project annotation. Needs an `annotate` key. */
+  annotate: (text: string, target?: AssistantAnnotationTarget) => Promise<void>;
+  /** Store the last turn as a saved analysis. Needs an `annotate` key. */
+  saveAnalysis: (title: string, conclusion: string) => Promise<void>;
 }
 
 /** True when a provider exposes a GPU-releasing `unload()` (WebLLM does). */
@@ -246,6 +281,40 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     if (options.backend) return options.backend;
     return loadBackendConfig();
   });
+
+  /**
+   * Whether the configured key may write project metadata (#310, ADR 0051 §5).
+   *
+   * Asked once, from `GET /api/v1/whoami`, so the panel offers "Annotate this"
+   * and "Save this analysis" only when they would actually work. A failure — an
+   * older collector, an unreachable one — leaves the actions hidden rather than
+   * surfacing an error the user cannot act on.
+   */
+  const [canAnnotate, setCanAnnotate] = useState(false);
+  useEffect(() => {
+    // `whoami` arrived with #310, and a host app may pass an older or narrower
+    // client of its own — so its absence means "cannot annotate", not a crash.
+    if (!api || typeof api.whoami !== "function") return;
+    let cancelled = false;
+    void api
+      .whoami()
+      .then((who) => {
+        if (!cancelled) setCanAnnotate(who.capabilities.includes("annotate"));
+      })
+      .catch(() => {
+        if (!cancelled) setCanAnnotate(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  /**
+   * The collector reads the model made during the last turn, in order. This is
+   * what "Save this analysis" stores as the analysis' `query`: the question the
+   * answer actually came from, rather than a reconstruction of it.
+   */
+  const [lastReads, setLastReads] = useState<readonly AssistantRead[]>([]);
 
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [status, setStatus] = useState<AssistantStatus>("idle");
@@ -369,6 +438,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
       ];
       setMessages(outgoing);
       setToolActivity([]);
+      setLastReads([]);
       setError(null);
       setInitProgress(null);
       setNotice(null);
@@ -413,6 +483,9 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
 
         const trackingClient: CollectorClient = {
           async get(path, params) {
+            // Remember what was asked, in order, so "Save this analysis" can
+            // store the question the answer actually came from (#310).
+            setLastReads((prev) => [...prev, { path, params: { ...params } }]);
             try {
               const data = await collector.read(path, params);
               settleNextTool("done");
@@ -483,6 +556,49 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     [api, systemPrompt, maxSteps, pinnedTools, ensureProvider],
   );
 
+  /**
+   * "Annotate this": store one of the assistant's answers as a project note
+   * (#310). The target defaults to the whole project; a caller that knows what
+   * the current view is filtered to passes a narrower one, so the note lands on
+   * the scene or mesh it is actually about.
+   *
+   * The row is attributed to an **agent**, because the text is the model's.
+   * The collector decides that from the calling client, not from this payload.
+   */
+  const annotate = useCallback(
+    async (text: string, target?: AssistantAnnotationTarget): Promise<void> => {
+      if (!api) throw new Error("No collector connection.");
+      await api.createAnnotation({
+        targetKind: target?.targetKind ?? "project",
+        ...(target?.targetId ? { targetId: target.targetId } : {}),
+        ...(target?.since != null ? { since: target.since } : {}),
+        ...(target?.until != null ? { until: target.until } : {}),
+        text,
+      });
+    },
+    [api],
+  );
+
+  /**
+   * "Save this analysis": store a titled record of the last turn — the reads
+   * the model made as the question, and the answer as the conclusion (#310).
+   *
+   * `query` is the recorded read list rather than a rewritten summary, so the
+   * saved record says what was actually asked. A turn with no reads still
+   * saves; the question is then simply empty.
+   */
+  const saveAnalysis = useCallback(
+    async (title: string, conclusion: string): Promise<void> => {
+      if (!api) throw new Error("No collector connection.");
+      await api.saveAnalysis({
+        title,
+        query: { reads: lastReads },
+        ...(conclusion.trim() ? { conclusion } : {}),
+      });
+    },
+    [api, lastReads],
+  );
+
   const cancel = useCallback(() => {
     abortRef.current?.abort();
   }, []);
@@ -495,6 +611,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     setInitProgress(null);
     setNotice(null);
     setPartialText(null);
+    setLastReads([]);
     setStatus("idle");
   }, []);
 
@@ -518,5 +635,9 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     cancel,
     reset,
     clearCachedModels,
+    canAnnotate,
+    lastReads,
+    annotate,
+    saveAnalysis,
   };
 }

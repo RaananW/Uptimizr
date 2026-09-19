@@ -46,6 +46,27 @@ export {
   toApiKeyColumns,
   toApiKeyRateLimit,
 } from "./metadata.js";
+// Project metadata: annotations, glossary, saved analyses (#310, ADR 0051 §5).
+export {
+  METADATA_LIMITS,
+  MetadataLimitError,
+  clampMetadataLimit,
+  parseSavedAnalysisQuery,
+} from "./metadata.js";
+export type {
+  AnnotationRecord,
+  AnnotationTargetKind,
+  CreateAnnotationInput,
+  CreateSavedAnalysisInput,
+  GlossaryEntryRecord,
+  ListAnnotationsOptions,
+  MetadataAuthor,
+  MetadataAuthorKind,
+  MetadataListOptions,
+  MetadataTable,
+  PutGlossaryEntryInput,
+  SavedAnalysisRecord,
+} from "./metadata.js";
 export type {
   Project,
   AgentAuditEntry,
@@ -356,6 +377,17 @@ export {
   getSceneRegions as duckdbGetSceneRegions,
   listSceneRegions as duckdbListSceneRegions,
 } from "./duckdb/sceneRegions.js";
+export {
+  createAnnotation as duckdbCreateAnnotation,
+  listAnnotations as duckdbListAnnotations,
+  deleteAnnotation as duckdbDeleteAnnotation,
+  putGlossaryEntry as duckdbPutGlossaryEntry,
+  listGlossary as duckdbListGlossary,
+  deleteGlossaryEntry as duckdbDeleteGlossaryEntry,
+  createSavedAnalysis as duckdbCreateSavedAnalysis,
+  listSavedAnalyses as duckdbListSavedAnalyses,
+  deleteSavedAnalysis as duckdbDeleteSavedAnalysis,
+} from "./duckdb/projectMetadata.js";
 
 // --- Cross-engine parity harness (ADR 0020) ---
 // Shared fixtures, golden expectations, and a tolerance-aware comparator. OSS

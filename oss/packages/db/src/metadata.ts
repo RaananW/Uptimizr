@@ -8,7 +8,17 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import type { Aabb, SceneProxy } from "@uptimizr/schema";
+import type {
+  Aabb,
+  Annotation,
+  AnnotationTargetKind,
+  GlossaryEntry,
+  MetadataAuthorKind,
+  SavedAnalysis,
+  SavedAnalysisQuery,
+  SceneProxy,
+} from "@uptimizr/schema";
+import { LIMITS } from "@uptimizr/schema";
 
 // --- API keys (pure crypto) ---
 
@@ -449,4 +459,164 @@ export interface SceneRepresentationSummary {
   contentHash: string | null;
   capturedAt: Date | null;
   updatedAt: Date;
+}
+
+// --- Project metadata: annotations, glossary, saved analyses (ADR 0051 §5) ---
+
+/**
+ * The storage projections of `@uptimizr/schema`'s metadata contracts
+ * (sketch §E.2). The wire shapes live once, in the schema package; these add
+ * only what the *row* knows and the client cannot set — the generated id, who
+ * wrote it, and when.
+ *
+ * Every one of these tables is **project-scoped, bounded and audited**. They
+ * are the only writable surface besides ingestion, they never touch the events
+ * tables, and the `annotate` capability gates each write (ADR 0051 §7/§9).
+ */
+
+/** Who wrote a metadata row — derived by the collector, never by the payload. */
+export type { MetadataAuthorKind };
+
+/** What an annotation is about — re-exported so stores need one import. */
+export type { AnnotationTargetKind };
+
+/**
+ * Attribution attached to every metadata write: the kind of author the
+ * collector decided on, and the id of the API key that carried the request
+ * (never the key or its hash — ADR 0003). `authorKeyId` is null only for rows
+ * written by a store's own tooling (seeding, tests).
+ */
+export interface MetadataAuthor {
+  authorKind: MetadataAuthorKind;
+  authorKeyId: string | null;
+}
+
+/** One stored annotation. */
+export interface AnnotationRecord extends MetadataAuthor {
+  id: string;
+  projectId: string;
+  targetKind: AnnotationTargetKind;
+  targetId: string | null;
+  /** Start of the annotated period, or null for a standing note. */
+  since: Date | null;
+  /** End of the annotated period, or null for an open-ended / instant note. */
+  until: Date | null;
+  text: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** What a caller supplies to create an annotation; the store fills id and times. */
+export interface CreateAnnotationInput extends MetadataAuthor {
+  annotation: Annotation;
+}
+
+/**
+ * Filters for the annotation read path. All optional: the unfiltered call is
+ * "the project's recent annotations", which is what the dashboard time axis and
+ * the project context document both ask for.
+ */
+export interface ListAnnotationsOptions {
+  /** Only annotations about this kind of thing. */
+  targetKind?: AnnotationTargetKind;
+  /** Only annotations about this specific scene/mesh/region/metric. */
+  targetId?: string;
+  /**
+   * Overlap filter, epoch ms: keep annotations whose period intersects
+   * `[since, until)`. A standing note (no period) always matches — it is about
+   * the project as a whole, not about a moment.
+   */
+  since?: number;
+  until?: number;
+  limit?: number;
+}
+
+/** One stored glossary entry. Identity is `(projectId, term)`. */
+export interface GlossaryEntryRecord {
+  projectId: string;
+  term: string;
+  meaning: string;
+  updatedAt: Date;
+}
+
+/** What a caller supplies to upsert a glossary entry. */
+export interface PutGlossaryEntryInput {
+  entry: GlossaryEntry;
+}
+
+/** One stored saved analysis. */
+export interface SavedAnalysisRecord extends MetadataAuthor {
+  id: string;
+  projectId: string;
+  title: string;
+  /** The stored question, parsed back from its JSON column. */
+  query: SavedAnalysisQuery;
+  conclusion: string | null;
+  createdAt: Date;
+}
+
+/** What a caller supplies to create a saved analysis. */
+export interface CreateSavedAnalysisInput extends MetadataAuthor {
+  analysis: SavedAnalysis;
+}
+
+/** Row cap for a list read, shared by every metadata list endpoint. */
+export interface MetadataListOptions {
+  limit?: number;
+}
+
+/**
+ * Per-project row caps (ADR 0051 §5). Metadata is a curated set of notes, so
+ * every store refuses the write that would exceed its table's cap rather than
+ * silently growing. The numbers live in `@uptimizr/schema`'s `LIMITS` with the
+ * rest of the wire bounds; this is the storage-side view of them.
+ */
+export const METADATA_LIMITS = {
+  annotations: LIMITS.maxProjectAnnotations,
+  glossary: LIMITS.maxProjectGlossaryEntries,
+  savedAnalyses: LIMITS.maxProjectSavedAnalyses,
+} as const;
+
+/** Which metadata table a {@link MetadataLimitError} is about. */
+export type MetadataTable = keyof typeof METADATA_LIMITS;
+
+/**
+ * Thrown by a store when a write would take a project past the table's cap.
+ * The collector maps it to `409 Conflict` — the request was well-formed, the
+ * project is simply full, and the caller fixes it by deleting something.
+ */
+export class MetadataLimitError extends Error {
+  constructor(
+    readonly table: MetadataTable,
+    readonly limit: number,
+  ) {
+    super(`project has reached its limit of ${limit} ${table} rows`);
+    this.name = "MetadataLimitError";
+  }
+}
+
+/**
+ * Clamp a caller-supplied `limit` into `[1, max]`, defaulting when absent.
+ * Shared by every store so one engine cannot quietly return more rows than
+ * another for the same request.
+ */
+export function clampMetadataLimit(limit: number | undefined, fallback = 100, max = 500): number {
+  if (limit == null || !Number.isFinite(limit)) return fallback;
+  return Math.min(Math.max(Math.trunc(limit), 1), max);
+}
+
+/**
+ * Parse a stored `query` JSON column back into an object. A row written by this
+ * collector always parses; a hand-edited or truncated one degrades to `{}`
+ * rather than failing the whole listing.
+ */
+export function parseSavedAnalysisQuery(json: string): SavedAnalysisQuery {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed != null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as SavedAnalysisQuery)
+      : {};
+  } catch {
+    return {};
+  }
 }

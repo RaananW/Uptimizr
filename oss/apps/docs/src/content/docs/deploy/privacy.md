@@ -56,6 +56,18 @@ Credential-shaped parameters are dropped before the row is written, and rows exp
 `AUDIT_RETENTION_DAYS` (default 30). See
 [the collector guide](/docs/deploy/collector/#agent-audit-log).
 
+## Project metadata is yours to write — and yours to keep clean
+
+Annotations, the glossary and saved analyses ([metadata endpoints](/docs/api/metadata/)) are the one
+place in the collector holding free text you wrote rather than data it captured. They are
+**project-scoped** — readable only with that project's key, never shared across projects — bounded in
+both length and count, and every write is recorded in the agent audit trail above, with the key that
+made it. Writing any of them requires the `annotate` capability; a read-only key cannot.
+
+Because it is free text, it is also the one surface the collector cannot keep non-PII for you. Do not
+paste personal data into a note, a definition or a conclusion. Nothing on this path touches captured
+events: they remain read-only and aggregate-only.
+
 ## Opt-in capture channels
 
 Several capture channels are off by default for privacy and cost, and must be enabled per scene in

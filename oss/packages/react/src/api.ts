@@ -220,6 +220,76 @@ export interface SceneInfo {
   last_seen: string;
 }
 
+// --- Project metadata (#310, ADR 0051 §5) ----------------------------------
+
+/** What `GET /api/v1/whoami` reports about the configured key. */
+export interface WhoAmI {
+  projectId: string;
+  keyId: string;
+  /** e.g. `["query", "annotate"]` — what this key may do. */
+  capabilities: string[];
+  label: string | null;
+}
+
+/** What an annotation is about (ADR 0051 §5). */
+export type AnnotationTargetKind = "project" | "scene" | "mesh" | "region" | "metric" | "window";
+
+/** An annotation as written by a client. */
+export interface AnnotationInput {
+  targetKind: AnnotationTargetKind;
+  /** Required for `scene` / `mesh` / `region` / `metric`. */
+  targetId?: string;
+  /** Start of the annotated period, epoch ms. Required for `window`. */
+  since?: number;
+  /** End of the annotated period, epoch ms. */
+  until?: number;
+  text: string;
+}
+
+/** A stored annotation, as the collector returns it (timestamps are ISO 8601). */
+export interface AnnotationRow {
+  id: string;
+  projectId: string;
+  targetKind: AnnotationTargetKind;
+  targetId: string | null;
+  since: string | null;
+  until: string | null;
+  text: string;
+  /** Whether a person or an agent wrote it — the collector decides, not the payload. */
+  authorKind: "user" | "agent";
+  authorKeyId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A stored glossary entry. */
+export interface GlossaryRow {
+  projectId: string;
+  term: string;
+  meaning: string;
+  updatedAt: string;
+}
+
+/** A saved analysis as written by a client. */
+export interface SavedAnalysisInput {
+  title: string;
+  /** The question, as an opaque JSON document the collector stores but does not interpret. */
+  query: Record<string, unknown>;
+  conclusion?: string;
+}
+
+/** A stored saved analysis. */
+export interface SavedAnalysisRow {
+  id: string;
+  projectId: string;
+  title: string;
+  query: Record<string, unknown>;
+  conclusion: string | null;
+  authorKind: "user" | "agent";
+  authorKeyId: string | null;
+  createdAt: string;
+}
+
 /** Axis-aligned bounding box `[minX, minY, minZ, maxX, maxY, maxZ]`. */
 export type Aabb = [number, number, number, number, number, number];
 
@@ -919,6 +989,87 @@ export class CollectorApi {
    */
   read(path: string, params?: QueryParams): Promise<unknown> {
     return this.get<unknown>(path, params);
+  }
+
+  /**
+   * The one non-GET transport in this client, used only by the metadata methods
+   * below. A `204 No Content` (every successful delete) resolves to `null`
+   * rather than failing to parse an empty body.
+   */
+  private async send<T>(
+    method: "POST" | "PUT" | "DELETE",
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
+    const url = new URL(path, ensureTrailingSlash(this.baseUrl));
+    const res = await fetch(url, {
+      method,
+      headers:
+        body === undefined
+          ? this.headers()
+          : { ...this.headers(), "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new ApiError(text || res.statusText, res.status);
+    }
+    if (res.status === 204) return null as T;
+    return (await res.json()) as T;
+  }
+
+  // --- Project metadata (#310, ADR 0051 §5) --------------------------------
+  //
+  // The only writes this client can make. They reach three endpoints —
+  // annotations, glossary, saved analyses — and nothing else: no method here
+  // can write, alter or delete an analytics event (ADR 0051 §9). Each write
+  // needs an API key holding `annotate`, which {@link whoami} reports, and the
+  // collector audits every one.
+
+  /**
+   * What the configured key is allowed to do. The assistant calls it once so it
+   * offers its "Annotate this" / "Save this analysis" actions only when they
+   * would actually work.
+   */
+  whoami(): Promise<WhoAmI> {
+    return this.get<WhoAmI>("api/v1/whoami");
+  }
+
+  /** The project's annotations, newest first; a range filter is an overlap test. */
+  annotations(params?: QueryParams): Promise<AnnotationRow[]> {
+    return this.get<AnnotationRow[]>("api/v1/annotations", params);
+  }
+
+  /** Leave a note. Requires an `annotate` key. */
+  createAnnotation(annotation: AnnotationInput): Promise<AnnotationRow> {
+    return this.send<AnnotationRow>("POST", "api/v1/annotations", annotation);
+  }
+
+  /** Remove a note. Requires an `annotate` key. */
+  async deleteAnnotation(id: string): Promise<void> {
+    await this.send<null>("DELETE", `api/v1/annotations/${encodeURIComponent(id)}`);
+  }
+
+  /** The project's glossary, ordered by term. */
+  glossary(params?: QueryParams): Promise<GlossaryRow[]> {
+    return this.get<GlossaryRow[]>("api/v1/glossary", params);
+  }
+
+  /** Define (or redefine) a term. Requires an `annotate` key. */
+  defineTerm(term: string, meaning: string): Promise<GlossaryRow> {
+    return this.send<GlossaryRow>("PUT", `api/v1/glossary/${encodeURIComponent(term)}`, {
+      meaning,
+    });
+  }
+
+  /** The project's saved analyses, newest first. */
+  analyses(params?: QueryParams): Promise<SavedAnalysisRow[]> {
+    return this.get<SavedAnalysisRow[]>("api/v1/analyses", params);
+  }
+
+  /** Save an analysis. Requires an `annotate` key. */
+  saveAnalysis(analysis: SavedAnalysisInput): Promise<SavedAnalysisRow> {
+    return this.send<SavedAnalysisRow>("POST", "api/v1/analyses", analysis);
   }
 
   sessions(params?: QueryParams): Promise<SessionSummary[]> {

@@ -72,6 +72,14 @@ import type {
   SceneOptions,
   SceneRegionRecord,
   SceneRegionSummary,
+  AnnotationRecord,
+  CreateAnnotationInput,
+  CreateSavedAnalysisInput,
+  GlossaryEntryRecord,
+  ListAnnotationsOptions,
+  MetadataListOptions,
+  PutGlossaryEntryInput,
+  SavedAnalysisRecord,
   SceneRepresentation,
   SceneRepresentationSummary,
   SceneRow,
@@ -806,6 +814,43 @@ export interface CollectorStore {
    * kept separate so the scene listing stays exactly as it is.
    */
   listSceneRegions(projectId: string): Promise<SceneRegionSummary[]>;
+
+  // --- Project metadata (#310, ADR 0051 §5 / sketch §E.2) -------------------
+  //
+  // Annotations, glossary and saved analyses: the only rows a client may write
+  // besides events, gated by the `annotate` capability and audited like every
+  // other authenticated request. Each store enforces the per-project caps
+  // (`METADATA_LIMITS`) at write time and throws `MetadataLimitError` when a
+  // project is full; the routes turn that into a 409.
+
+  /** Create one annotation and return the stored row. */
+  createAnnotation(projectId: string, input: CreateAnnotationInput): Promise<AnnotationRecord>;
+  /**
+   * A project's annotations, newest first. `since`/`until` are an **overlap**
+   * filter — an annotation matches when its period intersects the window, and a
+   * standing note (no period) always matches.
+   */
+  listAnnotations(projectId: string, opts?: ListAnnotationsOptions): Promise<AnnotationRecord[]>;
+  /** Delete one annotation of this project; `false` when the id is unknown. */
+  deleteAnnotation(projectId: string, id: string): Promise<boolean>;
+
+  /** Upsert one glossary entry — the term is the identity, so writes are idempotent. */
+  putGlossaryEntry(projectId: string, input: PutGlossaryEntryInput): Promise<GlossaryEntryRecord>;
+  /** A project's whole glossary, ordered by term. */
+  listGlossary(projectId: string, opts?: MetadataListOptions): Promise<GlossaryEntryRecord[]>;
+  /** Delete one term; `false` when it was not defined. */
+  deleteGlossaryEntry(projectId: string, term: string): Promise<boolean>;
+
+  /** Create one saved analysis and return the stored row. */
+  createSavedAnalysis(
+    projectId: string,
+    input: CreateSavedAnalysisInput,
+  ): Promise<SavedAnalysisRecord>;
+  /** A project's saved analyses, newest first. */
+  listSavedAnalyses(projectId: string, opts?: MetadataListOptions): Promise<SavedAnalysisRecord[]>;
+  /** Delete one saved analysis; `false` when the id is unknown. */
+  deleteSavedAnalysis(projectId: string, id: string): Promise<boolean>;
+
   /** Release underlying connections. */
   close(): Promise<void>;
 }

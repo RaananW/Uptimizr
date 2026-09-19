@@ -41,10 +41,13 @@ const batch = collectRequestSchema.parse(requestBody);
 ## Rules for agents
 
 - **Events live once.** Import types/schemas from here; do not re-declare event shapes.
-- Some shapes here are **config, not events** — `sceneProxySchema`, `sceneRegionSchema` /
-  `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`, and `queryV1Schema` (the
-  analytics query DSL, ADR 0051 §3). They are authored out-of-band and are deliberately absent
-  from `anyEventSchema`; never add them to the union.
+- Some shapes here are **config / metadata, not events** — `sceneProxySchema`, `sceneRegionSchema` /
+  `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`, `queryV1Schema` (the analytics
+  query DSL, ADR 0051 §3) and the project-metadata contracts `annotationSchema` /
+  `glossaryEntrySchema` / `savedAnalysisSchema` (ADR 0051 §5). They are authored out-of-band and are
+  deliberately absent from `anyEventSchema`; never add them to the union. Events stay read-only —
+  metadata is written through the collector's `annotate`-gated endpoints, never through the ingest
+  path (ADR 0051 §9).
 - `queryV1Schema` validates a query's **shape** only. Whether `metric` names a real metric, and
   whether that metric accepts a given dimension or filter, is `validateQuery()` in
   `@uptimizr/metrics` — the vocabulary lives in the registry, and this package is the registry's

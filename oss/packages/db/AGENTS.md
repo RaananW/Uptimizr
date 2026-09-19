@@ -11,7 +11,8 @@ The OSS storage contracts plus the single-file **DuckDB** store (ADR 0020):
   table (hot fields promoted to columns; the full event preserved as JSON in `payload` so reads
   stay replay-complete) plus `projects` / `api_keys` (stored only as SHA-256 hashes, each key
   carrying a capability set, an optional label and an optional per-key rate limit) and the
-  `agent_audit` trail.
+  `agent_audit` trail, the scene registry (`scene_representations`, `scene_regions`) and the
+  project-metadata tables `annotations` / `glossary` / `saved_analyses` (ADR 0051 §5).
 - **Engine-neutral contracts** — the dialect-agnostic query layer (`buildX` + `Dialect`), the
   neutral event-row mapper (`toEventRow`, `formatUtcTimestamp`), and the metadata types
   (`Project`, `ApiKeyRecord`, `SceneRepresentation*`). An optional, separately-licensed
@@ -77,6 +78,11 @@ every tool (collector + CLIs) shares one canonical file regardless of cwd.
   `toApiKeyColumns()` so ordering, validation and the per-key rate-limit columns stay consistent
   across all four engines. `query:raw` is only ever honoured by a collector running with
   `ENABLE_RAW_SESSION_RETENTION` (ADR 0003).
+- **Metadata tables are writable; the events table is not.** `annotations`, `glossary` and
+  `saved_analyses` are the only rows a request can write besides events (ADR 0051 §5/§9). Their
+  accessors enforce the per-project caps in `METADATA_LIMITS` at write time and throw
+  `MetadataLimitError` when a project is full — the collector turns that into a `409`. Never add a
+  path that updates or deletes an event row.
 - **The audit log records key ids, never keys.** `agent_audit` rows carry `key_id`; serialize
   parameters with `serializeAuditParams()` (drops credential-shaped keys, bounds the document)
   before they reach a store, and clamp the endpoint with `clampAuditTool()`.

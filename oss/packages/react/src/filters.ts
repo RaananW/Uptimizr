@@ -47,6 +47,37 @@ export function resolveRange(
   return { since: now - WINDOW_MS[state.window], until: now };
 }
 
+/**
+ * Where an annotation written from the current view should be pinned
+ * (#310, ADR 0051 §5).
+ *
+ * The filter bar already says what the user is looking at, so a note taken from
+ * this view inherits it rather than asking again: a selected scene makes it a
+ * note about that scene, a bounded time window makes it a note about that
+ * period, and an unbounded "all time" view makes it a standing note about the
+ * project. The resolved range travels along in every case, so a scene note also
+ * records *when* it was about.
+ *
+ * Deliberately not exhaustive: `source` and `cameraMode` narrow *how* the data
+ * was captured, not *what* a note would be about, so they are left out.
+ */
+export function annotationTargetFor(
+  state: FilterState,
+  now = Date.now(),
+): {
+  targetKind: "project" | "scene" | "window";
+  targetId?: string;
+  since?: number;
+  until?: number;
+} {
+  const range = resolveRange(state, now);
+  if (state.scene && state.scene.length > 0) {
+    return { targetKind: "scene", targetId: state.scene, ...range };
+  }
+  if (range.since != null) return { targetKind: "window", ...range };
+  return { targetKind: "project" };
+}
+
 /** Merge the active filters into query params for a panel request. */
 export function toQueryParams(state: FilterState, now = Date.now()): QueryParams {
   const range = resolveRange(state, now);

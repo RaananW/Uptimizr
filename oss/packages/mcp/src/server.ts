@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { readTools, type CollectorClient, type ReadTool } from "@uptimizr/agent-core";
+import { readTools, writeTools, type CollectorClient, type ReadTool } from "@uptimizr/agent-core";
 import { registerResources } from "./resources.js";
 import { registerPrompts } from "./prompts.js";
 import { version } from "./version.js";
@@ -84,8 +84,11 @@ export interface CreateMcpServerOptions {
    * omitted set means "register the read-only catalog and let the collector
    * refuse anything the key may not do".
    *
-   * Tools outside the set are simply not registered; write tools are only ever
-   * registered for a key holding `annotate`. Deliberately typed as plain strings
+   * Tools outside the set are simply not registered; the metadata write tools
+   * of #310 are registered **only** for a key holding `annotate`, so an agent is
+   * never offered a tool its key would be refused for, and omitting the set
+   * keeps the server read-only — exactly what every caller written before #310
+   * gets. Deliberately typed as plain strings
    * so this package keeps its dependency-free footprint — it must not reach into
    * `@uptimizr/db` for the capability union (see `__tests__/dependencies.test.ts`).
    */
@@ -115,19 +118,46 @@ function instructionsFor(capabilities: readonly string[]): string {
 }
 
 /**
- * Build the Uptimizr MCP server: a read-only `McpServer` whose tools each wrap
- * one collector query endpoint via the injected `CollectorClient`. The server
- * holds no business logic — it forwards validated arguments and returns the
- * collector's JSON (ADR 0005 / ADR 0017). Alongside the tools it exposes
+ * Ask the collector what the configured key may do (`GET /api/v1/whoami`).
+ *
+ * Never throws: an older collector without the route, an unreachable one, or a
+ * key that cannot even read all yield an empty capability set, and the server
+ * then starts read-only rather than not starting at all. A degraded but useful
+ * server beats no server.
+ */
+export async function fetchKeyCapabilities(client: CollectorClient): Promise<readonly string[]> {
+  try {
+    const whoami = (await client.get("/api/v1/whoami")) as { capabilities?: unknown } | null;
+    return Array.isArray(whoami?.capabilities)
+      ? whoami.capabilities.filter(
+          (capability): capability is string => typeof capability === "string",
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Build the Uptimizr MCP server: an `McpServer` whose tools each wrap one
+ * collector endpoint via the injected `CollectorClient`. The server holds no
+ * business logic — it forwards validated arguments and returns the collector's
+ * JSON (ADR 0005 / ADR 0017). Alongside the tools it exposes
  * capability-discovery **resources** and curated analysis **prompts** so agents
  * can self-orient (ADR 0050 §7).
  *
- * The tool catalog is generated from the `@uptimizr/db` metric registry
+ * The **analytics** tool catalog is generated from the metric registry
  * (ADR 0051 §1), so `tools/list` covers every metric the collector serves on an
  * endpoint. Each tool advertises the registry-derived `outputSchema` and returns
  * both `structuredContent` — the `format` envelope the call asked for, which
  * since #336 is `{ meta, rows }` by default — and the `content` text a client
- * without structured-output support still reads.
+ * without structured-output support still reads. That catalog is entirely
+ * read-only: **events cannot be written, altered or deleted through this
+ * server** (ADR 0051 §9).
+ *
+ * The **metadata** tools (#310) — annotations, glossary, saved analyses — are
+ * added only when `options.capabilities` includes `annotate`, so a read-only key
+ * yields a read-only server.
  *
  * The factory is **transport-agnostic**: `bin.ts` connects it to stdio, and the
  * collector connects one instance per authenticated Streamable HTTP session at
@@ -172,6 +202,34 @@ export function createMcpServer(
         }
       },
     );
+  }
+
+  // Metadata tools (#310, ADR 0051 §5): annotations, glossary, saved analyses.
+  //
+  // They appear in `tools/list` only for a key that holds `annotate`. That is a
+  // usability decision, not the security boundary — the collector refuses the
+  // write either way with a 403 — but offering an agent a tool it will always
+  // be refused for wastes its context and its patience.
+  //
+  // Nothing here can write, alter or delete an event: the tools call the three
+  // metadata endpoints and nothing else, and every call is audited by the
+  // collector (ADR 0051 §7/§9).
+  if (options.capabilities?.includes("annotate")) {
+    for (const tool of writeTools) {
+      server.registerTool(
+        tool.name,
+        { title: tool.title, description: tool.description, inputSchema: tool.inputSchema },
+        async (args) => {
+          try {
+            const data = await tool.execute(client, args as Record<string, unknown>);
+            return { content: [{ type: "text", text: JSON.stringify(data) }] };
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+          }
+        },
+      );
+    }
   }
 
   registerResources(server, client);

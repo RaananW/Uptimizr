@@ -218,13 +218,32 @@ describe("GET /api/v1/openapi.json", () => {
     expect(Object.keys(paths)).not.toContain("/api/v1/collect");
     expect(Object.keys(paths)).not.toContain("/api/v1/sessions/{id}/events");
     expect(Object.keys(paths).filter((path) => path.startsWith("/api/v1/live"))).toEqual([]);
-    // The read surface is `GET` everywhere but one place: the query DSL also
-    // accepts `POST /api/v1/query`, because a query is a JSON document rather
-    // than a querystring (ADR 0051 §3). It is still a read — same `query`
-    // capability, same aggregations, nothing written.
-    for (const [path, methods] of Object.entries(paths)) {
-      const nonGet = Object.keys(methods as object).filter((method) => method !== "get");
-      expect(nonGet, path).toEqual(path === "/api/v1/query" ? ["post"] : []);
+  });
+
+  it("describes a write only on the metadata paths (#310)", () => {
+    // Every other documented operation is a GET, with one read-only exception:
+    // the query DSL also accepts `POST /api/v1/query`, because a query is a JSON
+    // document rather than a querystring (ADR 0051 §3) — same `query`
+    // capability, same aggregations, nothing written. The only genuinely
+    // writable surface is the `annotate`-gated metadata group (ADR 0051 §5/§9).
+    // Ingestion is deliberately not described at all.
+    const written = Object.entries(paths)
+      .filter(([, methods]) => Object.keys(methods).some((method) => method !== "get"))
+      .map(([path]) => path)
+      .sort();
+    expect(written).toEqual([
+      "/api/v1/analyses",
+      "/api/v1/analyses/{id}",
+      "/api/v1/annotations",
+      "/api/v1/annotations/{id}",
+      "/api/v1/glossary/{term}",
+      "/api/v1/query",
+    ]);
+    expect(Object.keys(paths["/api/v1/query"]!).sort()).toEqual(["get", "post"]);
+    for (const path of written.filter((candidate) => candidate !== "/api/v1/query")) {
+      for (const operation of Object.values(paths[path]!)) {
+        expect(operation.tags, path).toEqual(["metadata"]);
+      }
     }
   });
 });

@@ -19,6 +19,7 @@ export {
   INPUT_SOURCES,
   resolveRange,
   toQueryParams,
+  annotationTargetFor,
   pickInterval,
   formatSource,
 } from "./filters";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { TimeseriesBucket } from "../../api";
+import type { AnnotationRow, TimeseriesBucket } from "../../api";
 
 const HEIGHT = 150;
 const PAD = { top: 14, right: 36, bottom: 22, left: 40 };
@@ -34,6 +34,7 @@ export function VolumeTimeseriesView({
   onBrush,
   onClear,
   brushed,
+  annotations = [],
 }: {
   buckets: TimeseriesBucket[];
   intervalMs: number;
@@ -41,6 +42,13 @@ export function VolumeTimeseriesView({
   onClear?: () => void;
   /** Whether a custom brushed range is currently applied (shows a Clear action). */
   brushed?: boolean;
+  /**
+   * Project annotations to mark on the time axis (#310, ADR 0051 §5) — "v2.1
+   * shipped", "the outage". Only those carrying a `since` can be placed; a
+   * standing note about the project as a whole has no position on a time axis
+   * and is left to the annotation list elsewhere.
+   */
+  annotations?: readonly AnnotationRow[];
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -162,6 +170,36 @@ export function VolumeTimeseriesView({
     if (b > a) onBrush(a, b);
   };
 
+  // Annotation markers (#310): a small tick above the strip at the note's
+  // `since`, with the note itself as the tooltip. They are DOM elements rather
+  // than canvas drawing so each one carries a real, accessible tooltip — and
+  // because a marker is a label about the chart, not part of the data in it.
+  // Standing notes with no timestamp are skipped — there is nowhere honest to
+  // put them — and so are notes whose whole period falls outside the plotted
+  // span. A note that *overlaps* the span is kept and placed at its start,
+  // clamped into view: a note about the whole window still belongs on it, and
+  // the strip's span is the buckets with data, not the requested range.
+  const markers = span
+    ? annotations
+        .map((annotation) => ({
+          annotation,
+          at: annotation.since == null ? Number.NaN : Date.parse(annotation.since),
+          end: annotation.until == null ? Number.NaN : Date.parse(annotation.until),
+        }))
+        .filter(({ at, end }) => {
+          if (!Number.isFinite(at) || at > span.end) return false;
+          // An open-ended note ends where it starts, so a one-moment note before
+          // the span is still excluded.
+          return (Number.isFinite(end) ? end : at) >= span.start;
+        })
+        .map(({ annotation, at }) => ({
+          annotation,
+          // Percentage, so the marker tracks the canvas as it resizes.
+          left:
+            Math.min(1, Math.max(0, (at - span.start) / Math.max(1, span.end - span.start))) * 100,
+        }))
+    : [];
+
   return (
     <div ref={wrapRef} className="relative">
       <canvas
@@ -175,6 +213,32 @@ export function VolumeTimeseriesView({
         onMouseLeave={onUp}
         aria-label="Event volume time series"
       />
+      {markers.length > 0 && (
+        <ul
+          className="pointer-events-none absolute inset-x-0 top-0"
+          aria-label="Annotations"
+          data-role="annotation-markers"
+        >
+          {markers.map(({ annotation, left }) => (
+            <li
+              key={annotation.id}
+              className="pointer-events-auto absolute"
+              style={{
+                left: `calc(${PAD.left}px + (100% - ${PAD.left + PAD.right}px) * ${left / 100})`,
+                top: 2,
+              }}
+              data-role="annotation-marker"
+              data-annotation-id={annotation.id}
+            >
+              <span
+                title={annotation.text}
+                aria-label={annotation.text}
+                className="block h-2 w-2 -translate-x-1/2 rotate-45 border border-amber bg-amber/70"
+              />
+            </li>
+          ))}
+        </ul>
+      )}
       {brushed && onClear ? (
         <button
           type="button"

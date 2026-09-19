@@ -430,6 +430,78 @@ export const DUCKDB_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
       );
     `,
   },
+  // Project metadata (ADR 0051 §5 / sketch §E.2): the three tables that let a
+  // person or an agent leave something behind — a note on a spike, a definition
+  // of a name, a question worth re-asking. Metadata only: the `events` table is
+  // untouched and no event type exists for any of this.
+  //
+  // `since`/`until` are nullable TIMESTAMPs (a standing note has neither);
+  // `author_kind` is the collector's decision ('user' | 'agent'), `author_key_id`
+  // the id of the API key that carried the write — never the key or its hash.
+  {
+    id: "0039_annotations",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS annotations (
+        id            VARCHAR PRIMARY KEY,
+        project_id    VARCHAR NOT NULL,
+        target_kind   VARCHAR NOT NULL,
+        target_id     VARCHAR,
+        since         TIMESTAMP,
+        until         TIMESTAMP,
+        text          VARCHAR NOT NULL,
+        author_kind   VARCHAR NOT NULL DEFAULT 'user',
+        author_key_id VARCHAR,
+        created_at    TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at    TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `,
+  },
+  {
+    id: "0040_annotations_idx",
+    sql: /* sql */ `
+      CREATE INDEX IF NOT EXISTS annotations_project_created_idx
+        ON annotations (project_id, created_at);
+    `,
+  },
+  // Glossary: what a name means *in this project*. Keyed by (project, term), so
+  // a write is an idempotent upsert and the term is the identity.
+  {
+    id: "0041_glossary",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS glossary (
+        project_id  VARCHAR NOT NULL,
+        term        VARCHAR NOT NULL,
+        meaning     VARCHAR NOT NULL,
+        updated_at  TIMESTAMP NOT NULL DEFAULT now(),
+        PRIMARY KEY (project_id, term)
+      );
+    `,
+  },
+  // Saved analyses: a titled question plus what was concluded from it. `query`
+  // is JSON text the collector stores but does not interpret (the DSL lands
+  // separately); it is bounded at the edge before it gets here.
+  {
+    id: "0042_saved_analyses",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS saved_analyses (
+        id            VARCHAR PRIMARY KEY,
+        project_id    VARCHAR NOT NULL,
+        title         VARCHAR NOT NULL,
+        query         VARCHAR NOT NULL DEFAULT '{}',
+        conclusion    VARCHAR,
+        author_kind   VARCHAR NOT NULL DEFAULT 'user',
+        author_key_id VARCHAR,
+        created_at    TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `,
+  },
+  {
+    id: "0043_saved_analyses_idx",
+    sql: /* sql */ `
+      CREATE INDEX IF NOT EXISTS saved_analyses_project_created_idx
+        ON saved_analyses (project_id, created_at);
+    `,
+  },
 ];
 
 /**
