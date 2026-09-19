@@ -416,6 +416,33 @@ export const CLICKHOUSE_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> =
       ORDER BY (subscription_id, at);
     `,
   },
+  // Declarative panel specs (#315, ADR 0051 §7 / sketch §G.3). A fourth
+  // metadata table: what an agent left behind when an answer was worth keeping.
+  // The spec is a closed document validated at the request boundary and never
+  // queried *into*, so it lives in one JSON column like a subscription's config.
+  //
+  // Mutable metadata, so the `subscriptions` shape: a ReplacingMergeTree keyed
+  // by (project, id) where an edit inserts a complete replacement row with a
+  // higher `version`, an unpin inserts a `deleted = 1` tombstone, and reads
+  // take `FINAL` filtered on `deleted = 0`.
+  {
+    id: "0017_panel_specs",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS panel_specs (
+        id            String,
+        project_id    String,
+        spec          String DEFAULT '{}',
+        author_kind   LowCardinality(String) DEFAULT 'user',
+        author_key_id Nullable(String) DEFAULT NULL,
+        created_at    DateTime64(3) DEFAULT now64(3),
+        updated_at    DateTime64(3) DEFAULT now64(3),
+        deleted       UInt8 DEFAULT 0,
+        version       UInt64 DEFAULT 0
+      )
+      ENGINE = ReplacingMergeTree(version)
+      ORDER BY (project_id, id);
+    `,
+  },
 ];
 
 /**

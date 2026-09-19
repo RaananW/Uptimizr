@@ -677,6 +677,47 @@ samples, below minSample 30" — which is what makes a subscription tunable rath
 See [Subscriptions & webhooks](/docs/deploy/collector/#subscriptions--webhooks) for the predicate
 vocabulary, the signature scheme and the egress allow-list.
 
+## Pinned panels
+
+Declarative panel specs (ADR 0051 §7) are **not** metrics either — they are what an agent leaves on
+the dashboard when an answer is worth keeping — so they live outside the generated table too.
+
+| Endpoint             | Method   | Capability | What it does                                       |
+| -------------------- | -------- | ---------- | -------------------------------------------------- |
+| `/api/v1/panels`     | `GET`    | `query`    | The project's pinned panels, **oldest first**.     |
+| `/api/v1/panels`     | `POST`   | `annotate` | Pin a panel. `201` with the stored row.            |
+| `/api/v1/panels/:id` | `PUT`    | `annotate` | Replace a spec, keeping its id, place and author.  |
+| `/api/v1/panels/:id` | `DELETE` | `annotate` | Unpin a panel. `204`, or `404` if it is not there. |
+
+A spec is a **closed document** — a metric id, a chart name, some column names — stored as data and
+drawn with the panel components the dashboard already ships. Nothing is imported and nothing is
+evaluated, so pinning a panel does not widen the dashboard's trust boundary (ADR 0041).
+
+```json
+{
+  "v": 1,
+  "title": "Meshes people actually touch",
+  "query": { "v": 1, "metric": "top_meshes", "range": "inherit", "limit": 10 },
+  "chart": "bar",
+  "encoding": { "x": "mesh", "y": "count" },
+  "span": 1,
+  "note": "The crate outsells everything else three to one."
+}
+```
+
+The spec's `query` is a `queryV1` document with one addition: `range` may be the literal
+`"inherit"`, meaning "whatever the dashboard's filter bar currently says", substituted at render
+time. `format` and `explain` are not part of a spec — a panel draws rows.
+
+Two validators run, in order: `panelSpecV1Schema` for the shape, then the metric registry for the
+vocabulary. The second answers the question that decides whether the panel draws anything — does
+this `chart` suit the metric's grain, and do these `encoding` columns exist in the result — and a
+failure is `400 { error, issues }` carrying the same issue shape a rejected query gets, plus the
+codes `chart_grain_mismatch` and `unknown_encoding_column`. The compatibility table is in
+[Custom dashboard panels](/docs/guides/custom-panels/#declarative-spec-panels).
+
+A project holds at most 50 panels; a write past the cap answers `409`.
+
 ## Scene regions
 
 

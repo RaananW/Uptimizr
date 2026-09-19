@@ -565,6 +565,40 @@ export const DUCKDB_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
         ON subscription_events (subscription_id, "at");
     `,
   },
+  // --- Declarative panel specs (#315, ADR 0051 §7 / sketch §G.3) ------------
+  // What an agent leaves behind when an answer is worth keeping: a query, a
+  // chart name and a one-line reading. The spec is a closed document validated
+  // at the request boundary and never queried *into*, so — like a
+  // subscription's `config` — it lives in one JSON column and nothing about it
+  // is promoted to a column of its own.
+  //
+  // `author_kind` / `author_key_id` mirror the other three metadata tables: the
+  // collector's decision about who wrote the row, and the id of the key that
+  // carried it (never the key or its hash). `updated_at` earns its place
+  // because a spec is the one metadata row that is genuinely *edited* —
+  // retitling a pinned panel or widening it to full span should keep the panel
+  // where it is rather than mint a new one at the top of the grid.
+  {
+    id: "0048_panel_specs",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS panel_specs (
+        id            VARCHAR PRIMARY KEY,
+        project_id    VARCHAR NOT NULL,
+        spec          VARCHAR NOT NULL,
+        author_kind   VARCHAR NOT NULL DEFAULT 'user',
+        author_key_id VARCHAR,
+        created_at    TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at    TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `,
+  },
+  {
+    id: "0049_panel_specs_idx",
+    sql: /* sql */ `
+      CREATE INDEX IF NOT EXISTS panel_specs_project_created_idx
+        ON panel_specs (project_id, created_at);
+    `,
+  },
 ];
 
 /**

@@ -2194,6 +2194,103 @@ project's key, bounded, and audited — but do not paste personal data into them
 configured key holds `annotate` — the server asks `GET /api/v1/whoami` once at
 start-up — so a read-only key yields a read-only server.
 
+### Panels: what an agent leaves on the dashboard
+
+An answer disappears when the chat closes. A **panel spec** is how it stays: a
+title, the query that produced it, how to draw the result, and the one-line
+reading that made it worth keeping. The dashboard loads a project's specs on
+mount and renders them alongside its built-in panels (ADR 0051 §7).
+
+**It is data, never code.** [ADR 0041](./adr/0041-runtime-panel-loading.md) can
+load a remote panel _module_ at runtime, and is explicit about what that costs:
+such a module runs with the dashboard's full privileges, which is why it is off
+by default and guarded by an origin allowlist. A panel written by a language
+model would be exactly that. So a spec is a **closed document** — a metric id, a
+chart name, some column names. There is nothing to import and nothing to
+evaluate, and the dashboard draws it with the panel components it already ships.
+Pinning a panel widens the dashboard's trust boundary by nothing.
+
+| Method   | Path                 | Purpose                                            | Capability | Body / params |
+| -------- | -------------------- | -------------------------------------------------- | ---------- | ------------- |
+| `GET`    | `/api/v1/panels`     | The project's pinned panels, **oldest first**.     | `query`    | `limit`       |
+| `POST`   | `/api/v1/panels`     | Pin a panel. Answers `201` with the stored row.    | `annotate` | a `panelSpec` |
+| `PUT`    | `/api/v1/panels/:id` | Replace a panel's spec, keeping its id and place.  | `annotate` | a `panelSpec` |
+| `DELETE` | `/api/v1/panels/:id` | Unpin a panel. `204`, or `404` if it is not there. | `annotate` | —             |
+
+Oldest first is deliberate: these are positions in a grid, not a feed. Listing
+them newest-first would move every panel down the dashboard each time somebody
+pinned one.
+
+```json
+{
+  "v": 1,
+  "title": "Meshes people actually touch",
+  "query": { "v": 1, "metric": "top_meshes", "range": "inherit", "limit": 10 },
+  "chart": "bar",
+  "encoding": { "x": "mesh", "y": "count" },
+  "span": 1,
+  "note": "The crate outsells everything else three to one."
+}
+```
+
+**`range: "inherit"`** is what keeps a pinned panel worth reading. A spec that
+froze the window it was pinned at would answer the same question forever while
+the dashboard around it moved; `"inherit"` means "whatever the filter bar
+currently says", substituted at render time. A spec _may_ pin an explicit
+`{ since, until }` instead — a note about one incident is about one window and
+nothing else.
+
+**The chart must suit the metric.** Every spec is validated twice: once for
+shape (`panelSpecV1Schema`), and once against the metric registry, which answers
+the question that decides whether the panel will draw anything at all.
+
+| `chart`         | Needs                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------- |
+| `table`         | nothing — any metric's rows can be listed                                             |
+| `stat`          | a single-record result (a `project`-grain metric with no grain dimensions)            |
+| `bar`           | a label column, a measure column, and a `mesh`/`scene`/`session`/`row`/`bucket` grain |
+| `line` / `area` | an ordered axis column — in practice a `bucket`-grain metric                          |
+| `heatmap2d`     | a `bin` grain (the metric already bins its input into a grid)                         |
+| `world3d`       | a `voxel` grain (the same, in world space)                                            |
+
+A `line` over `top_meshes` is not a crash — it is a chart with no axis to walk
+along, which renders as _something_ that somebody reads as a trend a week later.
+So it is refused at pin time, with `400` and the validator's issue codes
+(`chart_grain_mismatch`, `unknown_encoding_column`, plus every
+[query DSL](#query-dsl-post-apiv1query) code), naming the charts that would have
+worked:
+
+```bash
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{"v":1,"title":"Meshes over time","chart":"line",
+       "query":{"v":1,"metric":"top_meshes","range":"inherit"}}' \
+  "https://collect.example.com/api/v1/panels"
+# 400 {"error":"the panel cannot be pinned: …",
+#      "issues":[{"code":"chart_grain_mismatch","path":"chart",
+#                 "accepted":["table","bar"]}]}
+```
+
+**`encoding`** names which result column feeds which channel (`x`, `y`,
+`series`). Omit it and the metric's own label/axis and measure columns are used;
+name a column the result does not carry and the spec is refused
+(`unknown_encoding_column`).
+
+**Bounds.** `title` ≤ 120 characters, `note` ≤ 500, each encoding column ≤ 64,
+and a project holds at most **50** panels — lower than the other metadata caps
+because every spec is a query the dashboard runs on every load. A write past the
+cap answers `409`.
+
+**Who pinned it.** Like the other metadata tables, each row carries `authorKind`
+(`user` or `agent`) and `authorKeyId`, decided by the collector from the calling
+client. An edit through `PUT` keeps the original author: whoever pinned it,
+pinned it.
+
+**Agents.** `@uptimizr/mcp` exposes `pin_panel`, `unpin_panel` and `list_panels`,
+registered only for a key holding `annotate`. The dashboard's in-browser
+assistant offers **"Pin as panel"** on any answer that came from a `query` tool
+call — the chart is chosen from the metric's grain, the range becomes
+`"inherit"`, and the answer becomes the panel's note.
+
 ```bash
 curl -H "x-api-key: $KEY" \
   "https://collect.example.com/api/v1/perf?session=<session-id>"

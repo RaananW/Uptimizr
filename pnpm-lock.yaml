@@ -616,6 +616,9 @@ importers:
       '@uptimizr/heatmap':
         specifier: workspace:*
         version: link:../heatmap
+      '@uptimizr/metrics':
+        specifier: workspace:*
+        version: link:../metrics
       '@uptimizr/replay':
         specifier: workspace:*
         version: link:../replay

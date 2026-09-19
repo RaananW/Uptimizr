@@ -2,7 +2,8 @@
 
 > A Model Context Protocol server over an Uptimizr collector's API. Lets an agent query a consumer's
 > own 3D analytics; thin wrapper, no data egress. Events are read-only; project-metadata writes
-> (annotations, glossary, saved analyses) are registered only for a key holding `annotate`.
+> (annotations, glossary, saved analyses, pinned panels) are registered only for a key holding
+> `annotate`.
 
 ## Docs
 
@@ -198,9 +199,14 @@ with `403`.
   covering all three `format` envelopes, and the metric's interpretation notes and caveats in its
   description (ADR 0051).
 - `writeTools` — the project-metadata tools (`annotate`, `define_term`, `save_analysis`,
-  `list_annotations`, `list_glossary`, `list_analyses`). A separate export from `readTools` on
+  `pin_panel`, `unpin_panel`, `list_annotations`, `list_glossary`, `list_analyses`,
+  `list_panels`). A separate export from `readTools` on
   purpose, so an integration's read-only stance stays inspectable. They write metadata only — no
-  event can be written, altered or deleted through them.
+  event can be written, altered or deleted through them. `pin_panel` stores a panel **spec** — a
+  metric id, a chart name, some column names — that the dashboard draws with panels it already
+  ships; send the `query` document with `range: "inherit"` and a chart the metric's grain supports,
+  or it is a `400` naming the charts that would have worked. `unpin_panel` removes a panel for
+  everyone on the project. At most 50 pinned panels per project (`409` past the cap).
   `@uptimizr/metrics` metric registry: 69 tools, each with an input schema, an MCP `outputSchema` and the
   `@uptimizr/metrics` metric registry: 70 tools, each with an input schema, an MCP `outputSchema` and the
   metric's interpretation notes and caveats in its description (ADR 0051).

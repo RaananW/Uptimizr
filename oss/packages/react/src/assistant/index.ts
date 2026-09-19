@@ -12,6 +12,10 @@
 //   import { AssistantPanel, useAssistant } from "@uptimizr/react/assistant";
 
 export { useAssistant } from "./useAssistant";
+// "Pin as panel" (#315): the pure derivation of a panel spec from the query an
+// answer came from — exported so a host can preview what would be pinned, and
+// so it can be tested without a live model.
+export { panelSpecForQuery } from "./useAssistant";
 export type {
   UseAssistantOptions,
   UseAssistantResult,

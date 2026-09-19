@@ -174,6 +174,10 @@ import {
   createSavedAnalysis as chCreateSavedAnalysis,
   listSavedAnalyses as chListSavedAnalyses,
   deleteSavedAnalysis as chDeleteSavedAnalysis,
+  createPanelSpec as chCreatePanelSpec,
+  listPanelSpecs as chListPanelSpecs,
+  updatePanelSpec as chUpdatePanelSpec,
+  deletePanelSpec as chDeletePanelSpec,
   type ClickhouseClient,
 } from "@uptimizr/db-clickhouse";
 import type { CollectorStore } from "./store.js";
@@ -421,6 +425,10 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
     createSavedAnalysis: (projectId, input) => chCreateSavedAnalysis(ch, projectId, input),
     listSavedAnalyses: (projectId, opts) => chListSavedAnalyses(ch, projectId, opts),
     deleteSavedAnalysis: (projectId, id) => chDeleteSavedAnalysis(ch, projectId, id),
+    createPanelSpec: (projectId, input) => chCreatePanelSpec(ch, projectId, input),
+    listPanelSpecs: (projectId, opts) => chListPanelSpecs(ch, projectId, opts),
+    updatePanelSpec: (projectId, id, input) => chUpdatePanelSpec(ch, projectId, id, input),
+    deletePanelSpec: (projectId, id) => chDeletePanelSpec(ch, projectId, id),
     listSubscriptions: (projectId) => chListSubscriptions(ch, projectId),
     listEnabledSubscriptions: (limit) => chListEnabledSubscriptions(ch, limit),
     getSubscription: (projectId, id) => chGetSubscription(ch, projectId, id),

@@ -46,17 +46,20 @@ export {
   toApiKeyColumns,
   toApiKeyRateLimit,
 } from "./metadata.js";
-// Project metadata: annotations, glossary, saved analyses (#310, ADR 0051 §5).
+// Project metadata: annotations, glossary, saved analyses (#310, ADR 0051 §5)
+// and the declarative panel specs pinned on the same path (#315, §7).
 export {
   METADATA_LIMITS,
   MetadataLimitError,
   clampMetadataLimit,
+  parsePanelSpec,
   parseSavedAnalysisQuery,
 } from "./metadata.js";
 export type {
   AnnotationRecord,
   AnnotationTargetKind,
   CreateAnnotationInput,
+  CreatePanelSpecInput,
   CreateSavedAnalysisInput,
   GlossaryEntryRecord,
   ListAnnotationsOptions,
@@ -64,8 +67,10 @@ export type {
   MetadataAuthorKind,
   MetadataListOptions,
   MetadataTable,
+  PanelSpecRecord,
   PutGlossaryEntryInput,
   SavedAnalysisRecord,
+  UpdatePanelSpecInput,
 } from "./metadata.js";
 export type {
   Project,
@@ -449,6 +454,12 @@ export {
   listSavedAnalyses as duckdbListSavedAnalyses,
   deleteSavedAnalysis as duckdbDeleteSavedAnalysis,
 } from "./duckdb/projectMetadata.js";
+export {
+  createPanelSpec as duckdbCreatePanelSpec,
+  listPanelSpecs as duckdbListPanelSpecs,
+  updatePanelSpec as duckdbUpdatePanelSpec,
+  deletePanelSpec as duckdbDeletePanelSpec,
+} from "./duckdb/panelSpecs.js";
 export {
   listSubscriptions as duckdbListSubscriptions,
   listEnabledSubscriptions as duckdbListEnabledSubscriptions,

@@ -58,3 +58,18 @@
   COLLECTOR_WEBHOOK_ALLOWED_HOSTS names the hosts the collector may POST to.
 - Bodies are signed `X-Uptimizr-Signature: sha256=<hex>` over the raw body, with
   `X-Uptimizr-Delivery` for dedupe; 3 attempts with backoff.
+
+## Pinned panels (ADR 0051 §7)
+
+- GET /api/v1/panels (needs `query`), POST /api/v1/panels, PUT /api/v1/panels/:id,
+  DELETE /api/v1/panels/:id (each needs `annotate`, each audited). OpenAPI operation ids
+  `list_panels`, `pin_panel`, `update_panel`, `unpin_panel` under the `panels` tag.
+- A spec is `{ v, title, query, chart, encoding?, span, note? }` — **data**, drawn with panel
+  components `@uptimizr/react` already ships, so no module is loaded and nothing is evaluated.
+  `query.range` may be the literal `"inherit"` (follow the dashboard's filter bar) or an explicit
+  `{ since, until }`.
+- Validated twice: `panelSpecV1Schema` for the shape, then `validatePanelSpec` for the vocabulary
+  (does the metric exist, does the chart suit its grain, do the encoding columns exist). A failure
+  is `400 { error, issues }` — the same body `POST /api/v1/query` answers with.
+- Listed **oldest first** (grid positions, not a feed). `PUT` is a full replacement and keeps the
+  row's id and original authorship; an unknown id is `404`. `409` past 50 panels per project.

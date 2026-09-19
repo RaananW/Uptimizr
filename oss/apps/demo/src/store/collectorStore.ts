@@ -83,6 +83,7 @@ import {
   funnelStepSchema,
   funnelStepsSchema,
   glossaryEntrySchema,
+  panelSpecV1Schema,
   savedAnalysisSchema,
   sceneProxySchema,
   sceneRegionsSchema,
@@ -285,6 +286,39 @@ async function handleMetadata(
     return deleted
       ? { status: 204, body: null }
       : { status: 404, body: { error: "analysis not found" } };
+  }
+
+  // Pinned panels (#315). Only the shape is checked here: `validatePanelSpec`
+  // lives in `@uptimizr/metrics`, and the demo's dashboard renders through the
+  // same `specPanel` factory, which validates what it is about to draw.
+  if (path === "/api/v1/panels") {
+    if (req.method === "GET") return ok(await db.listPanelSpecs());
+    if (req.method === "POST") {
+      const parsed = panelSpecV1Schema.safeParse(parseBody());
+      if (!parsed.success) return { status: 400, body: { error: "invalid panel spec" } };
+      try {
+        return { status: 201, body: await db.createPanelSpec(parsed.data, author) };
+      } catch (err) {
+        if (err instanceof DemoMetadataLimitError) return full(err.table, err.limit);
+        throw err;
+      }
+    }
+  }
+  const panelId = path.match(/^\/api\/v1\/panels\/([^/]+)$/);
+  if (panelId) {
+    const id = decodeURIComponent(panelId[1]!);
+    if (req.method === "PUT") {
+      const parsed = panelSpecV1Schema.safeParse(parseBody());
+      if (!parsed.success) return { status: 400, body: { error: "invalid panel spec" } };
+      const updated = await db.updatePanelSpec(id, parsed.data);
+      return updated == null ? { status: 404, body: { error: "panel not found" } } : ok(updated);
+    }
+    if (req.method === "DELETE") {
+      const deleted = await db.deletePanelSpec(id);
+      return deleted
+        ? { status: 204, body: null }
+        : { status: 404, body: { error: "panel not found" } };
+    }
   }
 
   return null;

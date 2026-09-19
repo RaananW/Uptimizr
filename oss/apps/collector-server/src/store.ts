@@ -78,12 +78,15 @@ import type {
   SceneRegionSummary,
   AnnotationRecord,
   CreateAnnotationInput,
+  CreatePanelSpecInput,
   CreateSavedAnalysisInput,
   GlossaryEntryRecord,
   ListAnnotationsOptions,
   MetadataListOptions,
+  PanelSpecRecord,
   PutGlossaryEntryInput,
   SavedAnalysisRecord,
+  UpdatePanelSpecInput,
   SceneRepresentation,
   SceneRepresentationSummary,
   SceneRow,
@@ -898,6 +901,34 @@ export interface CollectorStore extends SubscriptionStore {
   listSavedAnalyses(projectId: string, opts?: MetadataListOptions): Promise<SavedAnalysisRecord[]>;
   /** Delete one saved analysis; `false` when the id is unknown. */
   deleteSavedAnalysis(projectId: string, id: string): Promise<boolean>;
+
+  // --- Declarative panel specs (#315, ADR 0051 §7 / sketch §G.3) ------------
+  //
+  // The fourth metadata table, written on the same `annotate`-gated, audited
+  // path and bounded by `METADATA_LIMITS.panelSpecs`. It differs from the three
+  // above in one respect: a spec can be **updated in place**, because a pinned
+  // panel has a position in somebody's dashboard that retitling it should not
+  // cost.
+
+  /** Pin one panel and return the stored row. */
+  createPanelSpec(projectId: string, input: CreatePanelSpecInput): Promise<PanelSpecRecord>;
+  /**
+   * A project's pinned panels, **oldest first** — the opposite order to the
+   * other metadata listings, because these are grid positions rather than a
+   * feed and newest-first would reshuffle the dashboard on every pin.
+   */
+  listPanelSpecs(projectId: string, opts?: MetadataListOptions): Promise<PanelSpecRecord[]>;
+  /**
+   * Replace one panel's spec, keeping its id, its place and its original
+   * authorship; `null` when the id is unknown (or belongs to another project).
+   */
+  updatePanelSpec(
+    projectId: string,
+    id: string,
+    input: UpdatePanelSpecInput,
+  ): Promise<PanelSpecRecord | null>;
+  /** Unpin one panel; `false` when the id is unknown. */
+  deletePanelSpec(projectId: string, id: string): Promise<boolean>;
 
   /** Release underlying connections. */
   close(): Promise<void>;

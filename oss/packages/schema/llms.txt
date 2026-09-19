@@ -27,3 +27,14 @@
 - `subscriptionSchema` — a conditional subscription (ADR 0051 §6): a registry metric, a window,
   a closed predicate union (threshold | anomaly | movers | new_value | presence), a cooldown and
   delivery targets. Config, not an event. `parseDurationMs` parses its "5m"/"1h" literals.
+- `panelSpecV1Schema` — a declarative dashboard panel (ADR 0051 §7): `{ v, title, query, chart,
+  encoding?, span, note? }`, with `panelSpecQuerySchema` (`queryV1` minus `format`/`explain`, whose
+  `range` may also be the literal `PANEL_RANGE_INHERIT`), `panelSpecRangeSchema`,
+  `panelChartKindSchema` (stat | table | bar | line | area | heatmap2d | world3d),
+  `panelEncodingSchema` (which result column feeds `x`/`y`/`series`) and
+  `resolvePanelSpecRange(range, active)`. Shape only — `validatePanelSpec()` in `@uptimizr/metrics`
+  decides whether the chart suits the metric's grain and whether the encoding names real columns.
+  Config, not an event: a spec is data, rendered with panels `@uptimizr/react` already ships, so
+  nothing is loaded and nothing is evaluated. Bounds: `LIMITS.maxPanelSpecTitleLength` (120),
+  `maxPanelSpecNoteLength` (500), `maxPanelEncodingColumnLength` (64),
+  `maxProjectPanelSpecs` (50). No serialized-length cap: every leaf is bounded here or by `queryV1`.

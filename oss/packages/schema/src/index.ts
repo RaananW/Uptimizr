@@ -212,6 +212,26 @@ export {
   type QueryV1,
   type QueryV1Input,
 } from "./query.js";
+
+// --- Declarative panel specs (ADR 0051 §7 / sketch §G.3) --------------------
+// What an agent leaves behind when an answer is worth keeping: a query, a chart
+// name and a reading. Data, never a module — see `panelSpec.ts` on why ADR
+// 0041's trust decision is untouched by this.
+export {
+  PANEL_RANGE_INHERIT,
+  panelChartKindSchema,
+  panelEncodingSchema,
+  panelSpecQuerySchema,
+  panelSpecRangeSchema,
+  panelSpecV1Schema,
+  resolvePanelSpecRange,
+  type PanelChartKind,
+  type PanelEncoding,
+  type PanelSpecQuery,
+  type PanelSpecRange,
+  type PanelSpecV1,
+  type PanelSpecV1Input,
+} from "./panelSpec.js";
 export {
   BUS_BACKED_PREDICATE_KINDS,
   MAX_COOLDOWN_MS,
