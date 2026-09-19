@@ -28,8 +28,9 @@ export function registerPrompts(server: McpServer): void {
     {
       title: "Weekly scene health",
       description:
-        "A weekly health check for a scene (or the whole project): traffic, event mix, " +
-        "performance, and the most-interacted meshes.",
+        "A weekly health check for a scene (or the whole project): a weighted health score with " +
+        "every factor traced back to the metric behind it, what changed against last week, " +
+        "traffic, event mix, performance, and the most-interacted meshes.",
       argsSchema: { scene: sceneArg },
     },
     ({ scene }) => ({
@@ -41,7 +42,18 @@ export function registerPrompts(server: McpServer): void {
             text:
               `Give me a weekly health report for ${forScene(scene)} covering the last 7 days.\n\n` +
               "Use these read-only tools and summarise the findings:\n" +
-              "- `insight_movers` **first**" +
+              // --- significance / scene health (#307) ---
+              "- `insight_scene_health` **first**" +
+              (scene ? ` (scene="${scene}")` : "") +
+              ": it scores each scene 0-100 over six weighted factors — perf stability, " +
+              "jank, errors, dead clicks, coverage and XR abandonment — so you start from " +
+              "*which* scene to look at rather than from a list of numbers. Open the " +
+              "lowest-scoring scene first, then the factor whose own score is furthest " +
+              "below 50. Every factor names the `metric` behind it, its `raw` value and " +
+              "the project `baseline` it was compared with, so the sentence you write is " +
+              "already in the row. 50 is the project norm, not a pass mark, and a factor " +
+              "with `score: null` was not counted — its `note` says why.\n" +
+              "- `insight_movers` **next**" +
               (scene ? ` (scene="${scene}")` : "") +
               ": it compares every comparable metric with the previous equal window and ranks " +
               "the changes by how unusual each one is, so start from what actually moved instead " +
@@ -52,6 +64,12 @@ export function registerPrompts(server: McpServer): void {
               "- `insight_baseline` for each metric that moved, to say whether the new level is " +
               "actually outside what is normal here — compare it with `median` give or take a " +
               "few `mad`, or with the p10..p90 band.\n" +
+              // --- significance / scene health (#307) ---
+              "- `insight_significance` before calling any single change real: it reports " +
+              "the effect, a 95% interval and a p-value for one metric across the two " +
+              "windows. An interval that straddles 0 means you cannot tell yet, whatever " +
+              "the p-value says, and `powerNote` states what this much data could have " +
+              "detected at all.\n" +
               "- `event_counts` for the per-event-type mix" +
               (scene ? ` (scene="${scene}")` : "") +
               ".\n" +

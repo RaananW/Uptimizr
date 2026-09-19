@@ -195,28 +195,33 @@ including each column's unit and each metric's caveats.
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/v1/insights/baseline` | `insight_baseline` | project | `metric`, `scene`, `window`, `bucket`, `since`, `until`, `format` | What is normal for one metric in one scene. Buckets a comparable metric's headline column into days or hours over a trailing window and reduces the series to its centre (mean, median), its ordinary spread (MAD, p10, p90) and its drift (least-squares slope per bucket). One row per request: the reference distribution a single later observation should be judged against, so 'is 42 FPS bad here?' has an answer that does not depend on the reader's memory. |
 | `GET` | `/api/v1/insights/movers` | `insight_movers` | row | `scene`, `metrics`, `bucket`, `limit`, `since`, `until`, `refSince`, `refUntil`, `format` | What moved, ranked. For every comparable metric in scope, compares the current range with a reference range (the previous equal window by default) and ranks the differences by a robust z-score — the change divided by how much that metric normally swings, so a metric that is always volatile has to move much further than a steady one before it is called a mover. One row per metric: the top risers, the top fallers, and the ones that did not move. |
+| `GET` | `/api/v1/insights/significance` | `insight_significance` | project | `metric`, `scene`, `bucket`, `since`, `until`, `refSince`, `refUntil`, `format` | Is that difference real? Compares one comparable metric across two windows and reports the effect, its 95% confidence interval and a two-sided p-value, with the test chosen from what the measure *is*: a two-proportion z with Wilson intervals for a declared rate, Welch's t over the per-bucket values for a level, an exact Poisson rate test for a bare count. One row per request, and a `powerNote` saying what these sample sizes could and could not have detected. |
+| `GET` | `/api/v1/insights/scene-health` | `insight_scene_health` | scene | `scene`, `window`, `since`, `until`, `bucket`, `limit`, `weights`, `format` | Which scene is in trouble, and why. Scores each scene 0-100 over six weighted factors — perf stability, jank, errors, dead clicks, exploration coverage and XR abandonment — each normalised against the project's own baseline over the preceding equal window. One row per scene, least healthy first, and every factor carries the metric id, the raw value, the baseline it was compared with and the weight it contributed, so the score can always be taken apart. |
 
 {/* generated:registry-query-reference:end */}
 
-## Insights — baselines and movers
+## Insights — baselines, movers, significance and health
 
-Two of the metrics above are not measurements but **readings about the other
-metrics**: `insight_baseline` answers "is this number normal here?" and
-`insight_movers` answers "what changed?". Both are ordinary registry metrics, so
-they take the same parameters, the same `format` envelopes and the same API key
-as everything else on this page.
+Four of the metrics above are not measurements but **readings about the other
+metrics**: `insight_baseline` answers "is this number normal here?",
+`insight_movers` "what changed?", `insight_significance` "is that change real?"
+and `insight_scene_health` "which scene should I look at first?". All four are
+ordinary registry metrics, so they take the same parameters, the same `format`
+envelopes and the same API key as everything else on this page.
 
-Both work the same way: one comparable metric's headline column is bucketed by
-day or hour, and every statistic over that series — mean, median, MAD,
-percentiles, slope, robust z — is computed in plain TypeScript rather than SQL.
-That is deliberate: five SQL engines disagree about `quantile` and `median`, and
-an insight that changes when you switch storage backend is not an insight.
+They all work the same way: one comparable metric's headline column is bucketed
+by day or hour, and every statistic over that series — mean, median, MAD,
+percentiles, slope, robust z, confidence intervals and p-values alike — is
+computed in plain TypeScript rather than SQL. That is deliberate: five SQL
+engines disagree about `quantile` and `median`, and an insight that changes when
+you switch storage backend is not an insight.
 
 :::note
 Window bounds are **snapped down to whole buckets**, so the day or hour in
 progress is excluded — otherwise every morning would look like a traffic
 collapse. The window that was actually measured comes back in the `table` and
-`summary` envelopes.
+`summary` envelopes. `scene-health` is the one exception (it says why below):
+none of its factors is a count, so a partial bucket does not distort it.
 :::
 
 ### `/api/v1/insights/baseline`
@@ -295,7 +300,111 @@ construction, because bucketing them would change what they mean. Asking for one
 returns `400` listing every metric id that *is* available.
 :::
 
+### `/api/v1/insights/significance`
+
+`metric` (required) plus `scene`, `bucket`, the usual `since` / `until` and
+`refSince` / `refUntil` (default: the equal window immediately before). One row —
+and the **test is picked from what the measure is**, never from the caller:
+
+| The measure is…                                             | Test                                           | `ci95`                                          |
+| ----------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------- |
+| a rate (its headline column declares a `rateOf` denominator) | two-proportion z, pooled                       | Newcombe hybrid score, from the two Wilson intervals |
+| a bare count                                                 | Poisson rate test (exact conditional binomial) | normal approximation on the rate difference     |
+| a level or a summed quantity (`fps`, `ms`, bytes)            | Welch's t over the per-bucket values           | `effect ± t(0.975, ν) · SE`                     |
+
+```jsonc
+{
+  "metric": "dead_clicks",
+  "a": { "value": 0.166667, "n": 6 }, // the window under test
+  "b": { "value": 0, "n": 8 }, // the window it is compared with
+  "effect": 0.166667,
+  "ci95": [-0.185333, 0.563503], // straddles 0 → cannot tell yet
+  "p": 0.230804,
+  "test": "two_proportion_z",
+  "effectUnit": "ratio",
+  "significant": false,
+  "powerNote": "With these sample sizes the smallest difference detectable at 80% power (alpha 0.05) is about 0.4262 in the rate; …",
+}
+```
+
+- **Read `ci95` before `p`.** A narrow interval around a small effect says
+  nothing much changed; a wide interval containing 0 says nothing at all, and
+  `powerNote` tells you which you are looking at.
+- **Welch counts buckets, not events.** `n` is the number of days or hours
+  compared. Frame samples inside one day are not independent, and counting them
+  would manufacture a p-value of `1e-40` for ordinary drift.
+- **Significance is not importance.** A large enough sample makes an irrelevant
+  difference significant; `effect` and `effectUnit` say whether it matters.
+
+:::caution[Two windows, not two segments]
+A variant-versus-variant or device-versus-device contrast needs the bucket series
+split by a promoted dimension, which is not available yet. Passing `segment` or
+`refSegment` returns `400` naming the window parameters, rather than answering a
+segment question with a window comparison.
+:::
+
+### `/api/v1/insights/scene-health`
+
+`scene` (default: the busiest scenes), `window` (days, default 7, max 90),
+`bucket`, `limit` (default 5, max 10), an optional `weights` JSON object, and the
+usual `since` / `until`. One row per scene, least healthy first, each carrying the
+six factors behind its score:
+
+| Factor            | Metric            | Raw value                             | Good is | Weight |
+| ----------------- | ----------------- | ------------------------------------- | ------- | ------ |
+| `perf_stability`  | `perf_summary`    | 5th-percentile FPS                    | higher  | 0.25   |
+| `error_rate`      | `error_heatmap`   | errors + diagnostics per session      | lower   | 0.25   |
+| `jank_rate`       | `jank_rate`       | long frames per sampled perf window   | lower   | 0.20   |
+| `dead_click_rate` | `dead_clicks`     | share of clicks that hit nothing      | lower   | 0.15   |
+| `coverage`        | `scene_coverage`  | positioned camera samples per session | higher  | 0.10   |
+| `xr_abandonment`  | `xr_abandonment`  | interactions per XR session           | higher  | 0.05   |
+
+```jsonc
+{
+  "scene": "lobby",
+  "score": 27.5, // weighted mean of the factors that could be scored
+  "factors": [
+    {
+      "id": "perf_stability",
+      "metric": "perf_summary", // the endpoint that explains this factor
+      "raw": 19.4, // what that metric produced, in `unit`
+      "baseline": 47.1, // the project norm it was compared with
+      "score": 0, // 0-100; 50 is exactly the project norm
+      "weight": 0.25,
+      "unit": "FPS",
+      "note": "The 5th-percentile FPS of the scene's sampled frames — …",
+    },
+  ],
+  "sampleSize": 214,
+  "since": 1757376000000,
+  "until": 1757980800000,
+}
+```
+
+**The score is a comparison, not a grade.** Every factor is normalised against
+the project's own baseline over the preceding equal window, using the same robust
+centre and spread `movers` ranks with. 50 is exactly the project norm, four
+robust deviations better is 100 and the same distance worse is 0 — so a project
+where every scene is equally bad reads 50 everywhere. That is the right shape for
+"which scene should I look at first", and the wrong shape for "is this scene
+good".
+
+Default weights are declared in the registry entry (and so appear in
+`capabilities`) precisely so they can be argued with; `weights` overrides any of
+them, factors it does not name keep their default, and an unknown factor id is a
+`400`. A factor with `score: null` could not be measured — its `note` says why —
+and is left out of the weighted mean rather than folded in as an average.
+
+:::note
+This is the one insight window that **includes the bucket in progress**. Every
+health factor is a rate or a percentile, and a partial bucket gives half the
+numerator *and* half the denominator — so flooring `until` here would only make
+the score answer about yesterday. The window actually measured comes back as
+`since` / `until` on every row.
+:::
+
 ## Scene regions
+
 
 Named, labelled boxes that give a scene a vocabulary for _where_ — "the
 entrance", "the checkout counter" — so spatial answers read in words and any

@@ -310,10 +310,12 @@ grain, column units, limits and caveats.
 
 #### insights
 
-| Tool               | Endpoint                    | Returns         |
-| ------------------ | --------------------------- | --------------- |
-| `insight_baseline` | `/api/v1/insights/baseline` | Metric baseline |
-| `insight_movers`   | `/api/v1/insights/movers`   | What changed    |
+| Tool                   | Endpoint                        | Returns                  |
+| ---------------------- | ------------------------------- | ------------------------ |
+| `insight_baseline`     | `/api/v1/insights/baseline`     | Metric baseline          |
+| `insight_movers`       | `/api/v1/insights/movers`       | What changed             |
+| `insight_significance` | `/api/v1/insights/significance` | Statistical significance |
+| `insight_scene_health` | `/api/v1/insights/scene-health` | Scene health score       |
 
 <!-- generated:registry-guide-tools:end -->
 

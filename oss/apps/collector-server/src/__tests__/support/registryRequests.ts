@@ -78,6 +78,8 @@ export const REQUIRED_QUERY: Readonly<Record<string, Record<string, string>>> = 
   // A baseline is a baseline *of* something: the metric is the subject rather
   // than a filter, so it is the one insight parameter with no default.
   "/api/v1/insights/baseline": { metric: "list_sessions" },
+  // --- significance / scene health (#307) ---
+  "/api/v1/insights/significance": { metric: "list_sessions" },
 };
 
 /** The two resource reads, which legitimately 404 when nothing is registered. */

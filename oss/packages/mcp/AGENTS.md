@@ -52,7 +52,7 @@ reviewable.
 `boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
 `ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
 `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`, `insight_baseline`,
-`insight_movers`
+`insight_movers`, `insight_significance`, `insight_scene_health`
 
 <!-- generated:registry-tool-names:end -->
 
@@ -131,13 +131,20 @@ Every **aggregate** tool takes a `format` argument choosing the envelope its row
 - **No database driver, ever.** This server talks to a collector over HTTP; it must stay installable
   with `npx`. Never add `@uptimizr/db` (or any package with a native/optional binary dependency) to
   `dependencies` — `src/__tests__/dependencies.test.ts` fails if you do.
-- **Start from `insight_movers` on an open-ended question.** "How are things?" does not mean "call
-  thirty tools": `insight_movers` compares every comparable metric with the previous equal window
-  and ranks the changes by how unusual each is, and `insight_baseline` says whether a level is
-  outside normal for that scene. Two fields decide whether a row is reportable: `direction` is the
+- **Start from an insight primitive on an open-ended question.** "How are things?" does not mean
+  "call thirty tools": `insight_scene_health` says _which scene_ to look at (six weighted factors,
+  each naming the metric, raw value and project baseline behind it; 50 is the project norm, not a
+  pass mark), `insight_movers` compares every comparable metric with the previous equal window and
+  ranks the changes by how unusual each is, and `insight_baseline` says whether a level is outside
+  normal for that scene. Two fields decide whether a mover is reportable: `direction` is the
   registry's opinion of what a _rise_ means (so a rise in a `down` metric is a regression, not an
   improvement), and `aboveMinSample: false` means the delta is arithmetic but not evidence — those
   rows are returned rather than dropped, and must never be reported as findings.
+- **Call `insight_significance` before calling a single change real.** It reports the effect, a 95%
+  interval and a p-value for one metric across two windows, with the test chosen from what the
+  measure is. Read `ci95` before `p` — an interval straddling 0 means you cannot tell yet — and
+  read `powerNote`, which distinguishes "no effect" from "not enough data". It compares two
+  _windows_, not two segments.
 - Tool definitions are pure (`buildRequest`) and must stay unit-testable without a live collector.
 
 ## Programmatic API

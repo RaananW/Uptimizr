@@ -243,6 +243,10 @@ const PARITY_CASE_METRIC: Readonly<Record<string, MetricId | null>> = {
   "metricBuckets:geometry": null,
   "metricBuckets:emptySeries": null,
   "metricBuckets:dayGrain": null,
+  // --- significance / scene health (#307) ---
+  "metricBuckets:rateDenominator": null,
+  "metricBuckets:longFrames": null,
+  "metricBuckets:tailQuantile": null,
 };
 
 /**

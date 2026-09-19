@@ -78,7 +78,8 @@ export function isBucketGrain(value: string): value is BucketGrain {
  * exception is `ar_placement_scale`, which `buildArPlacementSurfaces` itself
  * reads with `jsonFloat` — it is rendered the same way here so the two agree.
  */
-export type BucketValueColumn = "fps" | "visible_ms" | "js_heap_bytes" | "ar_placement_scale";
+export type BucketValueColumn =
+  "fps" | "visible_ms" | "js_heap_bytes" | "long_frames" | "ar_placement_scale";
 
 /**
  * A predicate a measure may add beyond its event-type filter.
@@ -406,3 +407,191 @@ export const MOVERS_DEFAULT_METRICS: readonly MetricId[] = [
  * {@link MOVERS_DEFAULT_METRICS} is asserted to be no longer than this.
  */
 export const MOVERS_MAX_METRICS = 24;
+
+// =========================================================================
+// --- significance / scene health (#307) ----------------------------------
+//
+// `significance` and `scene_health` need two things the catalog above cannot
+// express, and both are the *same* shape of need: a series that belongs to a
+// metric but is not that metric's headline column.
+//
+// - `significance` runs a two-proportion test only when it can see a
+//   **denominator** — the `rateOf` column the registry already declares beside
+//   a rate. `dead_clicks` is `dead_clicks / total_clicks`; the catalog above
+//   carries the numerator, and the denominator is a second series of the same
+//   shape.
+// - `scene_health` needs one series per factor, and three of its six factors
+//   are ratios ("errors per session", "long frames per sampled window") while a
+//   fourth wants the *tail* of the FPS distribution rather than its middle.
+//
+// Both are served by one additive mechanism: a metric may declare **named
+// auxiliary measures** beside its main one. A variant is an ordinary
+// {@link BucketMeasure} — the same closed predicate vocabulary, the same
+// aggregates, rendered by the same `buildMetricBuckets` — so it costs no new
+// SQL and no new parity surface beyond the aggregate shapes it introduces.
+//
+// The variant name is **never** caller input. `significance` picks
+// `denominator` when the registry says the metric is a rate, and `scene_health`
+// reads a fixed factor catalog; no querystring reaches this lookup. That is
+// what keeps the "nothing a caller can influence becomes SQL text" property of
+// `buckets.ts` intact.
+//
+// Two of the metrics below (`jank_rate`, `xr_abandonment`) have **no** main
+// measure and are absent from {@link BUCKET_MEASURES} on purpose: their own
+// endpoints aggregate per session first, or need an anti-join, so there is no
+// faithful per-bucket form of *their headline column* and `baseline` / `movers`
+// must keep rejecting them. A variant makes a different, honestly-named
+// quantity available ("long frames per sampled window", "XR interactions per XR
+// session") for the health factors that need one — it does not make the metric
+// bucketable, and `isBucketableMetric` deliberately still says so.
+// =========================================================================
+
+/**
+ * The named auxiliary series a metric may declare.
+ *
+ * - `denominator` — the `rateOf` column beside a rate numerator;
+ * - `numerator` — the counted part of a ratio whose metric has no main measure;
+ * - `p05` — the 5th percentile of a distribution whose main measure is its median.
+ */
+export type BucketVariant = "numerator" | "denominator" | "p05";
+
+/** XR input sources (ADR 0011) — the same set `buildXrAbandonment` restricts to. */
+const XR_SOURCES = ["xr-controller", "hand", "gaze", "transient"] as const;
+
+/** Event channels that carry the input-source vocabulary, as `xr_abandonment` reads them. */
+const XR_INTERACTION_CHANNELS = ["pointer_click", "pointer_move", "mesh_interaction"] as const;
+
+/** Distinct sessions per bucket — the denominator of every "per session" factor. */
+function perSessionDenominator(eventTypes: readonly string[], note: string): BucketMeasure {
+  return {
+    column: "sessions",
+    eventTypes,
+    aggregate: { kind: "sessions" },
+    rollup: "sum",
+    note,
+  };
+}
+
+/**
+ * Named auxiliary series, by metric. See the section header for why these are
+ * separate from {@link BUCKET_MEASURES} rather than entries in it.
+ */
+export const BUCKET_MEASURE_VARIANTS: Readonly<
+  Partial<Record<MetricId, Readonly<Partial<Record<BucketVariant, BucketMeasure>>>>>
+> = {
+  // The `rateOf` denominator of the dead-click rate: every click, not only the
+  // ones that hit nothing. `dead_clicks / total_clicks` is then a genuine
+  // proportion, which is what makes a two-proportion test legitimate.
+  dead_clicks: {
+    denominator: counted("total_clicks", ["pointer_click"]),
+  },
+
+  // The tail of the FPS distribution rather than its middle. Health asks "how
+  // bad does it get here", and a scene whose median is 60 while its 5th
+  // percentile is 12 is not a smooth scene — the median alone cannot say that.
+  perf_summary: {
+    p05: {
+      column: "p50_fps",
+      eventTypes: ["frame_perf"],
+      aggregate: { kind: "quantile", column: "fps", q: 0.05 },
+      rollup: "mean",
+      note:
+        "The 5th percentile of the bucket's raw `frame_perf` samples — the frame rate in the " +
+        "worst twentieth of sampled windows, not the median the metric's own headline reports.",
+    },
+  },
+
+  // `jank_rate`'s own endpoint computes a rate per session and then takes the
+  // median of those (ADR 0028 §1), which no `GROUP BY` reproduces. This pair is
+  // the *pooled* rate over the same raw material: long frames per sampled
+  // window, across every session in the bucket. A different statistic, named as
+  // one, and the only portable one.
+  jank_rate: {
+    numerator: {
+      column: "total_long_frames",
+      eventTypes: ["frame_perf"],
+      aggregate: { kind: "sum", column: "long_frames" },
+      rollup: "sum",
+      note:
+        "Long frames summed across every session in the bucket. The metric's own `median_rate` " +
+        "is a per-session median, so the two agree in direction but not in value.",
+    },
+    denominator: counted(
+      "sessions",
+      ["frame_perf"],
+      undefined,
+      "Sampled perf windows in scope — the denominator the SDK's own rate is per.",
+    ),
+  },
+
+  // Errors per session. The numerator is the metric's own count; the
+  // denominator is sessions, because an error count with no traffic behind it
+  // says nothing — twice the errors on three times the visitors is an
+  // improvement.
+  error_heatmap: {
+    denominator: perSessionDenominator(
+      ["session_start"],
+      "Sessions started in the bucket — the denominator that turns an error count into a rate.",
+    ),
+  },
+
+  // Exploration per session. A true voxel-coverage *percentage* needs the
+  // scene's registered bounds (`scene_representation`) and has no portable
+  // per-bucket form; positioned camera samples per session is the portable
+  // proxy, and it is normalised against the project's own baseline rather than
+  // read as an absolute.
+  scene_coverage: {
+    denominator: perSessionDenominator(
+      ["camera_sample"],
+      "Sessions that produced a camera sample in the bucket.",
+    ),
+  },
+
+  // XR interactions per XR session. `xr_abandonment`'s own endpoint needs a
+  // session-level anti-join; this pair is the portable inverse signal — a
+  // headset session that interacts with nothing is the abandonment the metric
+  // is looking for. Both sides are restricted to XR input sources, so the
+  // factor is absent (rather than zero) in a project with no XR traffic.
+  xr_abandonment: {
+    numerator: counted("xr_interactions", XR_INTERACTION_CHANNELS, [
+      { kind: "in", column: "source", values: XR_SOURCES },
+    ]),
+    denominator: {
+      column: "session_id",
+      eventTypes: XR_INTERACTION_CHANNELS,
+      where: [{ kind: "in", column: "source", values: XR_SOURCES }],
+      aggregate: { kind: "sessions" },
+      rollup: "sum",
+      note: "Distinct sessions that produced at least one XR-sourced interaction in the bucket.",
+    },
+  },
+};
+
+/**
+ * The auxiliary series a metric declares under `variant`, or `undefined`.
+ *
+ * Kept separate from {@link bucketMeasureFor} so that "has a portable bucket
+ * series" — the question `baseline` and `movers` validate a caller's `metric`
+ * against — keeps meaning exactly what it meant before: a faithful per-bucket
+ * form of the metric's *own* headline column.
+ */
+export function bucketVariantFor(
+  metric: string,
+  variant: BucketVariant,
+): BucketMeasure | undefined {
+  if (!Object.prototype.hasOwnProperty.call(BUCKET_MEASURE_VARIANTS, metric)) return undefined;
+  return BUCKET_MEASURE_VARIANTS[metric as MetricId]?.[variant];
+}
+
+/**
+ * The measure a bucket read resolves to: a metric's main series, or the named
+ * auxiliary one. The single lookup `buildMetricBuckets` and
+ * `evaluateBucketMeasure` share, so the SQL and the in-memory path cannot
+ * resolve the same request differently.
+ */
+export function resolveBucketMeasure(
+  metric: string,
+  variant?: BucketVariant,
+): BucketMeasure | undefined {
+  return variant == null ? bucketMeasureFor(metric) : bucketVariantFor(metric, variant);
+}

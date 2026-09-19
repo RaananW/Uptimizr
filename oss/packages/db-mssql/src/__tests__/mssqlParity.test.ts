@@ -140,6 +140,10 @@ describe.skipIf(!available)("mssql parity (vs golden, vs duckdb)", () => {
       "metricBuckets:geometry",
       "metricBuckets:emptySeries",
       "metricBuckets:dayGrain",
+      // --- significance / scene health (#307) ---
+      "metricBuckets:rateDenominator",
+      "metricBuckets:longFrames",
+      "metricBuckets:tailQuantile",
     ]);
   });
 

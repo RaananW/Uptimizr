@@ -15,11 +15,12 @@
  */
 
 import {
-  bucketMeasureFor,
+  resolveBucketMeasure,
   BUCKET_SECONDS,
   type BucketGrain,
   type BucketMeasure,
   type BucketPredicate,
+  type BucketVariant,
 } from "./measures.js";
 import type { MetricBucketRow } from "./buckets.js";
 import { quantile } from "./stats.js";
@@ -41,6 +42,7 @@ export interface BucketEventLike {
   fps?: number;
   visible_ms?: number;
   js_heap_bytes?: number;
+  long_frames?: number;
   position?: readonly number[];
   direction?: readonly number[];
   hit_point?: readonly number[];
@@ -52,6 +54,8 @@ export interface BucketEventLike {
 /** Scope an evaluation the way the SQL's `WHERE` clause does. */
 export interface EvaluateBucketOptions {
   metric: string;
+  /** A named auxiliary series of the metric rather than its headline one (#307). */
+  variant?: BucketVariant;
   bucket?: BucketGrain;
   since?: number;
   until?: number;
@@ -106,9 +110,13 @@ export function evaluateBucketMeasure(
   events: Iterable<BucketEventLike>,
   opts: EvaluateBucketOptions,
 ): MetricBucketRow[] {
-  const measure = bucketMeasureFor(opts.metric);
+  const measure = resolveBucketMeasure(opts.metric, opts.variant);
   if (measure == null) {
-    throw new Error(`metric '${opts.metric}' has no portable bucket series`);
+    throw new Error(
+      opts.variant == null
+        ? `metric '${opts.metric}' has no portable bucket series`
+        : `metric '${opts.metric}' declares no '${opts.variant}' series`,
+    );
   }
   const width = BUCKET_SECONDS[opts.bucket ?? "day"] * 1000;
   const types = measure.eventTypes.length > 0 ? new Set(measure.eventTypes) : null;

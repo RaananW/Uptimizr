@@ -165,6 +165,8 @@ underlying endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, 
 | `variant_leaderboard`        | `/api/v1/variant-leaderboard`            | Variant → conversion leaderboard    | `since`, `until`, `scene`, `cameraMode`, `variant`, `conversion`, `limit`, `format`                                       |
 | `insight_baseline`           | `/api/v1/insights/baseline`              | Metric baseline                     | `metric`, `scene`, `window`, `bucket`, `since`, `until`, `format`                                                         |
 | `insight_movers`             | `/api/v1/insights/movers`                | What changed                        | `scene`, `metrics`, `bucket`, `limit`, `since`, `until`, `refSince`, `refUntil`, `format`                                 |
+| `insight_significance`       | `/api/v1/insights/significance`          | Statistical significance            | `metric`, `scene`, `bucket`, `since`, `until`, `refSince`, `refUntil`, `format`                                           |
+| `insight_scene_health`       | `/api/v1/insights/scene-health`          | Scene health score                  | `scene`, `window`, `since`, `until`, `bucket`, `limit`, `weights`, `format`                                               |
 
 <!-- generated:registry-tools:end -->
 

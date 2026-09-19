@@ -1079,4 +1079,54 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["bucket"],
     golden: [{ bucket: Date.UTC(2024, 5, 16), value: 19, sample_size: 19 }],
   },
+  // --- significance / scene health (#307) ---
+  //
+  // The named auxiliary series (`measures.ts`, `BUCKET_MEASURE_VARIANTS`) render
+  // through the same builder, so only the shapes they *add* need a case: a rate
+  // denominator, a new promoted value column, and a non-median quantile.
+  {
+    // A rate denominator: every `pointer_click`, against `dead_clicks`, whose
+    // main measure counts only the clicks that hit nothing. Three clicks in the
+    // fixtures; two of them hit a mesh, which is why the main series over the
+    // same window is the one the `emptySeries` case pins.
+    name: "metricBuckets:rateDenominator",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "dead_clicks", variant: "denominator", bucket: "hour" },
+        d,
+      ),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 3, sample_size: 3 }],
+  },
+  {
+    // `sum(long_frames)` — a promoted column no main measure reads. The same
+    // raw material `buildJankRate` sums per session, pooled here instead.
+    name: "metricBuckets:longFrames",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "jank_rate", variant: "numerator", bucket: "hour" },
+        d,
+      ),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 8, sample_size: 3 }],
+  },
+  {
+    // A tail quantile rather than the median: q = 0.05 over the three
+    // `frame_perf` samples (60, 30, 45) is 30 + (45 - 30) * 0.1 = 31.5 under
+    // the type-7 interpolation all four dialects use. It lands *between* two
+    // samples rather than on one, which is exactly why it needs a case of its
+    // own: an engine that returned an actual element instead of interpolating
+    // would pass `metricBuckets:quantile` and fail here.
+    name: "metricBuckets:tailQuantile",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "perf_summary", variant: "p05", bucket: "hour" },
+        d,
+      ),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 31.5, sample_size: 3 }],
+  },
 ];

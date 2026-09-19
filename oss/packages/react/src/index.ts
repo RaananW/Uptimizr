@@ -134,6 +134,7 @@ export {
   sessionReplayPanel,
   eventVolumePanel,
   sceneHealthPanel,
+  sceneHealthScorePanel,
   engineDiagnosticsPanel,
   renderingTechnologyPanel,
   sceneTraversalPanel,
@@ -161,6 +162,13 @@ export { DesireLinesView } from "./catalog/views/DesireLines";
 export { WalkedPathView } from "./catalog/views/WalkedPath";
 export { VolumeTimeseriesView, formatBucket } from "./catalog/views/VolumeTimeseries";
 export { SceneHealthView } from "./catalog/views/SceneHealth";
+// --- significance / scene health (#307) ---
+export {
+  SceneHealthScoreView,
+  SCENE_HEALTH_SCORE_HELP,
+  SCENE_HEALTH_SCORE_SUBTITLE,
+  SCENE_HEALTH_SCORE_TITLE,
+} from "./catalog/views/SceneHealthScore";
 export {
   GraphicsDiagnosticsView,
   foldGraphicsDiagnostics,

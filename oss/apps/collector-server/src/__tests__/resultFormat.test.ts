@@ -76,6 +76,12 @@ const PRE_CHANGE_BODY_HASHES: Readonly<Record<string, string>> = {
   // from here their default shape is pinned like every other endpoint.
   "/api/v1/insights/baseline": "70da6e75dbce179a14e5ba83ac7f5db3f33dbaf1e15dd0a451d1695587f9aca2",
   "/api/v1/insights/movers": "db847696207abb389e259c5a7af2c40a3ac787cd8f47871dab46b3e73628038b",
+  // --- significance / scene health (#307) --- recorded at their introduction,
+  // for the same reason.
+  "/api/v1/insights/significance":
+    "227f0bb52db602021e4f66c1d295df9f9f9f264aa3a0df8e552fe17e2444d185",
+  "/api/v1/insights/scene-health":
+    "6fb945092acfa1715825c93e450bde028992bf6d8a045873675f071b0216f2b1",
   "/api/v1/sessions": "fc8a8b1690f001672de3e9dd0b336eb9c874ad55555577cfd9b9402358b326cd",
   "/api/v1/scenes": "7aba7bfa05c14a726c4667868c75e8f053c4fb2b0c8dedf6a775a58ef3bd556a",
   "/api/v1/timeseries": "956599592dac1cf3753392d03d113b7657687f12a2080ebad6822a87a2b63162",

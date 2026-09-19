@@ -95,6 +95,7 @@ export function createMemoryStore({
       fps: row.fps,
       visible_ms: row.visible_ms,
       js_heap_bytes: row.js_heap_bytes,
+      long_frames: row.long_frames,
       position: row.position,
       direction: row.direction,
       hit_point: row.hit_point,
