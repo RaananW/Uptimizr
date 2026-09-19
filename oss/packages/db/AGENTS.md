@@ -148,7 +148,15 @@ samples", not `0`, which is why nine perf/resource metrics declare nullable colu
 from one `preSerialization` hook, so no route handler knows they exist.
 
 ```ts
-import { summarizeRows, tableResult, clusterCells, wilsonInterval } from "@uptimizr/db/summary";
+import {
+  summarizeRows,
+  tableResult,
+  clusterCells,
+  labelClusters,
+  labelPoint,
+  isWorldSpatialMetric,
+  wilsonInterval,
+} from "@uptimizr/db/summary";
 ```
 
 The **Zod mirrors** of the envelopes (`tableResultSchema`, `resultSummarySchema`,
@@ -161,6 +169,20 @@ The `grain` selects the shape — `ranked` (top rows + `rest`), `series` (first/
 slope over the `axis` column), `clusters` (`clusterCells`: deterministic greedy merge of adjacent
 occupied cells above a density threshold, 8-neighbourhood in 2D / 26 in 3D), or `record` (the single
 row plus its `rateOf` rates). Everything is bounded by `limits.maxSummaryRows`.
+
+### Spatial labelling (`labels.ts`, ADR 0051 §2 / sketch §B.2)
+
+Pass a `SummaryContext.scene` — `{ id, regions: [{ id, bounds }], meshes: [{ name, aabb }] }`, which
+the collector loads from the scene registry once per request — and every cluster of a **world-space**
+grid is labelled: `region` (smallest containing region by volume), `regions[]` (every containing id,
+ascending), `nearestMesh` (a proxy box containing the centroid, else the nearest box centre within
+`cellSize × 2`) and `distance` (world units; `0` when contained). A containing region also upgrades
+`drill.region` from an ad-hoc world box to the region **id**, which `?region=` resolves server-side.
+
+`isWorldSpatialMetric(metric)` says whether a metric is worth loading a scene for: only the voxel
+(`vx/vy/vz`) and ground-bin (`gx/gz`) grids are world-space — the viewport pointer/UV bins and the
+angular view-direction grid are not, and are left untouched. Cost is `O(clusters × boxes)` with a
+per-axis early exit; `spatialLabels.test.ts` holds the largest shape under 50 ms.
 
 **Rules for agents:**
 
@@ -175,6 +197,8 @@ row plus its `rateOf` rates). Everything is bounded by `limits.maxSummaryRows`.
   rows is meaningless, and a share derived from it is worse than none.
 - Clustering must stay a pure function of the cell _set_: accumulate in sorted coordinate order so a
   reordered input is bit-identical (`summary.test.ts` rotates every fixture).
+- Labelling must stay a pure function of the region/mesh _sets_ too: break every tie by id or name
+  ascending, never by array order, and report `null` rather than a far-away guess.
 - Adding `format` to a metric's `filters` and to the collector's querystring is one change — the
   collector's `registryRoutes.test.ts` fails if they drift.
 - The collector's `format` default is **`full`** and must stay that way — it is what keeps the

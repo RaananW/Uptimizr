@@ -235,6 +235,8 @@ export type { OrbitZoomCamera, OrbitFocusCamera, OrbitHome } from "./catalog/lib
 export { attachMeshHover } from "./catalog/lib/sceneHover";
 export type { HoverTip } from "./catalog/lib/sceneHover";
 export { mergeSceneProxies } from "./catalog/lib/sceneProxies";
+export { labelWorldPoint, voxelHoverLabels } from "./catalog/lib/spatialLabels";
+export type { VoxelIndex, VoxelLabel } from "./catalog/lib/spatialLabels";
 export {
   OTHER_STANDPOINT,
   OTHER_MESH,

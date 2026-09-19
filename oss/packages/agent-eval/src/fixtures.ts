@@ -23,7 +23,7 @@
  * against this exact event set (see `scripts/derive-expectations.ts`).
  */
 
-import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
+import type { AnyEvent, SceneProxy, SceneRegion } from "@uptimizr/schema";
 import { PARITY_EVENTS, PARITY_PROJECT_ID, PARITY_RANGE, PARITY_T0 } from "@uptimizr/db";
 
 /** Project id every eval event belongs to (the parity project). */
@@ -351,16 +351,45 @@ export const EVAL_SCENE_PROXY: SceneProxy = {
   upAxis: "y",
   handedness: "right",
   unitScale: 1,
-  meshCount: 3,
+  meshCount: 4,
   meshes: [
     { name: "box", aabb: [0, 0, 0, 1, 1, 1], triangles: 12 },
     { name: "sphere", aabb: [4, 4, 4, 6, 6, 6], triangles: 960 },
     { name: "door", aabb: [0.5, 0, 0.5, 1.5, 2, 0.7], triangles: 12 },
+    // The plinth the display box stands on. Sized so it contains the densest
+    // lobby click hotspot's world centre, which is what gives the question bank
+    // a `nearestMesh` label to be graded on (ADR 0051 §2, sketch §B.2).
+    { name: "plinth", aabb: [0.6, 0.6, 0.6, 1.4, 1.4, 1.4], triangles: 12 },
   ],
-  contentHash: "agent-eval-lobby-v1",
+  contentHash: "agent-eval-lobby-v2",
   capturedAt: EVAL_T0,
   sdkVersion: "0.1.0",
 };
 
 /** The human label the seeded scene proxy is registered under. */
 export const EVAL_SCENE_PROXY_LABEL = "Lobby";
+
+/**
+ * Named regions for `lobby` (ADR 0051 §2, sketch §B.2) — the vocabulary that
+ * lets a spatial answer say *where*, not just at which voxel index.
+ *
+ * Two boxes, deliberately overlapping: `entrance` covers the near half of the
+ * scene and `display_plinth` the small volume around the `box` mesh inside it.
+ * Overlap is the interesting case — membership is every containing region and
+ * the **smallest** is what a summary reports — so the bank can ask a question
+ * whose right answer depends on that rule.
+ */
+export const EVAL_SCENE_REGIONS: readonly SceneRegion[] = [
+  {
+    id: "entrance",
+    label: "Entrance",
+    bounds: [-1, 0, -1, 5, 4, 3],
+    description: "The near half of the lobby, where visitors arrive.",
+  },
+  {
+    id: "display_plinth",
+    label: "Display plinth",
+    bounds: [-0.5, 0, -0.5, 2, 2, 2],
+    description: "The plinth the display box sits on.",
+  },
+];

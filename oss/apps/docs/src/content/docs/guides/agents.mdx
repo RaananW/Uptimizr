@@ -162,6 +162,14 @@ vocabulary (`GET /api/v1/scene-regions`) takes a `query` key; **writing** it tak
 so a read-only agent key cannot redraw your map. See
 [scene regions](/docs/api/query/#scene-regions).
 
+Regions pay off the moment you also ask for `format=summary`. With a scene's regions and its proxy
+registered, every spatial hotspot arrives already named — `region`, every containing `regions[]`,
+the `nearestMesh` it sits on and the `distance` to it — and the `reading` says it out loud: _"the
+densest spans 3x2x3 voxels on `checkout_button` in region `counter`"_. The cluster's `drill.region`
+is the region **id**, so the obvious follow-up is a single parameter. Nothing registered means
+`null` plus a caveat naming what is missing, never a guess. See
+[labelled spatial clusters](/docs/api/query/#labelled-spatial-clusters).
+
 ## 6. Scope the key, then read the audit log
 
 Give an agent its own key rather than the dashboard's:

@@ -54,6 +54,48 @@ reports `total: null` and no shares. Cluster coordinates are **grid indices** �
 effective `cellSize` to place them in world space.
 :::
 
+### Labelled spatial clusters
+
+A hotspot at `centroid: [7, 2, 11]` is unreadable. When the selected scene has a registered
+proxy and [regions](#scene-regions), every cluster of a world-space heatmap is labelled with the
+scene's own vocabulary, so a spatial answer can be written in words:
+
+| Field         | What it is                                                                                     |
+| ------------- | ---------------------------------------------------------------------------------------------- |
+| `region`      | the **smallest** containing region by volume, `null` when none contains it                     |
+| `regions`     | _every_ containing region id, ascending — regions may overlap                                  |
+| `nearestMesh` | a proxy mesh whose box contains the centroid, else the nearest box centre within `cellSize × 2` |
+| `distance`    | world units to that mesh, `0` when its box contains the hotspot                                |
+
+```jsonc
+// GET /api/v1/heatmaps/world?scene=lobby&format=summary
+{
+  "kind": "clusters",
+  "clusters": [
+    {
+      "centroid": [7, 2, 11],
+      "weight": 2210,
+      "share": 0.242,
+      "region": "counter",
+      "regions": ["counter", "shop-floor"],
+      "nearestMesh": "checkout_button",
+      "distance": 0,
+      "drill": { "region": "counter" },
+    },
+  ],
+  "reading": "3D world-space pointer heatmap: 3 hotspots over 412 occupied voxels. The densest spans 3x2x3 voxels on `checkout_button` in region `counter`, centred at (7, 2, 11) on vx/vy/vz, holding 2,210 (24.2%). …",
+}
+```
+
+The scene is the request's `scene` filter, or the project's only registered scene when it has
+exactly one; with several scenes and no filter nothing is labelled, because there is no single
+vocabulary to label against. Once a region contains a hotspot, `drill.region` becomes that
+**region id**, ready to send straight back as `?region=`. A scene with no proxy gets
+`nearestMesh: null` and a caveat that says so rather than a guess — as does a mesh further away
+than `cellSize × 2`. Labelling is `summary`-only: `full` and `table` return exactly the rows they
+always have, and grids that are not world-space (the viewport pointer/UV bins, the angular
+view-direction grid) carry no label fields at all.
+
 Unrelated older parameter, same name: `/api/v1/sessions/:id/events` takes `format=json|ndjson` to
 negotiate the raw replay stream. It is not an aggregate endpoint and is unaffected.
 

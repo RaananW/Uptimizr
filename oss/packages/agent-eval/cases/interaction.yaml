@@ -75,3 +75,34 @@
       - { value: 1.54, tolerance: 0.05, label: average interaction distance }
     phrases: ["move-forward", "keyboard", "buy"]
     forbiddenPhrases: ["no data"]
+
+# Spatial labelling (ADR 0051 §2, sketch §B.2): a summarised heatmap names the
+# place a hotspot is in — the scene's own regions and proxy meshes — so the
+# answer can be read without a coordinate system.
+- id: interaction_clicks_by_region
+  category: interaction
+  question: Where do people click in the lobby, by region?
+  context:
+    scene: lobby
+  expectedTools:
+    - [world_heatmap]
+  expectedArgs:
+    world_heatmap: { format: summary }
+  expectedAnswer:
+    phrases: ["display_plinth", "entrance"]
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: interaction_click_hotspot_landmark
+  category: interaction
+  question: Which object in the lobby is the busiest click hotspot sitting on, and how far from it is it?
+  context:
+    scene: lobby
+  expectedTools:
+    - [world_heatmap]
+  expectedArgs:
+    world_heatmap: { format: summary }
+  expectedAnswer:
+    numbers:
+      - { value: 0, label: distance to the nearest mesh (the box contains it) }
+    phrases: ["plinth", "nearestMesh"]
+    forbiddenPhrases: ["no data", "I don't have"]

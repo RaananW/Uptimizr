@@ -30,6 +30,8 @@ import {
   EVAL_PROJECT_ID,
   EVAL_SCENE_PROXY,
   EVAL_SCENE_PROXY_LABEL,
+  EVAL_SCENE_REGIONS,
+  EVAL_SCENES,
 } from "./fixtures.js";
 
 /**
@@ -121,6 +123,9 @@ export async function startHarness(): Promise<EvalHarness> {
   };
   await store.insertEvents(EVAL_EVENTS);
   await store.putSceneProxy(EVAL_PROJECT_ID, EVAL_SCENE_PROXY, EVAL_SCENE_PROXY_LABEL);
+  // Named regions (ADR 0051 §2) so spatial answers can be graded on the words a
+  // developer uses for places, not only on voxel coordinates.
+  await store.putSceneRegions(EVAL_PROJECT_ID, EVAL_SCENES.lobby, EVAL_SCENE_REGIONS);
 
   const app = await buildApp({ store, config: EVAL_CONFIG });
   await app.ready();

@@ -138,6 +138,34 @@ curl "$ENDPOINT/api/v1/heatmaps/world?scene=lobby&region=counter" \
 ```
 
 Regions may overlap (an enclosing hall and a counter within it), so a point can belong to several.
+Where they do, membership is _every_ containing region and the **smallest by volume** is the one
+reported — a click on the till is "in the counter", not "in the hall".
+
+### Why it is worth the five minutes
+
+Regions are the vocabulary an agent answers in. Ask for a summarised spatial query
+(`format=summary`) on a scene that has regions and a proxy, and every hotspot comes back labelled
+with the place it is in and the object it sits on, instead of a voxel index:
+
+```jsonc
+// GET /api/v1/heatmaps/world?scene=lobby&format=summary — one cluster
+{
+  "centroid": [7, 2, 11],
+  "region": "counter",
+  "regions": ["counter", "shop-floor"],
+  "nearestMesh": "checkout_button",
+  "distance": 0,
+  "drill": { "region": "counter" },
+}
+```
+
+The `reading` sentence uses them too — _"the densest spans 3x2x3 voxels on `checkout_button` in
+region `counter`"_ — and `drill.region` hands back the region **id**, so the follow-up query ("show
+me just that place") is one parameter away. Without regions the same answer is a coordinate;
+without a proxy `nearestMesh` is `null` and the summary says so in its caveats. The dashboard's 3D
+panels use the same pair to name a voxel on hover. See
+[Labelled spatial clusters](/docs/api/query/#labelled-spatial-clusters).
+
 Registering regions is an **authenticated write** — like the scene-proxy upload it uses your project
 API key, which must hold the `annotate` capability (`uptimizr new-key <projectId> --capabilities
 annotate`), so do it from a build script, a server-side route, or a developer-only path, never from

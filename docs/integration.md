@@ -1497,17 +1497,74 @@ Worth knowing before you build on it:
   `null` and the `reading` says why. `confidence` (a 95% Wilson interval, which
   stays inside `0..1` at the small counts a long tail produces) appears only when
   the shares really are proportions of a count.
-- **Clusters are numeric, not named.** A `bin`/`voxel` summary merges adjacent
+- **Clusters are merged, then named.** A `bin`/`voxel` summary merges adjacent
   occupied cells whose weight clears a density threshold (the mean weight per
   occupied cell; 8-neighbourhood for 2D bins, 26 for voxels) and ranks them by
   summed weight. Coordinates are **grid indices** — multiply by the effective
   `cellSize` to place them. Where the metric accepts `region`, each cluster also
-  carries a `drill.region` box you can send straight back.
+  carries a `drill.region` hint you can send straight back — see
+  [labelled clusters](#labelled-clusters) below.
 - **`drill` hints are actionable.** A hint only names a filter the metric itself
   accepts, so re-issuing the query with it always narrows the result.
 - An unknown `format` is a `400`. Note that `GET /api/v1/sessions/:id/events`
   has its own, older `format=json|ndjson` for the raw replay stream — that route
   is not an aggregate and is unaffected.
+
+##### Labelled clusters
+
+A world-space hotspot reported as `centroid: [7, 2, 11]` tells a reader nothing.
+When the selected scene has a registered [proxy](#scene-registry-representations)
+and [regions](#scene-regions-named-places), every cluster of a world-space heatmap
+(`world_heatmap`, `gaze_heatmap`, `position_heatmap`, `click_rays`,
+`scene_coverage`, the error and boundary heatmaps, aggregate paths and
+trajectories) is labelled with the scene's own vocabulary:
+
+| Field         | What it is                                                                                      |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| `region`      | the **smallest** containing region by volume, or `null` when none contains it                   |
+| `regions`     | _every_ containing region id, ascending — regions may overlap                                   |
+| `nearestMesh` | a proxy mesh whose box contains the centroid, else the nearest box centre within `cellSize × 2` |
+| `distance`    | world units to that mesh, `0` when its box contains the hotspot                                 |
+
+```jsonc
+// GET /api/v1/heatmaps/world?scene=lobby&format=summary
+{
+  "kind": "clusters",
+  "axes": ["vx", "vy", "vz"],
+  "clusters": [
+    {
+      "centroid": [7, 2, 11],
+      "extent": { "min": [6, 2, 10], "max": [8, 3, 12] },
+      "cells": 14,
+      "weight": 2210,
+      "share": 0.242,
+      "region": "counter",
+      "regions": ["counter", "shop-floor"],
+      "nearestMesh": "checkout_button",
+      "distance": 0,
+      "drill": { "region": "counter" },
+    },
+  ],
+  "reading": "3D world-space pointer heatmap: 3 hotspots over 412 occupied voxels. The densest spans 3x2x3 voxels on `checkout_button` in region `counter`, centred at (7, 2, 11) on vx/vy/vz, holding 2,210 (24.2%). …",
+}
+```
+
+Notes:
+
+- The scene is the request's `scene` filter, or the project's only registered
+  scene when it has exactly one. With several scenes and no filter, nothing is
+  labelled — the collector will not guess which vocabulary applies.
+- **`drill.region` becomes the region id** once a region contains the hotspot,
+  because `?region=<id>` resolves server-side to that region's stored box. Without
+  a containing region it stays the ad-hoc `minX,…,maxZ` world box.
+- **`null` is honest, not missing.** A scene with no proxy gets `nearestMesh: null`
+  plus the caveat _"No proxy registered for scene `lobby` …"_; a scene with no
+  regions gets `region: null` and the matching caveat. A mesh further than
+  `cellSize × 2` is reported as `null` rather than guessed.
+- Grids that are not world-space — the viewport pointer/UV bins (`gx`/`gy`) and
+  the angular view-direction grid — carry no label fields at all.
+- Labelling is `summary`-only. `full` and `table` return exactly the rows they
+  always have.
 
 **Machine-readable reference.** The collector serves an OpenAPI 3.1 document for everything below at
 **`GET /api/v1/openapi.json`** — unauthenticated, because it is documentation and contains no project

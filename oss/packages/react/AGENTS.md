@@ -74,6 +74,14 @@ Each panel is also exported individually (`topMeshesPanel`, `worldHeatmapPanel`,
 (`mergeSceneProxies`, `disableWheelZoom`, `attachMeshHover`, `buildTwoStageGraph`, …) are exported
 for building custom panels.
 
+The world-space 3D heatmap panels (world, gaze, perf, error, boundary) name what a voxel is on when
+the selected scene has a registered proxy and named regions (ADR 0051 §2). `voxelHoverLabels(voxels,
+cellSize, regions, meshes, extra?)` resolves the region label and the nearest mesh **on the client**,
+from the proxy and `api.sceneRegions(sceneId)` the panel already fetched, and feeds
+`WorldHeatmap3DView`'s `voxelLabels` — the same rules the collector's summary labelling uses, so a
+tooltip and a `format=summary` answer can never disagree. Regions are keyed per scene, so a panel
+scoped to "All scenes" gets `[]` and the tooltip falls back to the mesh name alone.
+
 ### The panel contract (ADR 0036, extended by 0039 and 0041)
 
 Author a panel with `definePanel({ … })` so `load`'s return type flows into `render` and settings

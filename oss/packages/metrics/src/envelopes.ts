@@ -117,6 +117,14 @@ const spatialClusterSchema = z.object({
   weight: z.number(),
   share: z.number().nullable(),
   drill: drillSchema.optional(),
+  // Spatial labelling (ADR 0051 §2 / sketch §B.2, #302). Optional as a group: a
+  // labelled cluster carries all four; they are absent entirely when the grid is
+  // not world-space or the request selected no scene. `null` inside the group
+  // means "the scene was checked and nothing contains this hotspot".
+  region: z.string().nullable().optional(),
+  regions: z.array(z.string()).optional(),
+  nearestMesh: z.string().nullable().optional(),
+  distance: z.number().nullable().optional(),
 });
 
 const recordValueSchema = z.record(

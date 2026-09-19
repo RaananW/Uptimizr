@@ -168,8 +168,48 @@ export interface SeriesSummary extends SummaryBase {
   series: SeriesDigest;
 }
 
-/** One greedily-merged blob of adjacent occupied cells. */
-export interface SpatialCluster {
+/**
+ * Where a hotspot **is**, in the scene's own vocabulary (ADR 0051 §2, sketch
+ * §B.2). Attached by `labels.ts` when the collector supplies a
+ * {@link SpatialScene}; every field is `null` / empty when the scene registers
+ * nothing that could answer, and the summary's `caveats` say which.
+ */
+export interface SpatialLabel {
+  /** Smallest containing region by volume; `null` when no region contains it. */
+  region: string | null;
+  /** *Every* containing region id, ascending — regions may overlap. */
+  regions: readonly string[];
+  /**
+   * Proxy mesh whose box contains the centroid, else the nearest box centre
+   * within `cellSize × 2`; `null` when no proxy is registered or nothing is
+   * near enough to mean anything.
+   */
+  nearestMesh: string | null;
+  /**
+   * World-unit distance to {@link nearestMesh}'s box centre — `0` when the box
+   * contains the centroid, so a reader can discount a far match.
+   */
+  distance: number | null;
+}
+
+/**
+ * The scene geometry labelling reads: the registered regions and the proxy's
+ * per-mesh AABBs, both as world-space `[minX,minY,minZ,maxX,maxY,maxZ]` boxes.
+ * Supplied by the collector (which loads them once per request) so the
+ * summariser itself stays pure and browser-safe.
+ */
+export interface SpatialScene {
+  /** The scene the geometry belongs to; used only in caveat text. */
+  id?: string;
+  regions?: readonly { id: string; bounds: readonly number[] }[];
+  meshes?: readonly { name: string; aabb: readonly number[] }[];
+}
+
+/**
+ * One greedily-merged blob of adjacent occupied cells, optionally carrying the
+ * {@link SpatialLabel} fields once a scene's regions and proxy have named it.
+ */
+export interface SpatialCluster extends Partial<SpatialLabel> {
   /** Weighted mean cell index per axis. */
   centroid: readonly number[];
   /** Inclusive bounding box of the cluster, in cell indices. */
@@ -234,6 +274,14 @@ export interface SummaryContext {
    * hint; without it a cluster reports indices only.
    */
   cellSize?: number;
+  /**
+   * The selected scene's registered regions and proxy mesh boxes (ADR 0051 §2,
+   * sketch §B.2). When present — and the metric's grid is world-space — every
+   * cluster is labelled with the region it falls in and the mesh it sits on
+   * (`labels.ts`), and the `reading` names them. The collector loads them once
+   * per request; the summariser never reaches for a store.
+   */
+  scene?: SpatialScene;
   /** Extra caveats true of this result only, appended after the registry's. */
   caveats?: readonly string[];
   /** Override the cluster density threshold (default: mean weight per cell). */

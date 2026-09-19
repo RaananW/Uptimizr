@@ -11,11 +11,13 @@ import {
 } from "@uptimizr/schema";
 import {
   defaultCellSizeForBounds,
+  isWorldSpatialMetric,
   resultEnvelopeSchema,
   resultFormatSchema,
   summarizeRows,
   tableResult,
   type ResultFormat,
+  type SpatialScene,
   type SummaryContext,
   type WorldAabb,
 } from "@uptimizr/db";
@@ -786,6 +788,64 @@ function summaryContextFor(metric: MetricDefinition, request: FastifyRequest): S
   };
 }
 
+/**
+ * The scene geometry that labels a spatial summary's hotspots (ADR 0051 §2,
+ * design sketch §B.2) — the one place the collector reaches for a store on
+ * behalf of the `format=summary` hook.
+ *
+ * A cluster reported as "centred at (3.5, 1.5, 3.5)" is unreadable; the same
+ * cluster reported as "on `checkout_button`, in region `counter`" is actionable.
+ * Both names already exist in the scene registry — the proxy's per-mesh AABBs
+ * (ADR 0010/0014) and the scene's declared regions — so labelling is a join, not
+ * a computation, and the join itself is `@uptimizr/db`'s pure `labelClusters`.
+ * This helper only decides *whether* to do it and fetches the two inputs once
+ * per request.
+ *
+ * Which scene? The `scene` filter when the request names one; otherwise the
+ * project's single registered scene, if it has exactly one — an implied scene is
+ * unambiguous there, while a project with several must say which it means rather
+ * than have its hotspots named against the wrong geometry.
+ *
+ * Returns `undefined` — labelling off, envelope exactly as it was — for a metric
+ * whose grid is not world-space, for a request with no resolvable scene, and for
+ * any store error: a summary that cannot be labelled must still be served.
+ */
+async function spatialSceneFor(
+  store: CollectorStore,
+  projectId: string,
+  metric: MetricDefinition,
+  request: FastifyRequest,
+): Promise<SpatialScene | undefined> {
+  if (!isWorldSpatialMetric(metric)) return undefined;
+  const query = (request.query ?? {}) as { scene?: unknown };
+  let sceneId = typeof query.scene === "string" && query.scene.length > 0 ? query.scene : undefined;
+  try {
+    if (sceneId == null) {
+      const scenes = await store.listSceneRepresentations(projectId);
+      if (scenes.length !== 1) return undefined;
+      sceneId = scenes[0]?.sceneId;
+      if (sceneId == null) return undefined;
+    }
+    const [regions, representation] = await Promise.all([
+      store.getSceneRegions(projectId, sceneId),
+      store.getSceneRepresentation(projectId, sceneId),
+    ]);
+    return {
+      id: sceneId,
+      regions: regions.map((region) => ({ id: region.regionId, bounds: region.bounds })),
+      meshes: (representation?.proxy?.meshes ?? []).map((mesh) => ({
+        name: mesh.name,
+        aabb: mesh.aabb,
+      })),
+    };
+  } catch (err) {
+    // Labelling is an enrichment, never a precondition: a registry read that
+    // fails must not turn a good aggregation into a 500.
+    request.log.warn({ err, sceneId }, "spatial labelling skipped: scene registry read failed");
+    return undefined;
+  }
+}
+
 /** `{ error }` body the read routes send for a miss. Declared so `reply.code(404)` stays typed. */
 const notFoundResponse = z.object({ error: z.string() });
 
@@ -874,10 +934,18 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       unknown
     >[];
     const context = summaryContextFor(metric, request);
+    // Spatial labelling (ADR 0051 §2, sketch §B.2) is a `summary`-only
+    // enrichment: `table` returns the same rows as `full`, so it never needs
+    // the scene and must not pay for the two registry reads.
+    const projectId = request.resolvedKey?.projectId;
+    const scene =
+      format === "summary" && projectId != null
+        ? await spatialSceneFor(store, projectId, metric, request)
+        : undefined;
     const shaped =
       format === "table"
         ? tableResult(metric, rows, context)
-        : summarizeRows(metric, rows, context);
+        : summarizeRows(metric, rows, scene != null ? { ...context, scene } : context);
     // `null` only comes back for an unknown metric, which `METRIC_BY_PATH`
     // already excluded — fall back to the raw rows rather than fail the request.
     return shaped ?? payload;
