@@ -271,6 +271,10 @@ const PARITY_CASE_METRIC: Readonly<Record<string, MetricId | null>> = {
   "metricBuckets:splitEventType": null,
   "metricBuckets:splitMesh": null,
   "metricBuckets:splitScene": null,
+  // --- significance / scene health (#307) ---
+  "metricBuckets:rateDenominator": null,
+  "metricBuckets:longFrames": null,
+  "metricBuckets:tailQuantile": null,
 };
 
 /** The dimensions each generic parity case grouped by, for the column check. */

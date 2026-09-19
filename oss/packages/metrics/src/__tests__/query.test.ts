@@ -87,6 +87,8 @@ describe("every metric is reachable through the DSL", () => {
       "insight_anomalies",
       "insight_baseline",
       "insight_movers",
+      "insight_scene_health",
+      "insight_significance",
       "scene_representation",
       "session_meta",
       "session_narrative",
@@ -366,6 +368,7 @@ describe("the filter vocabulary cannot drift from the registry", () => {
     "refSince",
     "refUntil",
     "sensitivity",
+    "weights",
   ];
   /** DSL-only grammar keys with no `FilterId` (deferred to #304). */
   const GRAMMAR_ONLY = ["event", "device"];

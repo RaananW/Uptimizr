@@ -189,6 +189,10 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "metricBuckets:splitEventType",
       "metricBuckets:splitMesh",
       "metricBuckets:splitScene",
+      // --- significance / scene health (#307) ---
+      "metricBuckets:rateDenominator",
+      "metricBuckets:longFrames",
+      "metricBuckets:tailQuantile",
     ]);
   });
 

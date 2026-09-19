@@ -1,7 +1,7 @@
 {
   "scripted": {
     "passRate": 1,
-    "recordedAt": "2026-09-18T23:22:29.846Z",
+    "recordedAt": "2026-09-18T23:36:32.095Z",
     "tolerance": 0,
     "cases": {
       "ar_placement_effort": true,
@@ -24,8 +24,9 @@
       "insights_baseline_gallery_fps": true,
       "insights_movers_lobby_week": true,
       "insights_baseline_unknown_metric": true,
-      "insights_anomalies_lobby_fps": true,
-      "insights_anomalies_error_contributor": true,
+      "insights_scene_health_weekly": true,
+      "insights_significance_window": true,
+      "insights_significance_variant_segments": true,
       "interaction_top_meshes": true,
       "interaction_input_sources": true,
       "interaction_kinds": true,

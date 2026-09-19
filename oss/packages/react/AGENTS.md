@@ -81,6 +81,14 @@ from the proxy and `api.sceneRegions(sceneId)` the panel already fetched, and fe
 `WorldHeatmap3DView`'s `voxelLabels` — the same rules the collector's summary labelling uses, so a
 tooltip and a `format=summary` answer can never disagree. Regions are keyed per scene, so a panel
 scoped to "All scenes" gets `[]` and the tooltip falls back to the mesh name alone.
+Note the two similarly-named panels. `scene-health` is a raw event-count overview of the selected
+window (errors, context loss, attention gaps). `scene-health-score` is the `insight_scene_health`
+primitive (ADR 0051 §4): one 0-100 score per scene over six weighted factors, each **normalised
+against the project's own preceding window**, read through `CollectorApi.sceneHealth()`. Its bars
+are deliberately annotated with the metric id behind each factor (`data-metric`, and the hover
+title) — the tile is a routing decision, so a reader has to be able to get from a short bar to the
+endpoint that explains it without guessing. A factor whose `score` is `null` could not be measured
+and is rendered as an empty bar rather than as a zero; 50 is the project norm, not a pass mark.
 
 ### The panel contract (ADR 0036, extended by 0039 and 0041)
 

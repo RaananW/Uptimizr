@@ -44,7 +44,8 @@ methods exist for the metadata write tools alone, and the collector gates those 
 `xr_locomotion`, `xr_tracking_quality`, `boundary_heatmap`, `boundary_heatmap_stats`,
 `xr_boundary_contacts`, `ar_placement_time_to_place`, `ar_placement_attempts`,
 `ar_placement_surfaces`, `funnel`, `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`,
-`insight_baseline`, `insight_movers`, `insight_anomalies`
+`insight_baseline`, `insight_movers`, `insight_anomalies`, `insight_significance`,
+`insight_scene_health`
 
 Only on a key holding `query:raw`, and only when the collector runs with
 `ENABLE_RAW_SESSION_RETENTION` (ADR 0003):
@@ -180,10 +181,12 @@ role and the output format legitimately differ.
   if `@uptimizr/db` (or anything else with a native/optional binary dependency) reappears in the
   manifest. Anything that needs `process.env`, stdio, or the filesystem belongs in a consumer
   package (e.g. `@uptimizr/mcp`), not here.
-- **Start from `insight_movers` on an open-ended question.** "How are things?" does not mean "call
-  thirty tools": `insight_movers` compares every comparable metric with the previous equal window
-  and ranks the changes by how unusual each is, and `insight_baseline` says whether a level is
-  outside normal for that scene. Two fields decide whether a row is reportable: `direction` is the
+- **Start from an insight primitive on an open-ended question.** "How are things?" does not mean
+  "call thirty tools": `insight_scene_health` says _which scene_ to look at (six weighted factors,
+  each naming the metric, raw value and project baseline behind it; 50 is the project norm, not a
+  pass mark), `insight_movers` compares every comparable metric with the previous equal window and
+  ranks the changes by how unusual each is, and `insight_baseline` says whether a level is outside
+  normal for that scene. Two fields decide whether a mover is reportable: `direction` is the
   registry's opinion of what a _rise_ means (so a rise in a `down` metric is a regression, not an
   improvement), and `aboveMinSample: false` means the delta is arithmetic but not evidence — those
   rows are returned rather than dropped, and must never be reported as findings.
@@ -195,6 +198,11 @@ role and the output format legitimately differ.
   metric declares a dimension it can be split by, the row names the mesh, source, input action,
   event type or scene holding the largest share of the excess. Its `z` is in standard deviations
   while `insight_movers`' is the same ratio unscaled, so the two columns are not comparable.
+- **Call `insight_significance` before calling a single change real.** It reports the effect, a 95%
+  interval and a p-value for one metric across two windows, with the test chosen from what the
+  measure is. Read `ci95` before `p` — an interval straddling 0 means you cannot tell yet — and
+  read `powerNote`, which distinguishes "no effect" from "not enough data". It compares two
+  _windows_, not two segments.
 - Tool definitions are pure (`buildRequest`) and must stay unit-testable without a live collector.
 - The 20 tool names (and argument schemas) that shipped before the registry are a public contract:
   `src/__tests__/shippedToolCompat.test.ts` pins them against a frozen fixture. Widening a tool with

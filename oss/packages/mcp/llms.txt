@@ -30,7 +30,8 @@
 `xr_locomotion`, `xr_tracking_quality`, `boundary_heatmap`, `boundary_heatmap_stats`,
 `xr_boundary_contacts`, `ar_placement_time_to_place`, `ar_placement_attempts`,
 `ar_placement_surfaces`, `funnel`, `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`,
-`insight_baseline`, `insight_movers`, `insight_anomalies`
+`insight_baseline`, `insight_movers`, `insight_anomalies`, `insight_significance`,
+`insight_scene_health`
 
 Only on a key holding `query:raw`, and only when the collector runs with
 `ENABLE_RAW_SESSION_RETENTION` (ADR 0003):
@@ -62,14 +63,23 @@ Its `structuredContent` is `{ result }`, not `{ rows }`.
 `ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
 `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`, `insight_baseline`,
 `insight_movers`, `insight_anomalies`
+`insight_movers`, `insight_significance`, `insight_scene_health`
 
 <!-- generated:registry-tool-names:end -->
 
 ## Insight primitives (ADR 0051 §4)
 
 Three of the tools are readings *about* the other metrics, and they are the right first call on an
+Four of the tools are readings *about* the other metrics, and they are the right first call on an
 open-ended question — "how are things?" does not mean "call thirty tools".
 
+- `insight_scene_health` — one 0-100 score per scene over six weighted factors (perf stability,
+  jank, errors, dead clicks, coverage, XR abandonment), least healthy first. The right *unscoped*
+  starting point: it answers which scene to open. Every factor carries the `metric` id behind it,
+  its `raw` value and the project `baseline` it was compared with, so the next call and the
+  sentence to write are both already in the row. **50 is the project norm, not a pass mark** — the
+  score compares a scene with the rest of the project's recent past — and a factor with
+  `score: null` was not counted (its `note` says why).
 - `insight_movers` — what changed against a reference window (the previous equal one by default),
   for every comparable metric in scope, ranked by a robust z-score: the change divided by how much
   that metric normally swings, so a noisy metric must move much further than a steady one to reach
@@ -88,6 +98,13 @@ Read `insight_anomalies`' `z` as standard deviations and `insight_movers`' as th
 unscaled — they differ by a constant factor (1.4826) and must not be compared directly. A sustained
 level change is reported both as a `shift` and, for the days right after it, as `drop`/`spike`
 rows: two true statements about one event.
+- `insight_significance` — whether a difference between two windows could be chance: `effect`,
+  `ci95`, `p`, and the `test` that produced them (a two-proportion z with Wilson intervals for a
+  declared rate, Welch's t over the per-bucket values for a level, an exact Poisson rate test for a
+  bare count — picked from the measure, not from you). **Read `ci95` before `p`**: an interval that
+  straddles 0 means you cannot tell yet, and `powerNote` says what this much data could have
+  detected at all. Welch's `n` is the number of **buckets**, not events. It compares two *windows*,
+  not two segments: a variant-versus-variant question is a `400`, not a wrong answer.
 
 Two fields decide whether a mover is worth reporting, and both are easy to misread:
 

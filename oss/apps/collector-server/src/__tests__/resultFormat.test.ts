@@ -93,6 +93,12 @@ const PRE_CHANGE_BODY_HASHES: Readonly<Record<string, string>> = {
   "/api/v1/scenes": "064b8168045bdb7976a46c1eee39421ec9a33dbb06caa5a8ed051d5b27fd5190",
   "/api/v1/timeseries": "9176b8732485a635e4fee508764f49662fc8349582e58679bde9dd164784fd55",
   "/api/v1/event-counts": "cfe2ac309d9f24032d234f272088bf5d5864caa5f2f940fe3bad54a3ff63aa7c",
+  // --- significance / scene health (#307) --- recorded at their introduction,
+  // for the same reason.
+  "/api/v1/insights/significance":
+    "227f0bb52db602021e4f66c1d295df9f9f9f264aa3a0df8e552fe17e2444d185",
+  "/api/v1/insights/scene-health":
+    "6fb945092acfa1715825c93e450bde028992bf6d8a045873675f071b0216f2b1",
   "/api/v1/heatmaps/pointer": "4e41b09f637099b7874362a800709ebe0800390d1ac9a1c8273a1eca8d7f73cc",
   "/api/v1/heatmaps/mesh-uv": "fed9cd3d814b12e31be8a44eb7fb5ad85332483c2ca58178e719ebde0978e7d4",
   "/api/v1/heatmaps/world": "89f03d861421299140a925be6af2af825df7bef49b9deecf7d23d85c8c37b994",

@@ -83,6 +83,8 @@ export const REQUIRED_QUERY: Readonly<Record<string, Record<string, string>>> = 
   "/api/v1/insights/baseline": { metric: "list_sessions" },
   // --- anomalies (#306) --- same subject-is-the-parameter rule.
   "/api/v1/insights/anomalies": { metric: "list_sessions" },
+  // --- significance / scene health (#307) ---
+  "/api/v1/insights/significance": { metric: "list_sessions" },
 };
 
 /** The two resource reads, which legitimately 404 when nothing is registered. */

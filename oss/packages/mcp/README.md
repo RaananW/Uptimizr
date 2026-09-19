@@ -176,6 +176,8 @@ underlying endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, 
 | `insight_baseline`           | `/api/v1/insights/baseline`              | Metric baseline                     | `metric`, `scene`, `window`, `bucket`, `since`, `until`, `format`                                                         |
 | `insight_movers`             | `/api/v1/insights/movers`                | What changed                        | `scene`, `metrics`, `bucket`, `limit`, `since`, `until`, `refSince`, `refUntil`, `format`                                 |
 | `insight_anomalies`          | `/api/v1/insights/anomalies`             | Anomalous buckets                   | `metric`, `scene`, `window`, `bucket`, `sensitivity`, `since`, `until`, `format`                                          |
+| `insight_significance`       | `/api/v1/insights/significance`          | Statistical significance            | `metric`, `scene`, `bucket`, `since`, `until`, `refSince`, `refUntil`, `format`                                           |
+| `insight_scene_health`       | `/api/v1/insights/scene-health`          | Scene health score                  | `scene`, `window`, `since`, `until`, `bucket`, `limit`, `weights`, `format`                                               |
 
 <!-- generated:registry-tools:end -->
 

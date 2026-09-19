@@ -1725,6 +1725,8 @@ The table below is **generated** from the metric registry (`pnpm gen:docs`); CI 
 | `GET`  | `/api/v1/insights/baseline`              | `insight_baseline`           | What is normal for one metric in one scene. Buckets a comparable metric's headline column into days or hours over a trailing window and reduces the series to its centre (mean, median), its ordinary spread (MAD, p10, p90) and its drift (least-squares slope per bucket). One row per request: the reference distribution a single later observation should be judged against, so 'is 42 FPS bad here?' has an answer that does not depend on the reader's memory.                                                                                                                                                                                                 |
 | `GET`  | `/api/v1/insights/movers`                | `insight_movers`             | What moved, ranked. For every comparable metric in scope, compares the current range with a reference range (the previous equal window by default) and ranks the differences by a robust z-score — the change divided by how much that metric normally swings, so a metric that is always volatile has to move much further than a steady one before it is called a mover. One row per metric: the top risers, the top fallers, and the ones that did not move.                                                                                                                                                                                                       |
 | `GET`  | `/api/v1/insights/anomalies`             | `insight_anomalies`          | When one metric stopped behaving, and what inside it accounts for that. Walks a comparable metric's day or hour bucket series and returns only the buckets that do not belong in it: a `spike` or a `drop` when a single bucket sits more than `sensitivity` median absolute deviations from the buckets just before it, and a `shift` at the bucket where a CUSUM change-point says the level moved and stayed moved. Where the metric declares a dimension it can be split by, the row also names the dimension value holding the largest share of the excess — the difference between 'errors tripled on the 14th' and 'graphics diagnostics tripled on the 14th'. |
+| `GET`  | `/api/v1/insights/significance`          | `insight_significance`       | Is that difference real? Compares one comparable metric across two windows and reports the effect, its 95% confidence interval and a two-sided p-value, with the test chosen from what the measure _is_: a two-proportion z with Wilson intervals for a declared rate, Welch's t over the per-bucket values for a level, an exact Poisson rate test for a bare count. One row per request, and a `powerNote` saying what these sample sizes could and could not have detected.                                                                                                                                                                                        |
+| `GET`  | `/api/v1/insights/scene-health`          | `insight_scene_health`       | Which scene is in trouble, and why. Scores each scene 0-100 over six weighted factors — perf stability, jank, errors, dead clicks, exploration coverage and XR abandonment — each normalised against the project's own baseline over the preceding equal window. One row per scene, least healthy first, and every factor carries the metric id, the raw value, the baseline it was compared with and the weight it contributed, so the score can always be taken apart.                                                                                                                                                                                              |
 
 <!-- generated:registry-endpoints:end -->
 
@@ -2265,22 +2267,25 @@ curl -H "x-api-key: $KEY" \
   "https://collect.example.com/api/v1/vocabulary/custom-events?since=…&limit=50"
 ### Insights (`/api/v1/insights/*`) — baselines and movers (ADR 0051 §4)
 ### Insights (`/api/v1/insights/*`) — baselines, movers and anomalies (ADR 0051 §4)
+### Insights (`/api/v1/insights/*`) — baselines, movers, significance and health (ADR 0051 §4)
 
-Two questions come up on every look at a dashboard, and neither is answerable
-from a single metric: **"is this number normal here?"** and **"what changed?"**
+Four questions come up on every look at a dashboard, and none is answerable from
+a single metric: **"is this number normal here?"**, **"what changed?"**, **"is
+that change real?"** and **"which scene should I look at first?"**
 Both used to be re-derived by hand (or by a model, from raw rows, differently
-every time). They are now two registry metrics of their own, so they are also
+every time). They are now registry metrics of their own, so they are also
 agent tools, OpenAPI operations and `format=summary` answers like any other read.
 
-Both are computed the same way: one **portable bucket series** — a comparable
+All four are computed the same way: one **portable bucket series** — a comparable
 metric's headline column, aggregated per day or per hour — and then pure
-TypeScript over it. No statistics run in SQL, so DuckDB, ClickHouse, Postgres and
+TypeScript over it, p-values and confidence intervals included. No statistics run in SQL, so DuckDB, ClickHouse, Postgres and
 SQL Server cannot disagree about what "the median" or "the MAD" means.
 
 > **Windows are snapped down to whole buckets.** A range that ended "now" would
 > otherwise end mid-day, and today's third-of-a-day would read as a collapse
 > against 27 whole days — every morning. The window that was actually measured is
-> echoed back in the `table` and `summary` envelopes.
+> echoed back in the `table` and `summary` envelopes. (`scene-health` is the one
+> exception, and says why below: none of its factors is a count.)
 
 #### `GET /api/v1/insights/baseline` — what is normal here
 
@@ -2477,10 +2482,38 @@ metric's bucket series and returns only the buckets that do not belong in it.
 One row per anomalous bucket, oldest first:
 `{ metric, scene, bucketStart, value, expected, z, kind, contributor, sampleSize }`.
 
-```bash
+````bash
 curl -H "x-api-key: $KEY" \
   "https://collect.example.com/api/v1/insights/anomalies?metric=error_heatmap&scene=lobby&window=28"
-```
+#### `GET /api/v1/insights/significance` — is that difference real
+
+`movers` ranks changes by how unusual they are. This answers the question a
+robust z-score deliberately does not: **given how much data is behind each side,
+could the difference have come from chance alone?**
+
+| Param                   | Default                    | Meaning                                                                                           |
+| ----------------------- | -------------------------- | ------------------------------------------------------------------------------------------------- |
+| `metric`                | —                          | **Required.** The registry metric to compare. Must have a portable bucket series.                 |
+| `scene`                 | all                        | Scope to one scene.                                                                               |
+| `since` / `until`       | last 7 complete days       | The window under test.                                                                            |
+| `refSince` / `refUntil` | the equal window before it | The window it is compared with.                                                                   |
+| `bucket`                | `day`                      | Time grain. Also the unit a Welch comparison counts observations in, so a finer grain buys power. |
+
+One row:
+`{ metric, scene, a: { value, n }, b: { value, n }, effect, ci95, p, test, effectUnit, significant, powerNote }`.
+
+**The test is chosen from what the measure is, never from the caller:**
+
+| The measure is…                                                   | Test                                           | `effect`                    | `ci95`                                                   |
+| ----------------------------------------------------------------- | ---------------------------------------------- | --------------------------- | -------------------------------------------------------- |
+| a **rate** — its headline column declares a `rateOf` denominator  | two-proportion z (pooled)                      | difference of proportions   | Newcombe hybrid score, from the two **Wilson** intervals |
+| a **count** with no denominator                                   | Poisson rate test (exact conditional binomial) | difference in events/bucket | normal approximation on the rate difference              |
+| anything else — a level or a summed quantity (`fps`, `ms`, bytes) | **Welch's** t over the per-bucket values       | difference of means         | `effect ± t(0.975, ν) · SE`                              |
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/significance?metric=dead_clicks&scene=lobby&bucket=hour"
+````
 
 ```json
 [
@@ -2494,6 +2527,17 @@ curl -H "x-api-key: $KEY" \
     "kind": "spike",
     "contributor": { "dimension": "event_type", "value": "graphics_diagnostic", "share": 1 },
     "sampleSize": 32
+    "metric": "dead_clicks",
+    "scene": "lobby",
+    "a": { "value": 0.166667, "n": 6 },
+    "b": { "value": 0, "n": 8 },
+    "effect": 0.166667,
+    "ci95": [-0.185333, 0.563503],
+    "p": 0.230804,
+    "test": "two_proportion_z",
+    "effectUnit": "ratio",
+    "significant": false,
+    "powerNote": "With these sample sizes the smallest difference detectable at 80% power (alpha 0.05) is about 0.4262 in the rate; a smaller true difference would usually go unnoticed here."
   }
 ]
 ```
@@ -2534,6 +2578,114 @@ carry `contributor: null`; narrow `since`/`until` around one to attribute it.
 > a new project reads "no anomalies" rather than "every day is an anomaly", and
 > buckets with no matching events are absent from the series rather than zero —
 > a gap in capture is not reported as a drop.
+> **Read `ci95` before `p`.** A narrow interval around a small effect is evidence
+> that nothing much changed; a wide interval containing 0 is evidence of nothing at
+> all, and `powerNote` tells you which of the two you are looking at — it states
+> the smallest difference these sample sizes could have detected at 80% power, and
+> flags any assumption the data strained (counts too overdispersed for the Poisson
+> model, too few buckets for a t-test). `p` is two-sided throughout: it answers "is
+> there a difference", not "is it an improvement".
+
+Three things worth knowing before quoting a number from here:
+
+- **Welch counts buckets, not events.** `n` is the number of days (or hours)
+  compared. Consecutive frame samples inside one day are anything but
+  independent, and treating them as `n` would manufacture a p-value of `1e-40`
+  for drift any observer can see is ordinary.
+- **Two windows, not two segments.** A variant-versus-variant or
+  device-versus-device contrast needs the series split by a promoted dimension,
+  which is not available yet. Passing `segment` or `refSegment` is a `400` that
+  names the window parameters rather than a p-value for the wrong comparison.
+- **Significance is not importance.** A large enough sample makes a difference of
+  no consequence significant. `effect` and `effectUnit` are what say whether it
+  matters.
+
+#### `GET /api/v1/insights/scene-health` — which scene is in trouble, and why
+
+One score per scene, and — more usefully — the six numbers it was built from.
+
+| Param             | Default            | Meaning                                                               |
+| ----------------- | ------------------ | --------------------------------------------------------------------- |
+| `scene`           | the busiest scenes | Score one scene instead of a bounded top-N.                           |
+| `window`          | `7`                | Window length in days. Max 90. Ignored when `since` is given.         |
+| `since` / `until` | —                  | Epoch ms. `until` rounds **up** to a whole bucket (see below).        |
+| `bucket`          | `day`              | Time grain each factor's series is bucketed at.                       |
+| `limit`           | `5` (max 10)       | How many scenes to score when none is named.                          |
+| `weights`         | the declared ones  | JSON object overriding per-factor weights, e.g. `{"error_rate":0.5}`. |
+
+One row per scene, least healthy first:
+`{ scene, score, factors: [{ id, metric, raw, baseline, score, weight, unit, note }], sampleSize, since, until }`.
+
+| Factor            | Metric           | Raw value                             | Good is | Weight |
+| ----------------- | ---------------- | ------------------------------------- | ------- | ------ |
+| `perf_stability`  | `perf_summary`   | 5th-percentile FPS                    | higher  | 0.25   |
+| `error_rate`      | `error_heatmap`  | errors + diagnostics per session      | lower   | 0.25   |
+| `jank_rate`       | `jank_rate`      | long frames per sampled perf window   | lower   | 0.20   |
+| `dead_click_rate` | `dead_clicks`    | share of clicks that hit nothing      | lower   | 0.15   |
+| `coverage`        | `scene_coverage` | positioned camera samples per session | higher  | 0.10   |
+| `xr_abandonment`  | `xr_abandonment` | interactions per XR session           | higher  | 0.05   |
+
+**The score is a comparison, not a grade.** Every factor is normalised against
+**the project's own baseline over the preceding equal window** — the same robust
+centre-and-spread `movers` ranks with. A factor exactly at the project norm scores
+**50**; four robust deviations better scores 100, the same distance worse scores 0. A project where every scene is equally bad therefore reads 50 everywhere,
+which is the honest answer to "which scene should I look at first".
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/scene-health?window=7&limit=3"
+```
+
+```json
+[
+  {
+    "scene": "lobby",
+    "score": 27.5,
+    "factors": [
+      {
+        "id": "perf_stability",
+        "metric": "perf_summary",
+        "raw": 19.4,
+        "baseline": 47.1,
+        "score": 0,
+        "weight": 0.25,
+        "unit": "FPS",
+        "note": "The 5th-percentile FPS of the scene's sampled frames — how bad it gets, not how good it usually is. …"
+      }
+    ],
+    "sampleSize": 214,
+    "since": 1757376000000,
+    "until": 1757980800000
+  }
+]
+```
+
+Every factor is traceable in one hop: `metric` names the endpoint that explains
+it, `raw` is what that metric produced, `baseline` is what it was compared with,
+and `weight` is how much of the headline it carried. A factor with `score: null`
+could not be measured — its `note` says why — and is excluded from the weighted
+mean rather than folded in as an average.
+
+> **This is the one insight window that includes the bucket in progress.**
+> `baseline` and `movers` floor `until` down to the last complete bucket because
+> they report counts. Every health factor is a rate or a percentile, and a
+> partial bucket gives half the numerator _and_ half the denominator — so
+> flooring here would only make the score answer about yesterday. The window
+> actually measured is echoed as `since` / `until` on every row.
+
+Two more things worth knowing:
+
+- **Default weights are a judgement, and they are declared** in the registry
+  entry (so they appear in `capabilities` and in the generated tool catalog)
+  precisely so they can be argued with. `weights` overrides any of them;
+  factors the object does not name keep their default, and an unknown factor id
+  is a `400` listing the ones that exist.
+- **Two factors are honest approximations**, named as such in every row's `note`:
+  `coverage` is camera samples per session, not a voxel-coverage percentage (that
+  needs the registered scene bounds, which have no portable per-bucket form), and
+  `jank_rate` is the pooled long-frame rate, while the `jank_rate` metric's own
+  endpoint reports a per-session median. Both are only ever read against the
+  project's own baseline, never as absolutes.
 
 ### Funnels (`/api/v1/funnel`) — caller-configured (ADR 0038, #78)
 

@@ -33,13 +33,14 @@ import type { QuerySpec, RangeOptions, SceneOptions } from "../query/types.js";
 import {
   BUCKET_SECONDS,
   BUCKET_SPLIT_COLUMNS,
-  bucketMeasureFor,
+  resolveBucketMeasure,
   type BucketAggregate,
   type BucketGrain,
   type BucketMeasure,
   type BucketPredicate,
   type BucketSplitDimension,
   type BucketValueColumn,
+  type BucketVariant,
 } from "./measures.js";
 
 /** What to bucket, over what window, for whom. */
@@ -59,6 +60,22 @@ export interface MetricBucketOptions extends RangeOptions, SceneOptions {
    * query, its rows and its cost are exactly what they were before (#305).
    */
   groupBy?: BucketSplitDimension;
+  // --- significance / scene health (#307) ---------------------------------
+  /**
+   * Read one of the metric’s **named auxiliary series** instead of its headline
+   * one (the rate denominator, an FPS tail, … — see `measures.ts`, #307).
+   *
+   * Never caller input: `significance` and `scene_health` set it from the
+   * registry and from their own fixed factor catalog respectively, so the value
+   * is always one of a compile-time union.
+   *
+   * Named `series` rather than `variant` because `variant` is already an
+   * aggregation option elsewhere (the variant-leaderboard's custom-event
+   * predicate), and the store-parity harness builds every aggregation from one
+   * shared option bag: two unrelated meanings under one key would silently
+   * cross over.
+   */
+  series?: BucketVariant;
 }
 
 /**
@@ -92,6 +109,12 @@ function valueColumnExpr(column: BucketValueColumn, aggregate: string, d: Dialec
       return "fps";
     case "visible_ms":
       return "visible_ms";
+    case "long_frames":
+      // Promoted, `NOT NULL DEFAULT 0`, and a 0 here is a real observation — a
+      // sampled window in which no frame ran long. Unlike `js_heap_bytes` it is
+      // never nulled out: excluding the good windows would report every project
+      // as permanently janky.
+      return "long_frames";
     case "js_heap_bytes":
       // A heap reading of 0 means "the browser did not report one" (the column
       // is `NOT NULL DEFAULT 0`), so averages and percentiles must exclude it —
@@ -187,9 +210,13 @@ export function buildMetricBuckets(
   opts: MetricBucketOptions,
   d: Dialect,
 ): QuerySpec {
-  const measure = bucketMeasureFor(opts.metric);
+  const measure = resolveBucketMeasure(opts.metric, opts.series);
   if (measure == null) {
-    throw new Error(`metric '${opts.metric}' has no portable bucket series`);
+    throw new Error(
+      opts.series == null
+        ? `metric '${opts.metric}' has no portable bucket series`
+        : `metric '${opts.metric}' declares no '${opts.series}' series`,
+    );
   }
   const bag = new ParamBag(d);
   const pid = bag.add("projectId", "string", projectId);

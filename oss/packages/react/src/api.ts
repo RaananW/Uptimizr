@@ -348,6 +348,39 @@ export interface EventTypeCount {
   count: number;
 }
 
+// --- significance / scene health (#307) ------------------------------------
+
+/**
+ * One factor of a scene-health score (ADR 0051 §4).
+ *
+ * Every field exists so the score can be taken apart: `metric` is the registry
+ * id behind the reading, `raw` the value that metric produced in `unit`,
+ * `baseline` the project norm it was compared with, `score` the 0-100 it
+ * contributed and `weight` how much of the total it carried. `score` is null
+ * for a factor that could not be measured; `note` says why.
+ */
+export interface SceneHealthFactor {
+  id: string;
+  metric: string;
+  raw: number | null;
+  baseline: number | null;
+  score: number | null;
+  weight: number;
+  unit: string;
+  note: string;
+}
+
+/** One scene's health score and the factors behind it (ADR 0051 §4). */
+export interface SceneHealthScore {
+  scene: string;
+  /** 0-100 against the project's own preceding window; 50 is the project norm. */
+  score: number | null;
+  factors: SceneHealthFactor[];
+  sampleSize: number;
+  since: number;
+  until: number;
+}
+
 /**
  * One step of a configured funnel (#78, ADR 0038). Steps are predicates over the
  * wide event table: `type` is required; `name` matches a gesture/interaction kind
@@ -883,6 +916,13 @@ export class ApiError extends Error {
  * range no longer includes a pre-#298 release.
  */
 const num = (value: unknown): number => (typeof value === "number" ? value : Number(value));
+/**
+ * A nullable numeric cell (#307). A derived insight reports `null` for "not
+ * defined for this data", which must survive the client rather than collapsing
+ * to `0` — a score of 0 is the worst possible reading, and absence is not.
+ */
+const numOrNull = (value: unknown): number | null =>
+  value == null ? null : Number.isFinite(Number(value)) ? Number(value) : null;
 
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 15_000;
@@ -1628,6 +1668,40 @@ export class CollectorApi {
   eventCounts(params?: QueryParams): Promise<EventTypeCount[]> {
     return this.get<Record<string, unknown>[]>("api/v1/event-counts", params).then((rows) =>
       rows.map((r) => ({ event_type: String(r.event_type), count: num(r.count ?? 0) })),
+    );
+  }
+
+  // --- significance / scene health (#307) ---
+
+  /**
+   * Scene health scores, least healthy first (ADR 0051 §4).
+   *
+   * Derived rather than aggregated: the collector reads one bucket series per
+   * factor and computes the score in TypeScript, so the rows are the same on
+   * every store. Omit `scene` to score the busiest scenes in the range.
+   */
+  sceneHealth(params?: QueryParams): Promise<SceneHealthScore[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/insights/scene-health", params).then(
+      (rows) =>
+        rows.map((r) => ({
+          scene: String(r.scene ?? ""),
+          score: numOrNull(r.score),
+          factors: Array.isArray(r.factors)
+            ? (r.factors as Record<string, unknown>[]).map((f) => ({
+                id: String(f.id ?? ""),
+                metric: String(f.metric ?? ""),
+                raw: numOrNull(f.raw),
+                baseline: numOrNull(f.baseline),
+                score: numOrNull(f.score),
+                weight: num(f.weight ?? 0),
+                unit: String(f.unit ?? ""),
+                note: String(f.note ?? ""),
+              }))
+            : [],
+          sampleSize: num(r.sampleSize ?? 0),
+          since: num(r.since ?? 0),
+          until: num(r.until ?? 0),
+        })),
     );
   }
 

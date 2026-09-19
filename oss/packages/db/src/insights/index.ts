@@ -123,3 +123,55 @@ export type { ChangePoint, RollingRobustPoint } from "./changepoint.js";
 export { byBucketThenDimension } from "./buckets.js";
 export { BUCKET_SPLIT_COLUMNS, isBucketSplitDimension } from "./measures.js";
 export type { BucketSplitDimension } from "./measures.js";
+// --- significance / scene health (#307) ------------------------------------
+
+export { BUCKET_MEASURE_VARIANTS, bucketVariantFor, resolveBucketMeasure } from "./measures.js";
+export type { BucketVariant } from "./measures.js";
+
+export {
+  SIGNIFICANCE_ALPHA,
+  SIGNIFICANCE_PRECISION,
+  Z_80,
+  binomialCdf,
+  computeSignificance,
+  newcombeDifferenceInterval,
+  normalCdf,
+  normalTwoSidedP,
+  poissonRateTest,
+  regularizedIncompleteBeta,
+  studentTCritical,
+  studentTwoSidedP,
+  twoProportionTest,
+  welchTest,
+  wilsonBounds,
+} from "./significance.js";
+export type {
+  SignificanceArm,
+  SignificanceInput,
+  SignificanceRow,
+  SignificanceTest,
+} from "./significance.js";
+
+export {
+  HEALTH_DEFAULT_SCENES,
+  HEALTH_DEFAULT_WEIGHTS,
+  HEALTH_DEFAULT_WINDOW_DAYS,
+  HEALTH_FACTORS,
+  HEALTH_FACTOR_IDS,
+  HEALTH_MAX_SCENES,
+  HEALTH_MIN_SESSIONS,
+  HEALTH_PRECISION,
+  HEALTH_Z_SPAN,
+  computeSceneHealth,
+  normaliseFactor,
+  rankSceneHealth,
+  resolveHealthWindows,
+  resolveWeights,
+} from "./health.js";
+export type {
+  HealthFactorInput,
+  HealthFactorRow,
+  HealthFactorSpec,
+  HealthSeries,
+  SceneHealthRow,
+} from "./health.js";

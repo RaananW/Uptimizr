@@ -29,6 +29,20 @@ import {
   BUCKETABLE_METRIC_IDS,
   MAX_ANOMALY_SENSITIVITY,
   MIN_ANOMALY_SENSITIVITY,
+  // --- significance / scene health (#307) ---
+  HEALTH_DEFAULT_SCENES,
+  HEALTH_FACTORS,
+  HEALTH_FACTOR_IDS,
+  HEALTH_MAX_SCENES,
+  bucketVariantFor,
+  computeSceneHealth,
+  computeSignificance,
+  rankSceneHealth,
+  resolveHealthWindows,
+  type BucketVariant,
+  type HealthFactorInput,
+  type SceneHealthRow,
+  type SignificanceRow,
   MOVERS_DEFAULT_METRICS,
   MOVERS_MAX_METRICS,
   attributeContributor,
@@ -315,6 +329,178 @@ function summaryContextFor(
   };
 }
 
+// =========================================================================
+// --- significance / scene health (#307) ----------------------------------
+//
+// Two more derived metrics on the same plugin. They add no new *kind* of
+// coupling: the same capability check, the same bounded fan-out over
+// `store.metricBuckets`, the same `format` hook. What is new is only what the
+// pure layer in `@uptimizr/db`'s `src/insights/` does with the series after it
+// comes back.
+// =========================================================================
+
+const SIGNIFICANCE = metricFor("insight_significance");
+const SCENE_HEALTH = metricFor("insight_scene_health");
+
+/**
+ * `GET /api/v1/insights/significance` parameters.
+ *
+ * `segment` / `refSegment` are accepted **in order to be refused**. Sketch §D
+ * allows a segment-versus-segment contrast, so an agent that has read the
+ * design will try one; a `400` naming the window parameters is a far better
+ * answer than a silently dropped parameter and a comparison of the wrong two
+ * things.
+ */
+const significanceQueryParams = z.object({
+  metric: z.string().min(1).max(64),
+  scene: sceneFilter,
+  bucket: bucketFilter,
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  refSince: z.coerce.number().int().optional(),
+  refUntil: z.coerce.number().int().optional(),
+  format: formatFilter,
+});
+
+/**
+ * Parameters the sketch allows but v1 cannot honour.
+ *
+ * They are deliberately **not** in the querystring schema — the registry
+ * `filters` list is the contract, and advertising a parameter that always fails
+ * would be worse than not having it. But an agent that has read sketch §D will
+ * try one, so the raw querystring is checked and the answer names what to use
+ * instead. Silently dropping the parameter would compare the wrong two things
+ * and report a p-value for it.
+ */
+const UNSUPPORTED_SIGNIFICANCE_PARAMS = ["segment", "refSegment"] as const;
+
+/** The first unsupported parameter present in a request’s raw querystring. */
+function unsupportedParam(request: FastifyRequest): string | undefined {
+  const query = (request.raw.url ?? "").split("?")[1];
+  if (query == null || query.length === 0) return undefined;
+  const params = new URLSearchParams(query);
+  return UNSUPPORTED_SIGNIFICANCE_PARAMS.find((name) => params.has(name));
+}
+
+/**
+ * `GET /api/v1/insights/scene-health` parameters.
+ *
+ * `weights` is a JSON object, parsed and validated here rather than in the pure
+ * layer: an unknown factor id deserves a `400` naming the ids that exist, and
+ * by the time the value reaches `computeSceneHealth` it is an ordinary record
+ * of non-negative numbers.
+ */
+const sceneHealthQueryParams = z.object({
+  scene: sceneFilter,
+  window: z.coerce.number().int().positive().max(90).optional(),
+  bucket: bucketFilter,
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  limit: z.coerce.number().int().positive().max(HEALTH_MAX_SCENES).optional(),
+  weights: z
+    .string()
+    .min(1)
+    .max(512)
+    .optional()
+    .transform((value, ctx): Record<string, number> | undefined => {
+      if (value == null) return undefined;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'weights must be a JSON object, e.g. {"error_rate":0.5}',
+        });
+        return z.NEVER;
+      }
+      if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "weights must be a JSON object" });
+        return z.NEVER;
+      }
+      const out: Record<string, number> = {};
+      for (const [id, weight] of Object.entries(parsed as Record<string, unknown>)) {
+        if (!HEALTH_FACTOR_IDS.includes(id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `unknown health factor '${id}'; the factors are ${HEALTH_FACTOR_IDS.join(", ")}`,
+          });
+          return z.NEVER;
+        }
+        if (typeof weight !== "number" || !Number.isFinite(weight) || weight < 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `weight for '${id}' must be a number >= 0`,
+          });
+          return z.NEVER;
+        }
+        out[id] = weight;
+      }
+      return out;
+    }),
+  format: formatFilter,
+});
+
+/**
+ * Whether a metric's headline column is a **declared rate**: its
+ * `comparable.primary` names a `rateOf` denominator *and* the bucket catalog
+ * carries the series that reproduces that denominator per bucket.
+ *
+ * Both halves are required. The registry alone says the number is a share of
+ * something; the catalog alone says a second series exists. Only together do
+ * they license a two-proportion test.
+ */
+function isDeclaredRate(metric: MetricDefinition): boolean {
+  const primary = metric.comparable?.primary;
+  if (primary == null) return false;
+  if (metric.columns[primary]?.rateOf == null) return false;
+  return bucketVariantFor(metric.id, "denominator") != null;
+}
+
+/**
+ * Whether a measure **counts events** — the property that separates the two
+ * discrete tests from Welch's t. A `count` or distinct-`sessions` aggregate
+ * counts things that happened; a `sum`, `avg`, `max` or `quantile` is a level,
+ * and a level is compared with a t-test whatever its unit.
+ */
+function isCountingMeasure(metric: MetricId): boolean {
+  const kind = bucketMeasureFor(metric)?.aggregate.kind;
+  return kind === "count" || kind === "sessions";
+}
+
+/** What one unit of a metric's headline column is, for `effectUnit`. */
+function unitOf(metric: MetricDefinition): string {
+  const primary = metric.comparable?.primary;
+  return (primary == null ? undefined : metric.columns[primary]?.unit) ?? "value";
+}
+
+/** One bucket read in a `scene-health` fan-out. */
+interface HealthRead {
+  /** `''` for the project-wide baseline read. */
+  scene: string;
+  factor: string;
+  side: "numerator" | "denominator";
+  metric: MetricId;
+  series: BucketVariant | undefined;
+  window: ResolvedWindow;
+  /** Whether this read is the project baseline rather than the scene's window. */
+  baseline: boolean;
+}
+
+/** The key a `HealthRead`'s rows are filed under. */
+function readKey(read: HealthRead): string {
+  return `${read.baseline ? "" : read.scene}|${read.factor}|${read.side}|${read.baseline ? "b" : "c"}`;
+}
+
+/** The sum of a series' finite values — the sessions behind a scored window. */
+function seriesTotal(rows: readonly MetricBucketRow[] | undefined): number {
+  let total = 0;
+  for (const row of rows ?? []) {
+    if (row.value != null && Number.isFinite(row.value)) total += row.value;
+  }
+  return total;
+}
+
 /**
  * Insight API. Every route is scoped to the authenticated project and needs the
  * ordinary `query` capability — an insight is a read of the project's own
@@ -543,12 +729,231 @@ export const insightRoutes: FastifyPluginAsync<Options> = async (app, { store })
       return rows;
     },
   );
+  // =======================================================================
+  // --- significance / scene health (#307) --------------------------------
+  // =======================================================================
+
+  /**
+   * Is that difference real. One row: the effect, its interval, a p-value and
+   * the test that produced them.
+   */
+  r.get(
+    SIGNIFICANCE.endpoint!.path,
+    {
+      schema: {
+        querystring: significanceQueryParams,
+        response: { 200: rowsFor(SIGNIFICANCE), 400: badRequestResponse },
+      },
+    },
+    async (req, reply) => {
+      const resolved = await requireCapability(req, reply, store, "query");
+      if (!resolved) return reply;
+
+      const unsupported = unsupportedParam(req);
+      if (unsupported != null) {
+        return reply.code(400).send({
+          error:
+            `${unsupported}: significance compares two time windows, not two segments. Use ` +
+            "'since'/'until' for the window under test and 'refSince'/'refUntil' for the one it " +
+            "is compared with " +
+            "(the previous equal window by default). Splitting a metric by a dimension value is " +
+            "not available yet, and answering a segment question with a window comparison would " +
+            "compare the wrong two things.",
+          metric: req.query.metric,
+        });
+      }
+
+      const metric = resolveSeriesMetric(req.query.metric);
+      if (isRejection(metric)) return reply.code(400).send(metric);
+
+      const bucket: BucketGrain = req.query.bucket ?? "day";
+      const { range, reference } = resolveMoversWindows({
+        since: req.query.since,
+        until: req.query.until,
+        refSince: req.query.refSince,
+        refUntil: req.query.refUntil,
+        bucket,
+        now: Date.now(),
+      });
+      resolvedRanges.set(req, range);
+      // One read spanning both windows, split in TypeScript — the same trick
+      // `movers` uses, and for the same two reasons: half the queries, and both
+      // windows are guaranteed to have seen one snapshot of the data.
+      const span = spanningWindow(range, reference);
+      const read = (series?: BucketVariant): Promise<MetricBucketRow[]> =>
+        store.metricBuckets(resolved.projectId, {
+          metric: metric.id,
+          series,
+          bucket,
+          since: span.since,
+          until: span.until,
+          scene: req.query.scene,
+        });
+
+      const rate = isDeclaredRate(metric);
+      const [valueRows, denominatorRows] = await Promise.all([
+        read(),
+        rate ? read("denominator") : Promise.resolve(null),
+      ]);
+      const split = partition(valueRows, range, reference);
+      const denominator =
+        denominatorRows == null
+          ? undefined
+          : (() => {
+              const parts = partition(denominatorRows, range, reference);
+              return { current: parts.current, reference: parts.reference };
+            })();
+
+      const row: SignificanceRow = computeSignificance({
+        metric: metric.id,
+        scene: req.query.scene,
+        counting: isCountingMeasure(metric.id),
+        unit: unitOf(metric),
+        current: split.current,
+        reference: split.reference,
+        ...(denominator ? { denominator } : {}),
+      });
+      return [row];
+    },
+  );
+
+  /**
+   * Which scene is in trouble, and why. One row per scene, least healthy first,
+   * every factor carrying the metric id behind it.
+   */
+  r.get(
+    SCENE_HEALTH.endpoint!.path,
+    {
+      schema: {
+        querystring: sceneHealthQueryParams,
+        response: { 200: rowsFor(SCENE_HEALTH), 400: badRequestResponse },
+      },
+    },
+    async (req, reply) => {
+      const resolved = await requireCapability(req, reply, store, "query");
+      if (!resolved) return reply;
+
+      const bucket: BucketGrain = req.query.bucket ?? "day";
+      const { range, baseline: baselineWindow } = resolveHealthWindows({
+        since: req.query.since,
+        until: req.query.until,
+        windowDays: req.query.window,
+        bucket,
+        now: Date.now(),
+      });
+      resolvedRanges.set(req, range);
+
+      // Which scenes. A named scene is scored on its own; otherwise the busiest
+      // scenes over the window, bounded — the fan-out is linear in this.
+      let scenes: string[];
+      if (req.query.scene != null) {
+        scenes = [req.query.scene];
+      } else {
+        const rows = await store.scenes(resolved.projectId, {
+          since: range.since,
+          until: range.until,
+          limit: HEALTH_MAX_SCENES,
+        });
+        scenes = rows
+          .map((row) => row.scene_id)
+          .filter((id) => id.length > 0)
+          .slice(0, req.query.limit ?? HEALTH_DEFAULT_SCENES);
+        // A project whose events carry no scene id is still a project: score it
+        // as a whole rather than answering with an empty list.
+        if (scenes.length === 0) scenes = [""];
+      }
+
+      // One read per (factor, side, scene) over the scored window, plus one per
+      // (factor, side) for the project baseline — shared by every scene, so the
+      // cost is `factors x sides x (scenes + 1)` and not `x scenes x 2`.
+      const plan: HealthRead[] = [];
+      for (const factor of HEALTH_FACTORS) {
+        const sides: readonly { side: "numerator" | "denominator"; series?: BucketVariant }[] = [
+          { side: "numerator", ...(factor.numerator ? { series: factor.numerator } : {}) },
+          ...(factor.denominator
+            ? [{ side: "denominator" as const, series: factor.denominator }]
+            : []),
+        ];
+        for (const { side, series } of sides) {
+          plan.push({
+            scene: "",
+            factor: factor.id,
+            side,
+            metric: factor.metric,
+            series,
+            window: baselineWindow,
+            baseline: true,
+          });
+          for (const scene of scenes) {
+            plan.push({
+              scene,
+              factor: factor.id,
+              side,
+              metric: factor.metric,
+              series,
+              window: range,
+              baseline: false,
+            });
+          }
+        }
+      }
+
+      const results = await mapPooled(plan, BUCKET_READ_CONCURRENCY, (read) =>
+        store.metricBuckets(resolved.projectId, {
+          metric: read.metric,
+          series: read.series,
+          bucket,
+          since: read.window.since,
+          until: read.window.until,
+          // The baseline deliberately spans every scene: a factor is normalised
+          // against the project, not against the scene's own past.
+          scene: read.baseline || read.scene.length === 0 ? undefined : read.scene,
+        }),
+      );
+      const series = new Map<string, MetricBucketRow[]>();
+      plan.forEach((read, index) => series.set(readKey(read), results[index] ?? []));
+
+      const rows: SceneHealthRow[] = scenes.map((scene) => {
+        const inputs: Record<string, HealthFactorInput> = {};
+        for (const factor of HEALTH_FACTORS) {
+          const at = (side: "numerator" | "denominator", baseline: boolean) =>
+            series.get(`${baseline ? "" : scene}|${factor.id}|${side}|${baseline ? "b" : "c"}`) ??
+            [];
+          inputs[factor.id] = {
+            current: {
+              numerator: at("numerator", false),
+              ...(factor.denominator ? { denominator: at("denominator", false) } : {}),
+            },
+            baseline: {
+              numerator: at("numerator", true),
+              ...(factor.denominator ? { denominator: at("denominator", true) } : {}),
+            },
+          };
+        }
+        return computeSceneHealth({
+          scene,
+          since: range.since,
+          until: range.until,
+          // Sessions started in the scene over the window: the `error_rate`
+          // factor's denominator is exactly that series, so the number is read
+          // off a scan already paid for.
+          sampleSize: Math.round(seriesTotal(series.get(`${scene}|error_rate|denominator|c`))),
+          inputs,
+          weights: req.query.weights,
+        });
+      });
+      return rankSceneHealth(rows);
+    },
+  );
 };
 
-/** The derived metrics, indexed by the path that serves them. */
+/** The derived metrics this plugin serves, indexed by the path that serves them. */
 const METRIC_BY_PATH = new Map<string, MetricDefinition>([
   [BASELINE.endpoint!.path, BASELINE],
   [MOVERS.endpoint!.path, MOVERS],
   // --- anomalies (#306) ---
   [ANOMALIES.endpoint!.path, ANOMALIES],
+  // --- significance / scene health (#307) ---
+  [SIGNIFICANCE.endpoint!.path, SIGNIFICANCE],
+  [SCENE_HEALTH.endpoint!.path, SCENE_HEALTH],
 ]);

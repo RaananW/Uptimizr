@@ -113,6 +113,11 @@ Most entries name a `build*` aggregation. Three do not, and are not store resour
 insight primitives `insight_baseline`, `insight_movers` and `insight_anomalies` are computed in
 pure TypeScript _over other metrics' data_ (`@uptimizr/db`'s `src/insights/`). They carry
 `derived: "insight"`, and there are three kinds of entry rather than two:
+Most entries name a `build*` aggregation. Four do not, and are not store resources either: the
+insight primitives `insight_baseline`, `insight_movers`, `insight_significance` and
+`insight_scene_health` are computed in pure TypeScript _over other metrics' data_
+(`@uptimizr/db`'s `src/insights/`). They carry `derived: "insight"`, and there are three kinds of
+entry rather than two:
 
 | Predicate           | Entry                                                          |
 | ------------------- | -------------------------------------------------------------- |
@@ -122,6 +127,14 @@ pure TypeScript _over other metrics' data_ (`@uptimizr/db`'s `src/insights/`). T
 
 Prefer `isAggregateMetric` over `metric.builder != null` anywhere the question is "is this served as
 an aggregate?", or a derived metric silently drops out of the envelope and OpenAPI surfaces.
+
+Two things a derived entry carries that are worth reading before you use one. `insight_significance`
+picks its statistical test from the **compared** metric's own entry — a headline column whose
+`rateOf` names a denominator gets a two-proportion test, a bare count gets a Poisson rate test, and
+everything else gets Welch's t — so `columns[...].rateOf` is load-bearing, not decoration.
+`insight_scene_health` declares its per-factor **weights in its `caveats`** so they are visible in
+`capabilities` and in the generated tool catalog; they are a judgement, published so it can be
+argued with and overridden per request.
 
 ## Where the SQL lives
 

@@ -230,7 +230,13 @@ export {
   explainQuery,
   explainSpec,
   genericResultColumns,
-  normalCdf,
+  // `normalCdf` is deliberately NOT re-exported from here: `query/dsl` and
+  // `insights` each implement one (#304 and #307), and an explicit re-export
+  // would shadow the `export * from "./insights/index.js"` below. The root
+  // exports the insights implementation, whose accuracy is pinned against
+  // published reference values; the DSL's stays internal to `query/dsl`, where
+  // `querySignificance.test.ts` imports it directly. Folding the two into one
+  // module is tracked as a follow-up.
   planWarnings,
   reordersCappedResult,
   sampleOf,

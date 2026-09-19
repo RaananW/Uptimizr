@@ -167,6 +167,10 @@ describe.skipIf(!available)("postgres parity (vs golden, vs duckdb)", () => {
       "metricBuckets:splitEventType",
       "metricBuckets:splitMesh",
       "metricBuckets:splitScene",
+      // --- significance / scene health (#307) ---
+      "metricBuckets:rateDenominator",
+      "metricBuckets:longFrames",
+      "metricBuckets:tailQuantile",
     ]);
   });
 

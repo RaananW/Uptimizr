@@ -334,6 +334,17 @@ const FILTER_FIELDS: Readonly<Record<FilterId, z.ZodType>> = {
         "the trailing window (a rescaled median absolute deviation). Higher means fewer, more " +
         "extreme findings. 1-10, default 3.",
     ),
+  // --- significance / scene health (#307) ---
+  weights: z
+    .string()
+    .min(1)
+    .max(512)
+    .optional()
+    .describe(
+      "JSON object overriding a composite score’s declared per-factor weights, as a JSON " +
+        "string. Factors it does not name keep their declared weight; an unknown factor id is " +
+        "rejected rather than ignored.",
+    ),
   // The shared result envelope (ADR 0051 §2), reusing the registry's own Zod
   // mirror so the values a tool accepts and the shapes it returns cannot drift.
   //
@@ -378,6 +389,22 @@ const METRIC_FILTER_FIELDS: Readonly<Record<string, Partial<Record<FilterId, z.Z
       .optional()
       .describe("Time grain of the series the spread is measured over: `day` (default) or `hour`."),
   },
+  // --- significance / scene health (#307) ---
+  insight_significance: {
+    bucket: z
+      .enum(["day", "hour"])
+      .optional()
+      .describe(
+        "Time grain of the compared series: `day` (default) or `hour`. It is also the unit " +
+          "a Welch comparison counts observations in, so a finer grain buys statistical power.",
+      ),
+  },
+  insight_scene_health: {
+    bucket: z
+      .enum(["day", "hour"])
+      .optional()
+      .describe("Time grain each factor’s series is bucketed at: `day` (default) or `hour`."),
+  },
 };
 
 /**
@@ -393,9 +420,9 @@ const REQUIRED_FILTER_FIELDS: Readonly<Partial<Record<FilterId, z.ZodType>>> = {
     .min(1)
     .max(64)
     .describe(
-      "The registry metric to compute the baseline of. Required. Must be a comparable metric " +
-        "with a portable bucket series; an id that has none is rejected with the list of ids " +
-        "that do.",
+      "The registry metric the insight is computed over. Required. Must be a comparable " +
+        "metric with a portable bucket series; an id that has none is rejected with the list " +
+        "of ids that do.",
     ),
 };
 

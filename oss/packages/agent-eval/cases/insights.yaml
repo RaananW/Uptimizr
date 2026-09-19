@@ -118,3 +118,66 @@
       - { value: 2, label: the ordinary daily error count }
     phrases: ["error_heatmap", "spike", "graphics_diagnostic", "contributor"]
     forbiddenPhrases: ["no data"]
+# --- significance / scene health (#307) ---------------------------------------
+#
+# The other two §4 primitives. Both compare two windows, so these cases use the
+# same whole-day range as the two above — the harness's previous day in `lobby`
+# (`EVAL_PRIOR_DAY_SESSION`) is what they compare against.
+
+- id: insights_scene_health_weekly
+  category: insights
+  # The headline question of the primitive: not "what are the numbers" but
+  # "which scene should I look at, and what do I open next". The answer has to
+  # name the factor *and* the metric id behind it, or the score is not
+  # actionable.
+  question: Which scene is least healthy this week, and why?
+  context:
+    since: 1718532000000
+    until: 1718618400000
+  expectedTools:
+    - [insight_scene_health]
+  expectedArgs:
+    insight_scene_health: {}
+  expectedAnswer:
+    phrases: ["scene", "factors", "perf_stability", "perf_summary", "baseline"]
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: insights_significance_window
+  category: insights
+  # A window comparison of a declared rate. `dead_clicks` carries a `rateOf`
+  # denominator, so the primitive must pick the two-proportion test — and with
+  # no dead clicks on either day it must say "no difference", not "no data".
+  question: Did the dead-click rate in lobby change against the previous day, and is the change
+    statistically significant?
+  context:
+    scene: lobby
+    since: 1718532000000
+    until: 1718618400000
+  expectedArgs:
+    insight_significance:
+      metric: dead_clicks
+      bucket: hour
+  expectedTools:
+    - [insight_significance]
+  expectedAnswer:
+    phrases: ["two_proportion_z", "dead_clicks", "powerNote"]
+    forbiddenPhrases: ["no data"]
+
+- id: insights_significance_variant_segments
+  category: insights
+  # The recovery case for the question everyone asks first. A variant contrast
+  # is a *segment* comparison, which v1 does not do, and `variant_leaderboard`
+  # has no portable bucket series either — so the agent must get an error that
+  # names both facts and the metrics that *are* testable, rather than a
+  # plausible p-value for the wrong comparison.
+  question: Is the red variant's conversion significantly better than blue?
+  context:
+    since: 1718532000000
+    until: 1718618400000
+  expectedTools:
+    - [insight_significance]
+  expectedArgs:
+    insight_significance:
+      metric: variant_leaderboard
+  expectedAnswer:
+    phrases: ["variant_leaderboard", "portable bucket series", "dead_clicks"]

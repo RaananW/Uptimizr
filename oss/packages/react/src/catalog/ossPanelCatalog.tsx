@@ -56,6 +56,7 @@ import type {
   RenderScaleTruth as RenderScaleTruthData,
   RenderingTechnologyCount,
   ResourcePercentiles,
+  SceneHealthScore,
   SceneProxyMesh,
   SceneRegionInfo,
   SceneRetentionLink,
@@ -81,6 +82,13 @@ import {
   EVENT_VOLUME_SUBTITLE,
 } from "./views/VolumeTimeseries";
 import { SceneHealthView, SCENE_HEALTH_TITLE, SCENE_HEALTH_SUBTITLE } from "./views/SceneHealth";
+// --- significance / scene health (#307) ---
+import {
+  SceneHealthScoreView,
+  SCENE_HEALTH_SCORE_HELP,
+  SCENE_HEALTH_SCORE_SUBTITLE,
+  SCENE_HEALTH_SCORE_TITLE,
+} from "./views/SceneHealthScore";
 import {
   GraphicsDiagnosticsView,
   ENGINE_DIAGNOSTICS_TITLE,
@@ -688,6 +696,35 @@ export const sceneHealthPanel = definePanel<SceneHealthData>({
     return { counts, perf };
   },
   render: ({ data }) => <SceneHealthView counts={data?.counts ?? []} perf={data?.perf ?? null} />,
+});
+
+// --- significance / scene health (#307) ---
+
+/**
+ * Scene health score (ADR 0051 §4) — React/HTML, full width, overview only.
+ * The `insight_scene_health` primitive: one 0-100 score per scene over six
+ * weighted factors, each bar tooltipped with the metric id, raw value and
+ * project baseline behind it.
+ *
+ * Distinct from `scene-health` above, which is a raw event-count overview of
+ * the selected window. This one is a *comparison* against the project's own
+ * preceding window, and is the panel that answers 'which scene should I look
+ * at first'.
+ */
+export const sceneHealthScorePanel = definePanel<SceneHealthScore[]>({
+  id: "scene-health-score",
+  title: SCENE_HEALTH_SCORE_TITLE,
+  subtitle: SCENE_HEALTH_SCORE_SUBTITLE,
+  help: SCENE_HEALTH_SCORE_HELP,
+  span: 2,
+  surfaces: ["overview"],
+  load: (ctx) =>
+    ctx.api.sceneHealth({
+      since: ctx.params.since,
+      until: ctx.params.until,
+      scene: ctx.params.scene,
+    }),
+  render: ({ data }) => <SceneHealthScoreView rows={data ?? []} />,
 });
 
 /**
@@ -1999,6 +2036,8 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   livePresencePanel,
   eventVolumePanel,
   sceneHealthPanel,
+  // --- significance / scene health (#307) ---
+  sceneHealthScorePanel,
   engineDiagnosticsPanel,
   renderingTechnologyPanel,
   sceneTraversalPanel,

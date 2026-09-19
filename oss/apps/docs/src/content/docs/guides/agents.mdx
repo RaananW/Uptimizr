@@ -265,12 +265,18 @@ reference: [query DSL](/docs/api/query/#one-query-endpoint-the-query-dsl).
 Three questions come up on every investigation, and a model that answers them by pulling raw rows
 and doing arithmetic will answer them differently each time: **"is this number normal here?"**,
 **"what changed?"** and **"when did it go wrong?"** All three are metrics of their own.
+Four questions come up on every investigation, and a model that answers them by pulling raw rows and
+doing arithmetic will answer them differently each time: **"is this number normal here?"**,
+**"what changed?"**, **"is that change real?"** and **"which scene should I look at first?"** All four
+are metrics of their own.
 
 | Tool               | Answers                                                                                                   |
 | ------------------ | ---------------------------------------------------------------------------------------------------------- |
 | `insight_baseline` | What is normal for one metric in one scene: `median` and `mad`, the p10..p90 band, and the drift `slope`. |
 | `insight_movers`   | What moved against the previous equal window, for every comparable metric, ranked by how unusual it is.    |
 | `insight_anomalies` | Which individual buckets of one metric do not belong — and which mesh, channel or source holds the excess. |
+| `insight_significance` | Whether one metric's difference between two windows could be chance: effect, 95% interval, p-value, and the test that produced them. |
+| `insight_scene_health` | One 0-100 score per scene over six weighted factors, each carrying the metric id, raw value and project baseline behind it. |
 
 Reach for `insight_movers` **first** on an open-ended "how are things?" question: it turns a survey of
 thirty endpoints into one call, and it ranks by a robust z-score — the change divided by how much that
@@ -302,6 +308,34 @@ so do not compare the two columns directly.
 Statistics are computed in pure TypeScript over portable day/hour buckets, so the same data gives the
 same baseline on DuckDB, ClickHouse, Postgres and SQL Server. Full parameters and the excluded-metric
 rules: [insights](/docs/api/query/#insights--baselines-movers-and-anomalies).
+### Say whether a change is real, and which scene to open first
+
+`insight_movers` says *how unusual* a change is; `insight_significance` says whether it could be
+chance. Call it before you write the sentence "X went up" about anything a stakeholder will act on —
+it picks the test from what the measure is (a two-proportion z with Wilson intervals for a declared
+rate, Welch's t over the per-bucket values for a level, an exact Poisson rate test for a bare count),
+so you never have to choose one.
+
+Read **`ci95` before `p`**. An interval that straddles 0 means you cannot tell yet, whatever the
+p-value says, and `powerNote` states the smallest difference these sample sizes could have detected at
+all — which is the difference between "no effect" and "no data". Note that Welch counts **buckets**,
+not events: `n` is days or hours, because frame samples inside one day are not independent. And it
+compares two *windows*, not two segments: a variant-versus-variant contrast is a `400`, not a wrong
+answer.
+
+`insight_scene_health` is the one to open an *unscoped* investigation with. It scores each scene over
+six weighted factors and returns them least healthy first, so "where do I start" is one call. Open the
+lowest-scoring scene, then the factor whose own score is furthest below 50; that factor names the
+`metric` behind it, its `raw` value and the `baseline` it was compared with, so the next endpoint to
+call and the sentence to write are both already in the row. **50 is the project norm, not a pass
+mark** — the score compares a scene with the rest of the project's recent past, so a project where
+everything is equally bad reads 50 everywhere. A factor with `score: null` was not counted, and its
+`note` says why.
+
+Statistics are computed in pure TypeScript over portable day/hour buckets, so the same data gives the
+same baseline, the same p-value and the same score on DuckDB, ClickHouse, Postgres and SQL Server.
+Full parameters and the excluded-metric rules:
+[insights](/docs/api/query/#insights--baselines-movers-significance-and-health).
 
 ## 6. Give answers a vocabulary for *where*
 

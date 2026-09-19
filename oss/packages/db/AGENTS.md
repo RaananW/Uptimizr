@@ -302,6 +302,9 @@ that way when adding an event type — adding a field to the switch is a privacy
 
 `baseline`, `movers` and `anomalies` — "what is normal here", "what changed" and "_when_ did it go
 wrong" — as three derived registry metrics. The shape of the directory is the design:
+`baseline`, `movers`, `significance` and `scene_health` — "what is normal here", "what changed",
+"is that change real" and "which scene should I look at first" — as derived registry metrics. The
+shape of the directory is the design:
 
 ```ts
 import {
@@ -319,6 +322,13 @@ import {
   contributorWindows, // the windows attribution is allowed to re-scan
   attributeContributor,
   ANOMALY_MAX_CONTRIBUTOR_SCANS,
+  // --- significance / scene health (#307) ---
+  computeSignificance, // picks the test from the measure: proportions / Poisson / Welch
+  computeSceneHealth, // six weighted factors, each traceable to its metric
+  rankSceneHealth,
+  resolveHealthWindows,
+  HEALTH_FACTORS, // the fixed factor catalog, with default weights
+  BUCKET_MEASURE_VARIANTS, // named auxiliary series: a rate denominator, an FPS tail
 } from "@uptimizr/db";
 ```
 
@@ -333,13 +343,30 @@ import {
 - A metric is bucketable only if it has an entry in `measures.ts`, and that entry's `column` must be
   the metric's `comparable.primary` (asserted in `src/__tests__/insights.test.ts`). Widening the
   catalog is additive: add the measure, add a parity case, done.
+- A metric may also declare **named auxiliary series** (`BUCKET_MEASURE_VARIANTS`): a rate
+  denominator, an FPS tail, the numerator of a ratio whose metric has no headline series at all.
+  A variant is **never** caller input — `significance` picks `denominator` from the registry and
+  `scene_health` reads a fixed factor catalog — and declaring one does **not** make the metric
+  bucketable: `isBucketableMetric` still answers about the metric's own headline column, so
+  `baseline` and `movers` keep rejecting `jank_rate` and `xr_abandonment` as before.
+- **Which test `significance` runs is derived, not configured**: a declared rate (a `rateOf`
+  headline column plus a `denominator` variant) gets a two-proportion z with Wilson/Newcombe
+  intervals, a `count`/`sessions` aggregate gets an exact Poisson rate test, and everything else
+  gets Welch's t over the per-bucket values. Welch's `n` is the **bucket count**, never the event
+  count: samples inside one day are not independent.
+- **Every `scene_health` factor must stay traceable.** A factor row carries the metric id, the raw
+  value, the project baseline it was compared with and the weight it took. A factor that could not
+  be measured reports `score: null` with a reason and is excluded from the mean — never defaulted
+  to 50, and never dropped from the row.
 - **Never approximate a series to widen the catalog.** Funnels, cohort metrics and anything defined
   by the relationship between consecutive events have no faithful per-bucket form; a `400` naming the
   ids that do is a better answer than a plausible wrong number.
 - Predicates come from a **closed vocabulary** over promoted columns, with constant values bound as
   parameters. Do not add a free-SQL escape hatch.
 - Window bounds snap **down** to whole buckets, so the day or hour in progress is excluded and a
-  default reference really is an equal window.
+  default reference really is an equal window. `resolveHealthWindows` is the deliberate exception
+  (it rounds `until` **up**): every health factor is a rate or a percentile, which a partial bucket
+  does not distort, and flooring would make the score answer about yesterday.
 - `movers` reports a sub-`minSample` delta with `aboveMinSample: false` and ranks it below every
   gated mover. It must never be dropped — "we cannot tell" and "nothing changed" are different
   answers — and never reported as a finding.

@@ -103,6 +103,38 @@ The dashboard renders it as the **"Perf-driven churn"** panel next to the perfor
 panel: a headline perf-correlated churn rate plus the FPS-dip vs. compile-stall cause split, with the
 window and thresholds exposed as viewer-tunable sliders.
 
+## Scene health score (`GET /api/v1/insights/scene-health`)
+
+Every panel above answers a question about _one_ signal. This one answers the question you
+actually start from: **which scene should I look at first?** It scores each scene 0-100 over six
+weighted factors — three of them the perf signals on this page — and returns them least healthy
+first.
+
+| Factor            | Metric           | Raw value                             | Good is | Weight |
+| ----------------- | ---------------- | ------------------------------------- | ------- | ------ |
+| `perf_stability`  | `perf_summary`   | 5th-percentile FPS                    | higher  | 0.25   |
+| `error_rate`      | `error_heatmap`  | errors + diagnostics per session      | lower   | 0.25   |
+| `jank_rate`       | `jank_rate`      | long frames per sampled perf window   | lower   | 0.20   |
+| `dead_click_rate` | `dead_clicks`    | share of clicks that hit nothing      | lower   | 0.15   |
+| `coverage`        | `scene_coverage` | positioned camera samples per session | higher  | 0.10   |
+| `xr_abandonment`  | `xr_abandonment` | interactions per XR session           | higher  | 0.05   |
+
+The perf factor is the **5th percentile**, not the average, on purpose: a scene whose median is 60
+and whose p05 is 12 is a stuttering scene, and an average hides exactly that. Each factor is
+normalised against **the project's own baseline over the preceding equal window**, so 50 means
+"as well as the rest of this project was doing last week" rather than an absolute grade — there is
+no universal FPS at which a marketing configurator and a six-player VR game are both healthy.
+
+The dashboard renders it as the **"Scene health score"** tile on the overview: one score per scene
+with a bar per factor. Hovering a bar names the metric behind it, the raw value it produced and the
+project baseline it was compared with — so the tile is a routing decision, not a dead end. A bar
+that is missing could not be measured in the window and was left out of the mean rather than
+averaged in as a zero.
+
+Weights are declared in the metric registry (so they show up in `capabilities` and in the agent
+tool catalog) and can be overridden per request with a `weights` JSON object — for example
+`weights={"perf_stability":0.5}` for a project where frame rate is the whole product.
+
 ## Capability changes
 
 Fallbacks (WebGPU→WebGL2), quality/LOD auto-downgrades, and device recovery are **app-reported** via

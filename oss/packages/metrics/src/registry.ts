@@ -284,6 +284,8 @@ export type FilterId =
   | "refUntil"
   // --- anomalies (#306) ---
   | "sensitivity"
+  // --- significance / scene health (#307) ---
+  | "weights"
   // Cross-cutting result shaping (ADR 0051 §2, design sketch §B.1). Unlike every
   // other filter this one narrows nothing: it selects the *envelope* the
   // collector wraps the rows in, and is consumed by the response layer rather
@@ -583,6 +585,15 @@ export const FILTER_TARGETS: Readonly<Record<FilterId, FilterTarget>> = {
     description:
       "How far out of line a bucket must be before it is reported, in median-absolute-deviations " +
       "of the trailing window. Higher means fewer, more extreme findings. 1-10, default 3.",
+  },
+  // --- significance / scene health (#307) ---
+  weights: {
+    option: "InsightOptions",
+    field: "weights",
+    description:
+      "JSON object overriding the declared per-factor weights of a composite score, e.g. " +
+      '`{"error_rate":0.5}`. Factors the object does not name keep their declared weight; an ' +
+      "unknown factor id is rejected rather than ignored.",
   },
   format: {
     option: "ResultEnvelope",
@@ -958,7 +969,10 @@ export type MetricId =
   | "insight_baseline"
   | "insight_movers"
   // --- anomalies (#306) ---
-  | "insight_anomalies";
+  | "insight_anomalies"
+  // --- significance / scene health (#307) ---
+  | "insight_significance"
+  | "insight_scene_health";
 
 // --- Row-schema building blocks ------------------------------------------
 //
@@ -4918,6 +4932,191 @@ export const METRIC_REGISTRY = {
     ],
     sourceChannels: [],
     related: ["insight_baseline", "insight_movers", "timeseries", "error_heatmap"],
+    category: "insights",
+  },
+
+  // --- significance / scene health (#307) ---------------------------------
+  //
+  // The other two §4 primitives. `insight_significance` answers the question a
+  // robust z deliberately does not — *could this difference be chance?* — and
+  // `insight_scene_health` collapses six of those readings into one comparable
+  // score per scene, with every factor traceable back to the metric behind it.
+  insight_significance: {
+    id: "insight_significance",
+    title: "Statistical significance",
+    description:
+      "Is that difference real? Compares one comparable metric across two windows and reports the " +
+      "effect, its 95% confidence interval and a two-sided p-value, with the test chosen from what " +
+      "the measure *is*: a two-proportion z with Wilson intervals for a declared rate, Welch's t " +
+      "over the per-bucket values for a level, an exact Poisson rate test for a bare count. One " +
+      "row per request, and a `powerNote` saying what these sample sizes could and could not have " +
+      "detected.",
+    derived: "insight",
+    endpoint: { method: "GET", path: "/api/v1/insights/significance" },
+    grain: "project",
+    dimensions: ["scene"],
+    // One row per request; `scene` is the only registry dimension the row
+    // carries, so it is the grain (#304).
+    grainDimensions: ["scene"],
+    filters: ["metric", "scene", "bucket", "since", "until", "refSince", "refUntil", "format"],
+    row: z.object({
+      metric: text,
+      scene: text,
+      a: z.object({ value: numOrNull, n: num }),
+      b: z.object({ value: numOrNull, n: num }),
+      effect: numOrNull,
+      ci95: z.tuple([numOrNull, numOrNull]),
+      p: numOrNull,
+      test: text,
+      effectUnit: text,
+      significant: z.boolean(),
+      powerNote: text,
+    }),
+    columns: {
+      metric: { description: "The registry metric being compared.", unit: "id", label: true },
+      scene: {
+        description: "The scene it was scoped to; empty when the comparison spans every scene.",
+        unit: "id",
+      },
+      a: {
+        description:
+          "The current window: `value` in the metric's own unit (a proportion for a rate, a " +
+          "per-bucket rate for a count, a mean of bucket values for a level) and `n`, the " +
+          "denominator it rests on — trials for a proportion, buckets otherwise. `value * n` " +
+          "recovers the total the arm was computed from, whichever test ran.",
+      },
+      b: { description: "The reference window, in the same shape as `a`." },
+      effect: {
+        description: "`a.value - b.value`, in the unit named by `effectUnit`.",
+        measure: true,
+      },
+      ci95: {
+        description:
+          "The 95% confidence interval for `effect`, as `[lo, hi]`. An interval that straddles 0 " +
+          "is the finding, whatever `p` says.",
+      },
+      p: {
+        description: "Two-sided p-value for the null hypothesis of no difference.",
+        unit: "ratio",
+      },
+      test: {
+        description:
+          "Which test produced the row: `two_proportion_z`, `welch_t` or `poisson_rate`.",
+        unit: "label",
+      },
+      effectUnit: { description: "What one unit of `effect` means.", unit: "label" },
+      significant: {
+        description:
+          "Whether `p` cleared alpha = 0.05. A convenience, never a substitute for `ci95`.",
+      },
+      powerNote: {
+        description:
+          "The smallest difference these sample sizes could have detected at 80% power, plus any " +
+          "assumption the data strained (overdispersed counts, too few buckets).",
+        unit: "label",
+      },
+    },
+    limits: { maxRows: 1, maxSummaryRows: 1 },
+    interpretation:
+      "Read `ci95` before `p`. A narrow interval around a small effect is evidence that nothing " +
+      "much changed; a wide interval containing 0 is evidence of nothing at all, and `powerNote` " +
+      "says which of the two you are looking at. `p` is two-sided throughout: it answers 'is there " +
+      "a difference', not 'is it an improvement' — combine it with the sign of `effect` and the " +
+      "compared metric's own `direction` for that.",
+    caveats: [
+      "v1 compares two **time windows**, not two segments. A variant-versus-variant or device-versus-device contrast needs the bucket series split by a promoted dimension, which is not available yet; asking for one is rejected rather than answered with the wrong contrast.",
+      "The test is chosen from the measure, not from the caller: a metric whose comparable primary declares a `rateOf` denominator gets the two-proportion z, a bare count gets the Poisson rate test, and everything else gets Welch's t. A caller cannot ask for a different one.",
+      "Welch's t treats each **bucket** as one observation, so `n` is the number of days or hours compared, never the number of events. Consecutive frame samples inside a day are not independent, and counting them would manufacture a p-value of 1e-40 for ordinary day-to-day drift.",
+      "For a Welch comparison `a.value` is the **mean** of the bucket values even where `movers` would report the window sum, so that `effect` and `value` can be read together; `n` is the bucket count, so the sum is one multiplication away.",
+      "The Poisson test assumes counts that do not vary more than a Poisson process would. When the buckets say otherwise, the p-value is optimistic and `powerNote` says so — treat it as an upper bound on the evidence.",
+      "The Poisson interval is the normal approximation on the rate difference (there is no closed-form exact one); only the p-value is exact.",
+      "The two-proportion p-value uses the pooled variance under the null while the interval is unpooled and Newcombe-hybrid. In a borderline case the two can disagree about whether 0 is excluded; that is the textbook procedure, and the interval is the one to believe.",
+      "Window bounds are snapped down to whole buckets, so the current incomplete day or hour is excluded from both windows and the two stay exactly comparable.",
+      "Statistical significance is not importance. A large enough sample makes a difference of no consequence significant; `effect` and `effectUnit` are what say whether it matters.",
+    ],
+    sourceChannels: [],
+    related: ["insight_movers", "insight_baseline", "insight_scene_health"],
+    category: "insights",
+  },
+  insight_scene_health: {
+    id: "insight_scene_health",
+    title: "Scene health score",
+    description:
+      "Which scene is in trouble, and why. Scores each scene 0-100 over six weighted factors — " +
+      "perf stability, jank, errors, dead clicks, exploration coverage and XR abandonment — each " +
+      "normalised against the project's own baseline over the preceding equal window. One row per " +
+      "scene, least healthy first, and every factor carries the metric id, the raw value, the " +
+      "baseline it was compared with and the weight it contributed, so the score can always be " +
+      "taken apart.",
+    derived: "insight",
+    endpoint: { method: "GET", path: "/api/v1/insights/scene-health" },
+    grain: "scene",
+    dimensions: ["scene"],
+    // One row per scene — the grain is the scene itself (#304).
+    grainDimensions: ["scene"],
+    filters: ["scene", "window", "since", "until", "bucket", "limit", "weights", "format"],
+    row: z.object({
+      scene: text,
+      score: numOrNull,
+      factors: z.array(
+        z.object({
+          id: text,
+          metric: text,
+          raw: numOrNull,
+          baseline: numOrNull,
+          score: numOrNull,
+          weight: num,
+          unit: text,
+          note: text,
+        }),
+      ),
+      sampleSize: int,
+      since: int,
+      until: int,
+    }),
+    columns: {
+      scene: { description: "The scene scored.", unit: "id", label: true },
+      score: {
+        description:
+          "Weighted mean of the available factors, 0-100. 50 is exactly the project norm for the " +
+          "preceding window; higher is healthier. Null when no factor could be scored.",
+        measure: true,
+      },
+      factors: {
+        description:
+          "One entry per factor: `id`, the `metric` behind it, its `raw` value in `unit`, the " +
+          "project `baseline` it was compared with, its normalised `score`, the `weight` it " +
+          "carried, and a `note` saying what the raw number measures (or why it was not scored).",
+      },
+      sampleSize: {
+        description: "Sessions started in the scene over the window — what the score rests on.",
+        unit: "sessions",
+      },
+      since: { description: "Start of the scored window, epoch ms.", unit: "epoch-ms" },
+      until: { description: "End of the scored window, epoch ms.", unit: "epoch-ms" },
+    },
+    limits: { maxRows: 10, maxSummaryRows: 10 },
+    interpretation:
+      "The score is a **comparison, not a grade**: it says how this scene is doing against the " +
+      "rest of this project's recent past, so a project where everything is equally bad reads 50 " +
+      "everywhere. Read the lowest-scoring scene first, then the factor whose own score is " +
+      "furthest below 50 — that factor's `metric` is the endpoint to open next, and its `raw` " +
+      "versus `baseline` is the sentence to write. A factor with `score: null` was not counted; " +
+      "its `note` says why.",
+    caveats: [
+      "The default weights are a judgement, declared in this entry so they can be argued with: perf stability 0.25, error rate 0.25, jank rate 0.2, dead-click rate 0.15, coverage 0.1, XR abandonment 0.05. Pass `weights` as a JSON object to override any of them; unnamed factors keep their default.",
+      "Normalisation is against the **project as a whole** over the preceding equal window, not against an absolute target. A new project with one week of data has no baseline and scores null.",
+      "Unlike `insight_baseline` and `insight_movers`, the window **includes the bucket in progress** rather than snapping down to the last complete one: every factor is a rate or a percentile, neither of which a partial bucket distorts, and excluding today would make the score answer about yesterday. The window actually measured is echoed as `since` / `until` on every row.",
+      "A factor with no data in the window, or no project baseline to compare against, is reported with `score: null` and excluded from the weighted mean — the remaining weights are renormalised. The row still lists it, so a missing factor is visible rather than silently folded in.",
+      "XR abandonment is absent in a project with no XR traffic: a scene nobody visited in VR is not an unhealthy VR scene.",
+      "Coverage is positioned camera samples per session, not a voxel-coverage percentage: the true percentage needs the registered scene bounds and has no portable per-bucket form. It is only ever read against the project's own baseline.",
+      "The jank factor is the *pooled* long-frames-per-sampled-window rate, while the `jank_rate` metric's own endpoint reports a per-session median (ADR 0028 Section 1). They agree in direction, not in value.",
+      "Rage clicks are not folded into the dead-click factor: they are defined by the gap between consecutive clicks and have no portable per-bucket form.",
+      "Fewer than about 20 sessions makes a scene's score noise. The row is returned anyway, with its `sampleSize`, so 'we cannot tell' stays distinguishable from 'this scene is fine'.",
+      "Without a `scene` the scan is bounded to the busiest scenes by event volume, so a quiet scene can be missing from the list entirely. Name it explicitly to score it.",
+    ],
+    sourceChannels: [],
+    related: ["insight_movers", "insight_baseline", "insight_significance"],
     category: "insights",
   },
 } satisfies Readonly<Record<MetricId, MetricDefinition>>;
