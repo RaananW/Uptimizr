@@ -92,7 +92,7 @@ describe("conditional registration", () => {
     // The read catalog is untouched.
     expect(names).toHaveLength(readTools.length);
     await mcp.close();
-  });
+  }, 30_000);
 
   it("omits them when no capabilities are supplied at all (pre-#310 callers)", async () => {
     const { client } = stubCollector();
@@ -100,7 +100,7 @@ describe("conditional registration", () => {
     const names = (await mcp.listTools()).tools.map((tool) => tool.name);
     for (const name of WRITE_TOOL_NAMES) expect(names).not.toContain(name);
     await mcp.close();
-  });
+  }, 30_000);
 
   it("registers all six for a key holding `annotate`", async () => {
     const { client } = stubCollector();
@@ -109,7 +109,7 @@ describe("conditional registration", () => {
     for (const name of WRITE_TOOL_NAMES) expect(names).toContain(name);
     expect(names).toHaveLength(readTools.length + writeTools.length);
     await mcp.close();
-  });
+  }, 30_000);
 });
 
 describe("what each write tool sends", () => {

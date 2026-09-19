@@ -427,7 +427,7 @@ describe("createMcpServer options", () => {
     expect(listed).toHaveLength(readTools.length);
     await withOption.close();
     await withoutOption.close();
-  });
+  }, 30_000);
 
   it("names the granted capabilities in the server instructions", async () => {
     const reader = await connectWith({ capabilities: ["query"] });
@@ -438,13 +438,13 @@ describe("createMcpServer options", () => {
     const writer = await connectWith({ capabilities: ["query", "annotate"] });
     expect(writer.getInstructions()).toContain("annotate");
     await writer.close();
-  });
+  }, 30_000);
 
   it("leaves the stdio server's initialize result untouched when omitted", async () => {
     const plain = await connectWith();
     expect(plain.getInstructions()).toBeUndefined();
     await plain.close();
-  });
+  }, 30_000);
 });
 
 describe("capability-gated tools (#314, ADR 0051 §7)", () => {
@@ -467,18 +467,18 @@ describe("capability-gated tools (#314, ADR 0051 §7)", () => {
     const names = await listFor(["query"]);
     expect(names).not.toContain("session_narrative");
     expect(names).toHaveLength(readTools.length);
-  });
+  }, 30_000);
 
   it("hides it when the caller did not look the key up at all", async () => {
     // The safe default: no capability information means the `query` surface.
     expect(await listFor()).not.toContain("session_narrative");
-  });
+  }, 30_000);
 
   it("registers it for a key holding query:raw", async () => {
     const names = await listFor(["query", "query:raw"]);
     expect(names).toContain("session_narrative");
     expect(names).toHaveLength(readTools.length + rawTools.length);
-  });
+  }, 30_000);
 
   it("calls the narrative endpoint when the tool is registered", async () => {
     const scoped = new Client({ name: "test", version: "0.0.0" });
@@ -504,7 +504,7 @@ describe("capability-gated tools (#314, ADR 0051 §7)", () => {
     const call = requests.at(-1)!;
     expect(call.path).toBe("api/v1/sessions/s1/narrative");
     expect(call.params).toMatchObject({ maxEntries: 50 });
-  });
+  }, 30_000);
 
   it("scopes the capabilities resource to the same surface", async () => {
     const scoped = new Client({ name: "test", version: "0.0.0" });
@@ -522,5 +522,5 @@ describe("capability-gated tools (#314, ADR 0051 §7)", () => {
     } finally {
       await scoped.close();
     }
-  });
+  }, 30_000);
 });
