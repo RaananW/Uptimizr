@@ -164,6 +164,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(supports-color@7.2.0)(zod@4.5.4)
+      '@uptimizr/agent-core':
+        specifier: workspace:*
+        version: link:../../packages/agent-core
       '@uptimizr/db':
         specifier: workspace:*
         version: link:../../packages/db

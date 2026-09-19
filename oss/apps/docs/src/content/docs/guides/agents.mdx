@@ -134,6 +134,27 @@ The catalog lives in `@uptimizr/agent-core`, which is framework-agnostic and bro
 server, the dashboard assistant and the demo assistant cannot drift apart. See the
 [assistant guide](/docs/guides/assistant/).
 
+### Scheduled reports — `uptimizr agent report`
+
+The same catalog and the same curated investigations, run **headlessly on a schedule** instead of
+in a chat:
+
+```bash
+UPTIMIZR_COLLECTOR_URL="https://collect.example.com" \
+UPTIMIZR_API_KEY="utk_…" \
+UPTIMIZR_AGENT_API_KEY="sk-ant-…" \
+npx -p @uptimizr/collector-server uptimizr agent report \
+  --skill weekly_scene_health --scene lobby --window 7d --out report.md
+```
+
+It runs the headless loop once in **your** process against **your** collector with **your**
+provider key, writes Markdown to a file, stdout or a signed webhook, and exits with a code a cron
+wrapper can branch on. The collector gains no LLM loop, and no provider configuration is ever
+persisted. Every report ends with a **Method** section listing the tool calls and their arguments,
+so an unattended document stays auditable. `--dry-run` prints the exact prompt without calling a
+provider, and `UPTIMIZR_AGENT_PROVIDER=scripted` exercises the whole path with no model and no
+key at all. See [Scheduled agent reports](/docs/deploy/collector/#scheduled-agent-reports).
+
 ### Plain HTTP
 
 Nothing stops an agent framework from calling the [query API](/docs/api/query/) directly with
@@ -345,15 +366,9 @@ CI gates the deterministic run on every change to the catalog.
 The AI-first layer ships in stages; these are the tracked follow-ups, linked so you can see what is
 real today versus planned. Nothing below is available yet.
 
-| Stage | Issue                                                  | What it adds                                                                  |
-| ----- | ------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| 2     | [#303](https://github.com/RaananW/Uptimizr/issues/303) | A bounded **query DSL** (`/api/v1/query`) and a single composable query tool. |
-| 2     | [#305](https://github.com/RaananW/Uptimizr/issues/305) | Insight primitives: baselines and movers.                                     |
-| 2     | [#306](https://github.com/RaananW/Uptimizr/issues/306) | Insight primitive: anomalies (robust z + CUSUM change-points).                |
-| 2     | [#307](https://github.com/RaananW/Uptimizr/issues/307) | Insight primitives: significance and `scene_health`.                          |
-| 2     | [#308](https://github.com/RaananW/Uptimizr/issues/308) | A project **context** resource and custom-event vocabulary.                   |
-| 3     | [#311](https://github.com/RaananW/Uptimizr/issues/311) | Conditional subscriptions, an SSE stream and signed webhooks.                 |
-| 3     | [#315](https://github.com/RaananW/Uptimizr/issues/315) | Declarative **panel specs** and "pin as panel".                               |
-| 3     | [#316](https://github.com/RaananW/Uptimizr/issues/316) | Packaged methodology **skills**, exposed as MCP prompts.                      |
+| Stage | Issue                                                  | What it adds                                                             |
+| ----- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| 3     | [#315](https://github.com/RaananW/Uptimizr/issues/315) | Declarative **panel specs** and "pin as panel".                          |
+| 3     | [#316](https://github.com/RaananW/Uptimizr/issues/316) | Packaged methodology **skills**, as MCP prompts and to `agent report`.   |
 
 The epic is [#294](https://github.com/RaananW/Uptimizr/issues/294).

@@ -446,3 +446,195 @@ refused if presented by a different key than opened it. Give agents their own la
   `COLLECTOR_BODY_LIMIT`, and every tool call is charged to the caller's rate-limit budget.
 - **Browser-based clients** additionally need their origin in `COLLECTOR_CORS_ORIGINS`; the
   collector then exposes `Mcp-Session-Id` and allows the MCP request headers and `DELETE`.
+## Scheduled agent reports
+
+`uptimizr agent report` runs a read-only analytics agent **once** and writes a Markdown report —
+a weekly scene-health digest without anyone opening a chat. It is an ordinary CLI process that
+talks to your collector over its HTTP query API with an ordinary project key, so:
+
+- **The collector runs no LLM loop of its own.** Nothing about this changes the server.
+- **Scheduling is yours** — cron, a systemd timer, a GitHub Action. The command runs once and
+  exits with a meaningful code.
+- **Your provider configuration lives in the environment and is never persisted.** The key is
+  read once into the provider adapter; it is never logged, echoed or written to a report.
+- **It only ever reads.** The tools it calls are `GET`s against the aggregate query API, so a
+  `query`-only key is all it needs — and all it should be given.
+
+```bash
+# The narrow key the report should hold
+npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
+  --capabilities query --label "weekly-report"
+
+export UPTIMIZR_COLLECTOR_URL=https://collect.example.com
+export UPTIMIZR_API_KEY=utk_…               # the query-only key above
+export UPTIMIZR_AGENT_API_KEY=sk-ant-…      # your own provider key
+
+npx -p @uptimizr/collector-server uptimizr agent report \
+  --skill weekly_scene_health --scene lobby --window 7d --out report.md
+```
+
+### Skills
+
+A **skill** is the investigation to run. `--list-skills` prints the ones this release ships,
+what each produces and which metrics it reads — the same curated methodologies the MCP server
+offers as prompt templates, so a scheduled report and a chat session ask the same question:
+
+| Skill                 | Produces                                                                        | `--scene`   |
+| --------------------- | ------------------------------------------------------------------------------- | ----------- |
+| `weekly_scene_health` | Traffic, event mix, FPS trend and the most-interacted meshes over the window.   | optional    |
+| `attention_hotspots`  | Where visitors look and click: view-direction concentration, gaze→mesh flow.    | **required** |
+| `xr_comfort_review`   | XR comfort signals: rapid head rotation, locomotion mix, abandonment, sources.  | optional    |
+
+### Flags
+
+| Flag                | Meaning                                                                                       |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| `--skill <name>`    | The investigation to run (required). See `--list-skills`.                                      |
+| `--scene <id>`      | Scope the report to one scene.                                                                 |
+| `--window <NdNhNw>` | Window counting back from now — `24h`, `7d` (default), `2w`.                                   |
+| `--since`/`--until` | Explicit epoch-millisecond window, instead of `--window`.                                      |
+| `--out <file\|->`   | Where the Markdown goes. Default `-` (stdout).                                                 |
+| `--json <file\|->`  | Also write the structured report: every tool call with its arguments, duration and outcome, plus token usage when the provider reports it. |
+| `--webhook <url>`   | `POST` the report to an `http(s)` URL, signed (below).                                          |
+| `--max-steps <n>`   | Cap on provider turns (default `8`).                                                            |
+| `--dry-run`         | Print the exact prompt and tool list and call **no** provider.                                  |
+
+`--dry-run` is the cheap way to check a new cron line: it reads your collector (including the
+project context document) and prints the prompt it would send, without spending a token.
+
+### Environment
+
+| Variable                  | Required | Meaning                                                                              |
+| ------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `UPTIMIZR_COLLECTOR_URL`  | yes      | Base URL of your collector, e.g. `https://collect.example.com`.                        |
+| `UPTIMIZR_API_KEY`        | yes      | Project API key. A `query`-only key is enough.                                         |
+| `UPTIMIZR_AGENT_PROVIDER` | no       | `anthropic` (default), `openai` (any OpenAI-compatible endpoint), or `scripted`.       |
+| `UPTIMIZR_AGENT_MODEL`    | no       | Model id. Defaults to `claude-sonnet-5` / `gpt-4o-mini`.                                |
+| `UPTIMIZR_AGENT_API_KEY`  | for a model run | Your provider key. Falls back to `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`.         |
+| `UPTIMIZR_AGENT_ENDPOINT` | no       | Provider base URL — point it at a gateway, a proxy or a self-hosted OpenAI-compatible server. |
+| `UPTIMIZR_WEBHOOK_SECRET` | for a signed webhook | HMAC-SHA-256 secret for the `X-Uptimizr-Signature` header.                 |
+
+:::note[The `scripted` provider]
+`UPTIMIZR_AGENT_PROVIDER=scripted` runs the real loop against your real collector with **no
+model, no key and no egress**: it calls exactly the tools the skill names and prints what the
+collector returned. It performs no analysis — use it to prove the URL, the key, the skill name,
+the output paths and the webhook signature all work (in CI, or on a new host) before wiring up a
+provider.
+:::
+
+### Exit codes
+
+| Code | Meaning                                                                       |
+| ---- | ------------------------------------------------------------------------------- |
+| `0`  | Report produced; every tool call succeeded.                                     |
+| `1`  | Usage or configuration error — nothing ran.                                     |
+| `2`  | The provider call, or the webhook delivery, failed.                             |
+| `3`  | A report was produced but is **incomplete**: a tool call failed, or the model returned no answer. |
+
+### Webhook delivery
+
+`--webhook <url>` posts one JSON body, `{ "markdown": "…", "report": { … } }`, with:
+
+| Header                 | Value                                                              |
+| ---------------------- | -------------------------------------------------------------------- |
+| `X-Uptimizr-Signature` | `sha256=<hex HMAC-SHA-256 of the raw body, keyed with UPTIMIZR_WEBHOOK_SECRET>` |
+| `X-Uptimizr-Delivery`  | A unique id per delivery attempt, for receiver-side de-duplication.  |
+
+Verify it over the **raw** body, before parsing, with a constant-time comparison:
+
+```js
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+function verify(rawBody, header, secret) {
+  const expected = `sha256=${createHmac("sha256", secret).update(rawBody, "utf8").digest("hex")}`;
+  const a = Buffer.from(String(header ?? ""), "utf8");
+  const b = Buffer.from(expected, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+```
+
+Without `UPTIMIZR_WEBHOOK_SECRET` the delivery still happens but is unsigned, and the command
+warns: a receiver that cannot verify the body has no way to tell your digest from a forged one.
+
+:::caution[The webhook URL is an outbound request you control]
+Only `http:` and `https:` URLs are accepted. Host reachability is deliberately **not** restricted
+— posting to `http://localhost:3000/hook` or to an internal relay is the normal case, and this
+command runs in your shell, not in a multi-tenant service. Treat the URL like any other argument
+to a process you scheduled: don't build it from untrusted input, and if you ever expose report
+scheduling to users, add your own allow-list on top.
+:::
+
+### Weekly report with GitHub Actions
+
+Runs every Monday at 07:00 UTC, posts the report to a webhook, and uploads the Markdown as an
+artifact. Put `UPTIMIZR_API_KEY`, `UPTIMIZR_AGENT_API_KEY` and `UPTIMIZR_WEBHOOK_SECRET` in the
+repository's **secrets**, and the collector URL in a variable.
+
+```yaml title=".github/workflows/uptimizr-weekly-report.yml"
+name: Uptimizr weekly report
+
+on:
+  schedule:
+    - cron: "0 7 * * 1" # Mondays, 07:00 UTC
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Generate the weekly scene-health report
+        env:
+          UPTIMIZR_COLLECTOR_URL: ${{ vars.UPTIMIZR_COLLECTOR_URL }}
+          UPTIMIZR_API_KEY: ${{ secrets.UPTIMIZR_API_KEY }}
+          UPTIMIZR_AGENT_PROVIDER: anthropic
+          UPTIMIZR_AGENT_API_KEY: ${{ secrets.UPTIMIZR_AGENT_API_KEY }}
+          UPTIMIZR_WEBHOOK_SECRET: ${{ secrets.UPTIMIZR_WEBHOOK_SECRET }}
+        run: |
+          npx -p @uptimizr/collector-server uptimizr agent report \
+            --skill weekly_scene_health \
+            --scene lobby \
+            --window 7d \
+            --out report.md \
+            --json report.json \
+            --webhook "${{ vars.UPTIMIZR_REPORT_WEBHOOK }}"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: uptimizr-weekly-report
+          path: |
+            report.md
+            report.json
+```
+
+The step fails the job on a non-zero exit, so a provider outage or a failed tool call shows up as
+a red run rather than a silently empty digest. Drop `--webhook` to keep the report as an artifact
+only.
+
+### Weekly report from cron
+
+```cron
+# m h dom mon dow — Mondays at 07:00, on the host that runs the collector
+0 7 * * 1  UPTIMIZR_COLLECTOR_URL=http://localhost:4318 \
+           UPTIMIZR_API_KEY=utk_… \
+           UPTIMIZR_AGENT_API_KEY=sk-ant-… \
+           /usr/bin/npx -p @uptimizr/collector-server uptimizr agent report \
+             --skill weekly_scene_health --window 7d \
+             --out /var/log/uptimizr/weekly-$(date +\%Y-\%m-\%d).md \
+           >> /var/log/uptimizr/report.log 2>&1
+```
+
+Keep the keys in a file cron sources (`. /etc/uptimizr/report.env`) rather than in the crontab
+itself, so they are not world-readable in `crontab -l`.
+
+### What the report contains
+
+Every report ends with a **Method** section listing each tool call, the arguments it was made
+with, how long it took and whether it succeeded — so a model-written document stays auditable:
+a reader can see exactly which aggregates a figure came from, re-run them, and spot a call that
+quietly failed. The `--json` report carries the same information in machine-readable form, plus
+the provider, the model, the step count and the token usage the provider reported.

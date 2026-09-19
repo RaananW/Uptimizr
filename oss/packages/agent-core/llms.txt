@@ -98,7 +98,19 @@ not aggregations, and declare no `format`.
   channel is off. Pure, ~1.5 k characters at most, tolerant of a partial document, and `""` when
   there is nothing to say — so an older collector degrades instead of failing. Read the context
   first and inject this before the first question.
+- `AGENT_SKILLS` / `getAgentSkill(name)` / `renderAgentSkill(name, args)` — the curated
+  investigations (`weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`): title,
+  description, the registry tools each method relies on, its arguments, and a pure `render(args)`
+  producing the user turn. `@uptimizr/mcp` registers them as prompt templates and
+  `uptimizr agent report --skill` runs them headlessly, from this one definition. The resolver is a
+  function so packaged `SKILL.md` skills can plug in later without changing consumers.
+- `ANALYTICS_AGENT_GUIDELINES` / `renderCurrentTimeLine(nowMs)` — the system-prompt fragments every
+  analytics agent shares (what it may claim about the data; the clock it resolves "this week"
+  against). Clients add only their own role sentence and output format.
 - `LlmProvider` — the pluggable, user-controlled LLM backend interface (no bundled model or key).
+- `ProviderResponse.usage` — optional `{ inputTokens?, outputTokens? }` per turn, populated by the
+  hosted adapters from Anthropic's `usage` and OpenAI's `prompt_tokens`/`completion_tokens`
+  (buffered and streamed). Absent means **not reported**, never zero.
 
 ## Capability-gated tools (ADR 0051 §7)
 

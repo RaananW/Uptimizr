@@ -2279,6 +2279,57 @@ schema: a key that stopped being sent long ago will be absent, and a rarely-sent
 optional key can be missed. A key seen with more than one JSON kind is reported
 as `"mixed"`; `"null"` means every sampled value was null.
 
+### Scheduled agent reports (`uptimizr agent report`)
+
+A weekly digest should not need someone to open a chat. `uptimizr agent report`
+runs the headless agent loop **once**, from your shell, against this same query
+API, and writes Markdown to a file, stdout or a signed webhook (ADR 0051 §6):
+
+```bash
+# A read-only key is all it needs
+uptimizr new-key <projectId> --capabilities query --label "weekly-report"
+
+export UPTIMIZR_COLLECTOR_URL=https://collect.example.com
+export UPTIMIZR_API_KEY=utk_…            # the query-only key
+export UPTIMIZR_AGENT_API_KEY=sk-ant-…   # your own provider key
+
+uptimizr agent report --skill weekly_scene_health --scene lobby --window 7d \
+  --out report.md --json report.json --webhook https://hooks.example.com/uptimizr
+```
+
+| Flag                | Meaning                                                                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--skill <name>`    | The investigation to run (required): `weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`. `--list-skills` prints them with the metrics each reads. |
+| `--scene <id>`      | Scope the report to one scene (required by `attention_hotspots`).                                                                                               |
+| `--window <NdNhNw>` | Window counting back from now (`24h`, `7d` default, `2w`), or `--since`/`--until` in epoch ms.                                                                  |
+| `--out <file\|->`   | Markdown destination; default `-` (stdout).                                                                                                                     |
+| `--json <file\|->`  | Structured report: every tool call with arguments, duration and outcome, plus token usage when the provider reports it.                                         |
+| `--webhook <url>`   | `POST {markdown, report}` to an `http(s)` URL.                                                                                                                  |
+| `--max-steps <n>`   | Cap on provider turns (default `8`).                                                                                                                            |
+| `--dry-run`         | Print the exact prompt and tool list; call no provider.                                                                                                         |
+
+Configuration is read from the environment only and never persisted:
+`UPTIMIZR_COLLECTOR_URL`, `UPTIMIZR_API_KEY`, `UPTIMIZR_AGENT_PROVIDER`
+(`anthropic` | `openai` | `scripted`), `UPTIMIZR_AGENT_MODEL`,
+`UPTIMIZR_AGENT_API_KEY`, `UPTIMIZR_AGENT_ENDPOINT`, `UPTIMIZR_WEBHOOK_SECRET`.
+The provider key is never logged, echoed or written into a report.
+
+The system prompt is seeded with the `/api/v1/context` document above, so the run
+uses your real scene ids and custom-event names; a collector too old to serve it
+degrades silently. Every report ends with a **Method** section listing the tool
+calls and their arguments, which is what keeps an unattended, model-written
+document auditable.
+
+Webhook deliveries carry `X-Uptimizr-Signature: sha256=<hex HMAC-SHA-256 of the
+raw body>` keyed with `UPTIMIZR_WEBHOOK_SECRET`, plus a unique
+`X-Uptimizr-Delivery` id — verify over the raw bytes, before parsing, with a
+constant-time comparison. Exit codes: `0` success, `1` usage/configuration,
+`2` provider or delivery failure, `3` report produced but incomplete.
+
+Scheduling is yours — cron, a systemd timer or a GitHub Action. A copy-pasteable
+weekly workflow is in the
+[collector deployment guide](https://uptimizr.com/docs/deploy/collector/#scheduled-agent-reports).
+
 ### Funnels (`/api/v1/funnel`) — caller-configured (ADR 0038, #78)
 
 A **funnel** counts how many sessions reach each step of an ordered sequence of

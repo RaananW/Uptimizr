@@ -40,6 +40,7 @@ mint one with `uptimizr new-key <projectId> --capabilities query` instead.
 | `uptimizr migrate`             | Apply store migrations.                                              |
 | `uptimizr regions set <scene>` | Replace a scene's named regions from `--file <regions.json>`.        |
 | `uptimizr regions get <scene>` | Print a scene's named regions as JSON.                               |
+| `uptimizr agent report`        | Run a read-only agent once and write a Markdown report (see below).  |
 | `uptimizr help`                | Usage.                                                               |
 
 `new-key` flags: `--capabilities <list>` (comma-separated; default `query`), `--label <name>`,
@@ -59,6 +60,43 @@ project you mint is the one the running collector resolves.
 
 Installed as a dependency, the package exposes the `uptimizr` CLI plus the legacy
 `uptimizr-collector` bin (equivalent to `uptimizr serve`).
+
+### `uptimizr agent report` — headless scheduled reports (ADR 0051 §6)
+
+Runs the headless `runAgent` loop from `@uptimizr/agent-core` **once**, in this process,
+over the generated read-only tool catalog against the collector's query API, and writes
+Markdown to a file, stdout or a signed webhook. The collector gains no in-process LLM loop;
+scheduling is the operator's cron / systemd timer / GitHub Action.
+
+| Flag                 | Meaning                                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------------------------- |
+| `--skill <name>`     | Required. `weekly_scene_health`, `attention_hotspots` (needs `--scene`), `xr_comfort_review`.         |
+| `--list-skills`      | Print the skills with their descriptions and the metrics each one reads.                              |
+| `--scene <id>`       | Scope the report to one scene.                                                                        |
+| `--window <NdNhNw>`  | Window back from now (`24h`, `7d` default, `2w`), or `--since` / `--until` in epoch ms.               |
+| `--out <file or ->`  | Markdown destination (default `-`, stdout).                                                           |
+| `--json <file or ->` | Structured report: tool calls with arguments, durations and outcomes, plus token usage when reported. |
+| `--webhook <url>`    | `POST {markdown, report}` to an `http(s)` URL.                                                        |
+| `--max-steps <n>`    | Cap on provider turns (default `8`).                                                                  |
+| `--dry-run`          | Print the prompt and tool list; call no provider.                                                     |
+
+Environment — read from the environment only and never persisted:
+`UPTIMIZR_COLLECTOR_URL`, `UPTIMIZR_API_KEY` (a `query` key is enough; the command only ever
+reads), `UPTIMIZR_AGENT_PROVIDER` (`anthropic` default | `openai` | `scripted`),
+`UPTIMIZR_AGENT_MODEL`, `UPTIMIZR_AGENT_API_KEY` (falls back to `ANTHROPIC_API_KEY` /
+`OPENAI_API_KEY`), `UPTIMIZR_AGENT_ENDPOINT`, `UPTIMIZR_WEBHOOK_SECRET`. The provider key
+never reaches a log, a report or an error message.
+
+The system prompt is the shared analytics guidelines plus the rendered `GET /api/v1/context`
+document, so a run uses the project's real scene ids and custom-event names; a collector
+without that endpoint degrades silently. Webhook bodies carry
+`X-Uptimizr-Signature: sha256=<hex HMAC-SHA-256 of the raw body>` and `X-Uptimizr-Delivery`.
+Exit codes: `0` ok · `1` usage/config · `2` provider or delivery failure · `3` report
+produced but incomplete (a tool call failed, or no answer).
+
+`UPTIMIZR_AGENT_PROVIDER=scripted` is a documented, model-free provider: it calls exactly the
+tools the skill names and prints what the collector returned. It is for proving wiring in CI —
+it produces data, not analysis.
 
 ## API keys and capabilities (ADR 0051 §7)
 

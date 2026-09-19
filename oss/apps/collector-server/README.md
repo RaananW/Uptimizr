@@ -75,6 +75,51 @@ so it needs no API key. Over HTTP the same thing is
 an `annotate`-capable key, and from a client build `registerRegions` in
 `@uptimizr/sdk-core`.
 
+### Scheduled reports: `uptimizr agent report`
+
+Run a read-only analytics agent **once** and write a Markdown report — a weekly
+scene-health digest with nobody in the chair. It is an ordinary CLI process that
+reads this collector's query API with an ordinary key, so the collector itself
+gains no LLM loop and scheduling stays yours (cron, a systemd timer, a GitHub
+Action).
+
+```bash
+# The narrow key a report should hold
+npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
+  --capabilities query --label "weekly-report"
+
+export UPTIMIZR_COLLECTOR_URL=https://collect.example.com
+export UPTIMIZR_API_KEY=utk_…            # the query-only key above
+export UPTIMIZR_AGENT_API_KEY=sk-ant-…   # your own provider key
+
+npx -p @uptimizr/collector-server uptimizr agent report \
+  --skill weekly_scene_health --scene lobby --window 7d \
+  --out report.md --json report.json --webhook https://hooks.example.com/uptimizr
+```
+
+- `--list-skills` prints the investigations this release ships
+  (`weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`) and the
+  metrics each one reads — the same curated methodologies `@uptimizr/mcp` offers
+  as prompts.
+- `--dry-run` prints the exact prompt and tool list and calls no provider;
+  `UPTIMIZR_AGENT_PROVIDER=scripted` runs the whole path with no model, no key
+  and no egress (useful in CI — it produces data, not analysis).
+- Provider configuration is read from the environment only and never persisted:
+  `UPTIMIZR_AGENT_PROVIDER` (`anthropic` | `openai` | `scripted`),
+  `UPTIMIZR_AGENT_MODEL`, `UPTIMIZR_AGENT_API_KEY`, `UPTIMIZR_AGENT_ENDPOINT`.
+  The key is never logged, echoed or written into a report.
+- Webhook deliveries are signed with
+  `X-Uptimizr-Signature: sha256=<hex HMAC-SHA-256 of the raw body>` keyed with
+  `UPTIMIZR_WEBHOOK_SECRET`, plus a unique `X-Uptimizr-Delivery` id.
+- Exit codes: `0` success · `1` usage/configuration · `2` provider or delivery
+  failure · `3` report produced but incomplete (a tool call failed, or no answer).
+
+Every report ends with a **Method** section listing each tool call and its
+arguments, so an unattended, model-written document stays auditable. See
+`uptimizr agent report --help`, or the
+[deploy guide](https://uptimizr.com/docs/deploy/collector/#scheduled-agent-reports)
+for a copy-pasteable weekly GitHub Actions workflow.
+
 ### All-in-one: serve the dashboard too
 
 The collector can also serve a pre-built static dashboard from its own origin, so
