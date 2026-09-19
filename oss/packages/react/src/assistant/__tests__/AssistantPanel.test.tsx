@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup, within } from "@testing-library/react";
+import { getAgentSkill } from "@uptimizr/agent-core";
 import type { LlmProvider, ProviderResponse } from "@uptimizr/agent-core";
 import type { CollectorApi } from "../../api";
 import { AssistantPanel } from "../AssistantPanel";
@@ -82,6 +83,27 @@ describe("<AssistantPanel>", () => {
     await waitFor(() => expect(screen.getByText("Your top mesh is Box.")).toBeTruthy());
     // The clicked question is surfaced as the user's turn.
     expect(screen.getByText("What are my top meshes this week?")).toBeTruthy();
+  });
+
+  it("offers the packaged methodology skills as starter prompts (#316)", async () => {
+    nextProvider = scriptedProvider([{ kind: "final", content: "Health score: 72." }]);
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
+
+    // A skill chip is labelled by its title, not by the whole method — and
+    // clicking it sends the rendered methodology as the user's turn.
+    const skill = getAgentSkill("weekly_scene_health")!;
+    fireEvent.click(screen.getByRole("button", { name: skill.title }));
+
+    await waitFor(() => expect(screen.getByText("Health score: 72.")).toBeTruthy());
+    // The user turn is the rendered method, so its opening sentence is on screen.
+    const opening = skill.render().split("\n")[0]!;
+    expect(screen.getByText(opening, { exact: false })).toBeTruthy();
+  });
+
+  it("omits a skill that cannot be rendered without a scene", () => {
+    render(<AssistantPanel api={fakeApi()} backend={HOSTED} />);
+    const scoped = getAgentSkill("attention_hotspots")!;
+    expect(screen.queryByRole("button", { name: scoped.title })).toBeNull();
   });
 
   it("shows an honest local-only capability note for the local backend", () => {

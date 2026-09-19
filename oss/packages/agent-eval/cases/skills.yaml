@@ -1,0 +1,231 @@
+# The packaged methodology skills (ADR 0051 §7, design sketch §G.4) — the canned
+# investigations an MCP client puts one click away, `uptimizr agent report
+# --skill` runs on a schedule, and the in-browser assistant offers as starter
+# prompts. They are therefore the questions the agent is most likely to be asked,
+# and each one gets at least two cases: one project-wide and one scoped to a
+# scene, because scoping changes the text the skill renders.
+#
+# The question text is NOT copied here. `skill:` names the methodology and the
+# harness renders the real one through `@uptimizr/agent-core`'s `getAgentSkill`,
+# so rewording a `skills/<name>/SKILL.md` changes these questions automatically.
+#
+# The insight primitives compare two windows and snap to whole buckets, so every
+# case that reaches one uses the bank's whole-day range (the harness seeds a
+# previous day in `lobby`) rather than the usual two-minute window.
+
+# --- weekly_scene_health -----------------------------------------------------
+
+- id: skill_weekly_scene_health_project
+  category: sessions
+  skill:
+    name: weekly_scene_health
+  context:
+    since: 1718532000000
+    until: 1718618400000
+  expectedTools:
+    - [insight_scene_health]
+    - [insight_movers]
+    - [event_counts]
+    - [timeseries]
+    - [perf_summary]
+    - [top_meshes]
+    - [list_sessions]
+  expectedArgs:
+    insight_movers:
+      limit: 5
+  expectedAnswer:
+    phrases: ["insight_scene_health", "perf_summary", "top_meshes"]
+    forbiddenPhrases: ["I don't have"]
+
+- id: skill_weekly_scene_health_lobby
+  category: insights
+  # Scoped to a scene, and taken all the way down the insight chain: the score
+  # says which factor to open, movers says what changed, baseline says whether
+  # the new level is even unusual, and anomalies puts a date on it.
+  skill:
+    name: weekly_scene_health
+    args:
+      scene: lobby
+  context:
+    scene: lobby
+    since: 1718532000000
+    until: 1718618400000
+  expectedTools:
+    - [insight_scene_health]
+    - [insight_movers]
+    - [insight_baseline]
+    - [insight_anomalies]
+    - [perf_summary]
+    - [top_meshes]
+  expectedArgs:
+    insight_baseline:
+      metric: perf_summary
+    insight_anomalies:
+      metric: perf_summary
+    insight_movers:
+      limit: 5
+  expectedAnswer:
+    phrases: ["insight_baseline", "perf_summary", "lobby"]
+    forbiddenPhrases: ["I don't have"]
+
+# --- attention_hotspots ------------------------------------------------------
+
+- id: skill_attention_hotspots_lobby
+  category: attention
+  skill:
+    name: attention_hotspots
+    args:
+      scene: lobby
+  context:
+    scene: lobby
+  expectedTools:
+    - [camera_heatmap]
+    - [flow_links]
+    - [click_rays]
+    - [top_meshes]
+  expectedAnswer:
+    phrases: ["box", "door"]
+    forbiddenPhrases: ["no data"]
+
+- id: skill_attention_hotspots_gallery
+  category: attention
+  # The cold half of the method: dwell without interaction, and the meshes
+  # nobody ever notices. A hot-spot report that only names hot spots is half an
+  # answer.
+  skill:
+    name: attention_hotspots
+    args:
+      scene: gallery
+  context:
+    scene: gallery
+  expectedTools:
+    - [camera_heatmap]
+    - [mesh_dwell]
+    - [mesh_blind_spots]
+    - [top_meshes]
+  expectedAnswer:
+    phrases: ["mesh_dwell", "mesh_blind_spots", "gallery"]
+    forbiddenPhrases: ["I don't have"]
+
+# --- conversion_investigation ------------------------------------------------
+
+- id: skill_conversion_investigation_project
+  category: conversion
+  # The funnel and the two things around it: the bounce that happens before the
+  # first step, and where a visitor goes when they leave.
+  skill:
+    name: conversion_investigation
+  expectedTools:
+    - [load_bounce_funnel]
+    - [funnel]
+    - [scene_retention]
+    - [variant_leaderboard]
+  expectedAnswer:
+    phrases: ["load_bounce_funnel", "scene_retention", "variant_leaderboard"]
+    forbiddenPhrases: ["I don't have"]
+
+- id: skill_conversion_investigation_lobby
+  category: conversion
+  # The diagnosis half: a stalled step is usually interaction failure rather
+  # than lost intent, and these four tools are what tells those apart.
+  skill:
+    name: conversion_investigation
+    args:
+      scene: lobby
+  context:
+    scene: lobby
+  expectedTools:
+    - [funnel]
+    - [dead_clicks]
+    - [rage_clicks]
+    - [mesh_reachability]
+    - [flow_links]
+  expectedAnswer:
+    phrases: ["dead_clicks", "mesh_reachability", "lobby"]
+    forbiddenPhrases: ["I don't have"]
+
+# --- performance_regression_triage -------------------------------------------
+
+- id: skill_performance_regression_triage_project
+  category: performance
+  # Confirm, date, locate: the first three steps of the method, which are the
+  # ones a model otherwise skips straight past on its way to quoting an average.
+  skill:
+    name: performance_regression_triage
+  context:
+    since: 1718532000000
+    until: 1718618400000
+  expectedTools:
+    - [insight_movers]
+    - [insight_anomalies]
+    - [perf_summary]
+    - [perf_by_device]
+    - [perf_by_scene]
+    - [jank_rate]
+  expectedArgs:
+    insight_anomalies:
+      metric: perf_summary
+    insight_movers:
+      limit: 5
+  expectedAnswer:
+    phrases: ["perf_summary", "perf_by_device", "jank_rate"]
+    forbiddenPhrases: ["I don't have"]
+
+- id: skill_performance_regression_triage_gallery
+  category: performance
+  # Naming the mechanism: uniformly slower or occasionally catastrophic, a
+  # compile stall, memory pressure, or a change in who is doing the measuring.
+  skill:
+    name: performance_regression_triage
+    args:
+      scene: gallery
+  context:
+    scene: gallery
+    since: 1718532000000
+    until: 1718618400000
+  expectedTools:
+    - [frame_time_percentiles]
+    - [jank_rate]
+    - [compile_stalls]
+    - [resource_percentiles]
+    - [rendering_technology]
+  expectedAnswer:
+    phrases: ["frame_time_percentiles", "compile_stalls", "rendering_technology"]
+    forbiddenPhrases: ["I don't have"]
+
+# --- xr_comfort_audit --------------------------------------------------------
+
+- id: skill_xr_comfort_audit_project
+  category: xr
+  skill:
+    name: xr_comfort_audit
+  expectedTools:
+    - [xr_rotation]
+    - [xr_locomotion]
+    - [xr_abandonment]
+    - [xr_sources]
+  expectedAnswer:
+    numbers:
+      - { value: 3000, label: continuous locomotion milliseconds }
+    phrases: ["gaze", "xr-controller"]
+    forbiddenPhrases: ["no data"]
+
+- id: skill_xr_comfort_audit_gallery
+  category: xr
+  # The boring explanations the method insists on ruling out before calling
+  # anything a comfort problem: tracking loss, and a play space too small for
+  # the scene.
+  skill:
+    name: xr_comfort_audit
+    args:
+      scene: gallery
+  context:
+    scene: gallery
+  expectedTools:
+    - [xr_tracking_quality]
+    - [xr_boundary_contacts]
+    - [boundary_heatmap_stats]
+    - [xr_sources]
+  expectedAnswer:
+    phrases: ["xr_tracking_quality", "xr_boundary_contacts", "gallery"]
+    forbiddenPhrases: ["I don't have"]

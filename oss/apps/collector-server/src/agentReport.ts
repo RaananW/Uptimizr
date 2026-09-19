@@ -314,6 +314,20 @@ export function resolveWindow(
   return { since: nowMs - count * perUnit, until: nowMs, label: raw };
 }
 
+/**
+ * The window in the words a skill's text expects (`{{range}}`): "the last 7d",
+ * or the two dates when the window was given explicitly.
+ *
+ * The system prompt already states the window in epoch milliseconds, but the
+ * user turn a skill renders opens with a range of its own, and a report run with
+ * `--window 24h` must not ask for "the last 7 days" (#316).
+ */
+export function describeWindow(window: ReportWindow): string {
+  return window.label === "explicit"
+    ? `${iso(window.since)} → ${iso(window.until)}`
+    : `the last ${window.label}`;
+}
+
 function parseEpoch(value: string | undefined, flag: string): number | undefined {
   if (value === undefined) return undefined;
   const parsed = Number(value);
@@ -794,12 +808,23 @@ export function reportUsage(): string {
   ].join("\n");
 }
 
-/** `uptimizr agent report --list-skills`. */
+/**
+ * `uptimizr agent report --list-skills`.
+ *
+ * A skill declares its own arguments, but this command does not expose one flag
+ * per argument: `scene` comes from `--scene` and `range` is filled in from the
+ * resolved window (`--window`, or `--since`/`--until`). Printing `[--range]`
+ * would advertise a flag that does not exist, so arguments are named the way an
+ * operator actually supplies them.
+ */
 export function listSkills(): string {
   const lines: string[] = ["Available skills:", ""];
   for (const skill of AGENT_SKILLS) {
     const args = skill.args
-      .map((arg) => (arg.required ? `--${arg.name} <required>` : `[--${arg.name}]`))
+      .map((arg) => {
+        if (arg.name === "range") return "(range from --window)";
+        return arg.required ? `--${arg.name} <required>` : `[--${arg.name}]`;
+      })
       .join(" ");
     lines.push(`  ${skill.name}${args ? `  ${args}` : ""}`);
     lines.push(`    ${skill.title} — ${skill.description}`);
@@ -1014,7 +1039,7 @@ async function execute(argv: readonly string[], deps: AgentReportDeps): Promise<
     scene,
     projectContext,
   });
-  const userTurn = skill.render({ scene });
+  const userTurn = skill.render({ scene, range: describeWindow(window) });
 
   if (switches.has("dry-run")) {
     deps.stdout(

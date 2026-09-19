@@ -181,6 +181,7 @@ describe("POST /mcp — protocol surface", () => {
       "uptimizr://capabilities",
       "uptimizr://context",
       "uptimizr://scenes",
+      "uptimizr://skills",
     ]);
   });
 

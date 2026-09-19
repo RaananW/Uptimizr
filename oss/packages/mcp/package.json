@@ -40,6 +40,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "README.md",
     "LICENSE",
     "AGENTS.md",
@@ -47,14 +48,14 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../../scripts/copy-dir.mjs ../agent-core/skills skills",
     "dev": "tsc -p tsconfig.json --watch",
     "serve": "tsx src/bin.ts",
     "start": "node dist/bin.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint .",
-    "clean": "rimraf -g dist *.tsbuildinfo"
+    "clean": "rimraf -g dist skills *.tsbuildinfo"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

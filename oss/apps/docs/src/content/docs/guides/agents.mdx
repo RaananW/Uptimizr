@@ -259,12 +259,8 @@ percentile _is_ its grain and refuses anything else by name, listing the grain i
 reference: [query DSL](/docs/api/query/#one-query-endpoint-the-query-dsl).
 :::
 
-## 6. Give answers a vocabulary for _where_
-## 5. Let the collector do the comparing
+## 6. Let the collector do the comparing
 
-Three questions come up on every investigation, and a model that answers them by pulling raw rows
-and doing arithmetic will answer them differently each time: **"is this number normal here?"**,
-**"what changed?"** and **"when did it go wrong?"** All three are metrics of their own.
 Four questions come up on every investigation, and a model that answers them by pulling raw rows and
 doing arithmetic will answer them differently each time: **"is this number normal here?"**,
 **"what changed?"**, **"is that change real?"** and **"which scene should I look at first?"** All four
@@ -337,7 +333,7 @@ same baseline, the same p-value and the same score on DuckDB, ClickHouse, Postgr
 Full parameters and the excluded-metric rules:
 [insights](/docs/api/query/#insights--baselines-movers-significance-and-health).
 
-## 6. Give answers a vocabulary for *where*
+## 7. Give answers a vocabulary for *where*
 
 3D analytics answers are spatial, and "the hot cell is at voxel (12, 0, −7)" is not an answer a
 person can act on. **Scene regions** are named, labelled boxes — "the entrance", "the checkout
@@ -361,7 +357,7 @@ is the region **id**, so the obvious follow-up is a single parameter. Nothing re
 `null` plus a caveat naming what is missing, never a guess. See
 [labelled spatial clusters](/docs/api/query/#labelled-spatial-clusters).
 
-## 7. Let the agent leave something behind
+## 8. Let the agent leave something behind
 
 An agent that can only read re-derives the same context every session: what that mesh name means,
 why last Tuesday spiked, whether this question has been asked before. The **metadata write path**
@@ -392,8 +388,50 @@ Stored rows record whether a person or an agent wrote them — the collector dec
 calling client, never from the payload. Full reference:
 [Metadata endpoints](/docs/api/metadata/).
 
-## 8. Scope the key, then read the audit log
-## 7. Scope the key, then read the audit log
+## 9. Packaged methodology skills
+
+A prompt that names tools still leaves the method to the model. A **skill** carries the method: an
+Agent Skills file — `skills/<name>/SKILL.md` — whose frontmatter declares the tools it relies on,
+the capabilities a key needs and the arguments it takes, and whose body is the investigation written
+out as numbered steps: orient on the context document, start from the score, test the change before
+calling it real, put a date on it, and end with recommendations and something worth keeping.
+
+The files ship inside the `@uptimizr/agent-core` and `@uptimizr/mcp` tarballs and are the single
+source for every surface that offers one:
+
+- `@uptimizr/mcp` registers each as a **prompt template** (`prompts/list` → `prompts/get`) and lists
+  the catalog on `uptimizr://skills`.
+- `uptimizr agent report --skill <name>` runs one headlessly on a schedule
+  ([report CLI](/docs/deploy/collector/#scheduled-agent-reports)).
+- The [in-browser assistant](/docs/guides/assistant/) offers them as starter prompts.
+- The [evaluation harness](#11-how-the-catalog-is-kept-honest) asks every one of them, twice, so a
+  reworded method is measured rather than assumed.
+
+`*` marks a required argument.
+
+{/* generated:registry-skills:start — rendered by scripts/gen-registry-docs.mjs; do not edit by hand */}
+
+| Skill | Arguments | What it produces, and when to use it | Tools its method names |
+| --- | --- | --- | --- |
+| `attention_hotspots` | `scene*`, `range?` | Find where visitors look and click in a scene: view-direction concentration, gaze→mesh flow, the objects that draw the most interaction, and the ones nobody ever notices. USE FOR: deciding where to put a call to action, finding ignored or invisible content, explaining why an object gets no clicks, laying out a scene around what people actually look at. | `camera_heatmap`, `flow_links`, `click_rays`, `top_meshes`, `mesh_dwell`, `mesh_blind_spots`, `query` |
+| `conversion_investigation` | `scene?`, `range?` | Find out where a funnel loses people and whether the loss is real: step-by-step drop-off, the bounce that happens before the funnel even starts, scene-to-scene retention, variant performance, and the interaction failures (dead clicks, rage clicks, unreachable meshes) that explain a stalled step. USE FOR: a funnel that converts worse than expected, an A/B variant comparison, "where do people drop off", diagnosing a step nobody completes. | `funnel`, `load_bounce_funnel`, `scene_retention`, `variant_leaderboard`, `dead_clicks`, `rage_clicks`, `mesh_reachability`, `flow_links`, `insight_significance`, `insight_movers`, `query` |
+| `performance_regression_triage` | `scene?`, `range?` | Triage a frame-rate or stability regression: confirm it moved, date it, locate it (which scene, device class, place in the scene), and name the mechanism — jank, shader compile stalls, memory pressure, a render-scale change or a rendering-technology shift. USE FOR: "the app got slower", a FPS drop after a release, stutter reports, deciding whether a regression is real or noise. | `insight_movers`, `insight_anomalies`, `insight_significance`, `insight_baseline`, `perf_summary`, `perf_distribution`, `frame_time_percentiles`, `jank_rate`, `perf_by_device`, `perf_by_scene`, `perf_heatmap`, `compile_stalls`, `resource_percentiles`, `render_scale_truth`, `rendering_technology`, `query` |
+| `weekly_scene_health` | `scene?`, `range?` | A weekly health check for a scene (or the whole project): a weighted health score with every factor traced back to the metric behind it, what changed against last week, traffic, event mix, performance, and the most-interacted meshes. USE FOR: the recurring "how is the scene doing?" review, a scheduled weekly or monthly report, a first look at a project you do not know yet, deciding which scene to investigate next. | `insight_scene_health`, `insight_movers`, `insight_baseline`, `insight_significance`, `insight_anomalies`, `event_counts`, `timeseries`, `perf_summary`, `top_meshes`, `list_sessions`, `query` |
+| `xr_comfort_audit` | `scene?`, `range?` | Audit VR/AR comfort for a scene (or the whole project): rapid head rotation, locomotion style, tracking quality, guardian/boundary contacts, input-source mix, and the short sessions that mean someone took the headset off. USE FOR: motion-sickness complaints, immersive sessions that end early, choosing a locomotion scheme, checking whether a play space is big enough. | `xr_rotation`, `xr_locomotion`, `xr_abandonment`, `xr_sources`, `xr_tracking_quality`, `xr_boundary_contacts`, `boundary_heatmap_stats`, `insight_scene_health`, `insight_movers`, `query` |
+
+{/* generated:registry-skills:end */}
+
+Reading one is the fastest way to learn the whole surface, because a method names the tools in the
+order an experienced analyst would call them:
+
+```bash
+cat node_modules/@uptimizr/agent-core/skills/performance-regression-triage/SKILL.md
+```
+
+Fork one into your own agent, or write your own against the same catalog — the skill format is
+plain Markdown and the tool ids come from the registry above.
+
+## 10. Scope the key, then read the audit log
 
 Give an agent its own key rather than the dashboard's:
 
@@ -425,8 +463,7 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 
 Full reference: [API keys and capabilities](/docs/api/overview/#api-keys-and-capabilities).
 
-## 9. How the catalog is kept honest
-## 8. How the catalog is kept honest
+## 11. How the catalog is kept honest
 
 "AI-first" is a claim until something measures it. The repository carries an **evaluation harness**
 (`oss/packages/agent-eval`, private to the repo — it is an instrument, not a shipped package): a bank
@@ -472,22 +509,11 @@ The full vocabulary, the signature scheme and the retry policy are in
 
 ## What's next
 
-The AI-first layer ships in stages; these are the tracked follow-ups, linked so you can see what is
-real today versus planned. Nothing below is available yet.
+The AI-first layer ships in stages. Everything on this page is available today; these are the
+tracked follow-ups that are not yet.
 
-| Stage | Issue                                                  | What it adds                                                             |
-| ----- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
-| 3     | [#315](https://github.com/RaananW/Uptimizr/issues/315) | Declarative **panel specs** and "pin as panel".                          |
-| 3     | [#316](https://github.com/RaananW/Uptimizr/issues/316) | Packaged methodology **skills**, as MCP prompts and to `agent report`.   |
-| Stage | Issue                                                              | What it adds                                                                    |
-| ----- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| 2     | [#303](https://github.com/RaananW/Uptimizr/issues/303)             | A bounded **query DSL** (`/api/v1/query`) and a single composable query tool.   |
-| 2     | [#306](https://github.com/RaananW/Uptimizr/issues/306)             | Insight primitive: anomalies (robust z + CUSUM change-points).                  |
-| 2     | [#307](https://github.com/RaananW/Uptimizr/issues/307)             | Insight primitives: significance and `scene_health`.                            |
-| 2     | [#308](https://github.com/RaananW/Uptimizr/issues/308)             | A project **context** resource and custom-event vocabulary.                     |
-| 3     | [#311](https://github.com/RaananW/Uptimizr/issues/311)             | Conditional subscriptions, an SSE stream and signed webhooks.                   |
-| 3     | [#313](https://github.com/RaananW/Uptimizr/issues/313)             | Collector-hosted MCP over Streamable HTTP.                                      |
-| 3     | [#315](https://github.com/RaananW/Uptimizr/issues/315)             | Declarative **panel specs** and "pin as panel".                                 |
-| 3     | [#316](https://github.com/RaananW/Uptimizr/issues/316)             | Packaged methodology **skills**, exposed as MCP prompts.                         |
+| Stage | Issue                                                  | What it adds                                    |
+| ----- | ------------------------------------------------------ | ----------------------------------------------- |
+| 3     | [#315](https://github.com/RaananW/Uptimizr/issues/315) | Declarative **panel specs** and "pin as panel". |
 
 The epic is [#294](https://github.com/RaananW/Uptimizr/issues/294).

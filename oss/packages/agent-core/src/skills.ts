@@ -1,230 +1,178 @@
 /**
- * Curated **agent skills** — the canned investigations a client can run against
- * a project's analytics (ADR 0050 §7, ADR 0051 §6).
+ * **Packaged agent skills** — the canned investigations a client can run against
+ * a project's analytics (ADR 0050 §7, ADR 0051 §6–§7, design sketch §G.4).
  *
- * A skill is a named methodology: a short title, the registry tools its method
- * relies on, the arguments it accepts, and a `render` that turns those arguments
- * into the single user turn that steers an agent. No data is fetched here and no
- * model is called — a skill is pure text plus metadata, so the same definition
- * serves every consumer:
+ * A skill is a named methodology: a short title, the tools its method relies on,
+ * the capabilities an API key needs to follow it, the arguments it accepts, and
+ * a `render` that turns those arguments into the single user turn that steers an
+ * agent. No data is fetched here and no model is called — a skill is text plus
+ * metadata, so the same definition serves every consumer:
  *
  * - `@uptimizr/mcp` registers each one as an MCP **prompt template**
- *   (`prompts/list` → `prompts/get`), which is where these three started life.
+ *   (`prompts/list` → `prompts/get`) and lists them on `uptimizr://skills`.
  * - `uptimizr agent report --skill <name>` in the collector CLI seeds its
  *   headless `runAgent` transcript with the rendered text (ADR 0051 §6, design
  *   sketch §F.4).
  * - `@uptimizr/agent-eval` asks the bank the very questions a real client sends.
+ * - The in-browser assistant offers them as starter prompts.
  *
- * They live here, in the package both of those already depend on, precisely so
- * there is **one** copy of the text: reword a skill and every consumer's wording
- * changes with it, with nothing to keep in step.
+ * ### Where the text lives
  *
- * ### Extending this catalog (packaged methodology skills)
+ * Not here. Each skill is an **Agent Skills file** —
+ * `oss/packages/agent-core/skills/<name>/SKILL.md` — with YAML frontmatter
+ * (`name`, `title`, `description`, `tools`, `capabilities`, `args`) and a
+ * Markdown body holding the methodology. Those files are the source of truth:
+ * they ship in the `@uptimizr/agent-core` and `@uptimizr/mcp` tarballs, and a
+ * user can lift one straight into their own agent.
  *
- * {@link getAgentSkill} is deliberately a **resolver**, not an object lookup at
- * the call site: consumers ask for a skill by name and receive an
- * {@link AgentSkill}. That indirection is the seam for packaged `SKILL.md`
- * methodology files — a later change can parse those into `AgentSkill` values
- * and register them here (or let a resolver consult a user directory first)
- * without any consumer, least of all the report CLI's `--skill` flag, changing
- * shape. Until then the catalog is exactly these three built-ins.
+ * They cannot be read at runtime, because this package is browser-safe and must
+ * not touch `node:fs`. So `scripts/gen-agent-skills.mjs` compiles them into
+ * {@link GENERATED_AGENT_SKILLS} (`skills.generated.ts`) and this module turns
+ * that data into {@link AgentSkill} values. Reword a SKILL.md, run
+ * `pnpm gen:skills`, and every consumer's wording changes with it, with nothing
+ * to keep in step. `pnpm gen:skills:check` is the CI gate that fails on a
+ * hand-edited generated file.
+ *
+ * ### Body placeholders
+ *
+ * A body is a template with a deliberately tiny vocabulary — enough to scope a
+ * methodology, not a second templating language:
+ *
+ * - `{{scene}}` — the scene id, or the empty string.
+ * - `{{scope}}` — `scene "lobby"`, or `the project (all scenes)`.
+ * - `{{range}}` — the window, in words, defaulting to the argument's `default`.
+ * - `{{#name}}…{{/name}}` / `{{^name}}…{{/name}}` — a section kept only when the
+ *   argument is, or is not, present. Sections may span lines.
  */
 
+import {
+  GENERATED_AGENT_SKILLS,
+  type GeneratedAgentSkill,
+  type GeneratedAgentSkillArg,
+} from "./skills.generated.js";
+
 /** One argument a skill's {@link AgentSkill.render} accepts. */
-export interface AgentSkillArg {
-  /** Argument name, as passed in the record given to `render`. */
-  name: string;
-  /** One-line description, surfaced by MCP's `prompts/list` and by `--list-skills`. */
-  description: string;
-  /** Whether the skill is meaningless without it. */
-  required: boolean;
-}
+export type AgentSkillArg = GeneratedAgentSkillArg;
 
 /** A named, renderable investigation methodology. */
 export interface AgentSkill {
+  /** The skill directory name under `skills/` (kebab-case). */
+  id: string;
   /** Stable identifier (`weekly_scene_health`) — what `--skill` and MCP take. */
   name: string;
   /** Human title for a picker. */
   title: string;
-  /** What the skill produces, in one or two sentences. */
+  /**
+   * What the skill produces, its `USE FOR:` cases and its trigger phrases, as
+   * one paragraph — the text an MCP client shows in `prompts/list`.
+   */
   description: string;
   /**
-   * The registry tool names the skill's method relies on, in the order its text
-   * mentions them. Advisory: the agent may call others, or fewer. Consumers use
-   * it to preview a run (`--dry-run`), to describe a skill, and to drive a
+   * The tool names the skill's method relies on, in the order its text mentions
+   * them. Advisory: the agent may call others, or fewer. Consumers use it to
+   * preview a run (`--dry-run`), to describe a skill, and to drive a
    * deterministic scripted provider that needs no model.
    */
   tools: readonly string[];
+  /**
+   * The API-key capabilities the method needs (ADR 0051 §7). Every skill needs
+   * `query`; one that reads raw per-session detail would also need `query:raw`.
+   * A host can use this to hide a skill the configured key could not complete.
+   */
+  capabilities: readonly string[];
   /** The arguments `render` understands. */
   args: readonly AgentSkillArg[];
   /** Render the single user turn that asks for this investigation. */
   render(args?: Record<string, string | undefined>): string;
 }
 
+/** `{{#name}}…{{/name}}` and `{{^name}}…{{/name}}`, possibly spanning lines. */
+const SECTION = /\{\{([#^])([a-z][a-z0-9_]*)\}\}([\s\S]*?)\{\{\/\2\}\}/g;
+/** `{{name}}`. */
+const VARIABLE = /\{\{([a-z][a-z0-9_]*)\}\}/g;
+
+/** `scene "lobby"` when a scene was given, otherwise the whole project. */
+function scopeFor(scene: string | undefined): string {
+  return scene ? `scene "${scene}"` : "the project (all scenes)";
+}
+
 /**
- * The first instruction in every skill (ADR 0051 §5): orient on the project
- * before asking anything about it. Without it an agent guesses scene ids and
- * custom-event names, and reports a disabled capture channel's zero as a finding.
+ * Substitute a skill's arguments into its body.
  *
- * Phrased for MCP (where the context document is a readable resource); the
- * report CLI injects the same document into the system prompt directly, so the
- * instruction is already satisfied by the time the model reads it.
+ * Sections are resolved before variables so a `{{scene}}` inside a dropped
+ * `{{#scene}}` block never renders, and the trailing whitespace a dropped
+ * section can leave behind is stripped per line — otherwise a scene-less render
+ * would carry invisible spaces the authored file never had.
  */
-const READ_CONTEXT_FIRST =
-  "Read the `uptimizr://context` resource first: it gives the real scene ids, region ids and " +
-  "custom-event names for this project, and tells you which metrics are empty because their " +
-  "capture channel is off.\n\n";
+function renderBody(body: string, values: Record<string, string>): string {
+  const resolved = body
+    .replace(SECTION, (_match, kind: string, name: string, inner: string) =>
+      (kind === "#") === Boolean(values[name]) ? inner : "",
+    )
+    .replace(VARIABLE, (_match, name: string) => values[name] ?? "");
+  return resolved.replace(/[ \t]+$/gm, "");
+}
 
-const forScene = (scene: string | undefined): string =>
-  scene ? `scene "${scene}"` : "the project (all scenes)";
-
-/** The optional `scene` argument shared by the project-wide skills. */
-const OPTIONAL_SCENE: AgentSkillArg = {
-  name: "scene",
-  description: "Optional scene id to scope the analysis to (see the uptimizr://scenes resource).",
-  required: false,
-};
-
-/** The required `scene` argument of the scene-specific skills. */
-const REQUIRED_SCENE: AgentSkillArg = {
-  name: "scene",
-  description: "The scene id to analyse (see the uptimizr://scenes resource).",
-  required: true,
-};
+/** Turn one compiled SKILL.md into the renderable skill consumers use. */
+function toAgentSkill(source: GeneratedAgentSkill): AgentSkill {
+  return {
+    id: source.id,
+    name: source.name,
+    title: source.title,
+    description: source.description,
+    tools: source.tools,
+    capabilities: source.capabilities,
+    args: source.args,
+    render(args: Record<string, string | undefined> = {}): string {
+      const values: Record<string, string> = {};
+      for (const arg of source.args) {
+        values[arg.name] = args[arg.name]?.trim() || arg.default || "";
+      }
+      // `scope` is derived rather than declared: a skill that takes a scene
+      // always wants to open with "scene X" or "the whole project", and spelling
+      // that out in five frontmatter blocks would invite five phrasings of it.
+      values.scope = scopeFor(values.scene);
+      return renderBody(source.body, values);
+    },
+  };
+}
 
 /**
- * The built-in skills, in catalog order. The text of each is the contract: it is
+ * The packaged skills, in catalog order. The text of each is the contract: it is
  * what an MCP client shows its user and what the report CLI sends as the user
- * turn, so changing it changes every consumer at once (which is the point).
+ * turn, so changing a SKILL.md changes every consumer at once (which is the
+ * point).
  */
-export const AGENT_SKILLS: readonly AgentSkill[] = [
-  {
-    name: "weekly_scene_health",
-    title: "Weekly scene health",
-    description:
-      "A weekly health check for a scene (or the whole project): a weighted health score with " +
-      "every factor traced back to the metric behind it, what changed against last week, " +
-      "traffic, event mix, performance, and the most-interacted meshes.",
-    tools: [
-      "insight_scene_health",
-      "insight_movers",
-      "insight_baseline",
-      "insight_anomalies",
-      "insight_significance",
-      "event_counts",
-      "timeseries",
-      "perf_summary",
-      "top_meshes",
-      "list_sessions",
-    ],
-    args: [OPTIONAL_SCENE],
-    render: ({ scene } = {}) =>
-      `Give me a weekly health report for ${forScene(scene)} covering the last 7 days.\n\n` +
-      READ_CONTEXT_FIRST +
-      "Use these read-only tools and summarise the findings:\n" +
-      // --- significance / scene health (#307) ---
-      "- `insight_scene_health` **first**" +
-      (scene ? ` (scene="${scene}")` : "") +
-      ": it scores each scene 0-100 over six weighted factors — perf stability, " +
-      "jank, errors, dead clicks, coverage and XR abandonment — so you start from " +
-      "*which* scene to look at rather than from a list of numbers. Open the " +
-      "lowest-scoring scene first, then the factor whose own score is furthest " +
-      "below 50. Every factor names the `metric` behind it, its `raw` value and " +
-      "the project `baseline` it was compared with, so the sentence you write is " +
-      "already in the row. 50 is the project norm, not a pass mark, and a factor " +
-      "with `score: null` was not counted — its `note` says why.\n" +
-      "- `insight_movers` **next**" +
-      (scene ? ` (scene="${scene}")` : "") +
-      ": it compares every comparable metric with the previous equal window and ranks " +
-      "the changes by how unusual each one is, so start from what actually moved instead " +
-      "of re-deriving it. Read `direction` together with the sign of `delta` — a rise in " +
-      "a `down` metric (errors, dead clicks, jank) is a regression — and do not report " +
-      "any row with `aboveMinSample: false`: its delta is real arithmetic but not " +
-      "evidence.\n" +
-      "- `insight_baseline` for each metric that moved, to say whether the new level is " +
-      "actually outside what is normal here — compare it with `median` give or take a " +
-      "few `mad`, or with the p10..p90 band.\n" +
-      // --- significance / scene health (#307) ---
-      "- `insight_significance` before calling any single change real: it reports " +
-      "the effect, a 95% interval and a p-value for one metric across the two " +
-      "windows. An interval that straddles 0 means you cannot tell yet, whatever " +
-      "the p-value says, and `powerNote` states what this much data could have " +
-      "detected at all.\n" +
-      // --- anomalies (#306) ---
-      "- `insight_anomalies` (metric=`perf_summary`, then `error_heatmap`" +
-      (scene ? `, scene="${scene}"` : "") +
-      ", window=28) to put a **date** on whatever moved: it returns the individual days " +
-      "that were out of line (`spike` / `drop`) and the day a level changed and stayed " +
-      "changed (`shift`), with the `contributor` naming the mesh, channel or source " +
-      "holding most of the excess. Quote the `bucketStart` and the `contributor` rather " +
-      "than saying 'recently'.\n" +
-      "- `event_counts` for the per-event-type mix" +
-      (scene ? ` (scene="${scene}")` : "") +
-      ".\n" +
-      "- `timeseries` (interval ~86400s) to show the day-by-day event volume and average FPS trend.\n" +
-      "- `perf_summary` for avg/min/p50 FPS.\n" +
-      "- `top_meshes` for the most-interacted meshes.\n" +
-      "- `list_sessions` for how many sessions were recorded.\n\n" +
-      "Call out anything unusual (traffic spikes/drops, FPS regressions, error events), " +
-      "say how far outside its baseline each one sits, and end with 2–3 concrete " +
-      "recommendations.",
-  },
-  {
-    name: "attention_hotspots",
-    title: "Attention hot-spots for a scene",
-    description:
-      "Find where visitors look and click in a scene: view-direction concentration, " +
-      "gaze→mesh flow, and the objects that draw the most interaction.",
-    tools: ["camera_heatmap", "flow_links", "click_rays", "top_meshes"],
-    args: [REQUIRED_SCENE],
-    render: ({ scene } = {}) =>
-      `Where does attention concentrate in scene "${scene ?? ""}"?\n\n` +
-      READ_CONTEXT_FIRST +
-      'Use these read-only tools (all scoped with scene="' +
-      (scene ?? "") +
-      '") and synthesise the result:\n' +
-      "- `camera_heatmap` for the view-direction distribution (what people look at).\n" +
-      "- `flow_links` for how gaze flows into clicked meshes.\n" +
-      "- `click_rays` for view-gated clicks per voxel/mesh.\n" +
-      "- `top_meshes` for the most-interacted objects.\n\n" +
-      "Describe the main hot-spots, any ignored/cold areas, and what that implies for the " +
-      "scene's layout or call-to-action placement.",
-  },
-  {
-    name: "xr_comfort_review",
-    title: "XR comfort & drop-off review",
-    description:
-      "Review VR/AR comfort signals for a scene (or the whole project): rapid head rotation, " +
-      "locomotion style, session abandonment, and input-source mix.",
-    tools: ["xr_rotation", "xr_locomotion", "xr_abandonment", "xr_sources"],
-    args: [OPTIONAL_SCENE],
-    render: ({ scene } = {}) =>
-      `Review XR/immersive comfort and drop-off for ${forScene(scene)}.\n\n` +
-      READ_CONTEXT_FIRST +
-      "Use these read-only tools" +
-      (scene ? ` (scene="${scene}")` : "") +
-      " and correlate the signals:\n" +
-      "- `xr_rotation` for rapid head/view turns (a motion-sickness proxy).\n" +
-      "- `xr_locomotion` for the fly/navigate/teleport mix and session span.\n" +
-      "- `xr_abandonment` for short XR sessions that signal headset drop-off.\n" +
-      "- `xr_sources` for the hand vs. controller vs. gaze input split.\n\n" +
-      "Flag likely-uncomfortable patterns (heavy rapid rotation or continuous locomotion " +
-      "paired with early exits) and suggest comfort mitigations.",
-  },
-];
+export const AGENT_SKILLS: readonly AgentSkill[] = GENERATED_AGENT_SKILLS.map(toAgentSkill);
 
-/** The built-in skill names, in catalog order. */
+/** The packaged skill names, in catalog order. */
 export const AGENT_SKILL_NAMES: readonly string[] = AGENT_SKILLS.map((skill) => skill.name);
+
+/**
+ * Names that used to identify a skill and still resolve to one.
+ *
+ * `xr_comfort_review` shipped as an MCP prompt and a `--skill` value before the
+ * methodology was packaged and widened into `xr_comfort_audit` (#316). An MCP
+ * client's saved prompt reference and an operator's cron line both name a skill
+ * by string, so the old name keeps working rather than failing on the next
+ * scheduled run.
+ */
+const SKILL_ALIASES: Readonly<Record<string, string>> = {
+  xr_comfort_review: "xr_comfort_audit",
+};
 
 /**
  * Resolve a skill by name, or `undefined` when nothing answers to it.
  *
- * The one lookup every consumer goes through — see the module docs for why it is
- * a function rather than a bare `Record` (packaged methodology skills plug in
- * here).
+ * The one lookup every consumer goes through, and deliberately forgiving about
+ * spelling: a skill's directory is kebab-case (`xr-comfort-audit`) and its id is
+ * snake_case (`xr_comfort_audit`), so both resolve, as do the historical names
+ * in {@link SKILL_ALIASES}.
  */
 export function getAgentSkill(name: string): AgentSkill | undefined {
-  return AGENT_SKILLS.find((skill) => skill.name === name);
+  const normalized = name.trim().toLowerCase().replace(/-/g, "_");
+  const resolved = SKILL_ALIASES[normalized] ?? normalized;
+  return AGENT_SKILLS.find((skill) => skill.name === resolved);
 }
 
 /**
