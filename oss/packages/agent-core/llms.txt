@@ -43,7 +43,7 @@ Only on a key holding `query:raw`, and only when the collector runs with
 
 ## Insight primitives (ADR 0051 §4)
 
-Four of the tools are readings *about* the other metrics, and they are the right first call on an
+Five of the tools are readings *about* the other metrics, and they are the right first call on an
 open-ended question — "how are things?" does not mean "call thirty tools".
 
 - `insight_scene_health` — one 0-100 score per scene over six weighted factors (perf stability,
@@ -66,11 +66,6 @@ open-ended question — "how are things?" does not mean "call thirty tools".
   stayed moved. Where the metric declares a dimension it can be split by, `contributor` names the
   mesh, source, input action, event type or scene holding the largest `share` of the excess.
   Bounded: one scan for the series plus at most three attribution scans per request.
-
-Read `insight_anomalies`' `z` as standard deviations and `insight_movers`' as the same ratio
-unscaled — they differ by a constant factor (1.4826) and must not be compared directly. A sustained
-level change is reported both as a `shift` and, for the days right after it, as `drop`/`spike`
-rows: two true statements about one event.
 - `insight_significance` — whether a difference between two windows could be chance: `effect`,
   `ci95`, `p`, and the `test` that produced them (a two-proportion z with Wilson intervals for a
   declared rate, Welch's t over the per-bucket values for a level, an exact Poisson rate test for a
@@ -78,6 +73,11 @@ rows: two true statements about one event.
   straddles 0 means you cannot tell yet, and `powerNote` says what this much data could have
   detected at all. Welch's `n` is the number of **buckets**, not events. It compares two *windows*,
   not two segments: a variant-versus-variant question is a `400`, not a wrong answer.
+
+Read `insight_anomalies`' `z` as standard deviations and `insight_movers`' as the same ratio
+unscaled — they differ by a constant factor (1.4826) and must not be compared directly. A sustained
+level change is reported both as a `shift` and, for the days right after it, as `drop`/`spike`
+rows: two true statements about one event.
 
 Two fields decide whether a mover is worth reporting, and both are easy to misread:
 
@@ -140,15 +140,13 @@ The same files back `@uptimizr/mcp`'s prompt templates and `uptimizr agent repor
 ## Key exports
 
 - `readTools` — the read-only tool catalog (one entry per query endpoint), generated from the
-  `@uptimizr/metrics` metric registry: 69 tools, each with an input schema, an output schema
-  covering all three `format` envelopes, and the metric's interpretation notes and caveats in its
-  description (ADR 0051).
+  `@uptimizr/metrics` metric registry plus `query` and `list_subscriptions`: 77 tools, each with an
+  input schema, an output schema covering all three `format` envelopes, and the metric's
+  interpretation notes and caveats in its description (ADR 0051).
 - `writeTools` / `mutatingWriteTools` — the project-metadata tools `annotate`, `define_term`,
   `save_analysis` plus `list_annotations`, `list_glossary`, `list_analyses` (ADR 0051 §5). A
   separate export from `readTools` on purpose, so an integration's read-only stance stays
   inspectable. They need an `annotate` key, write metadata only, and cannot touch an event.
-  `@uptimizr/metrics` metric registry: 70 tools, each with an input schema, an output schema and the
-  metric's interpretation notes and caveats in its description (ADR 0051).
 - `coreReadTools` / `selectReadTools(kind)` / `filterReadTools(names)` — narrowed views of the
   catalog for models that cannot carry every tool schema.
 - `registryToTools(metrics?)` — generate the catalog from metric-registry definitions.
@@ -164,11 +162,12 @@ The same files back `@uptimizr/mcp`'s prompt templates and `uptimizr agent repor
   there is nothing to say — so an older collector degrades instead of failing. Read the context
   first and inject this before the first question.
 - `AGENT_SKILLS` / `getAgentSkill(name)` / `renderAgentSkill(name, args)` — the curated
-  investigations (`weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`): title,
-  description, the registry tools each method relies on, its arguments, and a pure `render(args)`
-  producing the user turn. `@uptimizr/mcp` registers them as prompt templates and
-  `uptimizr agent report --skill` runs them headlessly, from this one definition. The resolver is a
-  function so packaged `SKILL.md` skills can plug in later without changing consumers.
+  investigations packaged as `skills/<name>/SKILL.md` in this tarball (`attention_hotspots`,
+  `conversion_investigation`, `performance_regression_triage`, `weekly_scene_health`,
+  `xr_comfort_audit`): title, description, the registry tools each method relies on, its arguments,
+  and a pure `render(args)` producing the user turn. `@uptimizr/mcp` registers them as prompt
+  templates and `uptimizr agent report --skill` runs them headlessly, from this one definition.
+  `getAgentSkill` takes either spelling, and the pre-#316 name `xr_comfort_review` still resolves.
 - `ANALYTICS_AGENT_GUIDELINES` / `renderCurrentTimeLine(nowMs)` — the system-prompt fragments every
   analytics agent shares (what it may claim about the data; the clock it resolves "this week"
   against). Clients add only their own role sentence and output format.

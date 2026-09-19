@@ -3,15 +3,14 @@ title: MCP server (AI agents)
 description: Let an AI agent answer natural-language questions about your 3D analytics with the @uptimizr/mcp server — events read-only, metadata writes behind the annotate capability.
 ---
 
-`@uptimizr/mcp` is a **read-only** [Model Context Protocol](https://modelcontextprotocol.io) server over
-your collector's query API. It lets an AI agent answer natural-language questions about your 3D analytics
-("what was the most-clicked mesh this week?") by querying **your own** collector — nothing is sent to any
-third party.
+`@uptimizr/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server over your
+collector's query API — **read-only** unless the key you give it says otherwise. It lets an AI agent
+answer natural-language questions about your 3D analytics ("what was the most-clicked mesh this
+week?") by querying **your own** collector — nothing is sent to any third party.
 
 It's a thin wrapper: each analytics tool maps one-to-one to a documented
-[query endpoint](/docs/api/query/) and performs `GET` requests only. There are **no ingestion tools
-and no raw per-session event tools**, and nothing in the server can write, alter or delete an
-analytics event — **events are read-only**.
+[query endpoint](/docs/api/query/) and performs `GET` requests only. There is **no ingestion tool**,
+and nothing in the server can write, alter or delete an analytics event — **events are read-only**.
 
 The one exception is deliberate and gated: when the configured key holds the `annotate` capability,
 the server also registers the **project-metadata** tools `annotate`, `define_term` and
@@ -82,11 +81,13 @@ curl -H "x-api-key: utk_…" https://collect.example.com/api/v1/whoami
 }
 ```
 
-`query` is all this server needs. Every tool it exposes is an aggregate read, so **`query:raw` is
-deliberately not required** — the MCP server has no raw per-session or replay tool, and giving its
-key `query:raw` would widen the blast radius for nothing. An `ingest`-only key is refused with
-`403`. See [API keys and capabilities](/docs/api/overview/#api-keys-and-capabilities) for the full
-capability set.
+`query` is all this server needs: every tool in the default catalog is an aggregate read, so
+**`query:raw` is optional and off by default**. A key that does hold it gains exactly one more tool —
+`session_narrative`, the compacted account of one session — and only on a collector running with
+`ENABLE_RAW_SESSION_RETENTION`; the server has no replay or live-follow tool either way. An
+`ingest`-only key is refused with `403`. See
+[API keys and capabilities](/docs/api/overview/#api-keys-and-capabilities) for the full capability
+set.
 
 ## Run
 
@@ -156,10 +157,10 @@ week and how's the average FPS?"_ — the agent picks the right tools and answer
 
 The catalog is **generated from the semantic metric registry** in `@uptimizr/metrics`
 ([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md)):
-every aggregation the collector serves on a read endpoint is a tool — **69** of them — so an agent
-sees the whole read surface rather than a hand-picked subset. Each tool's description carries the
-metric's interpretation notes and caveats (sample-size warnings, which capture channel has to be
-enabled), and each declares an MCP **output schema** covering every envelope the tool can answer
+every metric the collector serves on a read endpoint is a tool — **76** of them, of which a plain
+`query` key sees 75 (`session_narrative` needs `query:raw`) — so an agent sees the whole read
+surface rather than a hand-picked subset. Each tool's description carries the metric's
+interpretation notes and caveats (sample-size warnings, which capture channel has to be enabled), and each declares an MCP **output schema** covering every envelope the tool can answer
 with — the rows, the `table` envelope around them, or a `summary` digest — so a client can parse a
 result without guessing and validate it without the `format` it asked for being rejected.
 
@@ -370,7 +371,7 @@ grain, column units, limits and caveats.
 | `load_bounce_funnel`  | `/api/v1/load-bounce`         | Load → bounce funnel             |
 | `variant_leaderboard` | `/api/v1/variant-leaderboard` | Variant → conversion leaderboard |
 
-#### insights
+#### Insights & anomalies
 
 | Tool                   | Endpoint                        | Returns                  |
 | ---------------------- | ------------------------------- | ------------------------ |
@@ -516,7 +517,7 @@ which resolves the transport ADR 0050 §7 deferred pending auth).
 AI agent ──HTTPS POST/GET /mcp + x-api-key──▶ collector ─(in-process)─▶ query API ──▶ store
 ```
 
-Both transports serve an **identical** surface — the same 69 tools, the same resources, the same
+Both transports serve an **identical** surface — the same tools, the same resources, the same
 prompts — because both are built by the same factory in `@uptimizr/mcp`. Pick stdio for a laptop
 pointed at a local collector, and the hosted transport when the agent is not on the same machine as
 the client, or when you would rather not distribute a key into a desktop config.

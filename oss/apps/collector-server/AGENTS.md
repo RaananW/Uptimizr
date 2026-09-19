@@ -68,17 +68,17 @@ over the generated read-only tool catalog against the collector's query API, and
 Markdown to a file, stdout or a signed webhook. The collector gains no in-process LLM loop;
 scheduling is the operator's cron / systemd timer / GitHub Action.
 
-| Flag                 | Meaning                                                                                               |
-| -------------------- | ----------------------------------------------------------------------------------------------------- |
-| `--skill <name>`     | Required. `weekly_scene_health`, `attention_hotspots` (needs `--scene`), `xr_comfort_review`.         |
-| `--list-skills`      | Print the skills with their descriptions and the metrics each one reads.                              |
-| `--scene <id>`       | Scope the report to one scene.                                                                        |
-| `--window <NdNhNw>`  | Window back from now (`24h`, `7d` default, `2w`), or `--since` / `--until` in epoch ms.               |
-| `--out <file or ->`  | Markdown destination (default `-`, stdout).                                                           |
-| `--json <file or ->` | Structured report: tool calls with arguments, durations and outcomes, plus token usage when reported. |
-| `--webhook <url>`    | `POST {markdown, report}` to an `http(s)` URL.                                                        |
-| `--max-steps <n>`    | Cap on provider turns (default `8`).                                                                  |
-| `--dry-run`          | Print the prompt and tool list; call no provider.                                                     |
+| Flag                 | Meaning                                                                                                                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--skill <name>`     | Required. A packaged skill: `attention_hotspots` (needs `--scene`), `conversion_investigation`, `performance_regression_triage`, `weekly_scene_health`, `xr_comfort_audit`. |
+| `--list-skills`      | Print the skills with their descriptions and the metrics each one reads.                                                                                                    |
+| `--scene <id>`       | Scope the report to one scene.                                                                                                                                              |
+| `--window <NdNhNw>`  | Window back from now (`24h`, `7d` default, `2w`), or `--since` / `--until` in epoch ms.                                                                                     |
+| `--out <file or ->`  | Markdown destination (default `-`, stdout).                                                                                                                                 |
+| `--json <file or ->` | Structured report: tool calls with arguments, durations and outcomes, plus token usage when reported.                                                                       |
+| `--webhook <url>`    | `POST {markdown, report}` to an `http(s)` URL.                                                                                                                              |
+| `--max-steps <n>`    | Cap on provider turns (default `8`).                                                                                                                                        |
+| `--dry-run`          | Print the prompt and tool list; call no provider.                                                                                                                           |
 
 Environment — read from the environment only and never persisted:
 `UPTIMIZR_COLLECTOR_URL`, `UPTIMIZR_API_KEY` (a `query` key is enough; the command only ever

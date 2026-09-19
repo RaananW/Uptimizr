@@ -42,7 +42,7 @@ Only on a key holding `query:raw`, and only when the collector runs with
 
 ## Insight primitives (ADR 0051 §4)
 
-Four of the tools are readings *about* the other metrics, and they are the right first call on an
+Five of the tools are readings *about* the other metrics, and they are the right first call on an
 open-ended question — "how are things?" does not mean "call thirty tools".
 
 - `insight_scene_health` — one 0-100 score per scene over six weighted factors (perf stability,
@@ -65,11 +65,6 @@ open-ended question — "how are things?" does not mean "call thirty tools".
   stayed moved. Where the metric declares a dimension it can be split by, `contributor` names the
   mesh, source, input action, event type or scene holding the largest `share` of the excess.
   Bounded: one scan for the series plus at most three attribution scans per request.
-
-Read `insight_anomalies`' `z` as standard deviations and `insight_movers`' as the same ratio
-unscaled — they differ by a constant factor (1.4826) and must not be compared directly. A sustained
-level change is reported both as a `shift` and, for the days right after it, as `drop`/`spike`
-rows: two true statements about one event.
 - `insight_significance` — whether a difference between two windows could be chance: `effect`,
   `ci95`, `p`, and the `test` that produced them (a two-proportion z with Wilson intervals for a
   declared rate, Welch's t over the per-bucket values for a level, an exact Poisson rate test for a
@@ -77,6 +72,11 @@ rows: two true statements about one event.
   straddles 0 means you cannot tell yet, and `powerNote` says what this much data could have
   detected at all. Welch's `n` is the number of **buckets**, not events. It compares two *windows*,
   not two segments: a variant-versus-variant question is a `400`, not a wrong answer.
+
+Read `insight_anomalies`' `z` as standard deviations and `insight_movers`' as the same ratio
+unscaled — they differ by a constant factor (1.4826) and must not be compared directly. A sustained
+level change is reported both as a `shift` and, for the days right after it, as `drop`/`spike`
+rows: two true statements about one event.
 
 Two fields decide whether a mover is worth reporting, and both are easy to misread:
 
@@ -131,10 +131,13 @@ stored records, not aggregations, and take no `format`.
   channels). No collector call. Read it after the context.
 - `uptimizr://scenes` (`application/json`) — the live scene ids with recent activity, i.e. the valid
   values for the `scene` parameter. Fetched through the read-only query API.
-- Prompts: `weekly_scene_health` (optional `scene`), `attention_hotspots` (required `scene`),
-  `xr_comfort_review` (optional `scene`) — each opens by telling the agent to read
-  `uptimizr://context` first, then renders one user message sequencing the read-only tools; they
-  fetch nothing themselves.
+- `uptimizr://skills` (`application/json`) — the packaged methodology skills below: name, title,
+  description, the tools each method relies on, the capabilities it needs and the arguments it
+  takes. Served from the package; no collector call.
+- Prompts: one per packaged skill (`attention_hotspots`, `conversion_investigation`,
+  `performance_regression_triage`, `weekly_scene_health`, `xr_comfort_audit`) — each opens by
+  telling the agent to read `uptimizr://context` first, then renders one user message sequencing
+  the read-only tools; they fetch nothing themselves.
 
 ## Packaged methodology skills (ADR 0051 §7)
 
@@ -173,9 +176,9 @@ Two transports, one server: `createMcpServer()` is transport-agnostic.
 (`uptimizr new-key <projectId> --capabilities query --label "mcp-agent"`; `query` is the default).
 Add `annotate` only to let the agent write project metadata — the server calls
 `GET /api/v1/whoami` once at start-up and registers the metadata tools only when the key holds it.
-`query:raw` is **deliberately not required** — no tool here reads raw per-session, replay or
-live-follow data — and `ingest` is never used. A key missing a required capability is refused
-with `403`.
+`query:raw` is **optional and off by default**: the default catalog is aggregate reads only, and a
+key that holds it gains exactly one more tool, `session_narrative` (see below). `ingest` is never
+used. A key missing a required capability is refused with `403`.
 
 ## Key exports
 
@@ -187,22 +190,20 @@ with `403`.
 - `createCollectorClient(config)` — the thin GET-only collector client.
 - `readMcpConfig()` — read `UPTIMIZR_COLLECTOR_URL` + `UPTIMIZR_API_KEY` from the environment.
 - `readTools` — the read-only tool catalog (one entry per query endpoint), generated from the
-  `@uptimizr/metrics` metric registry: 69 tools, each with an input schema, an MCP `outputSchema`
-  covering all three `format` envelopes, and the metric's interpretation notes and caveats in its
-  description (ADR 0051).
+  `@uptimizr/metrics` metric registry plus `query` and `list_subscriptions`: 77 tools, each with an
+  input schema, an MCP `outputSchema` covering all three `format` envelopes, and the metric's
+  interpretation notes and caveats in its description (ADR 0051).
 - `writeTools` — the project-metadata tools (`annotate`, `define_term`, `save_analysis`,
   `list_annotations`, `list_glossary`, `list_analyses`). A separate export from `readTools` on
   purpose, so an integration's read-only stance stays inspectable. They write metadata only — no
   event can be written, altered or deleted through them.
-  `@uptimizr/metrics` metric registry: 69 tools, each with an input schema, an MCP `outputSchema` and the
-  `@uptimizr/metrics` metric registry: 70 tools, each with an input schema, an MCP `outputSchema` and the
-  metric's interpretation notes and caveats in its description (ADR 0051).
 
 ## Capability-gated tools (ADR 0051 §7)
 
 - The default catalog is the `query` surface: aggregate reads only, no raw per-session tool.
 - `createMcpServer(client, { capabilities })` takes the key's capability set (from `GET /api/v1/whoami`). When it includes `query:raw`, the server also registers `session_narrative` — an ordered, bounded account of what one session did, gated on the collector also running with `ENABLE_RAW_SESSION_RETENTION`. Omit the option and only the `query` surface is served.
 - The `uptimizr-mcp` binary discovers the capability set at start-up (best effort; a failure falls back to the `query` surface).
+
 ## Non-metric reads
 
 - `list_subscriptions` — the project's conditional subscriptions (ADR 0051 §6): what the

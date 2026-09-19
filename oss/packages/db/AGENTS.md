@@ -300,11 +300,9 @@ that way when adding an event type — adding a field to the switch is a privacy
 
 ### Insight primitives (ADR 0051 §4, `src/insights/`)
 
-`baseline`, `movers` and `anomalies` — "what is normal here", "what changed" and "_when_ did it go
-wrong" — as three derived registry metrics. The shape of the directory is the design:
-`baseline`, `movers`, `significance` and `scene_health` — "what is normal here", "what changed",
-"is that change real" and "which scene should I look at first" — as derived registry metrics. The
-shape of the directory is the design:
+`baseline`, `movers`, `anomalies`, `significance` and `scene_health` — "what is normal here",
+"what changed", "_when_ did it go wrong", "is that change real" and "which scene should I look at
+first" — as five derived registry metrics. The shape of the directory is the design:
 
 ```ts
 import {
