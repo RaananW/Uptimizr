@@ -10,7 +10,7 @@
 // actually runs (@mlc-ai/web-llm stays an optional peer).
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import type { AgentMessage } from "@uptimizr/agent-core";
+import { AGENT_SKILLS, type AgentMessage } from "@uptimizr/agent-core";
 import type {
   AssistantBackendConfig,
   BackendKind,
@@ -49,17 +49,43 @@ interface DisplayMessage {
   content: string;
 }
 
+/** One chip in the empty conversation: what it says, and what it sends. */
+interface StarterPrompt {
+  /** Chip text. */
+  label: string;
+  /** The turn sent when it is clicked. */
+  text: string;
+  /** Hover text, when the chip's label is shorter than what it does. */
+  title?: string;
+}
+
 /**
- * Guided starter questions shown in the empty conversation. Each maps to a
- * SINGLE core tool, which is where small local models are strongest: clicking one
- * both boosts first-run success and demonstrates the agent working end to end.
+ * Guided starter questions shown in the empty conversation.
+ *
+ * The first five each map to a SINGLE core tool, which is where small local
+ * models are strongest: clicking one both boosts first-run success and
+ * demonstrates the agent working end to end.
+ *
+ * After them come the **packaged methodology skills** (ADR 0051 §7) — the same
+ * investigations `@uptimizr/mcp` offers as prompt templates and
+ * `uptimizr agent report --skill` runs on a schedule. They send a whole method
+ * rather than a question, so they are labelled by title and are worth a hosted
+ * backend. Only the skills that need no argument are offered: one that requires
+ * a scene cannot be rendered from a chip that does not know which scene.
  */
-const EXAMPLE_PROMPTS: readonly string[] = [
-  "What are my top meshes this week?",
-  "How's my average FPS?",
-  "Which scenes had activity today?",
-  "How many events in the last 24 hours?",
-  "How many sessions this week?",
+const EXAMPLE_PROMPTS: readonly StarterPrompt[] = [
+  ...[
+    "What are my top meshes this week?",
+    "How's my average FPS?",
+    "Which scenes had activity today?",
+    "How many events in the last 24 hours?",
+    "How many sessions this week?",
+  ].map((text) => ({ label: text, text })),
+  ...AGENT_SKILLS.filter((skill) => skill.args.every((arg) => !arg.required)).map((skill) => ({
+    label: skill.title,
+    text: skill.render(),
+    title: skill.description,
+  })),
 ];
 
 function toDisplayMessages(messages: AgentMessage[]): DisplayMessage[] {
@@ -372,15 +398,16 @@ export function AssistantPanel({
                 <li className="flex flex-col gap-2 text-xs text-fg-muted">
                   <span>Ask a question to get started — or try one of these:</span>
                   <div className="flex flex-wrap gap-1.5" aria-label="Example questions">
-                    {EXAMPLE_PROMPTS.map((q) => (
+                    {EXAMPLE_PROMPTS.map((prompt) => (
                       <button
-                        key={q}
+                        key={prompt.label}
                         type="button"
+                        title={prompt.title}
                         disabled={isBusy || !isReady}
-                        onClick={() => void send(q)}
+                        onClick={() => void send(prompt.text)}
                         className="rounded-full border border-edge px-2.5 py-1 text-left text-fg hover:bg-ink/40 disabled:opacity-50"
                       >
-                        {q}
+                        {prompt.label}
                       </button>
                     ))}
                   </div>

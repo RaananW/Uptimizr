@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CollectorClient } from "@uptimizr/agent-core";
+import { AGENT_SKILLS, type CollectorClient } from "@uptimizr/agent-core";
 import { buildCapabilities, type BuildCapabilitiesOptions } from "./capabilities.js";
 
 /** URI of the static, machine-readable capabilities/schema descriptor. */
@@ -8,6 +8,8 @@ export const CAPABILITIES_URI = "uptimizr://capabilities";
 export const SCENES_URI = "uptimizr://scenes";
 /** URI of the live project context document (ADR 0051 §5). */
 export const CONTEXT_URI = "uptimizr://context";
+/** URI of the packaged methodology skills catalog (ADR 0051 §7). */
+export const SKILLS_URI = "uptimizr://skills";
 
 /**
  * Register read-only MCP resources so an agent can **self-discover** the surface
@@ -26,8 +28,13 @@ export const CONTEXT_URI = "uptimizr://context";
  *   the read-only collector client, so the `scene` parameter can be filled in
  *   with real values. A narrower view of what `uptimizr://context` already
  *   carries; kept for clients that only need the ids.
+ * - `uptimizr://skills` — the packaged **methodology skills** (ADR 0051 §7): the
+ *   same investigations this server offers as prompt templates, listed with what
+ *   each one produces, the tools its method uses and the arguments it takes. A
+ *   client whose UI has no prompt picker can still read the catalog and ask for
+ *   one by name; the full text stays behind `prompts/get`. No collector call.
  *
- * All three are read-only; resources never mutate or expose raw per-session
+ * All four are read-only; resources never mutate or expose raw per-session
  * events. A collector too old to serve `GET /api/v1/context` makes the context
  * resource fail its read — the other resources and every tool keep working.
  */
@@ -93,5 +100,46 @@ export function registerResources(
         contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data) }],
       };
     },
+  );
+
+  server.registerResource(
+    "skills",
+    SKILLS_URI,
+    {
+      title: "Methodology skills",
+      description:
+        "The packaged investigation methodologies this server also offers as prompt templates: " +
+        "what each one produces, when to use it, the tools its method relies on, the API-key " +
+        "capabilities it needs and the arguments it takes. Ask for one by name with " +
+        "`prompts/get` to receive the method itself. No collector call.",
+      mimeType: "application/json",
+    },
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "application/json",
+          // The body is deliberately left out: it is a template, and rendering it
+          // needs the arguments `prompts/get` collects. Listing it here would put
+          // an unrendered `{{scene}}` in front of a model as if it were the method.
+          text: JSON.stringify(
+            {
+              skills: AGENT_SKILLS.map((skill) => ({
+                name: skill.name,
+                title: skill.title,
+                description: skill.description,
+                tools: skill.tools,
+                capabilities: skill.capabilities,
+                args: skill.args,
+                prompt: skill.name,
+                file: `skills/${skill.id}/SKILL.md`,
+              })),
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    }),
   );
 }

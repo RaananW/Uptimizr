@@ -113,6 +113,12 @@ complete.
   `@uptimizr/agent-core` are **generated** from the metric registry (ADR 0051) by
   `scripts/gen-registry-docs.mjs`. Never hand-edit the text between the `generated:*:start`/`:end`
   markers — change the registry and run `pnpm gen:docs`. `pnpm gen:docs:check` is the CI gate.
+- **Packaged agent skills:** the curated investigation methodologies are authored as Agent Skills
+  files in `oss/packages/agent-core/skills/<name>/SKILL.md` and compiled into
+  `src/skills.generated.ts` by `scripts/gen-agent-skills.mjs` (ADR 0051 §7). They ship in the
+  `@uptimizr/agent-core` and `@uptimizr/mcp` tarballs and back the MCP prompts, the
+  `uptimizr agent report --skill` CLI and the assistant's starter prompts. Edit the SKILL.md, then
+  run `pnpm format && pnpm gen:skills`; `pnpm gen:skills:check` is the CI gate.
 - **Changesets:** add a changeset (`pnpm changeset`) for any change to a publishable
   `@uptimizr/*` package — it drives the release/version bump.
 - **Pull requests:** fill out every section of `.github/PULL_REQUEST_TEMPLATE.md` (Summary, Linked

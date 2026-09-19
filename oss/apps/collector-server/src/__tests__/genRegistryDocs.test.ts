@@ -3,7 +3,8 @@
  *
  * The endpoint/tool tables in `docs/integration.md`, the docs site and the
  * packaged `README`/`AGENTS.md`/`llms.txt` are rendered from the metric registry,
- * so this suite proves the staleness gate actually works:
+ * and the skill tables beside them from the packaged methodology skills
+ * (ADR 0051 §7), so this suite proves the staleness gate actually works:
  *
  * - the **committed** output matches the registry (`--check` exits 0) — the same
  *   assertion CI makes, so a registry change that forgets `pnpm gen:docs` fails
@@ -36,6 +37,8 @@ const GENERATED_FILES = [
   "docs/integration.md",
   "oss/apps/docs/src/content/docs/api/query.mdx",
   "oss/apps/docs/src/content/docs/guides/mcp.md",
+  "oss/apps/docs/src/content/docs/guides/agents.mdx",
+  "oss/apps/docs/src/content/docs/deploy/collector.mdx",
   "oss/packages/mcp/README.md",
   "oss/packages/mcp/AGENTS.md",
   "oss/packages/mcp/llms.txt",

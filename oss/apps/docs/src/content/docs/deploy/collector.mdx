@@ -651,15 +651,33 @@ npx -p @uptimizr/collector-server uptimizr agent report \
 
 ### Skills
 
-A **skill** is the investigation to run. `--list-skills` prints the ones this release ships,
-what each produces and which metrics it reads — the same curated methodologies the MCP server
-offers as prompt templates, so a scheduled report and a chat session ask the same question:
+A **skill** is the investigation to run. `--list-skills` prints the ones this release ships, what
+each produces and which tools its method reads.
 
-| Skill                 | Produces                                                                        | `--scene`   |
-| --------------------- | ------------------------------------------------------------------------------- | ----------- |
-| `weekly_scene_health` | Traffic, event mix, FPS trend and the most-interacted meshes over the window.   | optional    |
-| `attention_hotspots`  | Where visitors look and click: view-direction concentration, gaze→mesh flow.    | **required** |
-| `xr_comfort_review`   | XR comfort signals: rapid head rotation, locomotion mix, abandonment, sources.  | optional    |
+Skills are not written into the CLI: each one is an Agent Skills file,
+`skills/<name>/SKILL.md`, packaged inside `@uptimizr/agent-core` and `@uptimizr/mcp`. The same
+files back the MCP server's prompt templates and the in-browser assistant's starter prompts, so a
+scheduled report and a chat session run the same method. Read one before you schedule it:
+
+```bash
+cat node_modules/@uptimizr/agent-core/skills/weekly-scene-health/SKILL.md
+```
+
+`--skill` accepts either spelling of a name: `weekly_scene_health` or `weekly-scene-health`.
+`*` marks an argument the skill cannot run without — pass it with `--scene`; `range` is filled in
+from `--window` (or `--since`/`--until`).
+
+{/* generated:registry-skills:start — rendered by scripts/gen-registry-docs.mjs; do not edit by hand */}
+
+| Skill | Arguments | What it produces, and when to use it | Tools its method names |
+| --- | --- | --- | --- |
+| `attention_hotspots` | `scene*`, `range?` | Find where visitors look and click in a scene: view-direction concentration, gaze→mesh flow, the objects that draw the most interaction, and the ones nobody ever notices. USE FOR: deciding where to put a call to action, finding ignored or invisible content, explaining why an object gets no clicks, laying out a scene around what people actually look at. | `camera_heatmap`, `flow_links`, `click_rays`, `top_meshes`, `mesh_dwell`, `mesh_blind_spots`, `query` |
+| `conversion_investigation` | `scene?`, `range?` | Find out where a funnel loses people and whether the loss is real: step-by-step drop-off, the bounce that happens before the funnel even starts, scene-to-scene retention, variant performance, and the interaction failures (dead clicks, rage clicks, unreachable meshes) that explain a stalled step. USE FOR: a funnel that converts worse than expected, an A/B variant comparison, "where do people drop off", diagnosing a step nobody completes. | `funnel`, `load_bounce_funnel`, `scene_retention`, `variant_leaderboard`, `dead_clicks`, `rage_clicks`, `mesh_reachability`, `flow_links`, `insight_significance`, `insight_movers`, `query` |
+| `performance_regression_triage` | `scene?`, `range?` | Triage a frame-rate or stability regression: confirm it moved, date it, locate it (which scene, device class, place in the scene), and name the mechanism — jank, shader compile stalls, memory pressure, a render-scale change or a rendering-technology shift. USE FOR: "the app got slower", a FPS drop after a release, stutter reports, deciding whether a regression is real or noise. | `insight_movers`, `insight_anomalies`, `insight_significance`, `insight_baseline`, `perf_summary`, `perf_distribution`, `frame_time_percentiles`, `jank_rate`, `perf_by_device`, `perf_by_scene`, `perf_heatmap`, `compile_stalls`, `resource_percentiles`, `render_scale_truth`, `rendering_technology`, `query` |
+| `weekly_scene_health` | `scene?`, `range?` | A weekly health check for a scene (or the whole project): a weighted health score with every factor traced back to the metric behind it, what changed against last week, traffic, event mix, performance, and the most-interacted meshes. USE FOR: the recurring "how is the scene doing?" review, a scheduled weekly or monthly report, a first look at a project you do not know yet, deciding which scene to investigate next. | `insight_scene_health`, `insight_movers`, `insight_baseline`, `insight_significance`, `insight_anomalies`, `event_counts`, `timeseries`, `perf_summary`, `top_meshes`, `list_sessions`, `query` |
+| `xr_comfort_audit` | `scene?`, `range?` | Audit VR/AR comfort for a scene (or the whole project): rapid head rotation, locomotion style, tracking quality, guardian/boundary contacts, input-source mix, and the short sessions that mean someone took the headset off. USE FOR: motion-sickness complaints, immersive sessions that end early, choosing a locomotion scheme, checking whether a play space is big enough. | `xr_rotation`, `xr_locomotion`, `xr_abandonment`, `xr_sources`, `xr_tracking_quality`, `xr_boundary_contacts`, `boundary_heatmap_stats`, `insight_scene_health`, `insight_movers`, `query` |
+
+{/* generated:registry-skills:end */}
 
 ### Flags
 

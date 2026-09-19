@@ -22,6 +22,6 @@ export {
   type CapabilityToolDescriptor,
   type CapabilityParamDescriptor,
 } from "./capabilities.js";
-export { registerResources, CAPABILITIES_URI, SCENES_URI } from "./resources.js";
+export { registerResources, CAPABILITIES_URI, SCENES_URI, SKILLS_URI } from "./resources.js";
 export { registerPrompts } from "./prompts.js";
 export { version } from "./version.js";

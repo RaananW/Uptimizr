@@ -21,6 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { AnyEvent } from "@uptimizr/schema";
 import { PARITY_EVENTS, PARITY_PROJECT_ID, PARITY_T0 } from "@uptimizr/db";
+import { AGENT_SKILL_NAMES } from "@uptimizr/agent-core";
 import type {
   AgentMessage,
   LlmProvider,
@@ -178,12 +179,11 @@ function fileEndingWith(captured: Captured, suffix: string): string {
 }
 
 describe("uptimizr agent report", () => {
-  it("lists the curated skills", async () => {
+  it("lists the packaged skills", async () => {
     const captured = await run(["--list-skills"]);
     expect(captured.code).toBe(EXIT.ok);
-    expect(captured.stdout).toContain("weekly_scene_health");
-    expect(captured.stdout).toContain("attention_hotspots");
-    expect(captured.stdout).toContain("xr_comfort_review");
+    for (const name of AGENT_SKILL_NAMES) expect(captured.stdout).toContain(name);
+    expect(captured.stdout).toContain("conversion_investigation");
     // The tools a skill's method relies on are part of the listing, so an
     // operator can see what a scheduled run will read before scheduling it.
     expect(captured.stdout).toContain("Tools: insight_scene_health");
