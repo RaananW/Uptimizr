@@ -607,10 +607,11 @@ describe("anomalies: bounded cost", () => {
     }
 
     expect(found.some((row) => row.kind === "spike" && indexOf(row, HOUR) === 1_500)).toBe(true);
-    // Generous by two orders of magnitude against the measured warm cost, so
-    // this fails on an algorithmic regression (a quadratic rewrite) rather than
-    // on a slow CI runner.
-    expect(elapsed).toBeLessThan(2_000);
+    // CI runners execute every package's suite in parallel and measured
+    // ~2.1 s for one call, so the bound is 5 s: a quadratic rewrite of the
+    // trailing-window scan (2 160 buckets × 168-bucket window → n² work) would
+    // land well past 20 s there, while runner load cannot reach the bound.
+    expect(elapsed).toBeLessThan(5_000);
     expect(ANOMALY_TRAILING_BUCKETS.hour).toBe(168);
   });
 
