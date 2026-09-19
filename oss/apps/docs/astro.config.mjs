@@ -128,6 +128,8 @@ export default defineConfig({
             { label: "Overview & auth", slug: "api/overview" },
             { label: "Ingestion", slug: "api/ingestion" },
             { label: "Query endpoints", slug: "api/query" },
+            { label: "Metadata endpoints", slug: "api/metadata" },
+            { label: "Project context", slug: "api/context" },
           ],
         },
         {

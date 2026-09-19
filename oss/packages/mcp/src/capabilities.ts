@@ -1,17 +1,21 @@
 import { EVENT_TYPES, SCHEMA_VERSION, type EventType } from "@uptimizr/schema";
 import { z } from "zod";
+import { queryTool } from "@uptimizr/agent-core";
 import {
   FILTER_TARGETS,
   allMetrics,
   isResourceMetric,
+  metricCapability,
   type ColumnSemantics,
   type DimensionId,
   type FilterId,
+  type MetricCapability,
   type MetricCategory,
   type MetricComparison,
   type MetricDefinition,
   type MetricGrain,
 } from "@uptimizr/metrics";
+import { NON_REGISTRY_READ_TOOLS } from "@uptimizr/agent-core";
 
 /**
  * One tool the server exposes, described for self-discovery: its name, a human
@@ -49,8 +53,18 @@ export interface CapabilityMetricDescriptor {
   category: MetricCategory;
   /** What one row represents. */
   grain: MetricGrain;
-  /** The collector route it is served on, when it has one. */
-  endpoint?: { method: "GET"; path: string; pathParams?: readonly FilterId[] };
+  /**
+   * The collector route it is served on, when it has one. `capability` names the
+   * API-key capability the route requires; it is absent for the ordinary
+   * `query` surface and `"query:raw"` for a metric gated behind raw-session
+   * retention (ADR 0051 §7).
+   */
+  endpoint?: {
+    method: "GET";
+    path: string;
+    pathParams?: readonly FilterId[];
+    capability?: MetricCapability;
+  };
   /** Group-by dimensions the rows are keyed by. */
   dimensions: readonly DimensionId[];
   /** Accepted request parameters. */
@@ -103,6 +117,29 @@ export interface CapabilitiesDescriptor {
   notes: readonly string[];
 }
 
+/**
+ * The query DSL's own top-level fields (ADR 0051 §3), for the parameter
+ * glossary. The per-metric tools' parameters are all registry `FilterId`s and
+ * are described by `FILTER_TARGETS`; the `query` tool's are the grammar's, so
+ * they are described here. `limit` and `format` are deliberately absent: they
+ * are filter ids too, and `FILTER_TARGETS` already defines them.
+ */
+const QUERY_DSL_PARAMS: Readonly<Record<string, string>> = {
+  v: "Grammar version. Always `1`.",
+  metric: "The registry metric to compute — any `id` in `metrics` below.",
+  dimensions:
+    "Group-by dimensions. Must be the metric's own grain, or omitted: each metric is computed " +
+    "at one fixed grain.",
+  filters:
+    "The filters the chosen metric declares, as a JSON object (a metric's `filters` list names " +
+    "them). `since`/`until` live in `range` and `format` is a top-level field.",
+  range: "The time window, `{ since, until }` in epoch milliseconds. Required.",
+  segment: "A named slice to hold fixed. Part of the grammar; not answered yet.",
+  compare: "A second range or segment to compare against. Part of the grammar; not answered yet.",
+  order: "Result ordering. Part of the grammar; not answered yet — each metric has its own order.",
+  explain: "Return the compiled plan instead of the rows. Part of the grammar; not answered yet.",
+};
+
 /** Every request parameter a metric accepts: its path params, then its filters. */
 function paramsOf(metric: MetricDefinition): readonly FilterId[] {
   return [...(metric.endpoint?.pathParams ?? []), ...metric.filters];
@@ -137,27 +174,77 @@ function toMetricDescriptor(metric: MetricDefinition): CapabilityMetricDescripto
 }
 
 /**
+ * What the descriptor should describe.
+ */
+export interface BuildCapabilitiesOptions {
+  /**
+   * The capability set of the key this descriptor is being built for, as
+   * `GET /api/v1/whoami` reports it. Defaults to `["query"]` — the ordinary
+   * aggregate read surface, and the safe answer for a caller that has not
+   * looked the key up.
+   */
+  capabilities?: readonly string[];
+}
+
+/**
  * Build the capabilities descriptor from the metric registry and the event
  * schema. Pure and synchronous — it introspects definitions only, never the
  * collector, so it is safe to serve as a static resource.
  */
-export function buildCapabilities(): CapabilitiesDescriptor {
+export function buildCapabilities(options: BuildCapabilitiesOptions = {}): CapabilitiesDescriptor {
+  const granted = new Set(options.capabilities ?? ["query"]);
   const metrics = allMetrics();
-  const served = metrics.filter((metric) => metric.endpoint != null);
+  // `tools` describes what THIS key can call, so a capability-gated metric is
+  // listed only when the key holds its capability (ADR 0051 §7). `metrics` below
+  // still documents the whole registry, each entry carrying the capability its
+  // endpoint needs — the difference between "you cannot call this" and "this
+  // does not exist" is worth keeping.
+  const served = metrics.filter(
+    (metric) => metric.endpoint != null && granted.has(metricCapability(metric)),
+  );
 
-  const tools: CapabilityToolDescriptor[] = served.map((metric) => ({
-    name: metric.id,
-    title: metric.title,
-    description: metric.description,
-    params: paramsOf(metric),
-  }));
+  const tools: CapabilityToolDescriptor[] = [
+    ...served.map((metric) => ({
+      name: metric.id,
+      title: metric.title,
+      description: metric.description,
+      params: paramsOf(metric),
+    })),
+    // The descriptor must describe what the server actually registers, and the
+    // server registers `readTools` — which carries a short tail of collector
+    // reads that are configuration rather than measurements and so have no
+    // registry entry (#311). They take no filters, hence the empty `params`.
+    ...NON_REGISTRY_READ_TOOLS.map((tool) => ({
+      name: tool.name,
+      title: tool.title,
+      description: tool.description,
+      params: [] as readonly FilterId[],
+    })),
+  ];
+
+  // The one tool that is not per-metric: the query DSL (ADR 0051 §3). It is
+  // described here too, because this descriptor is what an agent reads to learn
+  // the surface — and the DSL tool's own description sends the agent *back*
+  // here for the metric vocabulary, so leaving it out would close the loop on
+  // nothing.
+  tools.push({
+    name: queryTool.name,
+    title: queryTool.title,
+    description: queryTool.description,
+    params: Object.keys(queryTool.inputSchema),
+  });
 
   const usedParams = new Set<FilterId>();
   for (const metric of served) for (const param of paramsOf(metric)) usedParams.add(param);
 
-  const params: CapabilityParamDescriptor[] = [...usedParams]
-    .sort()
-    .map((name) => ({ name, description: FILTER_TARGETS[name].description }));
+  const params: CapabilityParamDescriptor[] = [
+    ...[...usedParams]
+      .sort()
+      .map((name) => ({ name, description: FILTER_TARGETS[name].description })),
+    ...Object.entries(QUERY_DSL_PARAMS)
+      .filter(([name]) => !usedParams.has(name as FilterId))
+      .map(([name, description]) => ({ name, description })),
+  ];
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -167,8 +254,16 @@ export function buildCapabilities(): CapabilitiesDescriptor {
     tools,
     metrics: metrics.map(toMetricDescriptor),
     notes: [
+      "Read the uptimizr://context resource FIRST. It describes the project in front of you — " +
+        "its scene ids and named regions, the custom events this application emits and the props " +
+        "they carry, how fresh the data is, whether raw session retention is on, and which of the " +
+        "metrics below are empty because their capture channel is off. Use the names it gives " +
+        "you; do not infer a scene id, a region id or a custom-event name.",
       "This MCP surface is strictly read-only: aggregate, privacy-preserving queries only. " +
-        "There are no ingestion, mutation, or raw per-session event tools (ADR 0003 / ADR 0017).",
+        "There are no ingestion or mutation tools, and no raw per-session event tools " +
+        "(ADR 0003 / ADR 0017). The one per-session read, `session_narrative`, is a bounded " +
+        "compaction rather than an event stream, and the collector serves it only to a key " +
+        "holding `query:raw` on a deployment with raw-session retention enabled.",
       "`metrics` is the collector's semantic metric registry (ADR 0051 §1): for each metric it " +
         "gives the result `grain` (what one row is), the `columns` with their units, the JSON " +
         "Schema of a row, `limits`, how to read it (`interpretation`) and how far to trust it " +
@@ -176,12 +271,19 @@ export function buildCapabilities(): CapabilitiesDescriptor {
       "`sourceChannels` names the capture channels (ADR 0012) that feed a metric. If a project " +
         "has that channel disabled or sampled down, the metric is empty or proportional rather " +
         "than exact — say so instead of reporting a zero as a finding.",
+      "`query` (the last tool) runs any metric above through the query DSL (ADR 0051 §3): one " +
+        "request naming the `metric`, a required `range`, the filters that metric declares, a " +
+        "`limit` and a `format`. Prefer it when a question needs a filter the per-metric tool " +
+        "does not expose. Its `compare`, `segment`, `order` and `explain` fields are part of the " +
+        "published grammar but are not answered yet — run two queries and subtract instead.",
       "`tools` lists the registry's served read surface and the request parameters of each " +
         "underlying endpoint. It is exactly the set this server registers, because the tool " +
         "catalog is generated from the same registry (ADR 0051 §1) — the authoritative input " +
         "and output schemas of a registered tool are still the ones returned by `tools/list`.",
-      "Enumerate the concrete scene ids for the `scene` parameter with the uptimizr://scenes " +
-        "resource or the list_scenes tool; enumerate sessions with the list_sessions tool.",
+      "Enumerate the concrete scene ids for the `scene` parameter with the uptimizr://context or " +
+        "uptimizr://scenes resource, or the list_scenes tool; enumerate sessions with the " +
+        "list_sessions tool. Custom-event names and their prop keys come from " +
+        "uptimizr://context or the custom_event_vocabulary tool.",
       "All time ranges use epoch-millisecond `since`/`until`. Omit both for all-time.",
       "The same registry drives the collector's OpenAPI document at GET /api/v1/openapi.json, " +
         "which describes every endpoint below with its parameters and response schema.",

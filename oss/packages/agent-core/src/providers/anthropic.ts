@@ -12,6 +12,7 @@ import type {
   AgentToolCall,
   AgentToolSchema,
   ProviderResponse,
+  ProviderUsage,
 } from "../provider.js";
 
 /** An Anthropic content block (the subset used here). */
@@ -41,9 +42,30 @@ export interface AnthropicRequestBody {
   tools?: AnthropicTool[];
 }
 
+/** Anthropic's token accounting, as the Messages API spells it. */
+export interface AnthropicUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+}
+
 /** The subset of an Anthropic Messages response this module reads. */
 export interface AnthropicCompletion {
   content?: AnthropicContentBlock[];
+  usage?: AnthropicUsage;
+}
+
+/**
+ * Normalise Anthropic's `usage` into {@link ProviderUsage}, or `undefined` when
+ * the response carried none — so a caller can tell "not reported" from zero.
+ */
+export function toProviderUsage(usage: AnthropicUsage | undefined): ProviderUsage | undefined {
+  const input = usage?.input_tokens;
+  const output = usage?.output_tokens;
+  if (typeof input !== "number" && typeof output !== "number") return undefined;
+  return {
+    ...(typeof input === "number" ? { inputTokens: input } : {}),
+    ...(typeof output === "number" ? { outputTokens: output } : {}),
+  };
 }
 
 /**
@@ -119,10 +141,17 @@ export function parseAnthropicCompletion(completion: AnthropicCompletion): Provi
     .map((b) => b.text)
     .join("");
 
+  const usage = toProviderUsage(completion.usage);
+
   if (toolCalls.length > 0) {
-    return { kind: "tool_calls", toolCalls, ...(text ? { content: text } : {}) };
+    return {
+      kind: "tool_calls",
+      toolCalls,
+      ...(text ? { content: text } : {}),
+      ...(usage ? { usage } : {}),
+    };
   }
-  return { kind: "final", content: text };
+  return { kind: "final", content: text, ...(usage ? { usage } : {}) };
 }
 
 /**
@@ -136,6 +165,10 @@ export interface AnthropicStreamEvent {
   index?: number;
   content_block?: { type: string; id?: string; name?: string; text?: string };
   delta?: { type?: string; text?: string; partial_json?: string };
+  /** `message_start` reports the prompt tokens on the message it opens. */
+  message?: { usage?: AnthropicUsage };
+  /** `message_delta` reports the generated tokens as they accrue. */
+  usage?: AnthropicUsage;
 }
 
 /**
@@ -167,10 +200,20 @@ export function createAnthropicStreamAssembler(): AnthropicStreamAssembler {
     | { type: "tool_use"; id: string; name: string; json: string }
     | { type: "other" };
   const blocks = new Map<number, Pending>();
+  // Anthropic splits the accounting across the stream: `message_start` reports
+  // the prompt tokens and `message_delta` the generated ones as they accrue.
+  const usage: AnthropicUsage = {};
 
   return {
     push(event) {
       const index = typeof event.index === "number" ? event.index : 0;
+      const reported = event.message?.usage ?? event.usage;
+      if (reported) {
+        if (typeof reported.input_tokens === "number") usage.input_tokens = reported.input_tokens;
+        if (typeof reported.output_tokens === "number") {
+          usage.output_tokens = reported.output_tokens;
+        }
+      }
       if (event.type === "content_block_start" && event.content_block) {
         const start = event.content_block;
         if (start.type === "text") {
@@ -221,7 +264,8 @@ export function createAnthropicStreamAssembler(): AnthropicStreamAssembler {
           });
         }
       }
-      return { content };
+      const reported = usage.input_tokens != null || usage.output_tokens != null;
+      return { content, ...(reported ? { usage } : {}) };
     },
   };
 }

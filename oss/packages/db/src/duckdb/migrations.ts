@@ -430,6 +430,141 @@ export const DUCKDB_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
       );
     `,
   },
+  // Project metadata (ADR 0051 §5 / sketch §E.2): the three tables that let a
+  // person or an agent leave something behind — a note on a spike, a definition
+  // of a name, a question worth re-asking. Metadata only: the `events` table is
+  // untouched and no event type exists for any of this.
+  //
+  // `since`/`until` are nullable TIMESTAMPs (a standing note has neither);
+  // `author_kind` is the collector's decision ('user' | 'agent'), `author_key_id`
+  // the id of the API key that carried the write — never the key or its hash.
+  {
+    id: "0039_annotations",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS annotations (
+        id            VARCHAR PRIMARY KEY,
+        project_id    VARCHAR NOT NULL,
+        target_kind   VARCHAR NOT NULL,
+        target_id     VARCHAR,
+        since         TIMESTAMP,
+        until         TIMESTAMP,
+        text          VARCHAR NOT NULL,
+        author_kind   VARCHAR NOT NULL DEFAULT 'user',
+        author_key_id VARCHAR,
+        created_at    TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at    TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `,
+  },
+  {
+    id: "0040_annotations_idx",
+    sql: /* sql */ `
+      CREATE INDEX IF NOT EXISTS annotations_project_created_idx
+        ON annotations (project_id, created_at);
+    `,
+  },
+  // Glossary: what a name means *in this project*. Keyed by (project, term), so
+  // a write is an idempotent upsert and the term is the identity.
+  {
+    id: "0041_glossary",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS glossary (
+        project_id  VARCHAR NOT NULL,
+        term        VARCHAR NOT NULL,
+        meaning     VARCHAR NOT NULL,
+        updated_at  TIMESTAMP NOT NULL DEFAULT now(),
+        PRIMARY KEY (project_id, term)
+      );
+    `,
+  },
+  // Saved analyses: a titled question plus what was concluded from it. `query`
+  // is JSON text the collector stores but does not interpret (the DSL lands
+  // separately); it is bounded at the edge before it gets here.
+  {
+    id: "0042_saved_analyses",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS saved_analyses (
+        id            VARCHAR PRIMARY KEY,
+        project_id    VARCHAR NOT NULL,
+        title         VARCHAR NOT NULL,
+        query         VARCHAR NOT NULL DEFAULT '{}',
+        conclusion    VARCHAR,
+        author_kind   VARCHAR NOT NULL DEFAULT 'user',
+        author_key_id VARCHAR,
+        created_at    TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `,
+  },
+  {
+    id: "0043_saved_analyses_idx",
+    sql: /* sql */ `
+      CREATE INDEX IF NOT EXISTS saved_analyses_project_created_idx
+        ON saved_analyses (project_id, created_at);
+    `,
+  },
+  // --- Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1–F.2) ------
+  // One row per standing question: which registry metric, over what window, with
+  // what predicate, and where a firing is delivered. The declaration itself is a
+  // closed Zod union validated at the request boundary and never queried *into*,
+  // so it lives in one JSON `config` column; the scalars beside it are exactly
+  // what the store must filter (`project_id`, `enabled`), order (`created_at`) or
+  // update (`last_fired_at`, `last_error`, `failures`).
+  //
+  // `webhook_secret` is the shared HMAC key. It is deliberately NOT hashed — a
+  // one-way digest cannot sign an outbound body — and is the one column no read
+  // path ever selects into a record: `duckdb/subscriptions.ts` reads it only in
+  // `getWebhookSecret`, and every API response carries a masked placeholder.
+  {
+    id: "0044_subscriptions",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        id             VARCHAR PRIMARY KEY,
+        project_id     VARCHAR NOT NULL,
+        name           VARCHAR NOT NULL,
+        metric         VARCHAR NOT NULL,
+        config         VARCHAR NOT NULL,
+        webhook_secret VARCHAR,
+        enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at     TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at     TIMESTAMP NOT NULL DEFAULT now(),
+        last_fired_at  TIMESTAMP,
+        last_error     VARCHAR,
+        failures       BIGINT NOT NULL DEFAULT 0
+      );
+    `,
+  },
+  {
+    id: "0045_subscriptions_idx",
+    sql: /* sql */ `
+      CREATE INDEX IF NOT EXISTS subscriptions_project_idx
+        ON subscriptions (project_id, created_at);
+    `,
+  },
+  // The bounded firing log: `{ subscriptionId, at, payload }`, last 100 per
+  // subscription. The trim runs in the same transaction as the insert
+  // (`recordSubscriptionEvent`), so the bound is never observed broken.
+  //
+  // `at` is a DuckDB keyword, so it is double-quoted here and in every accessor.
+  // The column name matches the other three engines, where it needs no quoting.
+  {
+    id: "0046_subscription_events",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS subscription_events (
+        id              VARCHAR PRIMARY KEY,
+        subscription_id VARCHAR NOT NULL,
+        project_id      VARCHAR NOT NULL,
+        "at"            TIMESTAMP NOT NULL DEFAULT now(),
+        payload         VARCHAR NOT NULL DEFAULT '{}'
+      );
+    `,
+  },
+  {
+    id: "0047_subscription_events_idx",
+    sql: /* sql */ `
+      CREATE INDEX IF NOT EXISTS subscription_events_sub_at_idx
+        ON subscription_events (subscription_id, "at");
+    `,
+  },
 ];
 
 /**

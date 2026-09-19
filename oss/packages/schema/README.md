@@ -105,6 +105,11 @@ authored out-of-band and never reach the keyless ingest path:
   Regions may overlap; `sceneRegionsSchema` bounds the set and rejects duplicate ids. Written
   with `PUT /api/v1/scenes/:sceneId/regions` and read back as the `region=<id>` query filter.
 - `funnelStepSchema` / `funnelConfigSchema` — closed, validated predicates over existing events.
+- `annotationSchema` / `glossaryEntrySchema` / `savedAnalysisSchema` (+ `metadataAuthorKindSchema`)
+  — the **project metadata** a team leaves behind: a note on a spike, what a name means here, a
+  question worth re-asking with its conclusion (ADR 0051 §5). They bound the collector's
+  `annotate`-gated write path (`/api/v1/annotations`, `/api/v1/glossary/:term`, `/api/v1/analyses`).
+  Events stay read-only: none of this reaches the ingest path or changes a captured event.
 
 They are validated at the boundary like events; they just are not part of `anyEventSchema`.
 

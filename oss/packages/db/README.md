@@ -18,6 +18,12 @@ The OSS storage contracts plus the single-file **DuckDB** store:
   `scene_regions` (named, labelled boxes per scene, keyed `(project_id, scene_id, region_id)`).
   `duckdbPutSceneRegions` replaces a scene's whole set in one transaction; `duckdbGetSceneRegions`
   / `duckdbListSceneRegions` read it back.
+- **Project metadata** (ADR 0051 §5) — `annotations`, `glossary` and `saved_analyses`: notes,
+  definitions and saved questions written by a project's own people and agents. These are the only
+  rows a request can write besides events; the collector gates each write behind the `annotate`
+  capability and audits it, and nothing on this path can write, alter or delete an event. The
+  accessors enforce the per-project caps in `METADATA_LIMITS` and throw `MetadataLimitError` when a
+  project is full.
 
 This package carries **no ClickHouse/Postgres dependency**. Optional scale adapters such as
 `@uptimizr/db-clickhouse` compose these contracts behind the same interface. Server/Node only — no

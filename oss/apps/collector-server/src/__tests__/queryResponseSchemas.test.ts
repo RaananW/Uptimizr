@@ -25,7 +25,12 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PARITY_EVENTS, PARITY_PROJECT_ID, numericColumns } from "@uptimizr/db";
-import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
+import {
+  allMetrics,
+  isDerivedMetric,
+  metricCapability,
+  type MetricDefinition,
+} from "@uptimizr/metrics";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { createDuckdbStore } from "../duckdbStore.js";
@@ -93,6 +98,26 @@ function expectNothingStripped(metricId: string, produced: unknown, body: unknow
   }
 }
 
+/**
+ * Every row on the wire carries exactly the columns the registry declares.
+ *
+ * The stripping check for a **derived** metric, whose rows are computed in
+ * TypeScript rather than returned by the store. A missing key means the response
+ * schema dropped a column the handler produced; an extra one means the handler
+ * produced something the registry does not describe (which serialisation would
+ * then drop, so it cannot actually appear — asserting both keeps the failure
+ * message honest whichever way the drift goes).
+ */
+function expectDeclaredColumns(metric: MetricDefinition, body: unknown): void {
+  const rows = Array.isArray(body) ? body : body == null ? [] : [body];
+  const declared = Object.keys(metric.columns).sort();
+  for (const row of rows as Record<string, unknown>[]) {
+    expect(Object.keys(row).sort(), `${metric.id}: row columns drifted from the registry`).toEqual(
+      declared,
+    );
+  }
+}
+
 /** Every numeric column the registry declares must be a number on the wire. */
 function expectNumbersOnTheWire(metric: MetricDefinition, body: unknown): void {
   const rows = Array.isArray(body) ? body : body == null ? [] : [body];
@@ -108,7 +133,19 @@ function expectNumbersOnTheWire(metric: MetricDefinition, body: unknown): void {
   }
 }
 
-const METRICS_WITH_ENDPOINTS = allMetrics().filter((metric) => metric.endpoint != null);
+/**
+ * Every endpoint this sweep can call with an ordinary `query` key.
+ *
+ * `session_narrative` is excluded: it needs `ENABLE_RAW_SESSION_RETENTION` and a
+ * `query:raw` key (ADR 0051 §7), so the sweep would only ever see its 403. It
+ * also declares no 200 response schema — the narrative is computed in memory by
+ * `buildSessionNarrative` rather than projected out of a store row, so there is
+ * no serialisation seam for this suite to guard. `narrative.test.ts` covers it
+ * against the full gate matrix instead.
+ */
+const METRICS_WITH_ENDPOINTS = allMetrics().filter(
+  (metric) => metric.endpoint != null && metricCapability(metric) === "query",
+);
 
 interface Scenario {
   label: string;
@@ -191,7 +228,14 @@ describe.each(SCENARIOS)("query response schemas — $label", (scenario) => {
         `${metric.id} → ${response.statusCode}: ${response.body.slice(0, 500)}`,
       ).toBe(200);
       const body: unknown = response.json();
-      expectNothingStripped(metric.id, sink.last, body);
+      // A **derived** metric (the insight primitives, ADR 0051 §4) does not
+      // return what the store returned: its handler reads a *bucket series* and
+      // computes the row in TypeScript, so the recorded store result is the
+      // wrong thing to diff the body against. The stripping risk is identical
+      // though — a column the registry does not describe would silently vanish —
+      // so it is checked directly instead.
+      if (isDerivedMetric(metric)) expectDeclaredColumns(metric, body);
+      else expectNothingStripped(metric.id, sink.last, body);
       expectNumbersOnTheWire(metric, body);
     });
   }

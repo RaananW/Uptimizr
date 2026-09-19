@@ -5,13 +5,18 @@
 
 ## What this package is
 
-A **read-only** Model Context Protocol (MCP) server over an Uptimizr collector's query API. It
-lets an agent query a consumer's **own** 3D analytics in natural language. Each tool maps to one
-documented collector read endpoint; the server is a thin wrapper that holds no business logic and
-performs `GET` requests only (ADR 0005, ADR 0017).
+A Model Context Protocol (MCP) server over an Uptimizr collector's API. It lets an agent query a
+consumer's **own** 3D analytics in natural language. Each analytics tool maps to one documented
+collector read endpoint; the server is a thin wrapper that holds no business logic (ADR 0005,
+ADR 0017).
 
-It connects **only to the collector's HTTP query API** (never to the database directly), so the
-collector remains the single gateway that enforces auth, per-project scoping, and privacy.
+**Events are read-only.** Nothing here can write, alter or delete an analytics event, and there is
+no ingestion tool. The one writable surface is **project metadata** — annotations, the glossary and
+saved analyses — and it is gated: those tools are registered only when the configured key holds the
+`annotate` capability (ADR 0051 §5/§9). See "Metadata tools" below.
+
+It connects **only to the collector's HTTP API** (never to the database directly), so the collector
+remains the single gateway that enforces auth, per-project scoping, and privacy.
 
 ## Run
 
@@ -21,19 +26,47 @@ UPTIMIZR_COLLECTOR_URL="https://collect.example.com" UPTIMIZR_API_KEY="utk_…" 
 
 ## Required key capability
 
-`UPTIMIZR_API_KEY` must hold the **`query`** capability — and only that. Mint one with
+`UPTIMIZR_API_KEY` must hold the **`query`** capability. Mint one with
 `uptimizr new-key <projectId> --capabilities query --label "mcp-agent"` (`query` is the default).
-`GET /api/v1/whoami` reports what a key holds, so a client can check before it registers tools; an
-authenticated key missing a capability is refused with `403`, not `401`.
+`GET /api/v1/whoami` reports what a key holds — the server calls it once at start-up for exactly
+this reason — and an authenticated key missing a capability is refused with `403`, not `401`.
 
-**`query:raw` is deliberately not needed.** Every tool here is an aggregate read; the server exposes
-no raw per-session, replay or live-follow tool, so granting its key `query:raw` widens the blast
-radius for nothing. `annotate` (metadata writes) and `ingest` are likewise never used. Prefer a
-dedicated, labelled key with its own `--rate-limit-max` / `--rate-limit-window-ms` budget: the
-collector's agent audit log records activity per key id, which is what makes an agent's reads
-reviewable.
+Add **`annotate`** only if you want the agent to leave notes, definitions and saved analyses behind
+(`--capabilities query,annotate`). Without it the server starts read-only and never offers those
+tools; with it, every write is bounded at the collector's edge and recorded in the audit log.
+**`query:raw` is optional, and off by default.** Every tool in the default catalog is an aggregate
+read: there is no raw per-session, replay or live-follow tool, so a plain `query` key is all most
+deployments should grant. A key that _does_ hold `query:raw` additionally gets the
+**`session_narrative`** tool — an ordered, bounded account of what one session did — but only when
+the server was told about the capability, and only on a collector running with
+`ENABLE_RAW_SESSION_RETENTION`. `createMcpServer(client, { capabilities })` takes the set that
+`GET /api/v1/whoami` reports; the `uptimizr-mcp` binary looks it up at start-up (best effort — if
+the call fails it serves the `query` surface). Omitting the option serves the `query` surface too,
+so a tool that would always answer `403` is never advertised. `annotate` (metadata writes) and
+`ingest` are never used here. Prefer a dedicated, labelled key with its own `--rate-limit-max` /
+`--rate-limit-window-ms` budget: the collector's agent audit log records activity per key id, which
+is what makes an agent's reads reviewable.
 
-## Tools (read-only)
+**`query:raw` is deliberately not needed.** Every analytics tool here is an aggregate read; the
+server exposes no raw per-session, replay or live-follow tool, so granting its key `query:raw` widens
+the blast radius for nothing. `ingest` is likewise never used. Prefer a dedicated, labelled key with
+its own `--rate-limit-max` / `--rate-limit-window-ms` budget: the collector's agent audit log records
+activity per key id, which is what makes an agent's activity reviewable.
+
+## Transports
+
+`createMcpServer()` is transport-agnostic, and two transports serve the identical catalog,
+resources and prompts:
+
+- **stdio** — what this package's `bin` runs (`npx @uptimizr/mcp`), launched by a desktop client.
+- **Collector-hosted Streamable HTTP** — a collector started with `COLLECTOR_MCP_HTTP=1` serves the
+  same server at `POST`/`GET`/`DELETE` `/mcp` (ADR 0051 §7). A remote client connects with a URL
+  plus `x-api-key` or `Authorization: Bearer <key>` — no local install — and every request is
+  re-authenticated, capped by `COLLECTOR_MCP_MAX_SESSIONS` and charged to the key's rate limit.
+  Tool calls are audited with `surface: "mcp-http"`; this package's own reads are plain HTTP reads
+  and are audited as `http`.
+
+## Analytics tools (read-only)
 
 <!-- generated:registry-tool-names:start — generated by `pnpm gen:docs`; edit the metric registry, not this table -->
 
@@ -43,19 +76,26 @@ reviewable.
 `position_heatmap`, `session_trajectory`, `aggregate_paths`, `scene_coverage`, `camera_distance`,
 `click_rays`, `flow_links`, `top_meshes`, `mesh_sources`, `mesh_trend`, `mesh_dwell`,
 `mesh_blind_spots`, `mesh_interaction_kinds`, `mesh_reachability`, `dead_clicks`, `rage_clicks`,
-`hover_dwell`, `interaction_sources`, `top_input_actions`, `camera_gestures`, `navigation_stats`,
-`backtrack_ratio`, `perf_summary`, `render_scale_truth`, `perf_distribution`, `fps_histogram`,
-`frame_time_percentiles`, `jank_rate`, `perf_churn`, `perf_by_device`, `perf_by_scene`,
-`perf_heatmap`, `compile_stalls`, `resource_summary`, `resource_percentiles`, `stability_counts`,
-`graphics_diagnostics`, `error_heatmap`, `rendering_technology`, `capability_changes`,
-`xr_rotation`, `xr_sources`, `xr_abandonment`, `xr_locomotion`, `xr_tracking_quality`,
-`boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
-`ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
-`scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
+`hover_dwell`, `interaction_sources`, `top_input_actions`, `custom_event_vocabulary`,
+`camera_gestures`, `navigation_stats`, `backtrack_ratio`, `perf_summary`, `render_scale_truth`,
+`perf_distribution`, `fps_histogram`, `frame_time_percentiles`, `jank_rate`, `perf_churn`,
+`perf_by_device`, `perf_by_scene`, `perf_heatmap`, `compile_stalls`, `resource_summary`,
+`resource_percentiles`, `stability_counts`, `graphics_diagnostics`, `error_heatmap`,
+`rendering_technology`, `capability_changes`, `xr_rotation`, `xr_sources`, `xr_abandonment`,
+`xr_locomotion`, `xr_tracking_quality`, `boundary_heatmap`, `boundary_heatmap_stats`,
+`xr_boundary_contacts`, `ar_placement_time_to_place`, `ar_placement_attempts`,
+`ar_placement_surfaces`, `funnel`, `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`,
+`insight_baseline`, `insight_movers`, `insight_anomalies`, `insight_significance`,
+`insight_scene_health`
+
+Only on a key holding `query:raw`, and only when the collector runs with
+`ENABLE_RAW_SESSION_RETENTION` (ADR 0003):
+
+`session_narrative`
 
 <!-- generated:registry-tool-names:end -->
 
-**69 tools, generated** from the `@uptimizr/metrics` semantic metric registry (ADR 0051 §1) — one per
+**70 tools, generated** from the `@uptimizr/metrics` semantic metric registry (ADR 0051 §1) — one per
 metric the collector serves on a read endpoint. Names are the registry ids; the full table lives in
 [README.md](./README.md), and `uptimizr://capabilities` enumerates them at runtime with each tool's
 grain, column units and caveats.
@@ -77,6 +117,50 @@ Most accept `since`/`until` (epoch ms) plus endpoint-specific filters (`scene`, 
 covering all three `format` envelopes and returns the one you asked for as `structuredContent`
 alongside the JSON text — read the schema instead of guessing the row shape, and read the tool
 description for the metric's caveats before trusting a small sample.
+
+## The `query` tool (the query DSL)
+
+One tool is **not** per-metric: `query` (ADR 0051 §3). Its input is the query DSL, so it runs any
+metric in the catalog above with any filter that metric declares:
+
+```jsonc
+{
+  "v": 1,
+  "metric": "mesh_sources",
+  "range": { "since": 1757000000000, "until": 1757600000000 },
+  "filters": { "scene": "lobby", "cameraMode": "first-person" },
+  "limit": 20,
+  "format": "summary",
+}
+```
+
+- **`range` is required** (both ends, epoch ms) — there is no unbounded query.
+- **`format` defaults to `table`** here rather than `full`.
+- The grammar is closed: metrics, dimensions and filters are exactly the vocabulary in the
+  `uptimizr://capabilities` resource. Naming something outside it is a `400` whose
+  `issues[].accepted` lists what would have worked — read it instead of guessing again.
+- `dimensions` may be any subset a metric declares **when** its measure is a portable count —
+  event counts, mesh and interaction tallies, input actions, camera gestures. A spatial heatmap or a
+  percentile is computed at one fixed grain and refuses anything else, naming the grain it supports.
+- **`compare`** — another `{ range }` or `{ segment }`; the result comes back joined on the
+  dimension key as `{ current, previous, delta, deltaPct }`, with a significance test where the
+  measure is a count and both windows clear the metric's minimum. Never subtract two results by hand.
+- **`explain: true`** — the compiled plan instead of the rows: the tier, the SQL with its parameters
+  left unbound, `params` by name and type (never value), `rowsScanned`, and `warnings` (a capture
+  channel that produced nothing, a sample below the metric's minimum, a truncated result).
+- **`drillQuery`** — every row of a `summary` carries the whole query narrowed to that row, ready to
+  send straight back.
+- `order` takes a measure column, and only where the result is a ranked list.
+
+Its `structuredContent` is `{ result }` rather than `{ rows }`, because what comes back depends on
+the `format` asked for.
+
+## Non-metric reads
+
+Alongside the generated per-metric tools, the server registers `list_subscriptions` (ADR 0051
+§6): the project's standing conditional subscriptions, what each watches for, and how each last
+went. It takes no arguments. It is read-only like everything else here — creating or deleting a
+subscription needs the `annotate` capability and is done over plain HTTP, not through MCP.
 
 ## Result formats (`format`)
 
@@ -110,25 +194,59 @@ sent explicitly, so the HTTP endpoints still default to `full` for every other c
 - `table` is only self-_describing_, not bounded: its `meta` costs a fixed ~200 characters and the
   rows are still all of them. When the answer could be large, ask for `summary`.
 
+## Metadata tools (`annotate` only)
+
+Registered **only** when `GET /api/v1/whoami` reports the `annotate` capability, so a read-only key
+yields a read-only server. They write project metadata and nothing else — no event is touched.
+
+| Tool               | What it does                                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `annotate`         | Pin a note to the project, a scene, a mesh, a region, a metric or a period of time (`targetKind`, `text`). |
+| `define_term`      | Record what a name means in this project (`term`, `meaning`). Idempotent — redefining replaces.            |
+| `save_analysis`    | Store a titled question plus its conclusion (`title`, `query`, `conclusion?`).                             |
+| `list_annotations` | Read the notes already left. Call it **before** explaining a spike someone may already have explained.     |
+| `list_glossary`    | Read the project's vocabulary before interpreting mesh names, scene ids or custom events.                  |
+| `list_analyses`    | Read questions this project has asked before, and what they concluded.                                     |
+
+Bounds are enforced by the collector: `text` ≤ 2 000 characters, `meaning` ≤ 500, `title` ≤ 120,
+`conclusion` ≤ 4 000, and per project at most 500 annotations, 200 terms and 200 analyses (a write
+past a cap answers `409`). Stored rows record that an **agent** wrote them; the collector decides
+that from the calling client, never from the payload.
+
+Use them at the end of an investigation, not for scratch state: a note that says what was concluded
+and why is worth keeping, a note per query is noise.
+
 ## Resources and prompts
 
+- `uptimizr://context` (`application/json`) — the **live project context document**
+  (`GET /api/v1/context`, ADR 0051 §5). **Read this first, before capabilities.** It describes the
+  project in front of you rather than the API: the scene ids with their labels and named region ids,
+  the custom events the application emits with the `props` keys and coarse types they carry, the top
+  meshes and bound input actions, data freshness (`lastEventAt`, `sessions24h`), whether raw session
+  retention is on, the store engine and collector version, the project glossary and recent
+  annotations, and `metrics.disabledByCapture` — the metrics that WILL return empty because every
+  capture channel feeding them is off. Bounded (<16 KB) and cached per project for ~30 s. Use the ids
+  and names it gives you; never infer a scene id, a region id or a custom-event name.
 - `uptimizr://capabilities` (`application/json`) — the machine-readable descriptor: schema version,
   the canonical event types, the tool catalog, the parameter-semantics glossary, and `metrics`, the
   whole registry with each metric's grain, column units, row JSON Schema, filters, limits,
   interpretation, caveats, source channels and related metrics. Served from the package; **no
-  collector call**. Read it first — it is how to plan a query without trial and error.
+  collector call**. The companion to the context: it is how to plan a query without trial and error.
 - `uptimizr://scenes` (`application/json`) — the **live** list of scene ids with recent activity,
   fetched through the read-only query API. These are the valid values for the `scene` parameter, so
   resolve a user's scene name against it instead of guessing a string.
 - Prompts: `weekly_scene_health` (optional `scene`), `attention_hotspots` (required `scene`) and
-  `xr_comfort_review` (optional `scene`). Each renders one user message that sequences the existing
+  `xr_comfort_review` (optional `scene`). Each opens by telling the agent to read
+  `uptimizr://context` first, then renders one user message that sequences the existing
   read-only tools; they fetch nothing themselves and name no exact arguments, so the agent still
   resolves the epoch-ms range and the filters.
 
 ## Rules for agents
 
-- **Read-only and privacy-preserving.** Never add ingestion, mutation, or raw per-session event
-  tools here. No data leaves the consumer's infrastructure (ADR 0003).
+- **Events are read-only; privacy-preserving throughout.** Never add an ingestion tool, an
+  event-mutating tool, or a raw per-session event tool here. The only writes are the `annotate`-gated
+  metadata tools above, and they must stay a separate `writeTools` export from `readTools` so the
+  read-only stance remains inspectable. No data leaves the consumer's infrastructure (ADR 0003).
 - The server talks only to the configured collector with the consumer's `x-api-key`; never hardcode
   or log credentials.
 - Keep it a thin wrapper: the `readTools` catalog (defined in `@uptimizr/agent-core`) is
@@ -138,13 +256,40 @@ sent explicitly, so the HTTP endpoints still default to `full` for every other c
 - **No database driver, ever.** This server talks to a collector over HTTP; it must stay installable
   with `npx`. Never add `@uptimizr/db` (or any package with a native/optional binary dependency) to
   `dependencies` — `src/__tests__/dependencies.test.ts` fails if you do.
+- **Start from an insight primitive on an open-ended question.** "How are things?" does not mean
+  "call thirty tools": `insight_scene_health` says _which scene_ to look at (six weighted factors,
+  each naming the metric, raw value and project baseline behind it; 50 is the project norm, not a
+  pass mark), `insight_movers` compares every comparable metric with the previous equal window and
+  ranks the changes by how unusual each is, and `insight_baseline` says whether a level is outside
+  normal for that scene. Two fields decide whether a mover is reportable: `direction` is the
+  registry's opinion of what a _rise_ means (so a rise in a `down` metric is a regression, not an
+  improvement), and `aboveMinSample: false` means the delta is arithmetic but not evidence — those
+  rows are returned rather than dropped, and must never be reported as findings.
+- **Then `insight_anomalies` to put a date on it.** `insight_movers` compares two windows you
+  chose; `insight_anomalies` walks one metric's whole series and names the buckets that do not
+  belong — `spike` / `drop` for a single bucket far from the ones before it, and `shift` at the
+  bucket where the level moved and _stayed_ moved, which is the shape a release regression has and
+  the one no per-bucket threshold can see. Quote `bucketStart`, and read `contributor`: where the
+  metric declares a dimension it can be split by, the row names the mesh, source, input action,
+  event type or scene holding the largest share of the excess. Its `z` is in standard deviations
+  while `insight_movers`' is the same ratio unscaled, so the two columns are not comparable.
+- **Call `insight_significance` before calling a single change real.** It reports the effect, a 95%
+  interval and a p-value for one metric across two windows, with the test chosen from what the
+  measure is. Read `ci95` before `p` — an interval straddling 0 means you cannot tell yet — and
+  read `powerNote`, which distinguishes "no effect" from "not enough data". It compares two
+  _windows_, not two segments.
 - Tool definitions are pure (`buildRequest`) and must stay unit-testable without a live collector.
 
 ## Programmatic API
 
-`readMcpConfig()`, `createMcpServer(client)`, and the shared building blocks re-exported from
+`readMcpConfig()`, `createMcpServer(client, options?)` (`options.capabilities` carries the bound
+key's capability set from the hosted transport; omit it for stdio), and the shared building blocks
+re-exported from
+`readMcpConfig()`, `createMcpServer(client, options?)` (`options.capabilities` is the key’s
+capability set from `/api/v1/whoami`; it gates the `query:raw` tools),
+`buildCapabilities(options?)`, and the shared building blocks re-exported from
 [`@uptimizr/agent-core`](https://www.npmjs.com/package/@uptimizr/agent-core):
-`createCollectorClient(config)` and `readTools`.
+`createCollectorClient(config)`, `readTools` and `rawTools`.
 
 ## More
 

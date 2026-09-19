@@ -30,13 +30,18 @@ import type {
   CapabilityChangeRow,
   CameraGestureRow,
   MeshCountRow,
+  MetricBucketOptions,
+  MetricBucketRow,
   MeshDwellRow,
   MeshBlindSpotRow,
   MeshInteractionKindRow,
   ReachabilityBinRow,
   MeshSourceCountRow,
   MeshTrendPointRow,
+  MetricQueryOptions,
   InputActionCountRow,
+  CustomEventVocabularyOptions,
+  CustomEventVocabularyRow,
   PositionBinRow,
   PerfHeatmapVoxelRow,
   RageClickRow,
@@ -71,10 +76,19 @@ import type {
   SceneOptions,
   SceneRegionRecord,
   SceneRegionSummary,
+  AnnotationRecord,
+  CreateAnnotationInput,
+  CreateSavedAnalysisInput,
+  GlossaryEntryRecord,
+  ListAnnotationsOptions,
+  MetadataListOptions,
+  PutGlossaryEntryInput,
+  SavedAnalysisRecord,
   SceneRepresentation,
   SceneRepresentationSummary,
   SceneRow,
   SourceOptions,
+  SubscriptionStore,
   SessionOptions,
   MeshOptions,
   SessionMeta,
@@ -84,14 +98,26 @@ import type {
   TimeseriesOptions,
   TrajectoryPointRow,
   WorldHeatmapBinRow,
+  QuerySpec,
 } from "@uptimizr/db";
+import type { MetricId } from "@uptimizr/metrics";
+
+/** The storage engines a collector can be wired to (`COLLECTOR_STORE`). */
+export type StoreEngine = "duckdb" | "postgres" | "mssql" | "clickhouse" | "memory";
 
 /**
  * The data-access surface the routes depend on. Abstracting it behind an
  * interface keeps handlers thin and lets tests inject a fake store without a
  * live ClickHouse/Postgres (the framework and the DB stay swappable — ADR 0005).
  */
-export interface CollectorStore {
+export interface CollectorStore extends SubscriptionStore {
+  /**
+   * Which storage engine is behind this store. Descriptive only — no handler
+   * branches on it — but the project context document reports it (ADR 0051 §5)
+   * so an agent knows whether it is reading a single-file DuckDB collector or a
+   * scale-tier engine before it reasons about freshness or volume.
+   */
+  readonly engine: StoreEngine;
   /**
    * Resolve a plaintext API key to its project id, key id, capability set and
    * optional per-key rate limit, or `null` if invalid/revoked. The capability
@@ -116,6 +142,45 @@ export interface CollectorStore {
   projectExists(projectId: string): Promise<boolean>;
   /** Batched insert of enriched, validated events. */
   insertEvents(events: readonly AnyEvent[]): Promise<void>;
+  /**
+   * Run **any** registry metric by id, with an option bag the query DSL
+   * assembled from a validated `queryV1` document (ADR 0051 §3).
+   *
+   * The one method the DSL needs, and deliberately the only one it adds: every
+   * store implements it as `run<Engine>Query(compileMetric(…, <engine>Dialect))`,
+   * so a DSL query takes exactly the path a canned aggregate takes — the same
+   * builders, the same dialect, the same cross-engine parity harness and the
+   * same numeric coercion at the driver edge. Putting the dispatch in the
+   * collector instead would have given the DSL a second, unverified query path.
+   *
+   * Rows are returned untyped because the shape depends on the metric; the
+   * registry `row` schema is what describes them, and the response layer
+   * (`format=table|summary`) reads that.
+   */
+  runMetric(
+    projectId: string,
+    metric: MetricId,
+    options: MetricQueryOptions,
+  ): Promise<Record<string, unknown>[]>;
+  /**
+   * Render the same query {@link runMetric} would run, **without running it** —
+   * the compiled `QuerySpec` and the name of the engine that would execute it
+   * (ADR 0051 §3, #304).
+   *
+   * This is what `explain: true` answers with. It has to be a store method for
+   * the one reason the DSL has a store seam at all: the dialect is the store’s,
+   * and the collector deliberately does not know which engine it is talking to.
+   * Returning the spec rather than a rendered string keeps the redaction
+   * decision (`explainSpec`) in one place instead of four.
+   *
+   * `null` from a store that compiles no SQL (the in-memory one), so `explain`
+   * degrades to the warnings rather than failing.
+   */
+  describeMetric(
+    projectId: string,
+    metric: MetricId,
+    options: MetricQueryOptions,
+  ): { dialect: string; spec: QuerySpec } | null;
   listSessions(
     projectId: string,
     opts?: RangeOptions & CameraModeOptions & { limit?: number },
@@ -673,6 +738,18 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SourceOptions & SessionOptions & { limit?: number },
   ): Promise<InputActionCountRow[]>;
+  /**
+   * Discovered custom-event vocabulary (ADR 0051 §5): the developer-defined
+   * `custom` event names the project emits, with their counts, distinct sessions
+   * and the union of `props` keys observed on a bounded sample of each name's
+   * most recent payloads. The store folds the sampled payloads into prop types
+   * itself — the raw payload is an implementation detail and never leaves this
+   * layer.
+   */
+  customEventVocabulary(
+    projectId: string,
+    opts?: CustomEventVocabularyOptions,
+  ): Promise<CustomEventVocabularyRow[]>;
   /** Distinct scenes (+counts, last-seen) for the project; time-range aware (ADR 0010). */
   scenes(projectId: string, opts?: RangeOptions & { limit?: number }): Promise<SceneRow[]>;
   /** Event-volume time-series bucketed by interval (the 4th dimension). */
@@ -685,6 +762,27 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions,
   ): Promise<EventTypeCountRow[]>;
+  /**
+   * The per-bucket series of one metric's comparable headline column — the one
+   * store read both insight primitives are built on (ADR 0051 §4).
+   *
+   * A single generic aggregation rather than one store method per insight: what
+   * differs between metrics is the *series*, and that difference is declared as
+   * data in `@uptimizr/db`'s `src/insights/measures.ts`. Everything computed
+   * from the series — mean, median, MAD, quantiles, slope, robust z — is pure
+   * TypeScript, so no two engines can disagree about an insight.
+   *
+   * `opts.metric` must name a metric that has a portable bucket series; the
+   * route validates that at the edge and answers `400` with the list of ids that
+   * do, so an implementation may assume it.
+   *
+   * `opts.series` (#307) selects one of that metric’s **named auxiliary
+   * series** instead — a rate denominator, an FPS tail — declared beside the
+   * main measure in the same catalog. It is a compile-time union set by the
+   * insight layer, never a caller-supplied string, and a metric may declare a
+   * variant without being bucketable in its own right.
+   */
+  metricBuckets(projectId: string, opts: MetricBucketOptions): Promise<MetricBucketRow[]>;
   /**
    * Single-project configurator funnel (#78, ADR 0038): ordered, per-session
    * step-reach with the drop-off between consecutive steps. Each row is
@@ -764,6 +862,43 @@ export interface CollectorStore {
    * kept separate so the scene listing stays exactly as it is.
    */
   listSceneRegions(projectId: string): Promise<SceneRegionSummary[]>;
+
+  // --- Project metadata (#310, ADR 0051 §5 / sketch §E.2) -------------------
+  //
+  // Annotations, glossary and saved analyses: the only rows a client may write
+  // besides events, gated by the `annotate` capability and audited like every
+  // other authenticated request. Each store enforces the per-project caps
+  // (`METADATA_LIMITS`) at write time and throws `MetadataLimitError` when a
+  // project is full; the routes turn that into a 409.
+
+  /** Create one annotation and return the stored row. */
+  createAnnotation(projectId: string, input: CreateAnnotationInput): Promise<AnnotationRecord>;
+  /**
+   * A project's annotations, newest first. `since`/`until` are an **overlap**
+   * filter — an annotation matches when its period intersects the window, and a
+   * standing note (no period) always matches.
+   */
+  listAnnotations(projectId: string, opts?: ListAnnotationsOptions): Promise<AnnotationRecord[]>;
+  /** Delete one annotation of this project; `false` when the id is unknown. */
+  deleteAnnotation(projectId: string, id: string): Promise<boolean>;
+
+  /** Upsert one glossary entry — the term is the identity, so writes are idempotent. */
+  putGlossaryEntry(projectId: string, input: PutGlossaryEntryInput): Promise<GlossaryEntryRecord>;
+  /** A project's whole glossary, ordered by term. */
+  listGlossary(projectId: string, opts?: MetadataListOptions): Promise<GlossaryEntryRecord[]>;
+  /** Delete one term; `false` when it was not defined. */
+  deleteGlossaryEntry(projectId: string, term: string): Promise<boolean>;
+
+  /** Create one saved analysis and return the stored row. */
+  createSavedAnalysis(
+    projectId: string,
+    input: CreateSavedAnalysisInput,
+  ): Promise<SavedAnalysisRecord>;
+  /** A project's saved analyses, newest first. */
+  listSavedAnalyses(projectId: string, opts?: MetadataListOptions): Promise<SavedAnalysisRecord[]>;
+  /** Delete one saved analysis; `false` when the id is unknown. */
+  deleteSavedAnalysis(projectId: string, id: string): Promise<boolean>;
+
   /** Release underlying connections. */
   close(): Promise<void>;
 }

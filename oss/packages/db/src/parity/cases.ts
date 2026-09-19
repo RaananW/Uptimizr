@@ -28,6 +28,7 @@ import {
   buildMeshInteractionKinds,
   buildReachability,
   buildTopInputActions,
+  buildCustomEventVocabulary,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -80,8 +81,11 @@ import {
   buildGazeHeatmap,
   buildGazeHeatmapStats,
 } from "../query/aggregations.js";
+import { buildMetricBuckets } from "../insights/buckets.js";
 import type { Dialect } from "../query/dialect.js";
 import type { QuerySpec } from "../query/types.js";
+import { compileQuery } from "../query/dsl/index.js";
+import { queryV1Schema } from "@uptimizr/schema";
 import type { ParityRow } from "./compare.js";
 import {
   PARITY_DAY,
@@ -106,15 +110,15 @@ export interface ParityCase {
 
 const PID = PARITY_PROJECT_ID;
 
-export const PARITY_CASES: readonly ParityCase[] = [
+const DELEGATED_PARITY_CASES: readonly ParityCase[] = [
   {
     name: "listSessions",
     build: (d) => buildListSessions(PID, PARITY_RANGE, d),
     sortKeys: ["session_id"],
     ignoreColumns: ["started_at", "ended_at"],
     golden: [
-      { session_id: "s1", visitor_id: "", events: 10 },
-      { session_id: "s2", visitor_id: "", events: 9 },
+      { session_id: "s1", visitor_id: "", events: 12 },
+      { session_id: "s2", visitor_id: "", events: 11 },
     ],
   },
   {
@@ -474,6 +478,30 @@ export const PARITY_CASES: readonly ParityCase[] = [
     golden: [],
   },
   {
+    // Custom-event vocabulary (ADR 0051 §5, design sketch §E.1). Three
+    // `add_to_cart` events (s1 + s2) and one `level_complete` (s1), so the
+    // totals are (3, 2 sessions) and (1, 1 session). The aggregation emits the
+    // totals once per sampled payload, so `add_to_cart` repeats three times and
+    // `level_complete` once — four rows in all, ranked by count.
+    //
+    // `sample_payload` is the raw event JSON as each engine stores it (Postgres
+    // normalises it through `jsonb`), so it is engine-dependent by construction
+    // and excluded from the comparison — exactly like the engine-formatted
+    // timestamps above. What must agree across engines is the counting and the
+    // sampling *shape*, which is what the golden pins. The fold from payloads to
+    // prop types is pure TypeScript and is unit-tested separately.
+    name: "customEventVocabulary",
+    build: (d) => buildCustomEventVocabulary(PID, PARITY_RANGE, d),
+    sortKeys: ["name", "count"],
+    ignoreColumns: ["sample_payload"],
+    golden: [
+      { name: "add_to_cart", count: 3, sessions: 2 },
+      { name: "add_to_cart", count: 3, sessions: 2 },
+      { name: "add_to_cart", count: 3, sessions: 2 },
+      { name: "level_complete", count: 1, sessions: 1 },
+    ],
+  },
+  {
     name: "perfSummary",
     build: (d) => buildPerfSummary(PID, PARITY_RANGE, d),
     sortKeys: ["samples"],
@@ -790,6 +818,7 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["event_type"],
     golden: [
       { day: PARITY_DAY, event_type: "camera_sample", events: 3 },
+      { day: PARITY_DAY, event_type: "custom", events: 4 },
       { day: PARITY_DAY, event_type: "frame_perf", events: 3 },
       { day: PARITY_DAY, event_type: "graphics_diagnostic", events: 1 },
       { day: PARITY_DAY, event_type: "mesh_visibility", events: 2 },
@@ -806,15 +835,15 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["scene_id"],
     ignoreColumns: ["last_seen"],
     golden: [
-      { scene_id: "arena", events: 9 },
-      { scene_id: "lobby", events: 10 },
+      { scene_id: "arena", events: 11 },
+      { scene_id: "lobby", events: 12 },
     ],
   },
   {
     name: "timeseries",
     build: (d) => buildTimeseries(PID, { ...PARITY_RANGE, interval: 60 }, d),
     sortKeys: ["bucket"],
-    golden: [{ bucket: PARITY_T0, events: 19, avg_fps: 45 }],
+    golden: [{ bucket: PARITY_T0, events: 23, avg_fps: 45 }],
   },
   {
     name: "eventTypeCounts",
@@ -822,6 +851,7 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["event_type"],
     golden: [
       { event_type: "camera_sample", count: 3 },
+      { event_type: "custom", count: 4 },
       { event_type: "frame_perf", count: 3 },
       { event_type: "graphics_diagnostic", count: 1 },
       { event_type: "mesh_visibility", count: 2 },
@@ -994,4 +1024,453 @@ export const PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["band"],
     golden: [],
   },
+
+  // --- Query DSL v1 (ADR 0051 §3) ----------------------------------------
+  //
+  // The delegated compiler renders a validated `queryV1` document through the
+  // metric's own builder, so in principle it cannot disagree with the cases
+  // above — and `src/__tests__/queryDsl.test.ts` proves that spec-for-spec, on
+  // every dialect. These three cases prove it the other way round, where it
+  // actually matters: the compiled SQL is *executed* on each engine and its rows
+  // are compared against the same engine-independent golden. A filter-mapping
+  // regression that produced valid-but-different SQL would fail here.
+  {
+    name: "dsl:topMeshes",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({ v: 1, metric: "top_meshes", range: PARITY_RANGE }),
+        d,
+      ),
+    sortKeys: ["mesh"],
+    golden: [
+      { mesh: "box", count: 2 },
+      { mesh: "floor", count: 2 },
+      { mesh: "sphere", count: 2 },
+    ],
+  },
+  {
+    // A filtered query: `filters.source` must reach `SourceOptions.source`
+    // through the registry's `FILTER_TARGETS`, not by coincidence.
+    name: "dsl:meshSourcesFiltered",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "mesh_sources",
+          range: PARITY_RANGE,
+          filters: { source: "mouse" },
+        }),
+        d,
+      ),
+    sortKeys: ["mesh", "source"],
+    golden: [
+      { mesh: "box", source: "mouse", count: 1 },
+      { mesh: "floor", source: "mouse", count: 1 },
+      { mesh: "sphere", source: "mouse", count: 1 },
+    ],
+  },
+  {
+    // A funnel through the DSL: the ADR 0038 step predicates travel as real
+    // JSON rather than a re-parsed string, and land on `FunnelOptions.steps`.
+    name: "dsl:funnel",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "funnel",
+          range: PARITY_RANGE,
+          filters: {
+            steps: [{ type: "camera_sample" }, { type: "pointer_click", mesh: "sphere" }],
+          },
+        }),
+        d,
+      ),
+    sortKeys: ["step"],
+    golden: [
+      { step: 0, sessions: 2 },
+      { step: 1, sessions: 1 },
+    ],
+  },
 ];
+
+/**
+ * **Generic group-by tier** (ADR 0051 §3, design sketch §C.2 tier 2, #304).
+ *
+ * The delegated cases above prove the DSL reaches each metric's own builder.
+ * These prove the *other* compiler: one shared `SELECT <dims>, <measures> FROM
+ * events GROUP BY <dims>` rendered from registry data, executed on every engine
+ * and compared against the same hand-verified golden.
+ *
+ * Three metrics at two grains each, chosen to exercise every part of the
+ * builder: promoted columns alone (`top_meshes`, `event_counts`,
+ * `mesh_sources`), a two-dimension group-by, and the `session_start` attribute
+ * CTE that `device.*` and `cameraMode` are read through — which is the piece
+ * most likely to diverge between engines, since it is the only one that goes
+ * through `Dialect.jsonText` and a `LEFT JOIN`.
+ *
+ * Appended as a separate block rather than merged above so the v1 goldens stay
+ * exactly where #349 left them.
+ */
+const GENERIC_PARITY_CASES: readonly ParityCase[] = [
+  {
+    // `top_meshes` is keyed by `mesh`; asking for `(mesh, event_type)` splits
+    // each mesh's tally by what actually referenced it — a passive visibility
+    // sample versus a real click. The delegated builder cannot express it at all.
+    name: "dsl:genericMeshesByEventType",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "top_meshes",
+          dimensions: ["mesh", "event_type"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["mesh", "event_type"],
+    golden: [
+      { mesh: "box", event_type: "mesh_visibility", count: 1 },
+      { mesh: "box", event_type: "pointer_click", count: 1 },
+      { mesh: "floor", event_type: "pointer_click", count: 1 },
+      { mesh: "floor", event_type: "pointer_move", count: 1 },
+      { mesh: "sphere", event_type: "mesh_visibility", count: 1 },
+      { mesh: "sphere", event_type: "pointer_click", count: 1 },
+    ],
+  },
+  {
+    // The same metric regrouped onto a dimension it can only be *filtered* by on
+    // the delegated tier — and, for `top_meshes`, not even that: its builder has
+    // no scene clause at all.
+    name: "dsl:genericMeshesByScene",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "top_meshes",
+          dimensions: ["scene"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["scene_id"],
+    golden: [
+      { scene_id: "arena", count: 2 },
+      { scene_id: "lobby", count: 4 },
+    ],
+  },
+  {
+    // Two promoted dimensions at once, over the whole event stream.
+    name: "dsl:genericEventCountsByScene",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "event_counts",
+          dimensions: ["event_type", "scene"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["event_type", "scene_id"],
+    golden: [
+      { event_type: "camera_sample", scene_id: "arena", count: 1 },
+      { event_type: "camera_sample", scene_id: "lobby", count: 2 },
+      { event_type: "custom", scene_id: "arena", count: 2 },
+      { event_type: "custom", scene_id: "lobby", count: 2 },
+      { event_type: "frame_perf", scene_id: "arena", count: 1 },
+      { event_type: "frame_perf", scene_id: "lobby", count: 2 },
+      { event_type: "graphics_diagnostic", scene_id: "arena", count: 1 },
+      { event_type: "mesh_visibility", scene_id: "lobby", count: 2 },
+      { event_type: "pointer_click", scene_id: "arena", count: 1 },
+      { event_type: "pointer_click", scene_id: "lobby", count: 2 },
+      { event_type: "pointer_move", scene_id: "arena", count: 1 },
+      { event_type: "runtime_error", scene_id: "arena", count: 1 },
+      { event_type: "session_start", scene_id: "arena", count: 1 },
+      { event_type: "session_start", scene_id: "lobby", count: 1 },
+      { event_type: "xr_boundary_proximity", scene_id: "arena", count: 2 },
+      { event_type: "xr_boundary_proximity", scene_id: "lobby", count: 1 },
+    ],
+  },
+  {
+    // The session-attribute CTE: `device.engine` lives in the `session_start`
+    // payload, so this is the case that proves `jsonText` + `LEFT JOIN` render
+    // and group identically on all four engines.
+    name: "dsl:genericEventCountsByEngine",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "event_counts",
+          dimensions: ["device.engine"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["engine"],
+    golden: [
+      { engine: "webgl2", count: 11 },
+      { engine: "webgpu", count: 12 },
+    ],
+  },
+  {
+    // A metric with an `event_type` scope *and* a `mesh != ''` scope, regrouped:
+    // the scope predicates must survive the regrouping or the counts inflate.
+    name: "dsl:genericMeshSourcesByScene",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "mesh_sources",
+          dimensions: ["scene", "source"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["scene_id", "source"],
+    golden: [
+      { scene_id: "arena", source: "mouse", count: 1 },
+      { scene_id: "lobby", source: "mouse", count: 2 },
+    ],
+  },
+  {
+    // Two measures (`count` and `count(DISTINCT session_id)`) over a session
+    // attribute that is not a device field — the camera model (ADR 0026).
+    name: "dsl:genericInteractionsByCameraMode",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "interaction_sources",
+          dimensions: ["cameraMode"],
+          range: PARITY_RANGE,
+        }),
+        d,
+      ),
+    sortKeys: ["camera_mode"],
+    golden: [
+      { camera_mode: "arc-rotate", count: 2, sessions: 1 },
+      { camera_mode: "free", count: 2, sessions: 1 },
+    ],
+  },
+];
+
+/**
+ * **Insight bucket series** (ADR 0051 §4, design sketch §D).
+ *
+ * `buildMetricBuckets` is the single query both insight primitives consume, and
+ * the only per-dialect SQL they involve: every statistic over the series is pure
+ * TypeScript. So parity here is parity for `baseline` and `movers` as a whole.
+ * One case per *aggregate shape* the measure catalog can render — count,
+ * distinct sessions, sum, quantile, and a geometry-guarded count — because the
+ * shapes are what differ between engines, not the metrics.
+ *
+ * Every fixture event lands in the same UTC hour (2024-06-16 10:00), so each
+ * series is a single bucket at `PARITY_T0`. That is the point: the fixtures fix
+ * the *values*, and these cases fix the fact that four dialects render and
+ * execute the same bucketing, the same aggregates and the same predicate
+ * vocabulary to the same numbers.
+ *
+ * Appended last, as its own block, so the delegated and generic goldens stay
+ * exactly where #349 and #304 left them.
+ */
+const INSIGHT_PARITY_CASES: readonly ParityCase[] = [
+  {
+    // count(*) over every event type: all 23 fixture events in one hour bucket.
+    name: "metricBuckets:count",
+    build: (d) =>
+      buildMetricBuckets(PID, { ...PARITY_RANGE, metric: "list_sessions", bucket: "hour" }, d),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 23, sample_size: 23 }],
+  },
+  {
+    // count(DISTINCT session_id) over `session_start`: s1 and s2.
+    name: "metricBuckets:sessions",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "rendering_technology", bucket: "hour" },
+        d,
+      ),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 2, sample_size: 2 }],
+  },
+  {
+    // quantile(fps, 0.5) over the three `frame_perf` samples (60, 30, 45) → 45.
+    name: "metricBuckets:quantile",
+    build: (d) =>
+      buildMetricBuckets(PID, { ...PARITY_RANGE, metric: "perf_summary", bucket: "hour" }, d),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 45, sample_size: 3 }],
+  },
+  {
+    // sum(visible_ms) over `mesh_visibility` with a non-empty mesh: 4000 + 2000.
+    name: "metricBuckets:sum",
+    build: (d) =>
+      buildMetricBuckets(PID, { ...PARITY_RANGE, metric: "mesh_dwell", bucket: "hour" }, d),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 6000, sample_size: 2 }],
+  },
+  {
+    // The geometry guard: `camera_sample` rows whose `direction` carries all
+    // three components — the same predicate `buildCameraDirectionHeatmap` applies
+    // before it bins, so the series total equals that heatmap's own row total.
+    name: "metricBuckets:geometry",
+    build: (d) =>
+      buildMetricBuckets(PID, { ...PARITY_RANGE, metric: "camera_heatmap", bucket: "hour" }, d),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 3, sample_size: 3 }],
+  },
+  {
+    // Scene scoping plus an equality predicate: clicks in `lobby` that hit
+    // nothing. Both lobby clicks hit a mesh, so the series is empty — a bucket
+    // with no matching events is absent, never a zero row.
+    name: "metricBuckets:emptySeries",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "dead_clicks", bucket: "hour", scene: "lobby" },
+        d,
+      ),
+    sortKeys: ["bucket"],
+    golden: [],
+  },
+  {
+    // Day grain over the day-wide range: the same 19 events, one calendar-day
+    // bucket, proving the grain is a parameter rather than a second query.
+    name: "metricBuckets:dayGrain",
+    build: (d) =>
+      buildMetricBuckets(PID, { ...PARITY_DAY_RANGE, metric: "list_sessions", bucket: "day" }, d),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: Date.UTC(2024, 5, 16), value: 23, sample_size: 23 }],
+  },
+
+  // --- anomalies (#306): the grouped split --------------------------------
+  //
+  // The same measure, the same predicates, plus one promoted column in the
+  // `SELECT` / `GROUP BY` / `ORDER BY`. It is what `anomalies` re-reads to say
+  // *which* value inside a metric accounts for an anomalous bucket, and it is
+  // the only new per-dialect SQL the primitive involves — so parity here is
+  // parity for contributor attribution as a whole. One case per shape the split
+  // has to survive: a multi-channel count, a summed value column, and a distinct
+  // count (where the grouping key also changes what "distinct" ranges over).
+  {
+    // Split a two-channel error count by the channel: one diagnostic, one
+    // runtime error, in the same hour bucket.
+    name: "metricBuckets:splitEventType",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "error_heatmap", bucket: "hour", groupBy: "event_type" },
+        d,
+      ),
+    sortKeys: ["bucket", "dimension_value"],
+    golden: [
+      { bucket: PARITY_T0, dimension_value: "graphics_diagnostic", value: 1, sample_size: 1 },
+      { bucket: PARITY_T0, dimension_value: "runtime_error", value: 1, sample_size: 1 },
+    ],
+  },
+  {
+    // sum(visible_ms) split by mesh: the 6000 ms the ungrouped case reports is
+    // 4000 on `box` and 2000 on `sphere` — the shares an attribution reads.
+    name: "metricBuckets:splitMesh",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "mesh_dwell", bucket: "hour", groupBy: "mesh" },
+        d,
+      ),
+    sortKeys: ["bucket", "dimension_value"],
+    golden: [
+      { bucket: PARITY_T0, dimension_value: "box", value: 4000, sample_size: 1 },
+      { bucket: PARITY_T0, dimension_value: "sphere", value: 2000, sample_size: 1 },
+    ],
+  },
+  {
+    // count(DISTINCT session_id) split by scene: the grouping key narrows what
+    // "distinct" ranges over, so the two sessions become one per scene rather
+    // than two in both.
+    name: "metricBuckets:splitScene",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "rendering_technology", bucket: "hour", groupBy: "scene" },
+        d,
+      ),
+    sortKeys: ["bucket", "dimension_value"],
+    golden: [
+      { bucket: PARITY_T0, dimension_value: "arena", value: 1, sample_size: 1 },
+      { bucket: PARITY_T0, dimension_value: "lobby", value: 1, sample_size: 1 },
+    ],
+  },
+  // --- significance / scene health (#307) ---
+  //
+  // The named auxiliary series (`measures.ts`, `BUCKET_MEASURE_VARIANTS`) render
+  // through the same builder, so only the shapes they *add* need a case: a rate
+  // denominator, a new promoted value column, and a non-median quantile.
+  {
+    // A rate denominator: every `pointer_click`, against `dead_clicks`, whose
+    // main measure counts only the clicks that hit nothing. Three clicks in the
+    // fixtures; two of them hit a mesh, which is why the main series over the
+    // same window is the one the `emptySeries` case pins.
+    name: "metricBuckets:rateDenominator",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "dead_clicks", series: "denominator", bucket: "hour" },
+        d,
+      ),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 3, sample_size: 3 }],
+  },
+  {
+    // `sum(long_frames)` — a promoted column no main measure reads. The same
+    // raw material `buildJankRate` sums per session, pooled here instead.
+    name: "metricBuckets:longFrames",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "jank_rate", series: "numerator", bucket: "hour" },
+        d,
+      ),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 8, sample_size: 3 }],
+  },
+  {
+    // A tail quantile rather than the median: q = 0.05 over the three
+    // `frame_perf` samples (60, 30, 45) is 30 + (45 - 30) * 0.1 = 31.5 under
+    // the type-7 interpolation all four dialects use. It lands *between* two
+    // samples rather than on one, which is exactly why it needs a case of its
+    // own: an engine that returned an actual element instead of interpolating
+    // would pass `metricBuckets:quantile` and fail here.
+    name: "metricBuckets:tailQuantile",
+    build: (d) =>
+      buildMetricBuckets(
+        PID,
+        { ...PARITY_RANGE, metric: "perf_summary", series: "p05", bucket: "hour" },
+        d,
+      ),
+    sortKeys: ["bucket"],
+    golden: [{ bucket: PARITY_T0, value: 31.5, sample_size: 3 }],
+  },
+];
+
+/** Every case the cross-engine harness runs: delegated, then generic, then insights. */
+export const PARITY_CASES: readonly ParityCase[] = [
+  ...DELEGATED_PARITY_CASES,
+  ...GENERIC_PARITY_CASES,
+  ...INSIGHT_PARITY_CASES,
+];
+
+/** The subset compiled through the generic group-by tier (#304). */
+export const GENERIC_PARITY_CASE_NAMES: readonly string[] = GENERIC_PARITY_CASES.map(
+  (parityCase) => parityCase.name,
+);

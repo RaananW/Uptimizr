@@ -39,3 +39,28 @@ describe("loadConfig — COLLECTOR_TRUST_PROXY", () => {
     );
   });
 });
+
+describe("loadConfig — hosted MCP transport (#313)", () => {
+  it("keeps the hosted transport off unless it is explicitly enabled", () => {
+    expect(loadConfig({ ...baseEnv }).mcpHttpEnabled).toBe(false);
+    expect(loadConfig({ ...baseEnv, COLLECTOR_MCP_HTTP: "0" }).mcpHttpEnabled).toBe(false);
+    expect(loadConfig({ ...baseEnv, COLLECTOR_MCP_HTTP: "1" }).mcpHttpEnabled).toBe(true);
+    expect(loadConfig({ ...baseEnv, COLLECTOR_MCP_HTTP: "true" }).mcpHttpEnabled).toBe(true);
+  });
+
+  it("defaults the session cap and idle TTL", () => {
+    const config = loadConfig({ ...baseEnv });
+    expect(config.mcpMaxSessions).toBe(50);
+    expect(config.mcpSessionTtlMs).toBe(1_800_000);
+  });
+
+  it("reads an operator's caps and ignores unusable values", () => {
+    expect(loadConfig({ ...baseEnv, COLLECTOR_MCP_MAX_SESSIONS: "8" }).mcpMaxSessions).toBe(8);
+    expect(loadConfig({ ...baseEnv, COLLECTOR_MCP_SESSION_TTL_MS: "60000" }).mcpSessionTtlMs).toBe(
+      60_000,
+    );
+    // A zero or a typo must not turn into "no sessions allowed".
+    expect(loadConfig({ ...baseEnv, COLLECTOR_MCP_MAX_SESSIONS: "0" }).mcpMaxSessions).toBe(50);
+    expect(loadConfig({ ...baseEnv, COLLECTOR_MCP_MAX_SESSIONS: "lots" }).mcpMaxSessions).toBe(50);
+  });
+});

@@ -1,6 +1,6 @@
 ---
 title: MCP server (AI agents)
-description: Let an AI agent answer natural-language questions about your 3D analytics with the read-only @uptimizr/mcp server.
+description: Let an AI agent answer natural-language questions about your 3D analytics with the @uptimizr/mcp server — events read-only, metadata writes behind the annotate capability.
 ---
 
 `@uptimizr/mcp` is a **read-only** [Model Context Protocol](https://modelcontextprotocol.io) server over
@@ -8,8 +8,17 @@ your collector's query API. It lets an AI agent answer natural-language question
 ("what was the most-clicked mesh this week?") by querying **your own** collector — nothing is sent to any
 third party.
 
-It's a thin wrapper: each tool maps one-to-one to a documented [query endpoint](/docs/api/query/) and
-performs `GET` requests only. There are **no ingestion, mutation, or raw per-session event tools**.
+It's a thin wrapper: each analytics tool maps one-to-one to a documented
+[query endpoint](/docs/api/query/) and performs `GET` requests only. There are **no ingestion tools
+and no raw per-session event tools**, and nothing in the server can write, alter or delete an
+analytics event — **events are read-only**.
+
+The one exception is deliberate and gated: when the configured key holds the `annotate` capability,
+the server also registers the **project-metadata** tools `annotate`, `define_term` and
+`save_analysis` (plus `list_annotations`, `list_glossary`, `list_analyses`), which write notes,
+definitions and saved analyses through the [metadata endpoints](/docs/api/metadata/). The server
+asks `GET /api/v1/whoami` once at start-up, so a read-only key yields a read-only server — and every
+metadata write is recorded in the project's agent audit log.
 
 The tool catalog itself lives in the framework-agnostic, browser-safe **`@uptimizr/agent-core`**
 package, which `@uptimizr/mcp` imports. That means the agent tool surface is defined **once** and
@@ -28,6 +37,10 @@ AI agent ──stdio──▶ @uptimizr/mcp ──HTTPS GET + x-api-key──▶
 
 Because the collector resolves the project from the API key, an agent can only ever read **its own
 project's** aggregated data — no cross-project access, no raw events, no PII (ADR 0003 / ADR 0017).
+
+The collector can also **host this same server itself** over Streamable HTTP, so a remote agent
+connects with a URL and a key instead of running the package locally — see
+[hosted transport](#hosted-transport-streamable-http).
 
 ## Get an API key
 
@@ -191,6 +204,48 @@ All three validate against the tool's advertised output schema, so a client that
 reads (`session_meta`, `scene_representation`) are stored resources rather than aggregations, so
 they take no `format` and always answer with their `{ rows }` envelope.
 
+### The `query` tool
+
+One tool is **not** per-metric: `query`, whose input is the
+[query DSL](/docs/api/query/#one-query-endpoint-the-query-dsl). It runs any metric below with any
+filter that metric declares, in one call:
+
+```jsonc
+{
+  "v": 1,
+  "metric": "mesh_sources",
+  "range": { "since": 1757000000000, "until": 1757600000000 },
+  "filters": { "scene": "lobby", "cameraMode": "first-person" },
+  "limit": 20,
+  "format": "summary",
+}
+```
+
+`range` is required (both ends, epoch ms) and `format` defaults to `table` here rather than `full`.
+The grammar is closed — metrics, dimensions and filters are exactly the vocabulary
+`uptimizr://capabilities` lists — and naming something outside it returns an error whose
+`issues[].accepted` says what _would_ have worked, so a wrong guess is a correction rather than an
+empty result.
+
+Three things it does that no per-metric tool can, and that a model will otherwise do badly in prose:
+
+- **`compare`** — give it another `{ range }` or `{ segment }` and the result comes back already
+  joined on the dimension key as `{ current, previous, delta, deltaPct }`, with a significance test
+  where the measure is a count and both windows are large enough. An agent should never run two
+  queries and subtract them itself.
+- **`explain: true`** — the compiled plan instead of the rows, with `warnings` naming the reasons an
+  answer might mislead: a capture channel that produced nothing in the window, a sample below the
+  metric's own minimum, a result cut off by `limit`. One call before reporting a zero.
+- **`drillQuery`** — every row of a `summary` carries the whole query narrowed to that row, ready to
+  send straight back.
+
+`dimensions` can be any subset a metric declares when its measure is a portable count; a spatial
+heatmap or a percentile is computed at one fixed grain and refuses anything else by name. See the
+[query reference](/docs/api/query/#two-compilation-tiers) for which metrics are which.
+
+Reach for the per-metric tools for discovery, and for `query` when a question needs a filter the
+canned tool does not expose — and for anything that compares, explains or drills.
+
 ### Tool catalog
 
 One tool per registry metric that the collector serves on a read endpoint, grouped by the registry's
@@ -205,6 +260,7 @@ grain, column units, limits and caveats.
 | ---------------------- | ---------------------------------------- | ---------------------- |
 | `list_sessions`        | `/api/v1/sessions`                       | Recent sessions        |
 | `session_meta`         | `/api/v1/sessions/:id/meta`              | Session descriptor     |
+| `session_narrative`    | `/api/v1/sessions/:id/narrative`         | Session narrative      |
 | `scene_representation` | `/api/v1/scenes/:sceneId/representation` | Scene representation   |
 | `list_scenes`          | `/api/v1/scenes`                         | Active scenes          |
 | `timeseries`           | `/api/v1/timeseries`                     | Event volume over time |
@@ -241,19 +297,20 @@ grain, column units, limits and caveats.
 
 #### Meshes & interactions
 
-| Tool                     | Endpoint                       | Returns                           |
-| ------------------------ | ------------------------------ | --------------------------------- |
-| `click_rays`             | `/api/v1/heatmaps/click-rays`  | View-gated click rays             |
-| `flow_links`             | `/api/v1/heatmaps/flow`        | Gaze → mesh flow links            |
-| `top_meshes`             | `/api/v1/meshes/top`           | Most-interacted meshes            |
-| `mesh_sources`           | `/api/v1/meshes/sources`       | Mesh interactions by input source |
-| `mesh_trend`             | `/api/v1/meshes/trend`         | Per-mesh interaction trend        |
-| `mesh_interaction_kinds` | `/api/v1/meshes/kinds`         | Interaction kinds per mesh        |
-| `mesh_reachability`      | `/api/v1/meshes/reachability`  | Mesh reachability by distance     |
-| `dead_clicks`            | `/api/v1/clicks/dead`          | Dead-click rate                   |
-| `rage_clicks`            | `/api/v1/clicks/rage`          | Rage-click clusters               |
-| `interaction_sources`    | `/api/v1/interactions/sources` | Interactions by input source      |
-| `top_input_actions`      | `/api/v1/input-actions/top`    | Most-used shortcuts and actions   |
+| Tool                      | Endpoint                           | Returns                            |
+| ------------------------- | ---------------------------------- | ---------------------------------- |
+| `click_rays`              | `/api/v1/heatmaps/click-rays`      | View-gated click rays              |
+| `flow_links`              | `/api/v1/heatmaps/flow`            | Gaze → mesh flow links             |
+| `top_meshes`              | `/api/v1/meshes/top`               | Most-interacted meshes             |
+| `mesh_sources`            | `/api/v1/meshes/sources`           | Mesh interactions by input source  |
+| `mesh_trend`              | `/api/v1/meshes/trend`             | Per-mesh interaction trend         |
+| `mesh_interaction_kinds`  | `/api/v1/meshes/kinds`             | Interaction kinds per mesh         |
+| `mesh_reachability`       | `/api/v1/meshes/reachability`      | Mesh reachability by distance      |
+| `dead_clicks`             | `/api/v1/clicks/dead`              | Dead-click rate                    |
+| `rage_clicks`             | `/api/v1/clicks/rage`              | Rage-click clusters                |
+| `interaction_sources`     | `/api/v1/interactions/sources`     | Interactions by input source       |
+| `top_input_actions`       | `/api/v1/input-actions/top`        | Most-used shortcuts and actions    |
+| `custom_event_vocabulary` | `/api/v1/vocabulary/custom-events` | Discovered custom-event vocabulary |
 
 #### Performance & stability
 
@@ -313,6 +370,16 @@ grain, column units, limits and caveats.
 | `load_bounce_funnel`  | `/api/v1/load-bounce`         | Load → bounce funnel             |
 | `variant_leaderboard` | `/api/v1/variant-leaderboard` | Variant → conversion leaderboard |
 
+#### insights
+
+| Tool                   | Endpoint                        | Returns                  |
+| ---------------------- | ------------------------------- | ------------------------ |
+| `insight_baseline`     | `/api/v1/insights/baseline`     | Metric baseline          |
+| `insight_movers`       | `/api/v1/insights/movers`       | What changed             |
+| `insight_anomalies`    | `/api/v1/insights/anomalies`    | Anomalous buckets        |
+| `insight_significance` | `/api/v1/insights/significance` | Statistical significance |
+| `insight_scene_health` | `/api/v1/insights/scene-health` | Scene health score       |
+
 <!-- generated:registry-guide-tools:end -->
 
 ## Resources
@@ -320,13 +387,17 @@ grain, column units, limits and caveats.
 The server also exposes read-only [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources)
 so an agent can **self-discover** what it can ask instead of guessing:
 
-| Resource URI              | Type               | Contents                                                                                                                                                                                                                                             |
-| ------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `uptimizr://capabilities` | `application/json` | A machine-readable descriptor: schema version, the canonical **event types**, the **tool catalog**, the **parameter semantics** glossary, and `metrics` — the collector's whole [semantic metric registry](#the-metric-registry). No collector call. |
-| `uptimizr://scenes`       | `application/json` | The **live** list of scene ids with recent activity — the valid values for the `scene` parameter. Fetched via the read-only query API.                                                                                                               |
+| Resource URI              | Type               | Contents                                                                                                                                                                                                                                                                                                     |
+| ------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `uptimizr://capabilities` | `application/json` | A machine-readable descriptor: schema version, the canonical **event types**, the **tool catalog**, the **parameter semantics** glossary, and `metrics` — the collector's whole [semantic metric registry](#the-metric-registry). No collector call.                                                         |
+| `uptimizr://context`      | `application/json` | **Read this first.** The live [project context document](/docs/api/context/): the scenes and their named regions, the custom events this application emits and the props they carry, data freshness and retention flags, the store engine, and which metrics are empty because their capture channel is off. |
+| `uptimizr://scenes`       | `application/json` | The **live** list of scene ids with recent activity — the valid values for the `scene` parameter. Fetched via the read-only query API.                                                                                                                                                                       |
 
-Point an agent at `uptimizr://capabilities` first: it enumerates every tool, its parameters, and
-what each parameter means, so the agent can plan a query without trial and error.
+Point an agent at `uptimizr://context` first: it is the only one that describes **this** project —
+the real scene ids, region ids and custom-event names it must use, and which metrics cannot have
+data. `uptimizr://capabilities` is the companion: it enumerates every tool, its parameters, and what
+each parameter means, so the agent can plan a query without trial and error. All three curated
+prompts below open by telling the agent to read the context.
 
 ### The metric registry
 
@@ -383,12 +454,139 @@ tools in a sensible order — the agent runs the tools; the prompt just frames t
 | `attention_hotspots`  | `scene`  | Where visitors look and click: `camera_heatmap`, `flow_links`, `click_rays`, `top_meshes`.                                                    |
 | `xr_comfort_review`   | `scene?` | VR/AR comfort & drop-off: `xr_rotation`, `xr_locomotion`, `xr_abandonment`, `xr_sources`.                                                     |
 
-## Transport & roadmap
+## Leaving something behind (the `annotate` tools)
 
-The server speaks **stdio** — the transport MCP clients (Claude Desktop, VS Code, Cursor, Copilot
-CLI) launch. A remote **Streamable HTTP** transport (so browser/remote MCP clients could reach a
-self-hosted collector) is a tracked follow-up and is only worth adding behind proper auth
-([ADR 0050](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0050-in-browser-analytics-assistant.md) §7).
+Read tools answer a question; these keep the answer. They appear in `tools/list` only when the key
+you configured holds the `annotate` capability.
+
+| Tool               | What it does                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| `annotate`         | Pin a note to the project, a scene, a mesh, a region, a metric or a period of time.                    |
+| `define_term`      | Record what a name means in this project. Idempotent — defining it again replaces the meaning.         |
+| `save_analysis`    | Store a titled question plus the conclusion drawn from it.                                             |
+| `list_annotations` | Read the notes already left — worth doing **before** explaining a spike someone has already explained. |
+| `list_glossary`    | Read the project's vocabulary before interpreting mesh names, scene ids or custom events.              |
+| `list_analyses`    | Read questions this project has asked before, and what they concluded.                                 |
+
+Mint the key with the capability:
+
+```bash
+uptimizr new-key <projectId> --capabilities query,annotate --label "weekly-report-agent"
+```
+
+Without it the server starts read-only and never offers the tools; with it, every write is bounded
+at the collector's edge and recorded in the agent audit log. They write **metadata only** — see
+[Metadata endpoints](/docs/api/metadata/) for the shapes, the bounds and the privacy note.
+
+## Hosted transport (Streamable HTTP)
+
+Everything above runs the MCP server **next to the client**, over stdio. The collector can also
+**host** the very same server itself, over the MCP
+[Streamable HTTP](https://modelcontextprotocol.io/specification/basic/transports) transport at
+`/mcp` — so a remote or containerised agent connects with a **URL and a key**, with no `npx` step
+and nothing installed on the client machine
+([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md) §7,
+which resolves the transport ADR 0050 §7 deferred pending auth).
+
+```text
+AI agent ──HTTPS POST/GET /mcp + x-api-key──▶ collector ─(in-process)─▶ query API ──▶ store
+```
+
+Both transports serve an **identical** surface — the same 69 tools, the same resources, the same
+prompts — because both are built by the same factory in `@uptimizr/mcp`. Pick stdio for a laptop
+pointed at a local collector, and the hosted transport when the agent is not on the same machine as
+the client, or when you would rather not distribute a key into a desktop config.
+
+### Turn it on
+
+It is **off by default**: an extra authenticated, long-lived surface is something an operator opts
+into. Set one environment variable on the collector and restart it:
+
+```bash
+COLLECTOR_MCP_HTTP=1
+```
+
+| Environment variable           | Default   | Notes                                                                    |
+| ------------------------------ | --------- | ------------------------------------------------------------------------ |
+| `COLLECTOR_MCP_HTTP`           | off       | `1`/`true` serves MCP at `/mcp`. Unset → the route does not exist.       |
+| `COLLECTOR_MCP_MAX_SESSIONS`   | `50`      | Concurrent MCP sessions. One too many is refused with `503`.             |
+| `COLLECTOR_MCP_SESSION_TTL_MS` | `1800000` | Idle timeout before a session is closed and its slot reclaimed (30 min). |
+
+See [deploying the collector](/docs/deploy/collector/#hosted-mcp-streamable-http) for the
+reverse-proxy requirements — chiefly that the proxy must **not buffer** the response.
+
+### Authenticate
+
+Every request is authenticated; the session id is never a credential on its own. Send the same
+project API key the stdio server uses, as either header:
+
+- `x-api-key: utk_…` — the collector's own header, or
+- `Authorization: Bearer utk_…` — the form MCP clients send, accepted as an alias on `/mcp` only.
+
+The key must hold `query`. A missing or unknown key is `401`, a key without `query` (an
+`ingest`-only key, say) is `403`, and a session may only ever be driven by the key that opened it —
+so a leaked session id buys nothing on its own. Mint a dedicated, labelled key exactly as for stdio:
+
+```bash
+npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
+  --capabilities query --label "mcp-remote"
+```
+
+### Configure an MCP client
+
+Clients that support remote servers take a URL and a header map. Claude Desktop, VS Code and Cursor
+all accept this shape:
+
+```jsonc
+{
+  "mcpServers": {
+    "uptimizr": {
+      "type": "http",
+      "url": "https://collect.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer utk_…",
+      },
+    },
+  },
+}
+```
+
+Some client versions spell the transport `"transport": "http"` (or `"streamable-http"`) rather than
+`"type"`, and a client that cannot send a custom `Authorization` header can use `"x-api-key"` in the
+same `headers` map instead. Clients with no remote support keep using the stdio block
+[above](#configure-an-mcp-client) — the same tools either way.
+
+Verify from a shell before wiring a client in; a successful `initialize` returns the session id in
+the `Mcp-Session-Id` response header:
+
+```bash
+curl -sS -D- -o/dev/null https://collect.example.com/mcp \
+  -H "x-api-key: utk_…" \
+  -H "content-type: application/json" \
+  -H "accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+```
+
+### What the collector does with a session
+
+- **One MCP server per session**, built with the capability set the key resolved to, so a session's
+  surface can only narrow to what its key may actually do.
+- **Tool calls run the ordinary read path.** The collector answers a tool call by dispatching to its
+  own query route **in process** — no loopback socket, no second TLS hop — so a tool call and the
+  equivalent `curl` are answered by the same handler, with the same validation, the same project
+  scoping and the same result envelope.
+- **Rate limits apply per key**, exactly as for HTTP reads, including a key's own
+  `--rate-limit-max` budget. The inner read is not charged a second time.
+- **Audit rows are tagged `mcp-http`**, so [the audit log](/docs/api/overview/#agent-audit-log)
+  tells a hosted-MCP tool call apart from a plain HTTP read. The stdio server is an ordinary HTTP
+  client of the collector, so its calls are recorded as `http`: the surface records how a request
+  reached the collector, not which program made it.
+- **`DELETE /mcp`** ends a session, and an idle one is reclaimed after
+  `COLLECTOR_MCP_SESSION_TTL_MS`.
+
+Sessions live in the collector process, so if you run several collector instances behind a load
+balancer, pin MCP traffic to one instance (sticky sessions) or point the client at a single
+instance's URL.
 
 ## Programmatic use
 
@@ -398,7 +596,7 @@ The package also exports its building blocks for embedding in your own server:
 import { createCollectorClient, createMcpServer, readMcpConfig } from "@uptimizr/mcp";
 ```
 
-The read-only tool catalog and the `GET`-only collector client come from the framework-agnostic
+The tool catalogs and the collector client come from the framework-agnostic
 [`@uptimizr/agent-core`](https://www.npmjs.com/package/@uptimizr/agent-core) package (re-exported
 here for convenience). If you're building a non-MCP agent — a browser assistant, a Node service, a
 CLI, a bot — depend on `@uptimizr/agent-core` directly: it also ships a headless LLM

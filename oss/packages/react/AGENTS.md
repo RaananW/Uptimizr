@@ -81,6 +81,14 @@ from the proxy and `api.sceneRegions(sceneId)` the panel already fetched, and fe
 `WorldHeatmap3DView`'s `voxelLabels` — the same rules the collector's summary labelling uses, so a
 tooltip and a `format=summary` answer can never disagree. Regions are keyed per scene, so a panel
 scoped to "All scenes" gets `[]` and the tooltip falls back to the mesh name alone.
+Note the two similarly-named panels. `scene-health` is a raw event-count overview of the selected
+window (errors, context loss, attention gaps). `scene-health-score` is the `insight_scene_health`
+primitive (ADR 0051 §4): one 0-100 score per scene over six weighted factors, each **normalised
+against the project's own preceding window**, read through `CollectorApi.sceneHealth()`. Its bars
+are deliberately annotated with the metric id behind each factor (`data-metric`, and the hover
+title) — the tile is a routing decision, so a reader has to be able to get from a short bar to the
+endpoint that explains it without guessing. A factor whose `score` is `null` could not be measured
+and is rendered as an empty bar rather than as a zero; 50 is the project norm, not a pass mark.
 
 ### The panel contract (ADR 0036, extended by 0039 and 0041)
 
@@ -104,9 +112,17 @@ import type { PanelDefinition, PanelContext } from "@uptimizr/react";
 ### The in-browser assistant (ADR 0050)
 
 `@uptimizr/react/assistant` ships a drop-in `<AssistantPanel>` and a headless `useAssistant()`
-hook. The agent loop runs **entirely in the browser** against the same read-only query API the
-panels use. It ships **no model and no key**: the user picks a local WebGPU model (`@mlc-ai/web-llm`,
-an optional peer, loaded lazily) or a bring-your-own hosted provider.
+hook. The agent loop runs **entirely in the browser** against the same query API the panels use, and
+it **reads only**: every tool call is a `GET`, and no event can be written, altered or deleted
+(ADR 0051 §9). It ships **no model and no key**: the user picks a local WebGPU model
+(`@mlc-ai/web-llm`, an optional peer, loaded lazily) or a bring-your-own hosted provider.
+
+Two **metadata** actions sit under each answer (ADR 0051 §5): "Annotate this" stores the answer as a
+project note, "Save this analysis" stores the turn as a titled record. They appear only when the key
+holds the `annotate` capability — the hook asks `GET /api/v1/whoami` once and exposes `canAnnotate`,
+`annotate(text, target?)` and `saveAnalysis(title, conclusion)`. Pass
+`<AssistantPanel annotationTarget={annotationTargetFor(filters)} />` so a note inherits what the view
+is filtered to.
 
 ```tsx
 import { AssistantPanel } from "@uptimizr/react/assistant";
@@ -135,7 +151,7 @@ chooser — nothing downloads until the user picks), `systemPrompt` (defaults to
 `DEFAULT_SYSTEM_PROMPT`; `composeSystemPrompt` / `refreshSystemPrompt` build and re-stamp it),
 `maxSteps` (`DEFAULT_ASSISTANT_MAX_STEPS`, 12), `confirmDownload`, `cachePolicy`
 (`"active-only"` default — switching models evicts the previous ~4 GB cache), `onCacheEvicted`,
-`persistBackend`, `now`.
+`persistBackend`, `now`. `<AssistantPanel>` additionally takes `annotationTarget`.
 
 ## Rules for agents
 

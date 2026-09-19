@@ -30,7 +30,12 @@
  */
 
 import { z } from "zod";
+// `REQUIRED_FILTERS` lives in the registry package (ADR 0051 §1) so the DSL's
+// validator and this catalog agree on which filters a metric cannot be called
+// without, instead of each carrying its own copy of the same two exceptions.
 import {
+  NARRATIVE_LIMITS,
+  REQUIRED_FILTERS,
   allMetrics,
   resultFormatSchema,
   structuredEnvelopeSchema,
@@ -250,6 +255,96 @@ const FILTER_FIELDS: Readonly<Record<FilterId, z.ZodType>> = {
     .max(2048)
     .optional()
     .describe("JSON funnel-step predicate for the success event. Omit to report views only."),
+  // --- session narrative (ADR 0051 §7) ---
+  //
+  // Bounds mirror `NARRATIVE_LIMITS` in `@uptimizr/metrics`, which is also what
+  // the collector's querystring validates against.
+  minDwellMs: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(NARRATIVE_LIMITS.maxMinDwellMs)
+    .optional()
+    .describe(
+      "How long (ms) a mesh must hold attention before it earns a dwell entry in a session " +
+        `narrative. Default ${NARRATIVE_LIMITS.defaultMinDwellMs}; raise it to keep only the ` +
+        "meshes that were really looked at.",
+    ),
+  maxEntries: z
+    .number()
+    .int()
+    .positive()
+    .max(NARRATIVE_LIMITS.maxMaxEntries)
+    .optional()
+    .describe(
+      "Maximum entries in a session narrative, oldest first (default " +
+        `${NARRATIVE_LIMITS.defaultMaxEntries}, hard cap ${NARRATIVE_LIMITS.maxMaxEntries}). ` +
+        "The closing summary entry always survives and reports whether anything was dropped.",
+    ),
+  // --- insight primitives (ADR 0051 §4) ---
+  // `metric` / `metrics` are the only arguments whose value is itself a
+  // registry metric id, so their descriptions point at the capabilities
+  // resource rather than listing 40 ids inline.
+  metric: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .describe(
+      "The registry metric to compute the insight over. Must be a comparable metric that has a " +
+        "portable bucket series; an id that has none is rejected with the list of ids that do.",
+    ),
+  metrics: z
+    .string()
+    .min(1)
+    .max(1024)
+    .optional()
+    .describe(
+      "Comma-separated allowlist of registry metric ids to scan instead of the curated default " +
+        "set. Capped per request; a longer list is rejected rather than silently truncated.",
+    ),
+  window: z
+    .number()
+    .int()
+    .positive()
+    .max(365)
+    .optional()
+    .describe("Baseline window length in days, counted back from `until`. Defaults to 28."),
+  refSince: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      "Start of the reference window a change is measured against, epoch milliseconds. Defaults " +
+        "to the equal-length window immediately before the current range.",
+    ),
+  refUntil: z
+    .number()
+    .int()
+    .optional()
+    .describe("End of the reference window, epoch milliseconds. Defaults to `since`."),
+  // --- anomalies (#306) ---
+  sensitivity: z
+    .number()
+    .min(1)
+    .max(10)
+    .optional()
+    .describe(
+      "How far out of line a bucket must be before it is reported, in standard deviations of " +
+        "the trailing window (a rescaled median absolute deviation). Higher means fewer, more " +
+        "extreme findings. 1-10, default 3.",
+    ),
+  // --- significance / scene health (#307) ---
+  weights: z
+    .string()
+    .min(1)
+    .max(512)
+    .optional()
+    .describe(
+      "JSON object overriding a composite score’s declared per-factor weights, as a JSON " +
+        "string. Factors it does not name keep their declared weight; an unknown factor id is " +
+        "rejected rather than ignored.",
+    ),
   // The shared result envelope (ADR 0051 §2), reusing the registry's own Zod
   // mirror so the values a tool accepts and the shapes it returns cannot drift.
   //
@@ -272,18 +367,44 @@ const FILTER_FIELDS: Readonly<Record<FilterId, z.ZodType>> = {
 };
 
 /**
- * Filters the collector declares **required** in its querystring schema, by
- * metric id. The registry records requiredness in prose (a `caveats` line) but
- * not as data, so the two exceptions are listed here; everything else is
- * optional. Path parameters are always required and are handled separately.
+ * Per-metric overrides of {@link FILTER_FIELDS}, for the one filter id whose
+ * *type* depends on the metric that accepts it.
  *
- * Keep this in step with `oss/apps/collector-server/src/routes/query.ts`
- * (`funnelQueryParams.steps`, `meshUvHeatmapQueryParams.mesh`). Promoting it
- * into the registry itself is tracked as a follow-up.
+ * `bucket` is a histogram bin width in FPS on `fps_histogram` and the time
+ * grain (`day` | `hour`) on the insight primitives. Declaring a union in the
+ * shared table would weaken `fps_histogram`'s advertised schema for no reason
+ * and change bytes a shipped MCP client already validates against; an override
+ * keeps every existing tool exactly as it was.
  */
-const REQUIRED_FILTERS: Readonly<Record<string, readonly FilterId[]>> = {
-  funnel: ["steps"],
-  mesh_uv_heatmap: ["mesh"],
+const METRIC_FILTER_FIELDS: Readonly<Record<string, Partial<Record<FilterId, z.ZodType>>>> = {
+  insight_baseline: {
+    bucket: z
+      .enum(["day", "hour"])
+      .optional()
+      .describe("Time grain of the series: `day` (default) or `hour`."),
+  },
+  insight_movers: {
+    bucket: z
+      .enum(["day", "hour"])
+      .optional()
+      .describe("Time grain of the series the spread is measured over: `day` (default) or `hour`."),
+  },
+  // --- significance / scene health (#307) ---
+  insight_significance: {
+    bucket: z
+      .enum(["day", "hour"])
+      .optional()
+      .describe(
+        "Time grain of the compared series: `day` (default) or `hour`. It is also the unit " +
+          "a Welch comparison counts observations in, so a finer grain buys statistical power.",
+      ),
+  },
+  insight_scene_health: {
+    bucket: z
+      .enum(["day", "hour"])
+      .optional()
+      .describe("Time grain each factor’s series is bucketed at: `day` (default) or `hour`."),
+  },
 };
 
 /**
@@ -294,6 +415,15 @@ const REQUIRED_FILTERS: Readonly<Record<string, readonly FilterId[]>> = {
 const REQUIRED_FILTER_FIELDS: Readonly<Partial<Record<FilterId, z.ZodType>>> = {
   steps,
   mesh: z.string().min(1).max(256).describe("The mesh/object name to bin. Required."),
+  metric: z
+    .string()
+    .min(1)
+    .max(64)
+    .describe(
+      "The registry metric the insight is computed over. Required. Must be a comparable " +
+        "metric with a portable bucket series; an id that has none is rejected with the list " +
+        "of ids that do.",
+    ),
 };
 
 /**
@@ -324,7 +454,7 @@ function filterField(metric: MetricDefinition, filter: FilterId): z.ZodType {
     if (!required) throw new Error(`no required field defined for filter '${filter}'`);
     return required;
   }
-  return FILTER_FIELDS[filter];
+  return METRIC_FILTER_FIELDS[metric.id]?.[filter] ?? FILTER_FIELDS[filter];
 }
 
 /**
@@ -479,6 +609,13 @@ export function metricToTool(metric: MetricDefinition): ReadTool | undefined {
 /**
  * Generate the read-only tool catalog from the metric registry: one tool per
  * registry entry that has a collector endpoint, in registry declaration order.
+ *
+ * **Capability-blind by design.** It generates a tool for every endpoint,
+ * whatever `endpoint.capability` says, because generation and *exposure* are
+ * separate decisions: `tools.ts` partitions the result into the `query` catalog
+ * (`readTools`) and the `query:raw` one (`rawTools`), and the host decides which
+ * of those a given API key may see (ADR 0051 §7). Pass a filtered metric list to
+ * generate only part of the catalog.
  *
  * Pure — it reads definitions only and never touches a collector — so the whole
  * catalog is unit-testable without a live server.

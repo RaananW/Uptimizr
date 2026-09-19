@@ -46,6 +46,27 @@ export {
   toApiKeyColumns,
   toApiKeyRateLimit,
 } from "./metadata.js";
+// Project metadata: annotations, glossary, saved analyses (#310, ADR 0051 §5).
+export {
+  METADATA_LIMITS,
+  MetadataLimitError,
+  clampMetadataLimit,
+  parseSavedAnalysisQuery,
+} from "./metadata.js";
+export type {
+  AnnotationRecord,
+  AnnotationTargetKind,
+  CreateAnnotationInput,
+  CreateSavedAnalysisInput,
+  GlossaryEntryRecord,
+  ListAnnotationsOptions,
+  MetadataAuthor,
+  MetadataAuthorKind,
+  MetadataListOptions,
+  MetadataTable,
+  PutGlossaryEntryInput,
+  SavedAnalysisRecord,
+} from "./metadata.js";
 export type {
   Project,
   AgentAuditEntry,
@@ -117,6 +138,11 @@ export {
   buildMeshInteractionKinds,
   buildReachability,
   buildTopInputActions,
+  buildCustomEventVocabulary,
+  CUSTOM_EVENT_VOCABULARY_LIMIT,
+  CUSTOM_EVENT_VOCABULARY_MAX_LIMIT,
+  CUSTOM_EVENT_VOCABULARY_SAMPLE_ROWS,
+  CUSTOM_EVENT_VOCABULARY_MAX_SAMPLE_ROWS,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -165,6 +191,15 @@ export {
   buildLoadBounceFunnel,
   buildVariantLeaderboard,
 } from "./query/aggregations.js";
+// --- Custom-event vocabulary fold (ADR 0051 §5, design sketch §E.1) ---
+// The pure half of the vocabulary aggregation: prop-key discovery over the
+// sampled payloads, kept out of SQL because key enumeration over an open JSON
+// object has no portable spelling across the four supported engines.
+export {
+  foldCustomEventVocabulary,
+  CUSTOM_EVENT_VOCABULARY_MAX_PROPS,
+} from "./query/customEventVocabulary.js";
+export type { FoldCustomEventVocabularyOptions } from "./query/customEventVocabulary.js";
 // --- Numeric coercion at the store edge (ADR 0051 §2) ---
 // Applied by every store's query runner so the collector always emits numbers.
 // Lives on the root barrel rather than the browser-safe `/query` subpath because
@@ -173,12 +208,87 @@ export {
 export { coerceRows, numericColumns, numericColumnsOfMetric } from "./query/coerce.js";
 export type { CoerceRowsOptions } from "./query/coerce.js";
 
+// --- Query DSL (ADR 0051 §3, design sketch §C.2) ---
+// A validated `queryV1` document → the metric's own aggregation builder
+// (delegated) or the shared group-by builder (generic) → an ordinary
+// `QuerySpec`; plus the pure layers that compare two runs, judge whether the
+// difference is real, render the plan, and re-order a delegated result. Also
+// published on the browser-safe `@uptimizr/db/query` subpath, alongside the
+// builders it delegates to.
+export {
+  DEFAULT_ALPHA,
+  ORDER_AFTER_CAP_CAVEAT,
+  applyOrder,
+  compileGenericGroupBy,
+  builderFor,
+  cameraTypeForMode,
+  channelRows,
+  compareRows,
+  comparisonKeys,
+  compileMetric,
+  compileQuery,
+  explainQuery,
+  explainSpec,
+  genericResultColumns,
+  // `normalCdf` is deliberately NOT re-exported from here: `query/dsl` and
+  // `insights` each implement one (#304 and #307), and an explicit re-export
+  // would shadow the `export * from "./insights/index.js"` below. The root
+  // exports the insights implementation, whose accuracy is pinned against
+  // published reference values; the DSL's stays internal to `query/dsl`, where
+  // `querySignificance.test.ts` imports it directly. Folding the two into one
+  // module is tracked as a follow-up.
+  planWarnings,
+  reordersCappedResult,
+  sampleOf,
+  silentChannels,
+  studentTTwoSided,
+  summarizeComparison,
+  toBuilderOptions,
+  twoProportionZ,
+  welchT,
+  wilsonScoreInterval,
+} from "./query/dsl/index.js";
+export type {
+  AggregationBuilder,
+  ComparisonBasis,
+  ComparisonContext,
+  ComparisonMeta,
+  ComparisonResult,
+  ComparisonRow,
+  ComparisonSide,
+  ExplainParam,
+  ExplainParamType,
+  GenericDeviceFilter,
+  GenericEventPredicate,
+  GenericQueryOptions,
+  MeanSignificance,
+  MetricQueryOptions,
+  MoversSummary,
+  PlanContext,
+  Proportion,
+  ProportionSignificance,
+  QueryPlan,
+  QueryResolution,
+  ResultOrder,
+  Sample,
+  ScoreInterval,
+  Significance,
+} from "./query/dsl/index.js";
+
 // --- Agent-shaped result envelopes (ADR 0051 §2, design sketch §B.1) ---
 // `format=table | summary`: pure, registry-driven summarisation of a metric's
 // rows. Re-exported here for the collector's convenience; also published on its
 // own browser-safe `@uptimizr/db/summary` subpath, which — like `/registry` —
 // carries no DuckDB driver and no `node:` import.
 export * from "./query/summary/index.js";
+
+// --- Insight primitives (ADR 0051 §4, design sketch §D) ---
+// `baseline` and `movers`: one generic, dialect-agnostic bucket query
+// (`buildMetricBuckets`) plus pure-TypeScript statistics over the series it
+// returns. Re-exported on the root barrel rather than a subpath because the
+// bucket builder is authored against the same `Dialect` contract as every other
+// aggregation, and the statistics are what the collector imports beside them.
+export * from "./insights/index.js";
 
 export type {
   QuerySpec,
@@ -211,6 +321,10 @@ export type {
   MeshSourceCountRow,
   MeshTrendPointRow,
   InputActionCountRow,
+  CustomEventVocabularyOptions,
+  CustomEventVocabularyRow,
+  CustomEventVocabularySampleRow,
+  CustomPropType,
   DeadClickRow,
   RageClickRow,
   HoverDwellRow,
@@ -263,6 +377,35 @@ export type {
   VariantLeaderboardRow,
 } from "./query/types.js";
 
+// --- Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1-F.3) ---
+// Engine-neutral record shape, row mapping and the store contract the four
+// engine packages implement. The webhook secret is write-only: only
+// `getWebhookSecret` returns it, and every record carries `MASKED_SECRET`.
+export {
+  DEFAULT_COOLDOWN,
+  MASKED_SECRET,
+  MAX_ENABLED_SUBSCRIPTIONS,
+  MAX_SUBSCRIPTIONS_PER_PROJECT,
+  MAX_SUBSCRIPTION_EVENTS,
+  SUBSCRIPTION_ERROR_MAX_LENGTH,
+  SubscriptionLimitError,
+  clampEventLimit,
+  clampSubscriptionError,
+  rowToSubscription,
+  rowToSubscriptionEvent,
+  toSubscriptionColumns,
+} from "./subscriptions.js";
+export type {
+  SubscriptionDeliveryOutcome,
+  SubscriptionEventInput,
+  SubscriptionEventQueryOptions,
+  SubscriptionEventRecord,
+  SubscriptionEventRowLike,
+  SubscriptionRecord,
+  SubscriptionRowLike,
+  SubscriptionStore,
+} from "./subscriptions.js";
+
 // --- DuckDB (OSS single-file store, ADR 0020) ---
 export { createDuckdbClient, convertValue } from "./duckdb/client.js";
 export type { DuckdbClient, DuckdbRow } from "./duckdb/client.js";
@@ -295,6 +438,29 @@ export {
   getSceneRegions as duckdbGetSceneRegions,
   listSceneRegions as duckdbListSceneRegions,
 } from "./duckdb/sceneRegions.js";
+export {
+  createAnnotation as duckdbCreateAnnotation,
+  listAnnotations as duckdbListAnnotations,
+  deleteAnnotation as duckdbDeleteAnnotation,
+  putGlossaryEntry as duckdbPutGlossaryEntry,
+  listGlossary as duckdbListGlossary,
+  deleteGlossaryEntry as duckdbDeleteGlossaryEntry,
+  createSavedAnalysis as duckdbCreateSavedAnalysis,
+  listSavedAnalyses as duckdbListSavedAnalyses,
+  deleteSavedAnalysis as duckdbDeleteSavedAnalysis,
+} from "./duckdb/projectMetadata.js";
+export {
+  listSubscriptions as duckdbListSubscriptions,
+  listEnabledSubscriptions as duckdbListEnabledSubscriptions,
+  getSubscription as duckdbGetSubscription,
+  createSubscription as duckdbCreateSubscription,
+  setSubscriptionEnabled as duckdbSetSubscriptionEnabled,
+  deleteSubscription as duckdbDeleteSubscription,
+  recordSubscriptionOutcome as duckdbRecordSubscriptionOutcome,
+  getWebhookSecret as duckdbGetWebhookSecret,
+  recordSubscriptionEvent as duckdbRecordSubscriptionEvent,
+  listSubscriptionEvents as duckdbListSubscriptionEvents,
+} from "./duckdb/subscriptions.js";
 
 // --- Cross-engine parity harness (ADR 0020) ---
 // Shared fixtures, golden expectations, and a tolerance-aware comparator. OSS
@@ -308,11 +474,20 @@ export {
   PARITY_EVENTS,
 } from "./parity/fixtures.js";
 export {
+  ENGINE_FORMATTED_COLUMNS,
   PARITY_ABS_TOLERANCE,
   PARITY_REL_TOLERANCE,
   diffParity,
   numericColumnsForSpec,
 } from "./parity/compare.js";
 export type { ParityRow, ParityCompareOptions } from "./parity/compare.js";
-export { PARITY_CASES } from "./parity/cases.js";
+export { GENERIC_PARITY_CASE_NAMES, PARITY_CASES } from "./parity/cases.js";
 export type { ParityCase } from "./parity/cases.js";
+
+// --- Session narrative (ADR 0051 §7, design sketch §G.2) ---
+// The pure compaction of one session's raw event stream into an ordered,
+// bounded account of what it did, plus its plain-text rendering. Served by the
+// collector on `GET /api/v1/sessions/:id/narrative`, which is gated by
+// `ENABLE_RAW_SESSION_RETENTION` **and** the `query:raw` capability (ADR 0003).
+export { buildSessionNarrative, renderSessionNarrativeText } from "./narrative/index.js";
+export type { SessionNarrative, SessionNarrativeOptions } from "./narrative/index.js";

@@ -11,13 +11,25 @@ import {
 import type { CollectorConfig } from "./config.js";
 import type { CollectorStore } from "./store.js";
 import { createLiveBus, type LiveBus } from "./liveBus.js";
-import { attachApiKey } from "./auth.js";
+import { attachApiKey, normalizeMcpBearer } from "./auth.js";
+import { storeProjectMetadata, type ProjectMetadataProvider } from "./projectMetadata.js";
 import { registerAuditHooks, startAuditRetention } from "./audit.js";
 import { buildDashboardCsp } from "./csp.js";
+import { isInternalDispatch, newInternalDispatchToken } from "./internalDispatch.js";
 import { collectRoutes } from "./routes/collect.js";
+import { contextRoutes } from "./routes/context.js";
+import { insightRoutes } from "./routes/insights.js";
 import { liveRoutes } from "./routes/live.js";
+import { mcpRoutes } from "./routes/mcp.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
+import { metadataRoutes } from "./routes/metadata.js";
+import { narrativeRoutes } from "./routes/narrative.js";
 import { queryRoutes } from "./routes/query.js";
+import { queryDslRoutes } from "./routes/query-dsl.js";
+import { subscriptionRoutes } from "./routes/subscriptions.js";
+import { createSubscriptionScheduler } from "./subscriptions/scheduler.js";
+import { createSubscriptionStream } from "./subscriptions/stream.js";
+import { createConnectionLimiter } from "./connectionLimiter.js";
 
 export interface BuildAppDeps {
   store: CollectorStore;
@@ -27,8 +39,20 @@ export interface BuildAppDeps {
    * in-process bus is created from `config.liveWindowMs` when omitted.
    */
   liveBus?: LiveBus;
+  /**
+   * Outbound HTTP for subscription webhooks (#311). Injectable so a test can
+   * assert the signed body without a real socket; defaults to global `fetch`.
+   */
+  fetchImpl?: typeof fetch;
   /** Pass `true` (or Fastify logger options) to enable request logging. */
   logger?: boolean;
+  /**
+   * Source of the glossary and recent annotations the project context document
+   * reports (ADR 0051 §5). Defaults to reading them from `store` through the
+   * metadata write path of #310 — see `projectMetadata.ts`. Injectable so a
+   * test can supply its own without a store.
+   */
+  projectMetadata?: ProjectMetadataProvider;
 }
 
 /**
@@ -83,13 +107,27 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     config.dashboardDir && config.cspMode === "strict"
       ? buildDashboardCsp(config.dashboardDir, config.corsOrigins)
       : false;
+  // Per-process marker for the reads the hosted MCP transport dispatches to this
+  // same app (#313). Minted only when that transport is on; see
+  // `internalDispatch.ts` for why it exists and why it must be unguessable.
+  const internalDispatchToken = config.mcpHttpEnabled ? newInternalDispatchToken() : undefined;
+
   await app.register(helmet, config.dashboardDir ? { contentSecurityPolicy } : {});
   await app.register(cors, {
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
     // @fastify/cors defaults `methods` to GET,HEAD,POST — which omits PUT and so
     // breaks the browser preflight for scene-proxy registration
-    // (PUT /api/v1/scenes/:id/representation). List the verbs the HTTP API uses.
-    methods: ["GET", "HEAD", "POST", "PUT"],
+    // (PUT /api/v1/scenes/:id/representation). DELETE is needed for the metadata
+    // write path (#310: removing an annotation, a term, a saved analysis) and for
+    // ending an MCP session over `/mcp` (#313). List the verbs the HTTP API uses.
+    methods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
+    // Streamable HTTP returns the session id in a response header the client has
+    // to echo back; a browser cannot read it unless it is explicitly exposed.
+    ...(config.mcpHttpEnabled ? { exposedHeaders: ["Mcp-Session-Id"] } : {}),
+    // `allowedHeaders` is deliberately left unset: the plugin then reflects the
+    // browser's `Access-Control-Request-Headers`, which already covers the MCP
+    // request headers (`Mcp-Session-Id`, `Mcp-Protocol-Version`, `Last-Event-ID`)
+    // without narrowing what every other client may send today.
     // The SDK ingests via `navigator.sendBeacon`, which always sends in
     // credentials mode `include`. With a non-safelisted `application/json` body
     // that triggers a credentialed CORS preflight, so the response must echo
@@ -107,7 +145,11 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   // rate-limit plugin installs, so registration order here is load-bearing.
   app.decorateRequest("resolvedKey", null);
   app.decorateRequest("auditRowCount", null);
+  app.decorateRequest("auditParams", null);
   app.addHook("onRequest", async (request) => {
+    // MCP clients send `Authorization: Bearer <key>`; fold it into `x-api-key`
+    // first so there is still one key-resolution path (#313).
+    if (config.mcpHttpEnabled) normalizeMcpBearer(request);
     await attachApiKey(request, store);
   });
 
@@ -121,11 +163,16 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     // so requests without a per-key budget keep their existing IPv6-aware bucket.
     keyGenerator: (request) =>
       request.resolvedKey?.rateLimit ? `key:${request.resolvedKey.keyId}` : normalizeIP(request.ip),
+    // A read the collector dispatched to itself for an MCP tool call is already
+    // paid for: the `POST /mcp` that carried the call went through this same
+    // limiter on the caller's bucket. Charging the inner read again would halve
+    // every key's effective allowance over the hosted transport.
+    allowList: (request) => isInternalDispatch(request, internalDispatchToken),
   });
 
   // Audit every authenticated, non-dashboard request (ADR 0051 §7). Registered
   // after the rate limiter so a throttled request is still recorded.
-  registerAuditHooks(app, store, config);
+  registerAuditHooks(app, store, config, internalDispatchToken);
   const stopAuditRetention = startAuditRetention(app, store, config);
   app.addHook("onClose", async () => stopAuditRetention());
 
@@ -139,8 +186,74 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   app.get("/health", async () => ({ status: "ok" }));
 
   await app.register(collectRoutes, { store, config, liveBus });
-  await app.register(liveRoutes, { store, config, liveBus });
+  // One SSE budget for the whole collector: the live endpoints and the
+  // conditional-subscription stream hold the same kind of socket, so
+  // `LIVE_MAX_CONNECTIONS` bounds their total rather than each of them.
+  const sseConnections = createConnectionLimiter(config.liveMaxConnections);
+  await app.register(liveRoutes, { store, config, liveBus, connections: sseConnections });
   await app.register(queryRoutes, { store, config });
+  // The query DSL (ADR 0051 §3): one route that can run any registry metric.
+  await app.register(queryDslRoutes, { store });
+  // The metadata write path (#310) is its own plugin so the read API above stays
+  // exactly what it is — aggregate and read-only — and so the `annotate`-gated
+  // surface is one file to inspect.
+  await app.register(metadataRoutes, { store });
+  // Collector-hosted MCP over Streamable HTTP (ADR 0051 §7). Opt-in: without
+  // `COLLECTOR_MCP_HTTP` the route does not exist.
+  if (config.mcpHttpEnabled && internalDispatchToken != null) {
+    await app.register(mcpRoutes, { store, config, internalDispatchToken });
+  }
+  // Session narrative (#314): its own plugin so it does not inherit the query
+  // plugin's `format` hook, which knows only the three shared envelopes.
+  await app.register(narrativeRoutes, { store, config });
+  // The project context document (#308). Its glossary and recent annotations
+  // come from the metadata write path (#310) through the narrow provider seam,
+  // which now has a real default reading the store.
+  await app.register(contextRoutes, {
+    store,
+    config,
+    metadata: deps.projectMetadata ?? storeProjectMetadata(store),
+  });
+  // Derived reads over the query surface (ADR 0051 §4): `baseline` and `movers`.
+  // Its own plugin so the envelope hook and the metric-resolution 400s stay
+  // scoped to the two insight routes.
+  await app.register(insightRoutes, { store });
+  // Conditional subscriptions (ADR 0051 §6): the CRUD resource, the firing log
+  // and the SSE stream. The scheduler behind them is created unconditionally —
+  // the routes need it for `POST …/test` even when evaluation is off — but only
+  // `reload()` installs timers, and that is gated on `COLLECTOR_SUBSCRIPTIONS`.
+  const subscriptionStream = createSubscriptionStream();
+  const scheduler = createSubscriptionScheduler({
+    store,
+    config,
+    liveBus,
+    stream: subscriptionStream,
+    log: app.log,
+    fetchImpl: deps.fetchImpl,
+  });
+  await app.register(subscriptionRoutes, {
+    store,
+    config,
+    scheduler,
+    stream: subscriptionStream,
+    connections: sseConnections,
+  });
+  app.addHook("onClose", async () => {
+    scheduler.stop();
+    subscriptionStream.stop();
+  });
+  if (config.subscriptions) {
+    // After `ready()`, so a store that is still migrating on boot is not read
+    // mid-migration; a failure only logs, because an unreadable subscription
+    // table must not stop the collector serving.
+    app.addHook("onReady", async () => {
+      try {
+        await scheduler.reload();
+      } catch (err) {
+        app.log.warn({ err }, "failed to start the subscription scheduler");
+      }
+    });
+  }
   await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API

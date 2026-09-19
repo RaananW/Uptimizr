@@ -28,16 +28,38 @@
 export {
   AGGREGATION_BUILDER_NAMES,
   DIMENSION_COLUMNS,
+  DIMENSION_ROW_COLUMNS,
   FILTER_TARGETS,
+  GENERIC_DIMENSIONS,
   METRIC_BY_BUILDER,
   METRIC_IDS,
   METRIC_REGISTRY,
   allMetrics,
   getMetric,
   isMetricId,
+  isAggregateMetric,
+  isDerivedMetric,
   isResourceMetric,
+  metricCapability,
   metricForBuilder,
 } from "./registry.js";
+
+// --- Query DSL validation (ADR 0051 §3) ---
+// The registry half of validating a `queryV1` document: `@uptimizr/schema`
+// checks the shape, this checks the vocabulary.
+export {
+  REQUIRED_FILTERS,
+  dimensionColumn,
+  genericDimensions,
+  nativeDimensions,
+  orderableColumns,
+  queryTier,
+  queryableFilters,
+  requiredFilters,
+  segmentableDimensions,
+  validateQuery,
+} from "./query.js";
+export type { QueryIssue, QueryIssueCode, QueryTier, QueryValidation } from "./query.js";
 
 export type {
   AggregationBuilderName,
@@ -47,9 +69,15 @@ export type {
   FilterId,
   FilterOptionInterface,
   FilterTarget,
+  GenericGroupBy,
+  GenericMeasure,
+  GenericMeasureKind,
+  GenericScope,
+  MetricCapability,
   MetricCategory,
   MetricComparison,
   MetricDefinition,
+  MetricDerivation,
   MetricEndpoint,
   MetricGrain,
   MetricId,
@@ -72,3 +100,24 @@ export {
   tableEnvelopeSchema,
   tableMetaSchema,
 } from "./envelopes.js";
+
+// --- Session narrative (ADR 0051 §7, design sketch §G.2) -------------------
+//
+// The shapes and bounds of the `query:raw`-gated session narrative, shared by
+// the compaction in `@uptimizr/db`, the collector route that serves it and the
+// `session_narrative` registry entry above.
+export {
+  NARRATIVE_ENTRY_KINDS,
+  NARRATIVE_LIMITS,
+  narrativeEntryKindSchema,
+  narrativeRefsSchema,
+  sessionNarrativeEntrySchema,
+  sessionNarrativeTotalsSchema,
+} from "./narrative.js";
+
+export type {
+  NarrativeEntryKind,
+  NarrativeRefs,
+  SessionNarrativeEntry,
+  SessionNarrativeTotals,
+} from "./narrative.js";

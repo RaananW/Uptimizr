@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readTools } from "@uptimizr/agent-core";
+import { rawTools, readTools } from "@uptimizr/agent-core";
 import { CASE_CATEGORIES, loadCases, toolsReferenced } from "../cases.js";
 import { coverageReport, loadUncovered } from "../coverage.js";
 import { MCP_PROMPT_NAMES, renderMcpPrompt } from "../mcpPrompts.js";
@@ -65,7 +65,9 @@ describe("metric coverage", () => {
   });
 
   it("covers the whole served catalog between cases and the allowlist", () => {
-    const served = new Set(readTools.map((tool) => tool.name));
+    // Both catalogs: a capability-gated tool is measured too, through a case
+    // that declares `capability: query:raw` (ADR 0051 §7).
+    const served = new Set([...readTools, ...rawTools].map((tool) => tool.name));
     const accounted = new Set([...report.covered, ...Object.keys(uncovered)]);
     expect(accounted.size).toBe(served.size);
   });
@@ -74,5 +76,23 @@ describe("metric coverage", () => {
     for (const evalCase of cases) {
       expect(toolsReferenced(evalCase).length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("capability-gated cases (ADR 0051 §7)", () => {
+  it("asks the raw-gated tools only from a query:raw case", () => {
+    const rawNames = new Set(rawTools.map((tool) => tool.name));
+    for (const evalCase of cases) {
+      const usesRaw = toolsReferenced(evalCase).some((name) => rawNames.has(name));
+      if (usesRaw) expect(evalCase.capability, evalCase.id).toBe("query:raw");
+    }
+  });
+
+  it("keeps every other case on the aggregate-only surface", () => {
+    const rawCases = cases.filter((evalCase) => evalCase.capability === "query:raw");
+    expect(rawCases.length).toBeGreaterThan(0);
+    expect(cases.filter((evalCase) => evalCase.capability === "query").length).toBe(
+      cases.length - rawCases.length,
+    );
   });
 });

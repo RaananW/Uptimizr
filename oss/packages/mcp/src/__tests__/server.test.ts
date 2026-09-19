@@ -10,10 +10,16 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CollectorClient, QueryParams } from "@uptimizr/agent-core";
-import { readTools } from "@uptimizr/agent-core";
+import {
+  NON_REGISTRY_READ_TOOLS,
+  QUERY_TOOL_NAME,
+  rawTools,
+  readTools,
+} from "@uptimizr/agent-core";
 import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createMcpServer } from "../server.js";
+import { CAPABILITIES_URI } from "../resources.js";
 
 /** What the stub collector was asked for, so a test can assert the mapping. */
 interface Recorded {
@@ -71,8 +77,21 @@ describe("tools/list", () => {
       // union of the three envelopes is advertised in its merged object form.
       expect(tool.outputSchema?.type, tool.name).toBe("object");
       const properties = Object.keys(tool.outputSchema?.properties ?? {});
-      expect(properties, tool.name).toContain("rows");
       expect(tool.description).toContain("Caveats:");
+      if (tool.name === QUERY_TOOL_NAME) {
+        // The query DSL tool is not a registry metric, and its shape is chosen
+        // by its `format`, so it advertises a single `result` key (ADR 0051 §3).
+        expect(properties, tool.name).toEqual(["result"]);
+        continue;
+      }
+      if (NOT_METRICS.has(tool.name)) {
+        // Collector reads that are configuration rather than measurements have
+        // no registry entry to check against (#311); they return `{ rows }`
+        // and take no `format`.
+        expect(properties, tool.name).toEqual(["rows"]);
+        continue;
+      }
+      expect(properties, tool.name).toContain("rows");
       const metric = metricOf(tool.name);
       if (metric.filters.includes("format")) {
         // Every envelope the tool can answer with is described (#350).
@@ -195,6 +214,9 @@ describe("tools/call", () => {
 
 const METRICS = new Map<string, MetricDefinition>(allMetrics().map((m) => [m.id, m]));
 
+/** Tool names that are deliberately not registry metrics (#303, #311). */
+const NOT_METRICS = new Set([QUERY_TOOL_NAME, ...NON_REGISTRY_READ_TOOLS.map((tool) => tool.name)]);
+
 function metricOf(name: string): MetricDefinition {
   const metric = METRICS.get(name);
   if (!metric) throw new Error(`no registry metric for tool '${name}'`);
@@ -212,6 +234,9 @@ const REQUIRED_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   session_meta: { sessionId: "s1" },
   session_trajectory: { sessionId: "s4" },
   scene_representation: { sceneId: "lobby" },
+  // An insight is computed *over* another metric, so its subject is required
+  // (ADR 0051 §4).
+  insight_baseline: { metric: "perf_summary" },
 };
 
 /**
@@ -270,6 +295,11 @@ function summaryEnvelope(metric: MetricDefinition): unknown {
 describe("result envelopes", () => {
   it("accepts all three formats for every generated tool", async () => {
     for (const tool of readTools) {
+      // Two tools are not registry metrics: the query DSL, which wraps every
+      // envelope in its own `{ result }` key (ADR 0051 §3) and has its own test
+      // below, and the non-metric collector reads of #311, which take no
+      // `format` at all.
+      if (NOT_METRICS.has(tool.name)) continue;
       const metric = metricOf(tool.name);
       const args = { ...(REQUIRED_ARGS[tool.name] ?? {}) };
       const row = nullRow(metric);
@@ -306,6 +336,19 @@ describe("result envelopes", () => {
       );
     }
   }, 120_000);
+
+  it("wraps every envelope the query DSL tool can answer with in `result`", async () => {
+    const metric = metricOf("top_meshes");
+    const row = nullRow(metric);
+    const query = { v: 1, metric: "top_meshes", range: { since: 1, until: 2 } };
+
+    for (const payload of [[row], tableEnvelope(metric, [row]), summaryEnvelope(metric)]) {
+      respond = () => payload;
+      const result = await client.callTool({ name: QUERY_TOOL_NAME, arguments: query });
+      expect(result.isError, JSON.stringify(payload).slice(0, 40)).toBeFalsy();
+      expect(result.structuredContent).toEqual({ result: payload });
+    }
+  }, 30_000);
 
   it("defaults to the table envelope when the caller omits format (#336)", async () => {
     const metric = metricOf("top_meshes");
@@ -357,4 +400,127 @@ describe("result envelopes", () => {
     expect(result.isError).toBe(true);
     expect((result.content as { text: string }[])[0]?.text).toContain("meta");
   });
+});
+
+/**
+ * The `capabilities` option (#313) carries the API key's capability set from the
+ * collector-hosted Streamable HTTP transport into the shared server factory, so
+ * one session's surface can be shaped by what its key may actually do. The stdio
+ * entry point omits it and must be unaffected.
+ */
+describe("createMcpServer options", () => {
+  async function connectWith(options?: Parameters<typeof createMcpServer>[1]): Promise<Client> {
+    const paired = new Client({ name: "options-test", version: "0.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      paired.connect(clientTransport),
+      createMcpServer(stubCollector, options).connect(serverTransport),
+    ]);
+    return paired;
+  }
+
+  it("registers the same catalog with or without a capability set", async () => {
+    const withOption = await connectWith({ capabilities: ["query"] });
+    const withoutOption = await connectWith();
+    const listed = (await withOption.listTools()).tools.map((tool) => tool.name).sort();
+    expect(listed).toEqual((await withoutOption.listTools()).tools.map((t) => t.name).sort());
+    expect(listed).toHaveLength(readTools.length);
+    await withOption.close();
+    await withoutOption.close();
+  }, 30_000);
+
+  it("names the granted capabilities in the server instructions", async () => {
+    const reader = await connectWith({ capabilities: ["query"] });
+    expect(reader.getInstructions()).toContain("query");
+    expect(reader.getInstructions()).not.toContain("annotate");
+    await reader.close();
+
+    const writer = await connectWith({ capabilities: ["query", "annotate"] });
+    expect(writer.getInstructions()).toContain("annotate");
+    await writer.close();
+  }, 30_000);
+
+  it("leaves the stdio server's initialize result untouched when omitted", async () => {
+    const plain = await connectWith();
+    expect(plain.getInstructions()).toBeUndefined();
+    await plain.close();
+  }, 30_000);
+});
+
+describe("capability-gated tools (#314, ADR 0051 §7)", () => {
+  /** Connect a fresh client to a server built for the given key capabilities. */
+  async function listFor(capabilities?: readonly string[]): Promise<string[]> {
+    const scoped = new Client({ name: "test", version: "0.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      scoped.connect(clientTransport),
+      createMcpServer(stubCollector, capabilities ? { capabilities } : {}).connect(serverTransport),
+    ]);
+    try {
+      return (await scoped.listTools()).tools.map((tool) => tool.name);
+    } finally {
+      await scoped.close();
+    }
+  }
+
+  it("hides session_narrative from a query-only key", async () => {
+    const names = await listFor(["query"]);
+    expect(names).not.toContain("session_narrative");
+    expect(names).toHaveLength(readTools.length);
+  }, 30_000);
+
+  it("hides it when the caller did not look the key up at all", async () => {
+    // The safe default: no capability information means the `query` surface.
+    expect(await listFor()).not.toContain("session_narrative");
+  }, 30_000);
+
+  it("registers it for a key holding query:raw", async () => {
+    const names = await listFor(["query", "query:raw"]);
+    expect(names).toContain("session_narrative");
+    expect(names).toHaveLength(readTools.length + rawTools.length);
+  }, 30_000);
+
+  it("calls the narrative endpoint when the tool is registered", async () => {
+    const scoped = new Client({ name: "test", version: "0.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      scoped.connect(clientTransport),
+      createMcpServer(stubCollector, { capabilities: ["query", "query:raw"] }).connect(
+        serverTransport,
+      ),
+    ]);
+    respond = () => [
+      { tMs: 0, kind: "scene", summary: 'Session started in scene "lobby".', refs: {} },
+    ];
+    try {
+      await scoped.listTools();
+      await scoped.callTool({
+        name: "session_narrative",
+        arguments: { sessionId: "s1", maxEntries: 50 },
+      });
+    } finally {
+      await scoped.close();
+    }
+    const call = requests.at(-1)!;
+    expect(call.path).toBe("api/v1/sessions/s1/narrative");
+    expect(call.params).toMatchObject({ maxEntries: 50 });
+  }, 30_000);
+
+  it("scopes the capabilities resource to the same surface", async () => {
+    const scoped = new Client({ name: "test", version: "0.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      scoped.connect(clientTransport),
+      createMcpServer(stubCollector, { capabilities: ["query"] }).connect(serverTransport),
+    ]);
+    try {
+      const resource = await scoped.readResource({ uri: CAPABILITIES_URI });
+      const descriptor = JSON.parse(String(resource.contents[0]!.text)) as {
+        tools: { name: string }[];
+      };
+      expect(descriptor.tools.map((tool) => tool.name)).not.toContain("session_narrative");
+    } finally {
+      await scoped.close();
+    }
+  }, 30_000);
 });

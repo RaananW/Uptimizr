@@ -73,6 +73,19 @@ export const LIMITS = {
   /** Number of regions one scene may declare (curated metadata, not a payload). */
   maxSceneRegions: 200,
 
+  /** Human name of a conditional subscription (ADR 0051 §6 / sketch §F.1). */
+  maxSubscriptionNameLength: 120,
+  /** Delivery targets one subscription may declare (`webhook`, `sse`). */
+  maxSubscriptionDeliveries: 4,
+  /**
+   * Subscriptions one project may hold. Each is a standing timer and, when it
+   * fires, an outbound request — so the count is bounded for the same reason
+   * every other agent surface is (ADR 0051 §9, "bounded outputs").
+   */
+  maxSubscriptionsPerProject: 100,
+  /** Firings retained per subscription; the oldest are dropped past this. */
+  maxSubscriptionEvents: 100,
+
   /** Developer-declared scene-actor id on `node_transform` (ADR 0027). */
   maxNodeIdLength: 128,
   /** Skeleton bone name on `node_transform` Tier-2 samples (ADR 0027). */
@@ -88,6 +101,36 @@ export const LIMITS = {
   maxGraphicsDiagnosticMessageLength: 1024,
   /** Short diagnostic code on `graphics_diagnostic` (e.g. GL error / `GPUError` subtype). */
   maxGraphicsDiagnosticCodeLength: 64,
+
+  // --- Project metadata (ADR 0051 §5 / sketch §E.2) -------------------------
+  // Not ingestion: these bound the authenticated **metadata write path**
+  // (annotations, glossary, saved analyses). They live here with the rest of the
+  // wire bounds so the schema, the collector and every store agree on one set of
+  // numbers. The `maxProject*` caps are enforced by the store at write time — a
+  // project's metadata is a curated set of notes, not a growth surface.
+
+  /** Free text of one annotation. */
+  maxAnnotationTextLength: 2000,
+  /** Identifier an annotation points at (a scene, mesh, region or metric id). */
+  maxAnnotationTargetIdLength: 256,
+  /** Annotations one project may hold. */
+  maxProjectAnnotations: 500,
+
+  /** Glossary term — the key half of one entry. */
+  maxGlossaryTermLength: 64,
+  /** Glossary meaning — the definition half of one entry. */
+  maxGlossaryMeaningLength: 500,
+  /** Glossary entries one project may hold. */
+  maxProjectGlossaryEntries: 200,
+
+  /** Saved-analysis title. */
+  maxSavedAnalysisTitleLength: 120,
+  /** Saved-analysis conclusion (the written finding). */
+  maxSavedAnalysisConclusionLength: 4000,
+  /** Serialized length of a saved analysis' `query` document. */
+  maxSavedAnalysisQueryLength: 8000,
+  /** Saved analyses one project may hold. */
+  maxProjectSavedAnalyses: 200,
 } as const;
 
 /**

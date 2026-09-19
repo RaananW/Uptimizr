@@ -378,6 +378,28 @@ the panel asks you to **choose a backend** — local WebLLM (zero egress) or you
 before anything loads; the choice is remembered, and you can change it — or switch between local and
 hosted — at any time via **Change backend**.
 
+### Keeping an answer: "Annotate this" and "Save this analysis"
+
+An answer you have to re-derive next week is half an answer. Under every reply the panel offers two
+actions:
+
+- **Annotate this** stores the answer as a project note, pinned to whatever the dashboard is
+  currently filtered to — the scene you are looking at, or the time window you are showing. The note
+  then appears as a marker on the event-volume time axis, with its text as the tooltip, so the next
+  person to look at that spike reads the explanation instead of re-deriving it.
+- **Save this analysis** stores the turn as a titled record: a title (pre-filled with the question
+  you asked), the collector reads the model actually made, and the answer as the conclusion.
+
+Both actions are shown **only** when the connected key holds the `annotate` capability — the panel
+asks `GET /api/v1/whoami` once and hides them otherwise, rather than offering a button that would be
+refused. A key minted by `uptimizr init` / `uptimizr new-project` carries it; a read-only key
+(`uptimizr new-key`'s default) does not.
+
+Rows written this way are recorded as authored by an **agent**, because the text is the model's — the
+collector decides that from the calling client, never from the payload. They are bounded, audited,
+and metadata only: nothing here can write, alter or delete an event. See
+[Metadata endpoints](/docs/api/metadata/).
+
 ### In the backend-less demo
 
 The [live demo](https://demo.uptimizr.com) embeds this same dashboard build, and its `/api/v1/*`
@@ -393,7 +415,53 @@ reloading the page always picks up the latest deploy (and its latest assistant b
 usable offline after "Prepare demo". If you ever seem stuck on an old build, reload once more, or
 force a clean copy via your browser's **Clear site data** / a hard refresh / an incognito window.
 
+## Project context in the system prompt
+
+Before its first answer the assistant reads the collector's
+[project context document](/docs/api/context/) and folds a compact rendering of it into the system
+prompt. That is what lets a small local model use **your** names instead of plausible ones:
+
+```text
+Project context (read from this collector; prefer these real names over any you infer):
+
+Scenes (use these exact ids for the `scene` filter; region ids for `region`):
+- lobby "Main Lobby" [regions: counter, entrance]
+- arena
+
+Custom events this app emits (name ×count {props}) — use these exact names:
+- add_to_cart ×311 {sku: string, qty: number}
+
+Most-interacted meshes: checkout_button, door_left.
+
+No data is captured for these metrics, so they WILL return empty — say the channel is off rather
+than reporting a zero: mesh_dwell, hover_dwell.
+
+Data: last event 4 min ago, 91 sessions in the last 24 h.
+Raw per-session retention is OFF: session timelines and replay are unavailable by design.
+```
+
+The block is deliberately short (≈1.5 k characters at most, truncated on a line boundary if a
+project is unusually large), because the same prompt has to carry the tool schemas for a 1–3 B local
+model. It is re-stamped on **every** send, so a context that arrives mid-conversation still reaches
+the model, and it sits after the current-time line so the original prompt is unchanged.
+
+The document is fetched once per collector connection and cached server-side for ~30 s, so it costs
+almost nothing. A collector **too old to serve `/api/v1/context`** is not an error: the read fails
+silently and the assistant runs with exactly the prompt it had before.
+
+`useAssistant` also returns the raw document as `projectContext` (`null` while loading, or when the
+endpoint is unavailable), so a host UI can show what the assistant knows:
+
+```tsx
+const { projectContext } = useAssistant({ collectorUrl, apiKey });
+const scenes = projectContext?.scenes?.map((s) => s.id) ?? [];
+```
+
+If you drive `@uptimizr/agent-core` yourself, `renderContextForPrompt(document)` produces the same
+block.
+
 ## See also
 
 - [MCP server (AI agents)](/docs/guides/mcp/) — the same read-only tool catalog for external/local agents.
+- [Project context](/docs/api/context/) — the document the assistant injects, and the endpoint behind it.
 - [ADR 0050](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0050-in-browser-analytics-assistant.md) — design rationale and trust boundary.

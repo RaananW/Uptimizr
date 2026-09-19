@@ -4,6 +4,7 @@ import {
   buildCameraDistance,
   buildCameraPositionHeatmap,
   buildClickGazeRay,
+  buildCustomEventVocabulary,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -16,6 +17,8 @@ import {
   buildCameraGestures,
   buildDistinctScenes,
   buildEventTypeCounts,
+  buildMetricBuckets,
+  toMetricBucketRows,
   buildFlowHeatmap,
   buildFunnel,
   buildSceneRetention,
@@ -62,11 +65,13 @@ import {
   buildTopMeshesBySource,
   buildTopMeshesTrend,
   buildTopInputActions,
+  foldCustomEventVocabulary,
   buildWorldHeatmap,
   buildWorldHeatmapStats,
   buildGazeHeatmap,
   buildGazeHeatmapStats,
   mssqlDialect,
+  compileMetric,
   readDbSettings,
   type CameraDistanceBucketRow,
   type ClickGazeRayRow,
@@ -98,6 +103,7 @@ import {
   type ReachabilityBinRow,
   type MeshSourceCountRow,
   type MeshTrendPointRow,
+  type CustomEventVocabularySampleRow,
   type InputActionCountRow,
   type NavigationStatsRow,
   type BacktrackRatioRow,
@@ -149,8 +155,27 @@ import {
   getSceneRepresentation as msGetSceneRepresentation,
   listSceneRepresentations as msListSceneRepresentations,
   putSceneRegions as msPutSceneRegions,
+  listSubscriptions as msListSubscriptions,
+  listEnabledSubscriptions as msListEnabledSubscriptions,
+  getSubscription as msGetSubscription,
+  createSubscription as msCreateSubscription,
+  setSubscriptionEnabled as msSetSubscriptionEnabled,
+  deleteSubscription as msDeleteSubscription,
+  recordSubscriptionOutcome as msRecordSubscriptionOutcome,
+  getWebhookSecret as msGetWebhookSecret,
+  recordSubscriptionEvent as msRecordSubscriptionEvent,
+  listSubscriptionEvents as msListSubscriptionEvents,
   getSceneRegions as msGetSceneRegions,
   listSceneRegions as msListSceneRegions,
+  createAnnotation as msCreateAnnotation,
+  listAnnotations as msListAnnotations,
+  deleteAnnotation as msDeleteAnnotation,
+  putGlossaryEntry as msPutGlossaryEntry,
+  listGlossary as msListGlossary,
+  deleteGlossaryEntry as msDeleteGlossaryEntry,
+  createSavedAnalysis as msCreateSavedAnalysis,
+  listSavedAnalyses as msListSavedAnalyses,
+  deleteSavedAnalysis as msDeleteSavedAnalysis,
   type MssqlClient,
 } from "@uptimizr/db-mssql";
 import type { CollectorStore } from "./store.js";
@@ -183,12 +208,23 @@ export async function createMssqlStore(): Promise<CollectorStore> {
 
   const d = mssqlDialect;
   return {
+    engine: "mssql",
     resolveApiKey: (key) => msResolveApiKey(msc, key),
     recordAudit: (entry) => msRecordAudit(msc, entry),
     listAudit: (projectId, opts) => msListAudit(msc, projectId, opts),
     pruneAudit: (cutoffMs) => msPruneAudit(msc, cutoffMs),
     projectExists: async (projectId) => (await msGetProject(msc, projectId)) !== null,
     insertEvents: (events) => msInsertEvents(msc, [...events]),
+    // Query DSL v1 (ADR 0051 §3): any registry metric, compiled onto its own
+    // aggregation builder and run through the same SQL Server path — and therefore
+    // the same parity coverage and the same numeric coercion — as the canned
+    // aggregates below.
+    runMetric: (projectId, metric, options) =>
+      runMssqlQuery<Record<string, unknown>>(msc, compileMetric(metric, projectId, options, d)),
+    describeMetric: (projectId, metric, options) => ({
+      dialect: d.name,
+      spec: compileMetric(metric, projectId, options, d),
+    }),
     listSessions: (projectId, opts = {}) =>
       runMssqlQuery<SessionSummaryRow>(msc, buildListSessions(projectId, opts, d)),
     pointerHeatmap: (projectId, opts = {}) =>
@@ -336,12 +372,30 @@ export async function createMssqlStore(): Promise<CollectorStore> {
       runMssqlQuery<InteractionSourceRow>(msc, buildInteractionsBySource(projectId, opts, d)),
     topInputActions: (projectId, opts = {}) =>
       runMssqlQuery<InputActionCountRow>(msc, buildTopInputActions(projectId, opts, d)),
+    // Discovered custom-event vocabulary (ADR 0051 §5): the SQL counts and
+    // samples, the pure fold turns the sampled payloads into prop types. The
+    // raw payload stops here and never reaches a route.
+    customEventVocabulary: async (projectId, opts = {}) =>
+      foldCustomEventVocabulary(
+        await runMssqlQuery<CustomEventVocabularySampleRow>(
+          msc,
+          buildCustomEventVocabulary(projectId, opts, d),
+        ),
+      ),
     scenes: (projectId, opts = {}) =>
       runMssqlQuery<SceneRow>(msc, buildDistinctScenes(projectId, opts, d)),
     timeseries: (projectId, opts = {}) =>
       runMssqlQuery<TimeseriesBucketRow>(msc, buildTimeseries(projectId, opts, d)),
     eventTypeCounts: (projectId, opts = {}) =>
       runMssqlQuery<EventTypeCountRow>(msc, buildEventTypeCounts(projectId, opts, d)),
+    // The one bucket series behind `baseline` and `movers` (ADR 0051 §4). The
+    // spec carries no registry metric of its own, so the store edge has no row
+    // schema to coerce it against — `toMetricBucketRows` parses the numbers,
+    // which is what keeps the engines that string-encode 64-bit counts honest.
+    metricBuckets: async (projectId, opts) =>
+      toMetricBucketRows(
+        await runMssqlQuery<Record<string, unknown>>(msc, buildMetricBuckets(projectId, opts, d)),
+      ),
     funnel: (projectId, opts) =>
       runMssqlQuery<FunnelStepResultRow>(msc, buildFunnel(projectId, opts, d)),
     sceneRetention: (projectId, opts) =>
@@ -361,6 +415,28 @@ export async function createMssqlStore(): Promise<CollectorStore> {
       msPutSceneRegions(msc, projectId, sceneId, regions),
     getSceneRegions: (projectId, sceneId) => msGetSceneRegions(msc, projectId, sceneId),
     listSceneRegions: (projectId) => msListSceneRegions(msc, projectId),
+    createAnnotation: (projectId, input) => msCreateAnnotation(msc, projectId, input),
+    listAnnotations: (projectId, opts) => msListAnnotations(msc, projectId, opts),
+    deleteAnnotation: (projectId, id) => msDeleteAnnotation(msc, projectId, id),
+    putGlossaryEntry: (projectId, input) => msPutGlossaryEntry(msc, projectId, input),
+    listGlossary: (projectId, opts) => msListGlossary(msc, projectId, opts),
+    deleteGlossaryEntry: (projectId, term) => msDeleteGlossaryEntry(msc, projectId, term),
+    createSavedAnalysis: (projectId, input) => msCreateSavedAnalysis(msc, projectId, input),
+    listSavedAnalyses: (projectId, opts) => msListSavedAnalyses(msc, projectId, opts),
+    deleteSavedAnalysis: (projectId, id) => msDeleteSavedAnalysis(msc, projectId, id),
+    listSubscriptions: (projectId) => msListSubscriptions(msc, projectId),
+    listEnabledSubscriptions: (limit) => msListEnabledSubscriptions(msc, limit),
+    getSubscription: (projectId, id) => msGetSubscription(msc, projectId, id),
+    createSubscription: (projectId, sub) => msCreateSubscription(msc, projectId, sub),
+    setSubscriptionEnabled: (projectId, id, enabled) =>
+      msSetSubscriptionEnabled(msc, projectId, id, enabled),
+    deleteSubscription: (projectId, id) => msDeleteSubscription(msc, projectId, id),
+    recordSubscriptionOutcome: (projectId, id, outcome) =>
+      msRecordSubscriptionOutcome(msc, projectId, id, outcome),
+    getWebhookSecret: (projectId, id) => msGetWebhookSecret(msc, projectId, id),
+    recordSubscriptionEvent: (entry) => msRecordSubscriptionEvent(msc, entry),
+    listSubscriptionEvents: (projectId, id, opts) =>
+      msListSubscriptionEvents(msc, projectId, id, opts),
     async close() {
       await msc.close();
     },

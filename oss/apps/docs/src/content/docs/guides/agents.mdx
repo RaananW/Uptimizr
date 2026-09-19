@@ -9,27 +9,28 @@ Uptimizr treats an **agent as a first-class consumer of the data**, alongside th
 ([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md)).
 That is a concrete claim, not a slogan: every read the collector serves is declared once in a
 semantic registry, and the tool catalog, the OpenAPI document, the capability descriptor and the
-docs tables are all *generated* from it — so an agent sees the whole read surface, with units and
+docs tables are all _generated_ from it — so an agent sees the whole read surface, with units and
 caveats attached, and it cannot drift from what the collector actually computes.
 
 This page is the map. Each section links to the reference for that piece.
 
 <CardGrid>
-	<Card title="Read the catalog" icon="open-book">
-		Start at `uptimizr://capabilities` or `/api/v1/openapi.json` — both list every metric with its
-		grain, units and caveats.
-	</Card>
-	<Card title="Connect" icon="puzzle">
-		Run [`@uptimizr/mcp`](/docs/guides/mcp/) over stdio, or embed the
-		[in-browser assistant](/docs/guides/assistant/).
-	</Card>
-	<Card title="Ask for `format=summary`" icon="seti:json">
-		Bounded digests with shares, caveats and a templated reading — not a thousand raw rows. Tools
-		default to the `table` envelope.
-	</Card>
-	<Card title="Scope the key" icon="approve-check">
-		A labelled `query`-only key, its own rate budget, and every request in the audit log.
-	</Card>
+  <Card title="Read the catalog" icon="open-book">
+    Start at `uptimizr://capabilities` or `/api/v1/openapi.json` — both list every metric with its
+    grain, units and caveats.
+  </Card>
+  <Card title="Connect" icon="puzzle">
+    Run [`@uptimizr/mcp`](/docs/guides/mcp/) over stdio, let the collector [host it over
+    HTTP](/docs/guides/mcp/#hosted-transport-streamable-http), or embed the [in-browser
+    assistant](/docs/guides/assistant/).
+  </Card>
+  <Card title="Ask for `format=summary`" icon="seti:json">
+    Bounded digests with shares, caveats and a templated reading — not a thousand raw rows. Tools
+    default to the `table` envelope.
+  </Card>
+  <Card title="Scope the key" icon="approve-check">
+    A labelled `query`-only key, its own rate budget, and every request in the audit log.
+  </Card>
 </CardGrid>
 
 ## 1. The semantic metric registry
@@ -38,17 +39,17 @@ This page is the map. Each section links to the reference for that piece.
 holding **71 metric definitions**, 69 of which the collector serves on a read endpoint. Each one
 declares, as data:
 
-| Field                    | What it gives an agent                                                                                                                |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `grain`                  | What **one row is** — a project, a scene, a session, a mesh, a bin, a voxel, a time bucket.                                            |
-| `columns`                | Per-column description and **unit** (`ms`, `fps`, `count`, `ratio`, `world-units`, …), plus which column is the measure and which names the row. |
-| `row`                    | The **JSON Schema** of a result row, so a client with no Zod can validate or shape it.                                                 |
-| `filters` / `dimensions` | The parameters it accepts and the dimensions its rows are keyed by.                                                                    |
-| `limits`                 | `maxRows` and `maxSummaryRows` — nothing can ask for an unbounded payload.                                                             |
-| `interpretation`         | How to read the result: what a high or low value actually means.                                                                       |
-| `caveats`                | Minimum sample size, sampling-rate sensitivity, which capture channel must be on. **Read these before quoting a number.**              |
+| Field                    | What it gives an agent                                                                                                                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `grain`                  | What **one row is** — a project, a scene, a session, a mesh, a bin, a voxel, a time bucket.                                                                                                                     |
+| `columns`                | Per-column description and **unit** (`ms`, `fps`, `count`, `ratio`, `world-units`, …), plus which column is the measure and which names the row.                                                                |
+| `row`                    | The **JSON Schema** of a result row, so a client with no Zod can validate or shape it.                                                                                                                          |
+| `filters` / `dimensions` | The parameters it accepts and the dimensions its rows are keyed by.                                                                                                                                             |
+| `limits`                 | `maxRows` and `maxSummaryRows` — nothing can ask for an unbounded payload.                                                                                                                                      |
+| `interpretation`         | How to read the result: what a high or low value actually means.                                                                                                                                                |
+| `caveats`                | Minimum sample size, sampling-rate sensitivity, which capture channel must be on. **Read these before quoting a number.**                                                                                       |
 | `sourceChannels`         | The capture channels ([ADR 0012](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0012-sampling-and-fidelity.md)) that feed it — if a channel is off, the metric is empty **by design**, not by accident. |
-| `related` / `comparable` | Metrics worth reading alongside it, and which column's change is "the" change.                                                         |
+| `related` / `comparable` | Metrics worth reading alongside it, and which column's change is "the" change.                                                                                                                                  |
 
 Units and caveats are the part that makes an answer trustworthy. "Average FPS is 48" means something
 different when the metric's caveat says the sample is under 30 events, or when its source channel was
@@ -59,10 +60,21 @@ in `@uptimizr/agent-core`, the OpenAPI document, the `uptimizr://capabilities` r
 [query reference](/docs/api/query/) on this site, and the packaged `AGENTS.md` / `llms.txt` tool
 lists. A repo script (`pnpm gen:docs`) renders them and a CI check fails if any drifted.
 
-## 2. Discovery: capabilities and OpenAPI
+## 2. Discovery: context, capabilities and OpenAPI
 
-Two entry points describe the surface. Point an agent at one of them **first**, so it can plan a
-query instead of guessing parameter names.
+Three entry points, and the order matters. The first describes **this project**; the other two
+describe the API.
+
+- **`uptimizr://context`** / **`GET /api/v1/context`** — the [project context
+  document](/docs/api/context/). Read it **first**, before anything else: it carries the project's
+  real scene ids and named region ids, the custom events the application emits with the props they
+  carry, the top meshes and bound input actions, how fresh the data is, whether raw retention is on,
+  and which metrics will return empty because every capture channel that feeds them is off. It is
+  bounded (well under 16 KB) and cached per project, so it is cheap to re-read. Without it an agent
+  guesses a scene id, filters on a custom-event name that does not exist, and reports a disabled
+  channel's zero as a finding.
+
+The other two describe the surface rather than the project:
 
 - **`uptimizr://capabilities`** — an MCP resource served by `@uptimizr/mcp` from the package itself,
   with no collector call. It carries the schema version, the canonical event types, the tool catalog,
@@ -82,8 +94,8 @@ it, or hand the document to any agent framework:
 npx openapi-typescript https://collect.example.com/api/v1/openapi.json -o collector.d.ts
 ```
 
-A third, live one fills in real values: the `uptimizr://scenes` resource (and `GET /api/v1/scenes`)
-lists the scene ids with recent activity — the valid values for the `scene` parameter.
+`uptimizr://scenes` (and `GET /api/v1/scenes`) is a narrower view of what the context document
+already carries: just the scene ids with recent activity. Reach for it when that is all you need.
 
 ## 3. Ways to connect
 
@@ -104,8 +116,14 @@ ingestion, mutation or raw-event tools. It also ships three curated prompts —
 `weekly_scene_health`, `attention_hotspots`, `xr_comfort_review` — that sequence the tools for a
 common investigation. See the [MCP guide](/docs/guides/mcp/).
 
-A collector-**hosted** MCP endpoint over Streamable HTTP (so a remote client needs no local process)
-is planned, not shipped — [#313](https://github.com/RaananW/Uptimizr/issues/313).
+### Hosted MCP — `/mcp` on your collector
+
+The collector can serve that same MCP server itself, over Streamable HTTP, so a remote client needs
+no local process at all. Start it with `COLLECTOR_MCP_HTTP=1` (off by default) and point a client at
+`https://collect.example.com/mcp` with `x-api-key` or `Authorization: Bearer <key>`. Same tools,
+same resources, same prompts; every request is authenticated, sessions are capped, and tool calls
+land in the audit log as `surface: mcp-http`. See
+[hosted transport](/docs/guides/mcp/#hosted-transport-streamable-http).
 
 ### In-browser assistant
 
@@ -115,6 +133,27 @@ locally in the browser, or a hosted backend with their own key. Nothing about it
 The catalog lives in `@uptimizr/agent-core`, which is framework-agnostic and browser-safe, so the MCP
 server, the dashboard assistant and the demo assistant cannot drift apart. See the
 [assistant guide](/docs/guides/assistant/).
+
+### Scheduled reports — `uptimizr agent report`
+
+The same catalog and the same curated investigations, run **headlessly on a schedule** instead of
+in a chat:
+
+```bash
+UPTIMIZR_COLLECTOR_URL="https://collect.example.com" \
+UPTIMIZR_API_KEY="utk_…" \
+UPTIMIZR_AGENT_API_KEY="sk-ant-…" \
+npx -p @uptimizr/collector-server uptimizr agent report \
+  --skill weekly_scene_health --scene lobby --window 7d --out report.md
+```
+
+It runs the headless loop once in **your** process against **your** collector with **your**
+provider key, writes Markdown to a file, stdout or a signed webhook, and exits with a code a cron
+wrapper can branch on. The collector gains no LLM loop, and no provider configuration is ever
+persisted. Every report ends with a **Method** section listing the tool calls and their arguments,
+so an unattended document stays auditable. `--dry-run` prints the exact prompt without calling a
+provider, and `UPTIMIZR_AGENT_PROVIDER=scripted` exercises the whole path with no model and no
+key at all. See [Scheduled agent reports](/docs/deploy/collector/#scheduled-agent-reports).
 
 ### Plain HTTP
 
@@ -130,10 +169,10 @@ Every aggregate endpoint — and every generated aggregate tool — accepts
 HTTP endpoint defaults to `full` (what the dashboard uses); the generated **tools** default to
 `table`, which they send explicitly.
 
-| `format`  | What comes back                                                                                                                               |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `full`    | The bare rows, unchanged. The HTTP endpoint default (what the dashboard uses).                                                                |
-| `table`   | `{ meta, rows }` — the rows plus the metric, range, applied filters, sample size, row count, a truncation flag and the registry's limits. **The tools' default.** |
+| `format`  | What comes back                                                                                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `full`    | The bare rows, unchanged. The HTTP endpoint default (what the dashboard uses).                                                                                                              |
+| `table`   | `{ meta, rows }` — the rows plus the metric, range, applied filters, sample size, row count, a truncation flag and the registry's limits. **The tools' default.**                           |
 | `summary` | A bounded digest: `ranked` top rows, a `series` trend, merged spatial `clusters` or a single `record`, with shares, a sample size, the metric's caveats and a templated `reading` sentence. |
 
 `summary` is capped at the metric's `maxSummaryRows`, so a 500-bin heatmap costs the same as a 5-bin
@@ -146,7 +185,159 @@ A tool that is asked for no `format` asks the collector for `table`, so a model 
 `meta` context with its rows; `summary` is still the one to ask for when the result could be big,
 and all three validate against the tool's advertised output schema.
 
-## 5. Give answers a vocabulary for *where*
+## 5. One query, any metric — the query DSL
+
+Seventy tools is a lot of surface for a model to hold, and the canned tool for a metric exposes only
+the filters that metric's endpoint happens to take. The **query DSL** collapses that into one call:
+name the `metric`, bound it with a `range`, narrow it with the filters that metric declares, cap it,
+and pick the envelope.
+
+```jsonc
+// POST /api/v1/query   — or the `query` tool, whose input is this document
+{
+  "v": 1,
+  "metric": "mesh_sources",
+  "range": { "since": 1757000000000, "until": 1757600000000 },
+  "filters": { "scene": "lobby", "cameraMode": "first-person" },
+  "limit": 20,
+  "format": "summary",
+}
+```
+
+The grammar is **closed**: no SQL, no expression language, no free-form value. Metrics, dimensions
+and filters are exactly the registry's vocabulary — the one an agent already reads from
+`uptimizr://capabilities` — and a query naming something outside it comes back as a `400` that says
+what _would_ have worked, with the accepted values as data:
+
+```jsonc
+{
+  "code": "unsupported_filter",
+  "path": "filters.scene",
+  "message": "\"top_meshes\" does not accept the filter \"scene\". It accepts `session`, `bins`, `limit`.",
+  "accepted": ["session", "bins", "limit"],
+}
+```
+
+That is the property worth designing for: a wrong guess is a correction, never an empty result the
+agent would report as "no interactions".
+
+The per-metric tools stay — they are excellent for discovery, and a small local model does better
+with a narrow, obvious tool than with a schema it has to compose. Reach for `query` when a question
+needs a filter the canned tool does not expose, or when `format: "table"` (the DSL's default, unlike
+the canned endpoints') is what you want anyway.
+
+### The three things a model otherwise gets wrong
+
+```jsonc
+{
+  "v": 1,
+  "metric": "top_meshes",
+  "range": { "since": 1757600000000, "until": 1758204800000 },
+  "compare": { "range": { "since": 1756995200000, "until": 1757600000000 } },
+  "format": "summary",
+}
+```
+
+**What changed.** `compare` runs the query twice and joins the results on the dimension key, so each
+row is `{ key, label, current, previous, delta, deltaPct }` and a key present on one side only is
+still a row. `significance` is attached only where the measure is a count and both windows clear the
+metric's own minimum — a p-value the data cannot support is worse than none. Left to itself a model
+will run two queries and subtract them in prose, which is where the arithmetic goes wrong.
+
+**Can you trust it.** `explain: true` answers with the plan rather than the rows: which compiler
+would run, the SQL with its parameters left unbound, how much data the window holds, and `warnings`
+for a capture channel that produced nothing (ADR 0012 — the most common reason an Uptimizr answer is
+empty _and wrong_), a sample below the metric's minimum, or a result cut off by `limit`.
+
+**Narrow it down.** Every row of a `summary` carries `drillQuery`: the whole query, narrowed to that
+row, ready to send straight back.
+
+:::note[Which metrics can be regrouped]
+`dimensions` can be any subset a metric declares when its measure is a portable count — event
+counts, mesh and interaction tallies, input actions, camera gestures. A spatial heatmap or a
+percentile _is_ its grain and refuses anything else by name, listing the grain it does support. Full
+reference: [query DSL](/docs/api/query/#one-query-endpoint-the-query-dsl).
+:::
+
+## 6. Give answers a vocabulary for _where_
+## 5. Let the collector do the comparing
+
+Three questions come up on every investigation, and a model that answers them by pulling raw rows
+and doing arithmetic will answer them differently each time: **"is this number normal here?"**,
+**"what changed?"** and **"when did it go wrong?"** All three are metrics of their own.
+Four questions come up on every investigation, and a model that answers them by pulling raw rows and
+doing arithmetic will answer them differently each time: **"is this number normal here?"**,
+**"what changed?"**, **"is that change real?"** and **"which scene should I look at first?"** All four
+are metrics of their own.
+
+| Tool               | Answers                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `insight_baseline` | What is normal for one metric in one scene: `median` and `mad`, the p10..p90 band, and the drift `slope`. |
+| `insight_movers`   | What moved against the previous equal window, for every comparable metric, ranked by how unusual it is.    |
+| `insight_anomalies` | Which individual buckets of one metric do not belong — and which mesh, channel or source holds the excess. |
+| `insight_significance` | Whether one metric's difference between two windows could be chance: effect, 95% interval, p-value, and the test that produced them. |
+| `insight_scene_health` | One 0-100 score per scene over six weighted factors, each carrying the metric id, raw value and project baseline behind it. |
+
+Reach for `insight_movers` **first** on an open-ended "how are things?" question: it turns a survey of
+thirty endpoints into one call, and it ranks by a robust z-score — the change divided by how much that
+metric normally swings — so a noisy metric has to move much further than a steady one to reach the top.
+Then use `insight_baseline` on whatever moved, to say whether the new level is actually outside normal
+rather than merely different.
+
+Two fields decide whether a row is worth reporting at all:
+
+- **`direction`** is the registry's opinion of what a *rise* means for that metric — good (`up`), bad
+  (`down`) or neutral. It is **not** the direction of the move: read it with the sign of `delta`, so a
+  rise in a `down` metric (errors, dead clicks, jank) is a regression.
+- **`aboveMinSample: false`** means the delta is real arithmetic but the denominator is too small to be
+  evidence. Those rows are returned rather than dropped — "we cannot tell" and "nothing changed" are
+  different answers — and they must never be reported as findings.
+
+Then reach for `insight_anomalies` to put a **date** on it. `movers` compares two windows you chose;
+`anomalies` walks the whole series and names the buckets that do not belong: a `spike` or a `drop`
+where one bucket sits more than `sensitivity` standard deviations from the ones before it, and a
+`shift` at the bucket where the level moved and *stayed* moved — the shape a release regression
+actually has, and the one a per-bucket threshold can never see. Quote `bucketStart` rather than
+saying "recently", and read `contributor`: where the metric declares a dimension it can be split by,
+the row names the mesh, source, input action, event type or scene holding the largest share of the
+excess, with that share. A share above ~0.8 means the anomaly *is* that value and the investigation
+has one place to start; `null` means the metric has no column that could honestly explain it. Note
+that `anomalies` reports `z` in standard deviations while `movers` reports the same ratio unscaled,
+so do not compare the two columns directly.
+
+Statistics are computed in pure TypeScript over portable day/hour buckets, so the same data gives the
+same baseline on DuckDB, ClickHouse, Postgres and SQL Server. Full parameters and the excluded-metric
+rules: [insights](/docs/api/query/#insights--baselines-movers-and-anomalies).
+### Say whether a change is real, and which scene to open first
+
+`insight_movers` says *how unusual* a change is; `insight_significance` says whether it could be
+chance. Call it before you write the sentence "X went up" about anything a stakeholder will act on —
+it picks the test from what the measure is (a two-proportion z with Wilson intervals for a declared
+rate, Welch's t over the per-bucket values for a level, an exact Poisson rate test for a bare count),
+so you never have to choose one.
+
+Read **`ci95` before `p`**. An interval that straddles 0 means you cannot tell yet, whatever the
+p-value says, and `powerNote` states the smallest difference these sample sizes could have detected at
+all — which is the difference between "no effect" and "no data". Note that Welch counts **buckets**,
+not events: `n` is days or hours, because frame samples inside one day are not independent. And it
+compares two *windows*, not two segments: a variant-versus-variant contrast is a `400`, not a wrong
+answer.
+
+`insight_scene_health` is the one to open an *unscoped* investigation with. It scores each scene over
+six weighted factors and returns them least healthy first, so "where do I start" is one call. Open the
+lowest-scoring scene, then the factor whose own score is furthest below 50; that factor names the
+`metric` behind it, its `raw` value and the `baseline` it was compared with, so the next endpoint to
+call and the sentence to write are both already in the row. **50 is the project norm, not a pass
+mark** — the score compares a scene with the rest of the project's recent past, so a project where
+everything is equally bad reads 50 everywhere. A factor with `score: null` was not counted, and its
+`note` says why.
+
+Statistics are computed in pure TypeScript over portable day/hour buckets, so the same data gives the
+same baseline, the same p-value and the same score on DuckDB, ClickHouse, Postgres and SQL Server.
+Full parameters and the excluded-metric rules:
+[insights](/docs/api/query/#insights--baselines-movers-significance-and-health).
+
+## 6. Give answers a vocabulary for *where*
 
 3D analytics answers are spatial, and "the hot cell is at voxel (12, 0, −7)" is not an answer a
 person can act on. **Scene regions** are named, labelled boxes — "the entrance", "the checkout
@@ -170,7 +361,39 @@ is the region **id**, so the obvious follow-up is a single parameter. Nothing re
 `null` plus a caveat naming what is missing, never a guess. See
 [labelled spatial clusters](/docs/api/query/#labelled-spatial-clusters).
 
-## 6. Scope the key, then read the audit log
+## 7. Let the agent leave something behind
+
+An agent that can only read re-derives the same context every session: what that mesh name means,
+why last Tuesday spiked, whether this question has been asked before. The **metadata write path**
+gives it somewhere to put what it learned — and gives the next reader, human or agent, somewhere to
+find it.
+
+| Tool            | What it keeps                                                                  |
+| --------------- | ------------------------------------------------------------------------------ |
+| `annotate`      | A note pinned to the project, a scene, a mesh, a region, a metric or a period. |
+| `define_term`   | What a name means in this project.                                             |
+| `save_analysis` | A titled question plus the conclusion drawn from it.                           |
+
+`list_annotations`, `list_glossary` and `list_analyses` read them back — worth calling _before_
+explaining a spike someone has already explained.
+
+Three properties make this safe to hand an agent:
+
+- **Events stay read-only.** Nothing on this path can write, alter or delete an analytics event.
+  Metadata rows are a separate surface with their own tables.
+- **It is gated.** Every write needs a key holding `annotate`; `@uptimizr/mcp` asks
+  `GET /api/v1/whoami` at start-up and registers the write tools only when the key has it, so a
+  read-only key yields a read-only server.
+- **It is audited and bounded.** Every write lands in the agent audit log with the key that made it,
+  every field is length-capped at the edge, and each project holds at most 500 annotations, 200
+  glossary terms and 200 saved analyses.
+
+Stored rows record whether a person or an agent wrote them — the collector decides that from the
+calling client, never from the payload. Full reference:
+[Metadata endpoints](/docs/api/metadata/).
+
+## 8. Scope the key, then read the audit log
+## 7. Scope the key, then read the audit log
 
 Give an agent its own key rather than the dashboard's:
 
@@ -183,8 +406,14 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 - A key carries a **capability set** — `query`, `query:raw`, `annotate`, `ingest` — and a key that
   is authenticated but lacks the capability a route needs is refused with `403`.
 - `query` alone is enough for every aggregate read, and for the MCP server. **`query:raw` is
-  deliberately separate**: raw per-session streams (replay, live-follow) need it *and*
+  deliberately separate**: raw per-session streams (replay, live-follow) and the
+  [session narrative](/docs/guides/sessions/#session-narrative) need it *and*
   `ENABLE_RAW_SESSION_RETENTION` on the collector.
+- A `query:raw` key also unlocks one extra **tool**: `session_narrative`, the ordered account of
+  what a single session did. It is not in the default catalog, because a tool that always answers
+  `403` costs a model a turn and invites a retry. `createMcpServer(client, { capabilities })`
+  registers it only when the capability is really there, and the `uptimizr-mcp` binary discovers
+  that for you by calling `/api/v1/whoami` at start-up.
 - `--rate-limit-*` gives the key its own budget, bucketed on the key id, so one busy agent cannot
   spend another's allowance.
 - `GET /api/v1/whoami` tells an agent what its key holds, so it can register only the tools it may
@@ -196,11 +425,12 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 
 Full reference: [API keys and capabilities](/docs/api/overview/#api-keys-and-capabilities).
 
-## 7. How the catalog is kept honest
+## 9. How the catalog is kept honest
+## 8. How the catalog is kept honest
 
 "AI-first" is a claim until something measures it. The repository carries an **evaluation harness**
 (`oss/packages/agent-eval`, private to the repo — it is an instrument, not a shipped package): a bank
-of **48** real analytics questions, asked of an agent through the *real* collector over a
+of **48** real analytics questions, asked of an agent through the _real_ collector over a
 deterministic fixture set, and scored on **tool selection**, **argument correctness** and **answer
 accuracy**.
 
@@ -211,15 +441,47 @@ collector serves has at least one question an agent is measured on, so a tool de
 a model choose badly shows up as a failed case rather than as a quiet wrong answer in production.
 CI gates the deterministic run on every change to the catalog.
 
+## Push, not pull
+
+Everything above is an agent asking a question. A **conditional subscription** (ADR 0051 §6) is
+the collector answering one it was not asked — the inversion that turns "I checked and the lobby
+was fine" into "the lobby stopped being fine at 14:02".
+
+```bash
+uptimizr subscriptions add --file fps-drop.json
+```
+
+A subscription names a registry metric, a window and a predicate — a threshold crossing, an
+`anomalies` finding, a mover beyond a percentage, a never-before-seen scene or custom event, a
+live-presence level — and where a firing goes: an SSE stream for a connected agent, a signed
+webhook for automation (Slack, a GitHub Action, your own agent), or both. The payload carries the
+firing **and** a bounded `format=summary` result of the metric, so the receiver can act without a
+second call.
+
+Two things worth knowing before you write one:
+
+- **Nothing leaves the process until you say so.** Webhook delivery is disabled until
+  `COLLECTOR_WEBHOOK_ALLOWED_HOSTS` names the hosts your collector may reach. An `sse`-only
+  subscription has no egress at all.
+- **`list_subscriptions` is a read tool**, so an agent can see what is already being watched
+  before proposing another one. Creating and deleting are not tools yet — an agent does it over
+  plain HTTP with an `annotate` key.
+
+The full vocabulary, the signature scheme and the retry policy are in
+[Subscriptions & webhooks](/docs/deploy/collector/#subscriptions--webhooks).
+
 ## What's next
 
 The AI-first layer ships in stages; these are the tracked follow-ups, linked so you can see what is
 real today versus planned. Nothing below is available yet.
 
+| Stage | Issue                                                  | What it adds                                                             |
+| ----- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| 3     | [#315](https://github.com/RaananW/Uptimizr/issues/315) | Declarative **panel specs** and "pin as panel".                          |
+| 3     | [#316](https://github.com/RaananW/Uptimizr/issues/316) | Packaged methodology **skills**, as MCP prompts and to `agent report`.   |
 | Stage | Issue                                                              | What it adds                                                                    |
 | ----- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | 2     | [#303](https://github.com/RaananW/Uptimizr/issues/303)             | A bounded **query DSL** (`/api/v1/query`) and a single composable query tool.   |
-| 2     | [#305](https://github.com/RaananW/Uptimizr/issues/305)             | Insight primitives: baselines and movers.                                       |
 | 2     | [#306](https://github.com/RaananW/Uptimizr/issues/306)             | Insight primitive: anomalies (robust z + CUSUM change-points).                  |
 | 2     | [#307](https://github.com/RaananW/Uptimizr/issues/307)             | Insight primitives: significance and `scene_health`.                            |
 | 2     | [#308](https://github.com/RaananW/Uptimizr/issues/308)             | A project **context** resource and custom-event vocabulary.                     |

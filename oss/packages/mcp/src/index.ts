@@ -3,15 +3,21 @@ export {
   createCollectorClient,
   CollectorError,
   readTools,
+  rawTools,
   type CollectorClient,
   type CollectorClientConfig,
   type QueryParams,
   type ReadTool,
   type ReadToolRequest,
 } from "@uptimizr/agent-core";
-export { createMcpServer } from "./server.js";
+// The metadata write tools (#310) — deliberately a separate export from
+// `readTools` above, so an integration's read-only stance stays inspectable
+// (ADR 0017): events are read-only, metadata writes sit behind `annotate`.
+export { writeTools, mutatingWriteTools, type WriteTool } from "@uptimizr/agent-core";
+export { createMcpServer, fetchKeyCapabilities, type CreateMcpServerOptions } from "./server.js";
 export {
   buildCapabilities,
+  type BuildCapabilitiesOptions,
   type CapabilitiesDescriptor,
   type CapabilityToolDescriptor,
   type CapabilityParamDescriptor,

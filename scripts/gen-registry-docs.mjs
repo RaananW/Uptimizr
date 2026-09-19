@@ -198,23 +198,66 @@ const BLOCKS = {
         ]),
     ),
 
-  /** A compact name list for the packaged `AGENTS.md` / `llms.txt` (ADR 0017). */
-  "registry-tool-names": ({ allMetrics }) =>
-    wrapList(
+  /**
+   * The metrics the query DSL can **regroup** (ADR 0051 §3, #304): the ones
+   * whose measure is a portable count or sum over promoted columns, with the
+   * grain they answer at by default and the dimensions they accept instead.
+   *
+   * Generated, because the alternative is a hand-kept list that drifts the
+   * first time a metric gains or loses `genericGroupBy`.
+   */
+  "registry-generic-groupby": ({ allMetrics, GENERIC_DIMENSIONS }) =>
+    table(
+      ["Metric", "Default grain", "Can also group by", "Measures"],
       allMetrics()
-        .filter((metric) => metric.endpoint)
-        .map((metric) => metric.id),
+        .filter((metric) => metric.genericGroupBy)
+        .map((metric) => [
+          `\`${metric.id}\``,
+          codeList(metric.grainDimensions),
+          codeList(
+            metric.dimensions.filter(
+              (dimension) =>
+                GENERIC_DIMENSIONS.includes(dimension) &&
+                !metric.grainDimensions.includes(dimension),
+            ),
+          ),
+          codeList(metric.genericGroupBy.measures.map((measure) => measure.column)),
+        ]),
     ),
+  /**
+   * A compact name list for the packaged `AGENTS.md` / `llms.txt` (ADR 0017).
+   *
+   * Split by the capability each tool needs (ADR 0051 §7): the main list is what
+   * every `query` key sees, and a capability-gated tool is named separately
+   * because a host registers it only for a key that holds the capability.
+   * Listing them together would promise a tool most keys do not have.
+   */
+  "registry-tool-names": ({ allMetrics, metricCapability }) => {
+    const served = allMetrics().filter((metric) => metric.endpoint);
+    const withCapability = (capability) =>
+      served.filter((metric) => metricCapability(metric) === capability).map((metric) => metric.id);
+    const base = wrapList(withCapability("query"));
+    const raw = withCapability("query:raw");
+    if (raw.length === 0) return base;
+    return [
+      base,
+      "",
+      "Only on a key holding `query:raw`, and only when the collector runs with",
+      "`ENABLE_RAW_SESSION_RETENTION` (ADR 0003):",
+      "",
+      wrapList(raw),
+    ].join("\n");
+  },
 };
 
 // --- targets --------------------------------------------------------------
 
 /** Every file this script owns, and the blocks it renders into each. */
 const TARGETS = [
-  { file: "docs/integration.md", blocks: ["registry-endpoints"] },
+  { file: "docs/integration.md", blocks: ["registry-endpoints", "registry-generic-groupby"] },
   {
     file: "oss/apps/docs/src/content/docs/api/query.mdx",
-    blocks: ["registry-query-reference"],
+    blocks: ["registry-query-reference", "registry-generic-groupby"],
   },
   {
     file: "oss/apps/docs/src/content/docs/guides/mcp.md",

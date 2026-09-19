@@ -40,6 +40,7 @@ mint one with `uptimizr new-key <projectId> --capabilities query` instead.
 | `uptimizr migrate`             | Apply store migrations.                                              |
 | `uptimizr regions set <scene>` | Replace a scene's named regions from `--file <regions.json>`.        |
 | `uptimizr regions get <scene>` | Print a scene's named regions as JSON.                               |
+| `uptimizr agent report`        | Run a read-only agent once and write a Markdown report (see below).  |
 | `uptimizr help`                | Usage.                                                               |
 
 `new-key` flags: `--capabilities <list>` (comma-separated; default `query`), `--label <name>`,
@@ -60,17 +61,54 @@ project you mint is the one the running collector resolves.
 Installed as a dependency, the package exposes the `uptimizr` CLI plus the legacy
 `uptimizr-collector` bin (equivalent to `uptimizr serve`).
 
+### `uptimizr agent report` — headless scheduled reports (ADR 0051 §6)
+
+Runs the headless `runAgent` loop from `@uptimizr/agent-core` **once**, in this process,
+over the generated read-only tool catalog against the collector's query API, and writes
+Markdown to a file, stdout or a signed webhook. The collector gains no in-process LLM loop;
+scheduling is the operator's cron / systemd timer / GitHub Action.
+
+| Flag                 | Meaning                                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------------------------- |
+| `--skill <name>`     | Required. `weekly_scene_health`, `attention_hotspots` (needs `--scene`), `xr_comfort_review`.         |
+| `--list-skills`      | Print the skills with their descriptions and the metrics each one reads.                              |
+| `--scene <id>`       | Scope the report to one scene.                                                                        |
+| `--window <NdNhNw>`  | Window back from now (`24h`, `7d` default, `2w`), or `--since` / `--until` in epoch ms.               |
+| `--out <file or ->`  | Markdown destination (default `-`, stdout).                                                           |
+| `--json <file or ->` | Structured report: tool calls with arguments, durations and outcomes, plus token usage when reported. |
+| `--webhook <url>`    | `POST {markdown, report}` to an `http(s)` URL.                                                        |
+| `--max-steps <n>`    | Cap on provider turns (default `8`).                                                                  |
+| `--dry-run`          | Print the prompt and tool list; call no provider.                                                     |
+
+Environment — read from the environment only and never persisted:
+`UPTIMIZR_COLLECTOR_URL`, `UPTIMIZR_API_KEY` (a `query` key is enough; the command only ever
+reads), `UPTIMIZR_AGENT_PROVIDER` (`anthropic` default | `openai` | `scripted`),
+`UPTIMIZR_AGENT_MODEL`, `UPTIMIZR_AGENT_API_KEY` (falls back to `ANTHROPIC_API_KEY` /
+`OPENAI_API_KEY`), `UPTIMIZR_AGENT_ENDPOINT`, `UPTIMIZR_WEBHOOK_SECRET`. The provider key
+never reaches a log, a report or an error message.
+
+The system prompt is the shared analytics guidelines plus the rendered `GET /api/v1/context`
+document, so a run uses the project's real scene ids and custom-event names; a collector
+without that endpoint degrades silently. Webhook bodies carry
+`X-Uptimizr-Signature: sha256=<hex HMAC-SHA-256 of the raw body>` and `X-Uptimizr-Delivery`.
+Exit codes: `0` ok · `1` usage/config · `2` provider or delivery failure · `3` report
+produced but incomplete (a tool call failed, or no answer).
+
+`UPTIMIZR_AGENT_PROVIDER=scripted` is a documented, model-free provider: it calls exactly the
+tools the skill names and prints what the collector returned. It is for proving wiring in CI —
+it produces data, not analysis.
+
 ## API keys and capabilities (ADR 0051 §7)
 
 A key carries a **set of capabilities**, not a single role. `new-key` defaults to `query`;
 `init` / `new-project` mint their single key with `query`, `query:raw` and `annotate`.
 
-| Capability  | Unlocks                                                                                                   |
-| ----------- | --------------------------------------------------------------------------------------------------------- |
-| `query`     | The aggregate analytics API, the scene registry, the live token exchange, and `GET /api/v1/audit`.        |
-| `query:raw` | Raw per-session streams: `GET /api/v1/sessions/:id/events` and `GET /api/v1/live/sessions/:id`.           |
-| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events.   |
-| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys. |
+| Capability  | Unlocks                                                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query`     | The aggregate analytics API, the scene registry, the live token exchange, and `GET /api/v1/audit`.                                                |
+| `query:raw` | Raw per-session data: `GET /api/v1/sessions/:id/events`, `GET /api/v1/live/sessions/:id`, and the compacted `GET /api/v1/sessions/:id/narrative`. |
+| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events.                                           |
+| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys.                                         |
 
 The raw endpoints are gated **twice**: the collector must run with `ENABLE_RAW_SESSION_RETENTION`
 **and** the key must hold `query:raw` — otherwise `403`. Retention alone is not enough.
@@ -100,7 +138,48 @@ Ingestion keeps its separate `COLLECTOR_INGEST_RATE_LIMIT_*` budget.
 - The read API: sessions, heatmaps (`pointer`, `camera`, `position`, `world`, `gaze`, `mesh-uv`,
   `click-rays`, `flow`, `perf`, `errors`), mesh/interaction insights, performance and diagnostics,
   scene/path/funnel analytics, scene representations and regions, and the live SSE endpoints.
+- **`POST /api/v1/query`** (and `GET /api/v1/query?q=<url-encoded JSON>`) — **the query DSL**
+  (ADR 0051 §3): one endpoint that runs any registry metric. See below.
 - `GET /health` — liveness probe, unauthenticated.
+
+### The query DSL: `POST /api/v1/query` (ADR 0051 §3)
+
+One endpoint for every metric. Name the `metric`, bound it with a `range`, narrow it with the
+filters that metric declares, cap it, pick the envelope:
+
+```jsonc
+{
+  "v": 1,
+  "metric": "mesh_sources",
+  "range": { "since": 1757000000000, "until": 1757600000000 },
+  "filters": { "scene": "lobby", "cameraMode": "first-person" },
+  "limit": 20,
+  "format": "summary",
+}
+```
+
+`GET /api/v1/query?q=<url-encoded JSON>` takes the same document (8 KiB cap) for GET-only clients.
+Both are reads: same `query` capability, same audit trail, same aggregations.
+
+- The grammar is **closed** — no SQL, no expression language, typed filters, bounded output,
+  unknown keys rejected. `range` is required; `format` defaults to `table` here, not `full`.
+- A metric, dimension or filter outside the registry's vocabulary is a `400` listing **every**
+  objection, each with a stable `code`, the offending `path` and (for a closed list) `accepted`.
+  Read `accepted` instead of guessing again.
+- `dimensions` may be any subset a metric declares **when** its measure is a portable count —
+  event counts, mesh and interaction tallies, input actions, camera gestures. A spatial heatmap or a
+  percentile is computed at one fixed grain and refuses anything else, naming the grain it supports.
+- **`compare`** — another `{ range }` or `{ segment }`; the result comes back joined on the
+  dimension key as `{ current, previous, delta, deltaPct }`, with a significance test where the
+  measure is a count and both windows clear the metric's minimum. Never subtract two results by hand.
+- **`explain: true`** — the compiled plan instead of the rows: the tier, the SQL with its parameters
+  left unbound, `params` by name and type (never value), `rowsScanned`, and `warnings` (a capture
+  channel that produced nothing, a sample below the metric's minimum, a truncated result).
+- **`drillQuery`** — every row of a `summary` carries the whole query narrowed to that row, ready to
+  send straight back.
+- `order` takes a measure column, and only where the result is a ranked list.
+- `filters.event` (an ADR 0038 step predicate, applied as a **cohort** of sessions) and
+  `filters.device` (`os` / `browser` on `session_start`) exist only on the generic tier.
 
 ### Result envelopes: `format=full | table | summary` (ADR 0051 §2)
 
@@ -113,6 +192,23 @@ Every aggregate endpoint accepts `format`. It **filters nothing** — it picks t
   spatial clusters, with shares, the metric's caveats and a templated `reading` sentence, capped at
   the registry's `maxSummaryRows`. **This is what makes a 500-bin heatmap affordable for an LLM** —
   prefer it over `full` when feeding a model.
+
+### Session narrative: `GET /api/v1/sessions/:id/narrative` (`query:raw`)
+
+The one per-session read worth an agent's time. It compacts the raw stream into an ordered account
+of what the session did — scene changes, per-mesh dwell above `minDwellMs`, interactions, frame
+dips below `fpsThreshold`, errors, capability changes, XR entry/exit, the end reason — with
+timestamps **relative to the session's first event** and a closing `summary` entry of totals.
+Bounded by `maxEntries` (default 200, hard cap 1000).
+
+`format` here is `full` | `table` | **`text`**. Prefer `text`: one line per entry, about a third of
+the tokens of the JSON, which is what makes a whole session affordable in a context window. There
+is no `summary` envelope — a narrative is already one.
+
+Gated **twice**, like the raw stream: `ENABLE_RAW_SESSION_RETENTION` **and** `query:raw`, either
+missing is `403`; an unknown session is `404`. It is a projection, never the stream: no
+`visitorId`, no URL or page metadata, no positions or rays, no `device` detail beyond the engine,
+and custom-event property **keys** only — never their values.
 
 ### Filters
 
@@ -129,6 +225,25 @@ set is carried **inside the signed token**, so `GET /api/v1/live/sessions/:id` c
 `query:raw` even though `EventSource` cannot send headers. `GET /api/v1/live/presence` and
 `/live/stream` use the same `?token=...`.
 
+### Hosted MCP (`/mcp`, ADR 0051 §7)
+
+`COLLECTOR_MCP_HTTP=1` (off by default) makes the collector serve the **Model Context Protocol**
+over MCP's Streamable HTTP transport: `POST /mcp` for JSON-RPC, `GET /mcp` for the server→client
+SSE stream, `DELETE /mcp` to end a session. It is the same server `@uptimizr/mcp` runs over stdio —
+same tools, resources and prompts, built by the same factory — so a remote agent needs only a URL
+and a key, with nothing installed locally.
+
+- Every request is authenticated with `x-api-key` **or** `Authorization: Bearer <key>` (a bearer
+  alias accepted on this route only) and needs `query`: `401` without a key, `403` without the
+  capability, `403` if a session id is presented by a different key than opened it.
+- Tool calls are dispatched to the collector's own query routes **in process**, so they run the
+  same validation, scoping and result envelope as the equivalent `curl`, and cost the caller's
+  ordinary per-key rate-limit budget once.
+- Bounded by `COLLECTOR_MCP_MAX_SESSIONS` (default `50`, one too many → `503`) and
+  `COLLECTOR_MCP_SESSION_TTL_MS` (default 30 minutes idle). Audited with `surface: "mcp-http"`.
+- Behind a reverse proxy, disable response buffering for `/mcp` (it answers with SSE) and pin a
+  session to one instance if you run several.
+
 ## Storage (`COLLECTOR_STORE`)
 
 | Value                  | Store                                                                                                                                                                                                                 |
@@ -142,6 +257,31 @@ set is carried **inside the signed token**, so `GET /api/v1/live/sessions/:id` c
 All four return **identical analytics** (the cross-engine parity suite). Aggregations are computed
 at **query time** in v1 — no materialized views.
 
+## Conditional subscriptions (ADR 0051 §6)
+
+Standing predicates over a registry metric, delivered over SSE and signed webhooks.
+
+- `GET /api/v1/subscriptions` · `GET /api/v1/subscriptions/:id` ·
+  `GET /api/v1/subscriptions/:id/events` — need `query`.
+- `POST /api/v1/subscriptions` · `PATCH /api/v1/subscriptions/:id` (`{ enabled }` only) ·
+  `DELETE /api/v1/subscriptions/:id` · `POST /api/v1/subscriptions/:id/test[?deliver=true]` —
+  need **`annotate`**: creating one is how a caller asks the collector to make an outbound
+  request on its behalf.
+- `GET /api/v1/subscriptions/stream?token=…` — SSE, live-token auth (ADR 0032 §7), optional
+  `&id=` filter, shares `LIVE_MAX_CONNECTIONS`.
+
+Predicates: `threshold` (on the metric's registry headline column only), `anomaly`, `movers`,
+`new_value`, `presence`. `evaluate.every` ≥ 1m, `evaluate.window` ≥ 1h. 100 per project, last
+100 firings each.
+
+**A webhook secret is write-only** — accepted on create, never returned; reads carry a mask.
+**Webhook egress is off until `COLLECTOR_WEBHOOK_ALLOWED_HOSTS` names the hosts**, because a
+subscription URL arrives over HTTP and is therefore request-controlled input to an outbound
+request. Bodies are signed `X-Uptimizr-Signature: sha256=<hex>` over the raw bytes; verify before
+parsing, in constant time.
+
+`POST …/test` is a dry run by default and answers with _why_ it did or did not fire.
+
 ## Other configuration
 
 - Server / browser access: `COLLECTOR_HOST` (`0.0.0.0`), `COLLECTOR_PORT` (`4318`),
@@ -151,9 +291,14 @@ at **query time** in v1 — no materialized views.
   `LIVE_MAX_CONNECTIONS`, `LIVE_PRESENCE_INTERVAL_MS`.
 - Rate limits: `COLLECTOR_RATE_LIMIT_MAX`, `COLLECTOR_RATE_LIMIT_WINDOW_MS`,
   `COLLECTOR_INGEST_RATE_LIMIT_MAX`, `COLLECTOR_INGEST_RATE_LIMIT_WINDOW_MS`.
+- Subscriptions: `COLLECTOR_SUBSCRIPTIONS` (default on; `0` keeps the API and runs no timers),
+  `COLLECTOR_SUBSCRIPTIONS_MAX_CONCURRENT` (default `4`),
+  **`COLLECTOR_WEBHOOK_ALLOWED_HOSTS`** (empty = no webhook egress at all).
 - Agent audit: **`AUDIT_RETENTION_DAYS`** (default `30`; `0` = keep forever),
   `AUDIT_DASHBOARD_REQUESTS` (default off — requests carrying `x-uptimizr-client: dashboard` are
   skipped as a volume filter, **not** a security boundary).
+- Hosted MCP: `COLLECTOR_MCP_HTTP` (off by default), `COLLECTOR_MCP_MAX_SESSIONS` (`50`),
+  `COLLECTOR_MCP_SESSION_TTL_MS` (`1800000`).
 - All-in-one dashboard: `COLLECTOR_DASHBOARD_DIR` (point it at a static dashboard export and one
   process serves ingestion, queries and the UI), `COLLECTOR_CSP` (`strict` or `off`).
 

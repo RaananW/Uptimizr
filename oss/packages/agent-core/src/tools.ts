@@ -1,6 +1,9 @@
 import type { z } from "zod";
+import { allMetrics, metricCapability } from "@uptimizr/metrics";
 import type { QueryParams } from "./client.js";
 import { registryToTools } from "./registryTools.js";
+import { queryTool } from "./queryTool.js";
+import { NON_REGISTRY_READ_TOOLS } from "./nonRegistryTools.js";
 
 /** A resolved read request: the collector path and its query parameters. */
 export interface ReadToolRequest {
@@ -39,6 +42,14 @@ export interface ReadTool {
    * valid.
    */
   outputSchema?: z.ZodType;
+  /**
+   * Turn the collector's response into the object {@link outputSchema}
+   * describes. Omitted by every generated per-metric tool, whose result is
+   * always a list of rows and is therefore wrapped as `{ rows }` by the
+   * consumer. The `query` tool sets it because its shape is chosen by the
+   * request's `format`, so only the tool knows how its answer is keyed.
+   */
+  structuredContent?: (data: unknown) => Record<string, unknown>;
   buildRequest: (args: Record<string, unknown>) => ReadToolRequest;
 }
 
@@ -57,12 +68,52 @@ export interface ReadTool {
  * resource entries (`session_meta`, `scene_representation`) are coarse
  * descriptors, never an event stream.
  *
+ * This is the **`query`** surface: every metric whose endpoint needs nothing
+ * more than the ordinary read capability. Metrics that require more are not
+ * silently mixed in — see {@link rawTools}.
+ *
  * The 20 tool names the hand-written catalog shipped are registry ids verbatim
  * and their argument schemas are unchanged — `__tests__/shippedToolCompat.test.ts`
  * pins that against a frozen fixture, so an MCP client written against the old
  * catalog keeps working.
+ *
+ * One tool is **not** per-metric: `query` (ADR 0051 §3), appended last. Its
+ * input is the query DSL, so it can run any metric with any filter that metric
+ * declares — what the per-metric tools are for discovery, `query` is for
+ * anything that needs a filter the canned tool does not expose. See
+ * `queryTool.ts`.
  */
-export const readTools: readonly ReadTool[] = registryToTools();
+export const readTools: readonly ReadTool[] = [
+  ...registryToTools(allMetrics().filter((metric) => metricCapability(metric) === "query")),
+  // The one deliberate exception to "generated, not hand-written": collector
+  // reads that are configuration rather than measurements and so have no
+  // registry entry to generate from (#311). See `nonRegistryTools.ts` for why
+  // inventing a registry entry for them would be worse.
+  ...NON_REGISTRY_READ_TOOLS,
+  queryTool,
+];
+
+/**
+ * The **`query:raw`** tools: generated from exactly the registry metrics whose
+ * endpoint declares that capability (ADR 0051 §7, design sketch §G.2). Today
+ * that is `session_narrative`, the compacted account of one session.
+ *
+ * Kept as a separate catalog rather than folded into {@link readTools} because
+ * the capability is not a property of the *agent*, it is a property of the **key
+ * the agent was handed**. A host registers these tools only after confirming the
+ * key holds `query:raw` — `@uptimizr/mcp`'s `createMcpServer(client, {
+ * capabilities })` does exactly that, and `GET /api/v1/whoami` is where the
+ * capability set comes from. Registering them unconditionally would advertise a
+ * tool that answers 403, which is worse for a model than not having it: it burns
+ * a turn and invites a retry.
+ *
+ * The collector refuses these endpoints unless it *also* has
+ * `ENABLE_RAW_SESSION_RETENTION` enabled, so holding the capability is necessary
+ * but never sufficient (ADR 0003).
+ */
+export const rawTools: readonly ReadTool[] = registryToTools(
+  allMetrics().filter((metric) => metricCapability(metric) === "query:raw"),
+);
 
 /**
  * Names of the **core** read tools — a small, single-step-friendly subset of

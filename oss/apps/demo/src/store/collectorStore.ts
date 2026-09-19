@@ -9,6 +9,7 @@ import {
   buildCameraPositionHeatmap,
   buildCapabilityChanges,
   buildClickGazeRay,
+  buildCustomEventVocabulary,
   buildCompileStalls,
   buildArPlacementTimeToPlace,
   buildArPlacementAttempts,
@@ -68,22 +69,27 @@ import {
   buildXrSourceUsage,
   defaultCellSizeForBounds,
   duckdbDialect,
+  foldCustomEventVocabulary,
   nodeSampleRowToEvent,
+  type CustomEventVocabularySampleRow,
   type FunnelStepInput,
   type QuerySpec,
   type SpatialStatsRow,
   type WorldAabb,
 } from "@uptimizr/db/query";
 import {
+  annotationSchema,
   anyEventSchema,
   funnelStepSchema,
   funnelStepsSchema,
+  glossaryEntrySchema,
+  savedAnalysisSchema,
   sceneProxySchema,
   sceneRegionsSchema,
   type AnyEvent,
 } from "@uptimizr/schema";
 import { DEMO_PROJECT_ID } from "./constants.js";
-import type { WasmDb } from "./db.js";
+import { DemoMetadataLimitError, type WasmDb } from "./db.js";
 
 /** A minimal HTTP request as forwarded from the service worker. */
 export interface DemoRequest {
@@ -176,6 +182,115 @@ function ok(body: unknown): DemoResponse {
 }
 
 /**
+ * The metadata surface (#310): `annotations`, `glossary` and `analyses`.
+ *
+ * Returns `null` when the path is not one of them, so `handleRequest` can fall
+ * through to the read table. Payloads go through the same `@uptimizr/schema`
+ * contracts the collector validates with, so a body the real collector would
+ * reject is rejected here too — the demo is a fair rehearsal, not a lenient one.
+ *
+ * Rows written here are attributed to `agent`: in the demo the assistant is the
+ * only thing that writes, and the demo has no dashboard-session marker to
+ * distinguish.
+ */
+async function handleMetadata(
+  db: WasmDb,
+  req: DemoRequest,
+  path: string,
+  sp: URLSearchParams,
+): Promise<DemoResponse | null> {
+  const author = { authorKind: "agent" as const, authorKeyId: null };
+  const parseBody = (): unknown => {
+    try {
+      return JSON.parse(req.body ?? "{}");
+    } catch {
+      return undefined;
+    }
+  };
+  /** The collector's own `409` wording, so the demo behaves the same way. */
+  const full = (table: string, limit: number): DemoResponse => ({
+    status: 409,
+    body: { error: `project has reached its limit of ${limit} ${table} rows` },
+  });
+
+  if (path === "/api/v1/annotations") {
+    if (req.method === "GET") {
+      return ok(
+        await db.listAnnotations({
+          targetKind: sp.get("targetKind") ?? undefined,
+          targetId: sp.get("targetId") ?? undefined,
+          since: sp.has("since") ? Number(sp.get("since")) : undefined,
+          until: sp.has("until") ? Number(sp.get("until")) : undefined,
+        }),
+      );
+    }
+    if (req.method === "POST") {
+      const parsed = annotationSchema.safeParse(parseBody());
+      if (!parsed.success) return { status: 400, body: { error: "invalid annotation" } };
+      try {
+        return { status: 201, body: await db.createAnnotation(parsed.data, author) };
+      } catch (err) {
+        if (err instanceof DemoMetadataLimitError) return full(err.table, err.limit);
+        throw err;
+      }
+    }
+  }
+  const annotationId = path.match(/^\/api\/v1\/annotations\/([^/]+)$/);
+  if (annotationId && req.method === "DELETE") {
+    const deleted = await db.deleteAnnotation(decodeURIComponent(annotationId[1]!));
+    return deleted
+      ? { status: 204, body: null }
+      : { status: 404, body: { error: "annotation not found" } };
+  }
+
+  if (path === "/api/v1/glossary" && req.method === "GET") return ok(await db.listGlossary());
+  const term = path.match(/^\/api\/v1\/glossary\/([^/]+)$/);
+  if (term) {
+    const decoded = decodeURIComponent(term[1]!);
+    if (req.method === "PUT") {
+      const body = parseBody() as { meaning?: unknown } | undefined;
+      const parsed = glossaryEntrySchema.safeParse({ term: decoded, meaning: body?.meaning });
+      if (!parsed.success) return { status: 400, body: { error: "invalid glossary entry" } };
+      try {
+        return ok(await db.putGlossaryEntry(parsed.data.term, parsed.data.meaning));
+      } catch (err) {
+        if (err instanceof DemoMetadataLimitError) return full(err.table, err.limit);
+        throw err;
+      }
+    }
+    if (req.method === "DELETE") {
+      const deleted = await db.deleteGlossaryEntry(decoded);
+      return deleted
+        ? { status: 204, body: null }
+        : { status: 404, body: { error: "term not defined" } };
+    }
+  }
+
+  if (path === "/api/v1/analyses") {
+    if (req.method === "GET") return ok(await db.listSavedAnalyses());
+    if (req.method === "POST") {
+      const parsed = savedAnalysisSchema.safeParse(parseBody());
+      if (!parsed.success) return { status: 400, body: { error: "invalid analysis" } };
+      try {
+        return { status: 201, body: await db.createSavedAnalysis(parsed.data, author) };
+      } catch (err) {
+        if (err instanceof DemoMetadataLimitError) return full(err.table, err.limit);
+        throw err;
+      }
+    }
+  }
+  const analysisId = path.match(/^\/api\/v1\/analyses\/([^/]+)$/);
+  if (analysisId && req.method === "DELETE") {
+    const deleted = await db.deleteSavedAnalysis(decodeURIComponent(analysisId[1]!));
+    return deleted
+      ? { status: 204, body: null }
+      : { status: 404, body: { error: "analysis not found" } };
+  }
+
+  return null;
+}
+
+/**
  * Table of every read endpoint, mapping the route path to the dialect-agnostic
  * builder it runs (mirroring the collector's `query.ts` one-to-one). The opts
  * superset is structurally assignable to each builder's narrower option type
@@ -206,6 +321,10 @@ export const DEMO_SPECIAL_GET_ROUTES = [
   "/api/v1/scenes/:sceneId/regions",
   "/api/v1/funnel",
   "/api/v1/variant-leaderboard",
+  // Custom-event vocabulary (ADR 0051 §5): the SQL samples raw payloads and a
+  // pure fold turns them into prop types, so it cannot go through the synchronous
+  // builder table, whose rows are returned verbatim.
+  "/api/v1/vocabulary/custom-events",
   // Large-scene spatial routes (ADR 0040): handled out-of-band because they need
   // an async, bounds-driven `cellSize` (from the scene registry / region box) that
   // the synchronous {@link READ_ROUTES} builder table can't resolve, and the two
@@ -450,19 +569,33 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
   if (path === "/health") return ok({ status: "ok" });
 
   // Key identity (#309). The demo has no keys — every request resolves to the
-  // single public demo project — so `whoami` reports a read-only identity and
-  // the audit trail is always empty.
+  // single public demo project — so `whoami` reports one fixed identity and the
+  // audit trail is always empty. It carries `annotate` (#310) so the assistant's
+  // "Annotate this" / "Save this analysis" actions are demonstrable; the data
+  // lives only in the visitor's own browser.
   if (req.method === "GET" && path === "/api/v1/whoami") {
     return ok({
       projectId: pid,
       keyId: "demo",
-      capabilities: ["query"],
+      capabilities: ["query", "annotate"],
       label: "demo",
       rateLimit: null,
       rateLimitSource: "default",
     });
   }
   if (req.method === "GET" && path === "/api/v1/audit") return ok([]);
+
+  // Conditional subscriptions (#311, ADR 0051 §6). The demo runs entirely in the
+  // browser with no scheduler, no timers and no way to make an outbound request,
+  // so it has none and always will: the read answers with an empty list and the
+  // dashboard's Subscriptions panel renders its "none configured" state instead
+  // of a 404.
+  //
+  // Deliberately NOT in {@link DEMO_SPECIAL_GET_ROUTES}: that list exists to be
+  // diffed against the collector's `query.ts` (see `routeParity.test.ts`), and
+  // this route is served by `routes/subscriptions.ts`. Adding it there would
+  // make the parity test report a stale route.
+  if (req.method === "GET" && path === "/api/v1/subscriptions") return ok([]);
 
   if (req.method === "POST" && path === "/api/v1/collect") {
     return handleCollect(db, req.body);
@@ -548,6 +681,14 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
     }
   }
 
+  // Project metadata (#310, ADR 0051 §5): annotations, glossary, saved
+  // analyses. The demo has no keys, so its one identity holds `annotate` and
+  // these writes are allowed — showing the feature is the point of the demo. It
+  // mirrors the collector's status codes, including 400 on a payload the shared
+  // schema rejects and 404 on an unknown id.
+  const metadata = await handleMetadata(db, req, path, sp);
+  if (metadata) return metadata;
+
   if (req.method === "GET") {
     // Funnel (#78): `steps` is a JSON array validated against the shared schema,
     // mirroring the collector's `GET /api/v1/funnel` (400 on bad input). It is the
@@ -609,6 +750,17 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
         buildVariantLeaderboard(pid, { ...readOpts(sp), variant, conversion }, duckdbDialect),
       );
       return ok(rows);
+    }
+
+    // Discovered custom-event vocabulary (ADR 0051 §5), mirroring the collector's
+    // `GET /api/v1/vocabulary/custom-events`: the query counts events and samples
+    // each name's most recent payloads, and `foldCustomEventVocabulary` derives the
+    // `props` keys and coarse types from them. The raw payload never leaves here.
+    if (path === "/api/v1/vocabulary/custom-events") {
+      const rows = await db.all<CustomEventVocabularySampleRow>(
+        buildCustomEventVocabulary(pid, readOpts(sp), duckdbDialect),
+      );
+      return ok(foldCustomEventVocabulary(rows));
     }
 
     const route = READ_ROUTES[path];

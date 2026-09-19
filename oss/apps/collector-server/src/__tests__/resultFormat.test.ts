@@ -33,7 +33,13 @@ import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PARITY_EVENTS, PARITY_PROJECT_ID } from "@uptimizr/db";
 import { resultSummarySchema, tableResultSchema } from "@uptimizr/db";
-import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
+import {
+  allMetrics,
+  isAggregateMetric,
+  isDerivedMetric,
+  metricCapability,
+  type MetricDefinition,
+} from "@uptimizr/metrics";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildApp } from "../app.js";
@@ -64,12 +70,35 @@ const OFF_REQUEST_PATH = new Set(["recordAudit", "pruneAudit"]);
  * Regenerate **only** when a deliberate change to an endpoint's rows lands, and
  * never to make this suite pass: run the file with `RECORD_FULL_HASHES=1` and
  * paste what it prints.
+ *
+ * Re-recorded for five endpoints on #308, which added four `custom` events to the
+ * shared parity fixtures so the custom-event vocabulary has something to
+ * discover. Only the five whose rows count events — `list_sessions`,
+ * `list_scenes`, `timeseries`, `event_counts` and `variant_leaderboard` (whose
+ * default variant predicate *is* `custom`) — moved; every other endpoint still
+ * hashes to its original value, which is the evidence that the fixture change
+ * and not the response layer is what moved them. The vocabulary endpoint itself
+ * is new in the same change, so its entry is recorded at introduction.
  */
 const PRE_CHANGE_BODY_HASHES: Readonly<Record<string, string>> = {
-  "/api/v1/sessions": "fc8a8b1690f001672de3e9dd0b336eb9c874ad55555577cfd9b9402358b326cd",
-  "/api/v1/scenes": "7aba7bfa05c14a726c4667868c75e8f053c4fb2b0c8dedf6a775a58ef3bd556a",
-  "/api/v1/timeseries": "956599592dac1cf3753392d03d113b7657687f12a2080ebad6822a87a2b63162",
-  "/api/v1/event-counts": "8c1e75a0534531549e14c563095eaf0b817406fe1dc64783a07b931c70ddae8a",
+  // The derived insight metrics (ADR 0051 §4) are recorded at their
+  // introduction rather than before it: they had no prior body to preserve, but
+  // from here their default shape is pinned like every other endpoint.
+  "/api/v1/insights/baseline": "70da6e75dbce179a14e5ba83ac7f5db3f33dbaf1e15dd0a451d1695587f9aca2",
+  "/api/v1/insights/movers": "db847696207abb389e259c5a7af2c40a3ac787cd8f47871dab46b3e73628038b",
+  // --- anomalies (#306) --- the seeded fixture holds far too few buckets for
+  // any bucket to be judged, so the honest answer is an empty result.
+  "/api/v1/insights/anomalies": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "/api/v1/sessions": "7d38d880d2ab531a28d1ec3ac71fb96f03f7fcc29539ec8eaf6f54c6a0b186a7",
+  "/api/v1/scenes": "064b8168045bdb7976a46c1eee39421ec9a33dbb06caa5a8ed051d5b27fd5190",
+  "/api/v1/timeseries": "9176b8732485a635e4fee508764f49662fc8349582e58679bde9dd164784fd55",
+  "/api/v1/event-counts": "cfe2ac309d9f24032d234f272088bf5d5864caa5f2f940fe3bad54a3ff63aa7c",
+  // --- significance / scene health (#307) --- recorded at their introduction,
+  // for the same reason.
+  "/api/v1/insights/significance":
+    "227f0bb52db602021e4f66c1d295df9f9f9f264aa3a0df8e552fe17e2444d185",
+  "/api/v1/insights/scene-health":
+    "6fb945092acfa1715825c93e450bde028992bf6d8a045873675f071b0216f2b1",
   "/api/v1/heatmaps/pointer": "4e41b09f637099b7874362a800709ebe0800390d1ac9a1c8273a1eca8d7f73cc",
   "/api/v1/heatmaps/mesh-uv": "fed9cd3d814b12e31be8a44eb7fb5ad85332483c2ca58178e719ebde0978e7d4",
   "/api/v1/heatmaps/world": "89f03d861421299140a925be6af2af825df7bef49b9deecf7d23d85c8c37b994",
@@ -100,6 +129,8 @@ const PRE_CHANGE_BODY_HASHES: Readonly<Record<string, string>> = {
   "/api/v1/hover/dwell": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "/api/v1/interactions/sources":
     "6d12b16842ccf65d82adb39a830acb6f904e8c7aba2a1dece08317ee6a4133d9",
+  "/api/v1/vocabulary/custom-events":
+    "447c737a84fa30297a16b808b083e7ac45230100682cb934bbb8de61b08df709",
   "/api/v1/input-actions/top": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "/api/v1/camera-gestures": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "/api/v1/navigation": "0a7404cf407ff7a9613f4587da8c866d03db622840254b63718ea4ee211842ed",
@@ -144,7 +175,7 @@ const PRE_CHANGE_BODY_HASHES: Readonly<Record<string, string>> = {
   "/api/v1/funnel": "18a8f8d9fe53647be921f7e1a331ce86e3cea0ea6f8037245a484005c323d8bf",
   "/api/v1/scene-retention": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "/api/v1/load-bounce": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-  "/api/v1/variant-leaderboard": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "/api/v1/variant-leaderboard": "bdb47b32bfd763b86d5a6109489924a1c06bad7bb23fa08d9e4ab6f8ad62654a",
 };
 
 /** Recursively sort object keys, so two equal bodies render identically. */
@@ -170,13 +201,28 @@ function canonicalBody(value: unknown): string {
   return JSON.stringify(rows.map((row) => JSON.stringify(stable(row))).sort());
 }
 
-/** The two resource reads take no querystring, so they are outside `format`. */
-const FORMATTED_METRICS = allMetrics().filter(
-  (metric) => metric.endpoint != null && metric.builder != null,
+/**
+ * Endpoints this sweep can reach with an ordinary `query` key.
+ *
+ * `session_narrative` needs `ENABLE_RAW_SESSION_RETENTION` plus a `query:raw`
+ * key (ADR 0051 §7), and offers `text` in place of `summary`, so it is outside
+ * the shared-envelope sweep entirely. Its own `format` handling — including the
+ * `table` envelope — is covered by `narrative.test.ts`.
+ */
+const REACHABLE_METRICS = allMetrics().filter(
+  (metric) => metric.endpoint != null && metricCapability(metric) === "query",
 );
 
-/** Every endpoint, including the two resource reads, for the `full` sweep. */
-const METRICS_WITH_ENDPOINTS = allMetrics().filter((metric) => metric.endpoint != null);
+/**
+ * The two resource reads take no querystring, so they are outside `format`.
+ * Everything else reachable accepts the envelope — the aggregations and the
+ * derived insight primitives alike (ADR 0051 §4), which is why this asks
+ * `isAggregateMetric` rather than `builder != null`.
+ */
+const FORMATTED_METRICS = REACHABLE_METRICS.filter((metric) => isAggregateMetric(metric));
+
+/** Every reachable endpoint, including the two resource reads, for the `full` sweep. */
+const METRICS_WITH_ENDPOINTS = REACHABLE_METRICS;
 
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
@@ -257,18 +303,26 @@ describe("result format envelopes", () => {
         // Every key the store produced is still on the wire with an equal value.
         // (The three spatial `stats` routes add the resolved `cellSize`, so the
         // response is a superset rather than an exact match.)
-        const producedRows = Array.isArray(produced)
-          ? produced
-          : produced == null
-            ? []
-            : [produced];
+        //
+        // A **derived** metric is exempt from *this* comparison only: its handler
+        // reads a bucket series and computes its row in TypeScript, so the last
+        // store result is not the row. The two assertions that actually carry the
+        // negative promise — default equals `format=full`, and both still hash to
+        // the recorded body — apply to it unchanged.
         const bodyValue: unknown = implicit.json();
-        const bodyRows = Array.isArray(bodyValue) ? bodyValue : [bodyValue];
-        expect(bodyRows.length, `${id}: row count changed`).toBe(producedRows.length);
-        for (const [index, row] of producedRows.entries()) {
-          expect(bodyRows[index], `${id}: row ${index} changed`).toMatchObject(
-            row as Record<string, unknown>,
-          );
+        if (!isDerivedMetric(metric)) {
+          const producedRows = Array.isArray(produced)
+            ? produced
+            : produced == null
+              ? []
+              : [produced];
+          const bodyRows = Array.isArray(bodyValue) ? bodyValue : [bodyValue];
+          expect(bodyRows.length, `${id}: row count changed`).toBe(producedRows.length);
+          for (const [index, row] of producedRows.entries()) {
+            expect(bodyRows[index], `${id}: row ${index} changed`).toMatchObject(
+              row as Record<string, unknown>,
+            );
+          }
         }
 
         if (RESOURCE_METRICS.has(id)) return;

@@ -1224,12 +1224,12 @@ from the key, so a client can only ever read its own data.
 
 A key carries a **set of capabilities** (ADR 0051 §7), not a single role:
 
-| Capability  | Grants                                                                                                                              |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `query`     | The aggregate analytics API — everything in the tables below, plus the scene registry, the live token exchange and `/api/v1/audit`. |
-| `query:raw` | Raw **per-session** streams: `GET /api/v1/sessions/:id/events` and the live per-session follow `GET /api/v1/live/sessions/:id`.     |
-| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events — events stay read-only.     |
-| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless (see below), so issued keys are normally read keys.               |
+| Capability  | Grants                                                                                                                                                                            |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query`     | The aggregate analytics API — everything in the tables below, plus the scene registry, the live token exchange and `/api/v1/audit`.                                               |
+| `query:raw` | Raw **per-session** data: `GET /api/v1/sessions/:id/events`, the live per-session follow `GET /api/v1/live/sessions/:id`, and the compacted `GET /api/v1/sessions/:id/narrative`. |
+| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events — events stay read-only.                                                   |
+| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless (see below), so issued keys are normally read keys.                                                             |
 
 `uptimizr init` and `uptimizr new-project` mint one key, the operator's **owner**
 key: `query`, `query:raw` and `annotate`, labelled `owner`. That is the key the
@@ -1299,8 +1299,11 @@ recorded too — they are precisely what a project owner wants to see.
 - `params` is a bounded (512-byte) JSON document with credential-shaped keys
   (`token`, `apiKey`, `secret`, `password`, `authorization`, …) dropped, nested
   values summarized, and long strings clipped. **A key never appears in a row.**
-- `surface` is `http` today; `mcp-http` / `mcp-stdio` / `assistant` are reserved
-  for the later agent transports.
+- `surface` records **how** the request reached the collector: `http` for a plain
+  HTTP read — including the `npx @uptimizr/mcp` stdio server, which is an
+  ordinary HTTP client of the collector — and `mcp-http` for a tool call that
+  arrived over the collector-hosted MCP transport at `/mcp` (below).
+  `mcp-stdio` / `assistant` stay reserved.
 - "The dashboard's own session" means a request carrying
   `x-uptimizr-client: dashboard` — the header `@uptimizr/react`'s `CollectorApi`
   sends by default, so a dashboard's panel refreshes do not drown the agent
@@ -1324,6 +1327,36 @@ curl -H "x-api-key: $KEY" \
 | ------ | ---------------- | -------------------------------------------------------------------------------- | ---------- | ------------------------- |
 | `GET`  | `/api/v1/whoami` | The calling key's project, key id, capabilities, label and effective rate limit. | `query`    | —                         |
 | `GET`  | `/api/v1/audit`  | The project's agent audit trail, newest first.                                   | `query`    | `since`, `until`, `limit` |
+
+### Hosted MCP (`/mcp`, Streamable HTTP)
+
+With `COLLECTOR_MCP_HTTP=1` the collector also speaks the **Model Context
+Protocol** over its own HTTP surface (ADR 0051 §7), so a remote agent connects
+with a URL plus a key instead of running `npx @uptimizr/mcp` locally. It is
+**off by default** — without the variable the route is not registered and `/mcp`
+404s. The tools, resources and prompts are exactly the stdio server's: both are
+built by the same `createMcpServer()` factory in `@uptimizr/mcp`.
+
+| Method   | Path   | Purpose                                                                | Capability |
+| -------- | ------ | ---------------------------------------------------------------------- | ---------- |
+| `POST`   | `/mcp` | JSON-RPC. Without `Mcp-Session-Id`, only `initialize` opens a session. | `query`    |
+| `GET`    | `/mcp` | The server→client SSE stream for an existing session.                  | `query`    |
+| `DELETE` | `/mcp` | End a session and release its slot.                                    | `query`    |
+
+- **Auth on every request**, via `x-api-key` or `Authorization: Bearer <key>`
+  (the bearer form is an alias accepted on this route only). Missing/unknown key
+  → `401`; a key without `query` → `403`. A session id presented by a different
+  key than opened it → `403`, so a leaked session id is not a credential.
+- **One MCP server per session**, constructed with the key's resolved capability
+  set, so a session's surface can only narrow to what its key may do.
+- **Tool calls are dispatched in process** to the collector's own query routes —
+  not over a loopback socket — so a tool call and the equivalent `curl` run the
+  same handler, validation, project scoping and result envelope.
+- **Bounded**: `COLLECTOR_MCP_MAX_SESSIONS` (default `50`, one too many → `503`),
+  `COLLECTOR_MCP_SESSION_TTL_MS` (default 30 min idle), `COLLECTOR_BODY_LIMIT`
+  for bodies, and the caller's ordinary per-key rate-limit budget.
+- **Audited** with `surface: "mcp-http"` and the underlying route pattern as
+  `toolOrPath`.
 
 ### Storage backends (`COLLECTOR_STORE`)
 
@@ -1376,8 +1409,8 @@ full walkthrough of each store.
 > `uptimizr://capabilities` (a machine-readable descriptor of event types, the tool catalog, and
 > parameter semantics) and `uptimizr://scenes` (the live scene ids) — plus curated **prompts**
 > (`weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`) that drive the existing tools.
-> A Streamable HTTP
-> transport is a deferred, auth-gated follow-up (ADR 0050 §7). See the
+> The collector can also **host that same server itself** over MCP's Streamable HTTP transport (see
+> below), so a remote agent connects with a URL and a key. See the
 > [MCP guide](https://uptimizr.com/docs/guides/mcp/) for the full resource/prompt/tool reference.
 
 All query endpoints take `x-api-key` and the shared params `since`, `until`
@@ -1509,6 +1542,42 @@ Worth knowing before you build on it:
 - An unknown `format` is a `400`. Note that `GET /api/v1/sessions/:id/events`
   has its own, older `format=json|ndjson` for the raw replay stream — that route
   is not an aggregate and is unaffected.
+- `GET /api/v1/sessions/:id/narrative` (below) takes `format=full|table|text`.
+  It is the only route with a `text` envelope, and it offers no `summary`: a
+  narrative is already a digest, and digesting it twice would say nothing.
+
+### Session narrative (`query:raw`)
+
+`GET /api/v1/sessions/:id/narrative` compacts one session's raw stream into an
+ordered account of what it did — scene changes, per-mesh dwell above
+`minDwellMs`, interactions, frame-rate dips below `fpsThreshold`, errors,
+capability changes, XR entry/exit and the end reason — with every timestamp
+**relative to the session's first event** and a closing `summary` entry carrying
+the totals. It is bounded by `maxEntries` (default `200`, hard cap `1000`).
+
+It sits behind the **same two gates as the raw stream** (ADR 0003 / ADR 0051 §7):
+`ENABLE_RAW_SESSION_RETENTION` on the collector **and** `query:raw` on the key;
+either one missing is a `403`, and an unknown session is a `404`.
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "$COLLECTOR/api/v1/sessions/$SESSION/narrative?format=text&minDwellMs=2000"
+```
+
+Each entry is `{ tMs, kind, summary, refs }` — `kind` being one of `scene`,
+`dwell`, `interaction`, `perf_dip`, `error`, `diagnostic`, `capability`, `xr`,
+`end`, `summary`, and `refs` naming at most a mesh, a scene and a custom-event
+or input-action name. A narrative is a **projection**, not the stream: it never
+carries the `visitorId`, the URL or `pageMeta`, any position or ray, any
+`device` field beyond the rendering engine, anything from the app-supplied
+`user` descriptor, or custom-event property _values_ (only their keys). The
+compaction itself is `buildSessionNarrative` in `@uptimizr/db`, so it is a pure
+function you can run over events you already hold.
+
+For agents it is exposed as the **`session_narrative`** tool, which
+`@uptimizr/mcp` registers only for a key that holds `query:raw`
+(`createMcpServer(client, { capabilities })`; the `uptimizr-mcp` binary reads
+them from `/api/v1/whoami` at start-up).
 
 ##### Labelled clusters
 
@@ -1580,77 +1649,84 @@ The table below is **generated** from the metric registry (`pnpm gen:docs`); CI 
 
 <!-- generated:registry-endpoints:start — generated by `pnpm gen:docs`; edit the metric registry, not this table -->
 
-| Method | Path                                     | Metric                       | Purpose                                                                                                                                                                                                                                                                                    |
-| ------ | ---------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET`  | `/api/v1/sessions`                       | `list_sessions`              | One row per session seen in the range: its id, the server-derived daily-rotating visitor hash, how many events it produced, and its first/last event timestamps. The entry point for 'what traffic did this project get' and for picking a session to drill into.                          |
-| `GET`  | `/api/v1/sessions/:id/meta`              | `session_meta`               | The coarse descriptor for one session — start time, the device/graphics block reported at `session_start`, the scene metadata and the app-supplied anonymous user descriptor. A single-object resource read from the store, not an aggregation, and deliberately not the raw event stream. |
-| `GET`  | `/api/v1/scenes/:sceneId/representation` | `scene_representation`       | The registered proxy geometry for one scene (ADR 0014): its world bounds, up-axis and unit scale, and the named proxy boxes when one was uploaded. A metadata resource read, not an aggregation — it is what turns the voxel coordinates of the spatial metrics into named places.         |
-| `GET`  | `/api/v1/scenes`                         | `list_scenes`                | The distinct developer-assigned scenes (ADR 0010) that saw activity in the range, with their event count and most recent activity. One row per scene; the orientation query before any scene-scoped question.                                                                              |
-| `GET`  | `/api/v1/timeseries`                     | `timeseries`                 | Event volume bucketed into fixed `interval`-second windows, with the average FPS of any `frame_perf` samples in the same bucket. One row per bucket: the shape of traffic with the coarse perf trend beside it.                                                                            |
-| `GET`  | `/api/v1/event-counts`                   | `event_counts`               | How many events of each type were recorded in the range, optionally for one scene. One row per event type. The scene-health overview: error rate, context losses, focus/visibility gaps and interaction volume all read off this single query.                                             |
-| `GET`  | `/api/v1/heatmaps/pointer`               | `pointer_heatmap`            | Screen-space pointer activity binned into a `bins × bins` grid over the normalized viewport. One row per occupied cell. Answers 'where on screen do people point and click' — the classic web heatmap, for a 3D canvas.                                                                    |
-| `GET`  | `/api/v1/heatmaps/mesh-uv`               | `mesh_uv_heatmap`            | Interaction hits on one object binned into a `bins × bins` grid over that object's own `[0,1]` UV space (#149). One row per occupied cell. Answers 'which part of this product model gets attention', independent of where the object sits in the scene.                                   |
-| `GET`  | `/api/v1/heatmaps/world`                 | `world_heatmap`              | Pointer raycast hit points voxel-binned into a uniform grid of `cellSize`-sized cubes. One row per occupied voxel, busiest first. Answers 'where in the scene do people point and click' in world coordinates rather than on screen.                                                       |
-| `GET`  | `/api/v1/heatmaps/world/stats`           | `world_heatmap_stats`        | The un-truncated totals behind `world_heatmap` (ADR 0040 §3): how many voxels are occupied and how many hits they hold, computed with no row cap. Always a single row.                                                                                                                     |
-| `GET`  | `/api/v1/heatmaps/gaze`                  | `gaze_heatmap`               | Where the camera-forward (gaze) ray landed on real geometry, voxel-binned into a uniform grid (ADR 0030). One row per occupied voxel, busiest first. This is 'what did people actually look at', as opposed to what they clicked.                                                          |
-| `GET`  | `/api/v1/heatmaps/gaze/stats`            | `gaze_heatmap_stats`         | The un-truncated totals behind `gaze_heatmap` (ADR 0040 §3): occupied voxels and total gaze hits, with no row cap. Always a single row.                                                                                                                                                    |
-| `GET`  | `/api/v1/heatmaps/camera`                | `camera_heatmap`             | Camera forward vectors binned by spherical angle into a `bins × bins` azimuth/elevation grid. One row per occupied direction bin. The abstract 'which way did people look' dome — it needs no scene geometry, so it works even without the gaze raycast.                                   |
-| `GET`  | `/api/v1/coverage/view-histogram`        | `view_coverage_histogram`    | How much of the view dome each session actually looked at, bucketed across sessions (#146). One row per 25-point coverage band. Answers 'how many visitors saw less than a quarter of the product'.                                                                                        |
-| `GET`  | `/api/v1/heatmaps/position`              | `position_heatmap`           | Camera positions binned onto the X/Z ground plane in `cellSize`-sized cells, with the mean height per cell (ADR 0026). One row per occupied cell, busiest first. The 'where do visitors stand and linger' map for a walkable scene.                                                        |
-| `GET`  | `/api/v1/sessions/:sessionId/trajectory` | `session_trajectory`         | One session's ordered camera positions, oldest first (ADR 0026). One row per sampled point. The single-visitor path behind the crowd view in `aggregate_paths`.                                                                                                                            |
-| `GET`  | `/api/v1/paths`                          | `aggregate_paths`            | Every session's camera path binned onto the ground grid and returned as ordered, session-keyed points (#73, ADR 0037). One row per (session, sampled point). Overlaying the poly-lines makes the routes visitors actually walk self-reinforce into desire lines.                           |
-| `GET`  | `/api/v1/coverage`                       | `scene_coverage`             | Camera _positions_ voxel-binned into a uniform 3D grid. One row per occupied voxel with its visit count. Exploration completeness and never-visited regions are computed by comparing the occupied voxels against the scene's registered bounds.                                           |
-| `GET`  | `/api/v1/camera/distance`                | `camera_distance`            | Histogram of the distance from each camera sample to a reference point (by default the world origin; pass the scene-AABB centre for a product view). One row per `bucketSize`-wide distance band. A proxy for engagement intensity — how close visitors get to the subject.                |
-| `GET`  | `/api/v1/heatmaps/click-rays`            | `click_rays`                 | Each click aggregated into a ray from an origin voxel to the hit voxel, sharing the world heatmap's grid. One row per (origin voxel, hit voxel, mesh). Shows not just _what_ was clicked but _from where_ — the standpoint an interaction was made from.                                   |
-| `GET`  | `/api/v1/heatmaps/flow`                  | `flow_links`                 | Weighted links from a camera-direction bin to the mesh that was clicked while facing that way. One row per (direction bin, mesh), or per (standpoint voxel, direction bin, mesh) in position-aware mode. Connects where people looked from to what they acted on.                          |
-| `GET`  | `/api/v1/meshes/top`                     | `top_meshes`                 | Meshes ranked by how many events referenced them. One row per mesh. The 3D analogue of a top-pages report: which objects in the scene draw activity.                                                                                                                                       |
-| `GET`  | `/api/v1/meshes/sources`                 | `mesh_sources`               | The mesh leaderboard broken out by the input source that drove each interaction (#74, ADR 0011). One row per (mesh, source). Scoped to **active** interactions, so passive gaze never inflates popularity.                                                                                 |
-| `GET`  | `/api/v1/meshes/trend`                   | `mesh_trend`                 | The active-interaction tally per mesh, bucketed into fixed `interval`-second windows (#74). One row per (mesh, bucket), oldest bucket first — the per-mesh sparkline behind the leaderboard.                                                                                               |
-| `GET`  | `/api/v1/meshes/dwell`                   | `mesh_dwell`                 | How long each object spent on screen and near the view centre, from `mesh_visibility` summaries (#37). One row per mesh, ranked by total on-screen time. The 3D analogue of time-on-element.                                                                                               |
-| `GET`  | `/api/v1/meshes/blind-spots`             | `mesh_blind_spots`           | Per mesh, how long it was visible against how much it was engaged with (#143). One row per mesh that was seen at least once, most-seen-yet-least-touched first. A product detail with high visibility and near-zero interaction is a blind spot.                                           |
-| `GET`  | `/api/v1/meshes/kinds`                   | `mesh_interaction_kinds`     | Per-mesh counts of each interaction _kind_ — hover, pick, click, drag, select, squeeze, grab, release, teleport (#72, ADR 0023). One row per (mesh, kind). Separates an object that is merely hovered from one that is actually picked or dragged.                                         |
-| `GET`  | `/api/v1/meshes/reachability`            | `mesh_reachability`          | How far each interacted mesh sat from where the visitor actually stood (#151). One row per (mesh, distance band) with the mean distance in the band. Meshes whose interactions cluster in far bands are consistently reached from an uncomfortable range.                                  |
-| `GET`  | `/api/v1/clicks/dead`                    | `dead_clicks`                | Of all clicks in the range, how many hit nothing at all (#46). Always a single row. A high dead-click share is a 3D discoverability problem: visitors click where they expect something interactive and get no response.                                                                   |
-| `GET`  | `/api/v1/clicks/rage`                    | `rage_clicks`                | Rapid repeated clicks on the same mesh inside one time window (#47) — the 'I keep clicking and nothing happens' frustration signal. One row per (session, mesh, window) that reached `minRepeats`, biggest burst first.                                                                    |
-| `GET`  | `/api/v1/hover/dwell`                    | `hover_dwell`                | Per mesh, how long visitors lingered on an object _without clicking it_, over how many episodes, and the longest single hover (#48). One row per mesh. High dwell with few interactions flags objects that look interactive but are not.                                                   |
-| `GET`  | `/api/v1/interactions/sources`           | `interaction_sources`        | For every interaction event that carries an input source, how many fired per (event type, source) and across how many distinct sessions (ADR 0011). One row per pairing. Turns `source` from a filter into the modality mix of the audience.                                               |
-| `GET`  | `/api/v1/input-actions/top`              | `top_input_actions`          | App-level `input_action` labels — bound keyboard chords and gamepad buttons — ranked by how often they fired, split by input source (#75, ADR 0023). One row per (action, source).                                                                                                         |
-| `GET`  | `/api/v1/camera-gestures`                | `camera_gestures`            | How often visitors moved the viewpoint and for how long, per gesture kind — orbit, pan, dolly, zoom, roll, fly, navigate (ADR 0025). One row per kind. Separates deliberate navigation intent from object selection.                                                                       |
-| `GET`  | `/api/v1/navigation`                     | `navigation_stats`           | Per session, how far the camera travelled and how much of that travel was active rather than idle dwell. One row per session. A high segment count with low active distance flags a stuck or lost visitor.                                                                                 |
-| `GET`  | `/api/v1/backtrack`                      | `backtrack_ratio`            | Per scene, the share of coarse-grid cell entries that re-entered an already-visited cell (#153). One row per scene. A high ratio flags a dead end, a missed cue, or a puzzle that is not reading clearly.                                                                                  |
-| `GET`  | `/api/v1/perf`                           | `perf_summary`               | The pooled FPS headline over the range: how many `frame_perf` samples were seen and their average, minimum and median FPS. Always a single row. The quickest 'is this scene smooth' check.                                                                                                 |
-| `GET`  | `/api/v1/perf/render-scale`              | `render_scale_truth`         | The FPS headline paired with the resolution the engine actually rendered at (#71, ADR 0021). Always a single row. A scene can report a healthy frame rate only because an adaptive renderer quietly dropped the render scale below 1.                                                      |
-| `GET`  | `/api/v1/perf/distribution`              | `perf_distribution`          | FPS percentiles computed per session and then aggregated (ADR 0028 §1): the median across sessions of each session's p05 / p50 / p95. Always a single row. The honest smoothness headline — one visitor, one vote.                                                                         |
-| `GET`  | `/api/v1/perf/fps-histogram`             | `fps_histogram`              | How many sessions fell into each FPS band, where a session contributes a single data point — its median FPS (ADR 0028 §1). One row per `bucket`-wide band. Answers 'how many _experiences_ were smooth', not how many frames.                                                              |
-| `GET`  | `/api/v1/perf/frame-time`                | `frame_time_percentiles`     | Frame cost in milliseconds, computed per session then aggregated (ADR 0028 §1): the typical frame and the tail. Always a single row. Milliseconds are the budget developers actually work in — FPS is the reciprocal.                                                                      |
-| `GET`  | `/api/v1/perf/jank`                      | `jank_rate`                  | How often frames ran long, per session then aggregated (ADR 0028 §1): the median session's long-frames-per-window rate and the worst decile's. Always a single row. Surfaces the janky minority instead of averaging it away.                                                              |
-| `GET`  | `/api/v1/perf/churn`                     | `perf_churn`                 | Does a stutter actually cost sessions (#144)? Of the sessions that ended in range, how many ended shortly after an FPS dip or a compile stall, with the cause attributed. Always a single row of aggregate counts.                                                                         |
-| `GET`  | `/api/v1/perf/by-device`                 | `perf_by_device`             | Median FPS attributed to the graphics backend, mobile flag, GPU renderer and the coarse browser/OS families derived at ingestion (ADR 0028 §2, ADR 0042). One row per device combination. Where a bimodal FPS histogram gets explained.                                                    |
-| `GET`  | `/api/v1/perf/by-scene`                  | `perf_by_scene`              | Median FPS attributed to each scene, per session then aggregated (ADR 0028 §1). One row per scene. The comparison that tells you which level is expensive.                                                                                                                                 |
-| `GET`  | `/api/v1/heatmaps/perf`                  | `perf_heatmap`               | `frame_perf` samples voxel-binned by the camera position they were captured at (#145), with each cell's sample count, mean FPS and worst sample. One row per occupied voxel, worst-FPS-first. Answers _where_ performance degrades.                                                        |
-| `GET`  | `/api/v1/perf/compile-stalls`            | `compile_stalls`             | Per compile phase, how many main-thread compile hitches happened and their total, average and worst duration (#42). One row per phase. Compilation is the biggest single source of first-interaction jank, and frame-rate averages hide it.                                                |
-| `GET`  | `/api/v1/perf/resources`                 | `resource_summary`           | The average and peak of each footprint metric over the range (#44): JS heap, submitted triangles and vertices, resident texture and geometry bytes. Always a single row — the actual cost the scene asked of the device.                                                                   |
-| `GET`  | `/api/v1/perf/resource-percentiles`      | `resource_percentiles`       | Footprint percentiles computed per session then aggregated (ADR 0028 §1): a typical (p50) and peak (p95) JS heap, texture bytes and triangle count per session, summarised as the median across sessions. Always a single row.                                                             |
-| `GET`  | `/api/v1/perf/stability`                 | `stability_counts`           | GPU context losses and shader/pipeline compile stalls over the range, plus their total. Always a single row. These are the hard failures a frame-rate average cannot show — a context loss blanks the canvas, a compile stall freezes first interaction.                                   |
-| `GET`  | `/api/v1/graphics-diagnostics`           | `graphics_diagnostics`       | Opt-in engine diagnostics crossed by (severity, category, backend) with a rollup-aware incident total (ADR 0021 part 2). One row per combination. Surfaces validation errors, shader-compile failures and context-loss detail the engine reports.                                          |
-| `GET`  | `/api/v1/heatmaps/errors`                | `error_heatmap`              | Positioned runtime errors and engine diagnostics voxel-binned into a uniform grid (#154). One row per occupied voxel, busiest first. Reveals _where_ in the scene things break, not only when.                                                                                             |
-| `GET`  | `/api/v1/rendering-technology`           | `rendering_technology`       | Session counts crossed by (api, backend, api version, shading language) from the always-on `session_start` graphics block (ADR 0021 part 1, ADR 0046). One row per combination — WebGPU vs WebGL2 adoption, and which shading language is in play.                                         |
-| `GET`  | `/api/v1/capabilities`                   | `capability_changes`         | How often the app reported a capability fallback or recovery, per (kind, from, to) (#49). One row per transition. Explains perf and visual-fidelity variance — e.g. how many sessions fell back from WebGPU to WebGL2.                                                                     |
-| `GET`  | `/api/v1/xr/rotation`                    | `xr_rotation`                | Per session, how fast the view turned over the camera pose stream — the angular path, the worst single jerk, and how many steps cleared the rapid-turn threshold. One row per session. A motion-sickness proxy.                                                                            |
-| `GET`  | `/api/v1/xr/sources`                     | `xr_sources`                 | The immersive input mix: one row per XR input source (hand, controller, gaze, transient) with its interaction count and how many sessions used it. Flat-screen sources are excluded so the split is purely XR.                                                                             |
-| `GET`  | `/api/v1/xr/abandonment`                 | `xr_abandonment`             | For every session that used an XR input source, its wall-clock bounds and event / interaction counts. One row per XR session. A short span with few interactions is headset drop-off.                                                                                                      |
-| `GET`  | `/api/v1/xr/locomotion`                  | `xr_locomotion`              | Per XR session, its locomotion-style mix — fly and navigate gestures, discrete teleports, and total time in locomotion — plus the session's wall-clock span (#148). One row per XR session. Constant smooth locomotion is a motion-sickness risk; teleport-dominant sessions are not.      |
-| `GET`  | `/api/v1/xr/tracking`                    | `xr_tracking_quality`        | Per session that reported a tracking transition, how much of it ran with degraded or lost spatial tracking, split by hand vs controller (#155, ADR 0048). One row per session. A session that looked fine on FPS can still have been unusable because the hands kept disappearing.         |
-| `GET`  | `/api/v1/heatmaps/boundary`              | `boundary_heatmap`           | Where room-scale VR visitors approached their play-space boundary, voxel-binned into a uniform grid (#157, ADR 0048). One row per occupied voxel, busiest first. The 'where did people keep bumping into their guardian' map.                                                              |
-| `GET`  | `/api/v1/heatmaps/boundary/stats`        | `boundary_heatmap_stats`     | The un-truncated totals behind `boundary_heatmap` (ADR 0040 §3): occupied voxels and total boundary contacts, with no row cap. Always a single row.                                                                                                                                        |
-| `GET`  | `/api/v1/xr/boundary-contacts`           | `xr_boundary_contacts`       | For every session that touched its play-space boundary, how many approaches it made and how long it spent in the near-boundary zone (#157, ADR 0048). One row per session. Frequent contact means the physical space did not fit the experience.                                           |
-| `GET`  | `/api/v1/ar/placement/time-to-place`     | `ar_placement_time_to_place` | How long visitors took to place a model on a surface, histogrammed into `bucketMs`-wide bins (#156, ADR 0048 §1). One row per bin, one settle per data point. The felt cost of getting a 'view in your room' model down — the AR analogue of a slow add-to-cart.                           |
-| `GET`  | `/api/v1/ar/placement/attempts`          | `ar_placement_attempts`      | How many place / re-place actions visitors made before committing (#156, ADR 0048 §1). One row per attempt count. `attempts = 1` is a clean first try; a long right tail is placement friction.                                                                                            |
-| `GET`  | `/api/v1/ar/placement/surfaces`          | `ar_placement_surfaces`      | Per coarse surface bucket — floor, wall, table, ceiling, unknown — how many settles landed there and their average committed scale (#156, ADR 0048 §1). One row per surface. Shows where visitors place models and how far off the authored size they settle.                              |
-| `GET`  | `/api/v1/funnel`                         | `funnel`                     | An ordered, per-session conversion funnel over caller-supplied step predicates (ADR 0038): how many sessions reached each step in order. One row per step, 0-based. The OSS collector has no authoring surface, so the steps come from the caller.                                         |
-| `GET`  | `/api/v1/scene-retention`                | `scene_retention`            | Directed scene→scene links weighted by how many distinct sessions made each consecutive transition (#147), derived purely from the observed order of `scene_change` markers. One row per link, busiest first. The zero-config level funnel.                                                |
-| `GET`  | `/api/v1/load-bounce`                    | `load_bounce_funnel`         | Sessions bucketed by their initial load time, with how many bounced in each band (#152) — a bounce being a session that produced no interaction at or after its first asset load. One row per band. Turns 'slow loads cost you customers' into a number.                                   |
-| `GET`  | `/api/v1/variant-leaderboard`            | `variant_leaderboard`        | For a product configurator (#150): per variant — a custom event grouped by its name — how often it was viewed, over how many sessions, how many of those converted, and the mean dwell before the visitor switched or converted. One row per variant, ranked by views.                     |
+| Method | Path                                     | Metric                       | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------ | ---------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/v1/sessions`                       | `list_sessions`              | One row per session seen in the range: its id, the server-derived daily-rotating visitor hash, how many events it produced, and its first/last event timestamps. The entry point for 'what traffic did this project get' and for picking a session to drill into.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `GET`  | `/api/v1/sessions/:id/meta`              | `session_meta`               | The coarse descriptor for one session — start time, the device/graphics block reported at `session_start`, the scene metadata and the app-supplied anonymous user descriptor. A single-object resource read from the store, not an aggregation, and deliberately not the raw event stream.                                                                                                                                                                                                                                                                                                                                                                            |
+| `GET`  | `/api/v1/sessions/:id/narrative`         | `session_narrative`          | An ordered, compacted account of what one session did — scene changes, the meshes it dwelled on, its interactions, performance dips, errors and how it ended — timestamps relative to its first event, plus a closing totals entry. A compaction of the raw per-session stream, gated on `query:raw` and raw-session retention (ADR 0003).                                                                                                                                                                                                                                                                                                                            |
+| `GET`  | `/api/v1/scenes/:sceneId/representation` | `scene_representation`       | The registered proxy geometry for one scene (ADR 0014): its world bounds, up-axis and unit scale, and the named proxy boxes when one was uploaded. A metadata resource read, not an aggregation — it is what turns the voxel coordinates of the spatial metrics into named places.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET`  | `/api/v1/scenes`                         | `list_scenes`                | The distinct developer-assigned scenes (ADR 0010) that saw activity in the range, with their event count and most recent activity. One row per scene; the orientation query before any scene-scoped question.                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET`  | `/api/v1/timeseries`                     | `timeseries`                 | Event volume bucketed into fixed `interval`-second windows, with the average FPS of any `frame_perf` samples in the same bucket. One row per bucket: the shape of traffic with the coarse perf trend beside it.                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `GET`  | `/api/v1/event-counts`                   | `event_counts`               | How many events of each type were recorded in the range, optionally for one scene. One row per event type. The scene-health overview: error rate, context losses, focus/visibility gaps and interaction volume all read off this single query.                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `GET`  | `/api/v1/heatmaps/pointer`               | `pointer_heatmap`            | Screen-space pointer activity binned into a `bins × bins` grid over the normalized viewport. One row per occupied cell. Answers 'where on screen do people point and click' — the classic web heatmap, for a 3D canvas.                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `GET`  | `/api/v1/heatmaps/mesh-uv`               | `mesh_uv_heatmap`            | Interaction hits on one object binned into a `bins × bins` grid over that object's own `[0,1]` UV space (#149). One row per occupied cell. Answers 'which part of this product model gets attention', independent of where the object sits in the scene.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET`  | `/api/v1/heatmaps/world`                 | `world_heatmap`              | Pointer raycast hit points voxel-binned into a uniform grid of `cellSize`-sized cubes. One row per occupied voxel, busiest first. Answers 'where in the scene do people point and click' in world coordinates rather than on screen.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `GET`  | `/api/v1/heatmaps/world/stats`           | `world_heatmap_stats`        | The un-truncated totals behind `world_heatmap` (ADR 0040 §3): how many voxels are occupied and how many hits they hold, computed with no row cap. Always a single row.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `GET`  | `/api/v1/heatmaps/gaze`                  | `gaze_heatmap`               | Where the camera-forward (gaze) ray landed on real geometry, voxel-binned into a uniform grid (ADR 0030). One row per occupied voxel, busiest first. This is 'what did people actually look at', as opposed to what they clicked.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `GET`  | `/api/v1/heatmaps/gaze/stats`            | `gaze_heatmap_stats`         | The un-truncated totals behind `gaze_heatmap` (ADR 0040 §3): occupied voxels and total gaze hits, with no row cap. Always a single row.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `GET`  | `/api/v1/heatmaps/camera`                | `camera_heatmap`             | Camera forward vectors binned by spherical angle into a `bins × bins` azimuth/elevation grid. One row per occupied direction bin. The abstract 'which way did people look' dome — it needs no scene geometry, so it works even without the gaze raycast.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET`  | `/api/v1/coverage/view-histogram`        | `view_coverage_histogram`    | How much of the view dome each session actually looked at, bucketed across sessions (#146). One row per 25-point coverage band. Answers 'how many visitors saw less than a quarter of the product'.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `GET`  | `/api/v1/heatmaps/position`              | `position_heatmap`           | Camera positions binned onto the X/Z ground plane in `cellSize`-sized cells, with the mean height per cell (ADR 0026). One row per occupied cell, busiest first. The 'where do visitors stand and linger' map for a walkable scene.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `GET`  | `/api/v1/sessions/:sessionId/trajectory` | `session_trajectory`         | One session's ordered camera positions, oldest first (ADR 0026). One row per sampled point. The single-visitor path behind the crowd view in `aggregate_paths`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `GET`  | `/api/v1/paths`                          | `aggregate_paths`            | Every session's camera path binned onto the ground grid and returned as ordered, session-keyed points (#73, ADR 0037). One row per (session, sampled point). Overlaying the poly-lines makes the routes visitors actually walk self-reinforce into desire lines.                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `GET`  | `/api/v1/coverage`                       | `scene_coverage`             | Camera _positions_ voxel-binned into a uniform 3D grid. One row per occupied voxel with its visit count. Exploration completeness and never-visited regions are computed by comparing the occupied voxels against the scene's registered bounds.                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `GET`  | `/api/v1/camera/distance`                | `camera_distance`            | Histogram of the distance from each camera sample to a reference point (by default the world origin; pass the scene-AABB centre for a product view). One row per `bucketSize`-wide distance band. A proxy for engagement intensity — how close visitors get to the subject.                                                                                                                                                                                                                                                                                                                                                                                           |
+| `GET`  | `/api/v1/heatmaps/click-rays`            | `click_rays`                 | Each click aggregated into a ray from an origin voxel to the hit voxel, sharing the world heatmap's grid. One row per (origin voxel, hit voxel, mesh). Shows not just _what_ was clicked but _from where_ — the standpoint an interaction was made from.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET`  | `/api/v1/heatmaps/flow`                  | `flow_links`                 | Weighted links from a camera-direction bin to the mesh that was clicked while facing that way. One row per (direction bin, mesh), or per (standpoint voxel, direction bin, mesh) in position-aware mode. Connects where people looked from to what they acted on.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `GET`  | `/api/v1/meshes/top`                     | `top_meshes`                 | Meshes ranked by how many events referenced them. One row per mesh. The 3D analogue of a top-pages report: which objects in the scene draw activity.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `GET`  | `/api/v1/meshes/sources`                 | `mesh_sources`               | The mesh leaderboard broken out by the input source that drove each interaction (#74, ADR 0011). One row per (mesh, source). Scoped to **active** interactions, so passive gaze never inflates popularity.                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `GET`  | `/api/v1/meshes/trend`                   | `mesh_trend`                 | The active-interaction tally per mesh, bucketed into fixed `interval`-second windows (#74). One row per (mesh, bucket), oldest bucket first — the per-mesh sparkline behind the leaderboard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `GET`  | `/api/v1/meshes/dwell`                   | `mesh_dwell`                 | How long each object spent on screen and near the view centre, from `mesh_visibility` summaries (#37). One row per mesh, ranked by total on-screen time. The 3D analogue of time-on-element.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `GET`  | `/api/v1/meshes/blind-spots`             | `mesh_blind_spots`           | Per mesh, how long it was visible against how much it was engaged with (#143). One row per mesh that was seen at least once, most-seen-yet-least-touched first. A product detail with high visibility and near-zero interaction is a blind spot.                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `GET`  | `/api/v1/meshes/kinds`                   | `mesh_interaction_kinds`     | Per-mesh counts of each interaction _kind_ — hover, pick, click, drag, select, squeeze, grab, release, teleport (#72, ADR 0023). One row per (mesh, kind). Separates an object that is merely hovered from one that is actually picked or dragged.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET`  | `/api/v1/meshes/reachability`            | `mesh_reachability`          | How far each interacted mesh sat from where the visitor actually stood (#151). One row per (mesh, distance band) with the mean distance in the band. Meshes whose interactions cluster in far bands are consistently reached from an uncomfortable range.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `GET`  | `/api/v1/clicks/dead`                    | `dead_clicks`                | Of all clicks in the range, how many hit nothing at all (#46). Always a single row. A high dead-click share is a 3D discoverability problem: visitors click where they expect something interactive and get no response.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET`  | `/api/v1/clicks/rage`                    | `rage_clicks`                | Rapid repeated clicks on the same mesh inside one time window (#47) — the 'I keep clicking and nothing happens' frustration signal. One row per (session, mesh, window) that reached `minRepeats`, biggest burst first.                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `GET`  | `/api/v1/hover/dwell`                    | `hover_dwell`                | Per mesh, how long visitors lingered on an object _without clicking it_, over how many episodes, and the longest single hover (#48). One row per mesh. High dwell with few interactions flags objects that look interactive but are not.                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET`  | `/api/v1/interactions/sources`           | `interaction_sources`        | For every interaction event that carries an input source, how many fired per (event type, source) and across how many distinct sessions (ADR 0011). One row per pairing. Turns `source` from a filter into the modality mix of the audience.                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `GET`  | `/api/v1/input-actions/top`              | `top_input_actions`          | App-level `input_action` labels — bound keyboard chords and gamepad buttons — ranked by how often they fired, split by input source (#75, ADR 0023). One row per (action, source).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET`  | `/api/v1/vocabulary/custom-events`       | `custom_event_vocabulary`    | Which developer-defined `custom` event names the project actually emits, how often, over how many distinct sessions, and the union of `props` keys observed on each name with a coarse type per key (ADR 0051 §5). One row per custom-event name. This is how an agent learns that `add_to_cart` exists and carries `sku` and `qty` — nothing else in the read surface enumerates an application's own event vocabulary.                                                                                                                                                                                                                                              |
+| `GET`  | `/api/v1/camera-gestures`                | `camera_gestures`            | How often visitors moved the viewpoint and for how long, per gesture kind — orbit, pan, dolly, zoom, roll, fly, navigate (ADR 0025). One row per kind. Separates deliberate navigation intent from object selection.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `GET`  | `/api/v1/navigation`                     | `navigation_stats`           | Per session, how far the camera travelled and how much of that travel was active rather than idle dwell. One row per session. A high segment count with low active distance flags a stuck or lost visitor.                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `GET`  | `/api/v1/backtrack`                      | `backtrack_ratio`            | Per scene, the share of coarse-grid cell entries that re-entered an already-visited cell (#153). One row per scene. A high ratio flags a dead end, a missed cue, or a puzzle that is not reading clearly.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `GET`  | `/api/v1/perf`                           | `perf_summary`               | The pooled FPS headline over the range: how many `frame_perf` samples were seen and their average, minimum and median FPS. Always a single row. The quickest 'is this scene smooth' check.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `GET`  | `/api/v1/perf/render-scale`              | `render_scale_truth`         | The FPS headline paired with the resolution the engine actually rendered at (#71, ADR 0021). Always a single row. A scene can report a healthy frame rate only because an adaptive renderer quietly dropped the render scale below 1.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `GET`  | `/api/v1/perf/distribution`              | `perf_distribution`          | FPS percentiles computed per session and then aggregated (ADR 0028 §1): the median across sessions of each session's p05 / p50 / p95. Always a single row. The honest smoothness headline — one visitor, one vote.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET`  | `/api/v1/perf/fps-histogram`             | `fps_histogram`              | How many sessions fell into each FPS band, where a session contributes a single data point — its median FPS (ADR 0028 §1). One row per `bucket`-wide band. Answers 'how many _experiences_ were smooth', not how many frames.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET`  | `/api/v1/perf/frame-time`                | `frame_time_percentiles`     | Frame cost in milliseconds, computed per session then aggregated (ADR 0028 §1): the typical frame and the tail. Always a single row. Milliseconds are the budget developers actually work in — FPS is the reciprocal.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `GET`  | `/api/v1/perf/jank`                      | `jank_rate`                  | How often frames ran long, per session then aggregated (ADR 0028 §1): the median session's long-frames-per-window rate and the worst decile's. Always a single row. Surfaces the janky minority instead of averaging it away.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET`  | `/api/v1/perf/churn`                     | `perf_churn`                 | Does a stutter actually cost sessions (#144)? Of the sessions that ended in range, how many ended shortly after an FPS dip or a compile stall, with the cause attributed. Always a single row of aggregate counts.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET`  | `/api/v1/perf/by-device`                 | `perf_by_device`             | Median FPS attributed to the graphics backend, mobile flag, GPU renderer and the coarse browser/OS families derived at ingestion (ADR 0028 §2, ADR 0042). One row per device combination. Where a bimodal FPS histogram gets explained.                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `GET`  | `/api/v1/perf/by-scene`                  | `perf_by_scene`              | Median FPS attributed to each scene, per session then aggregated (ADR 0028 §1). One row per scene. The comparison that tells you which level is expensive.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `GET`  | `/api/v1/heatmaps/perf`                  | `perf_heatmap`               | `frame_perf` samples voxel-binned by the camera position they were captured at (#145), with each cell's sample count, mean FPS and worst sample. One row per occupied voxel, worst-FPS-first. Answers _where_ performance degrades.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `GET`  | `/api/v1/perf/compile-stalls`            | `compile_stalls`             | Per compile phase, how many main-thread compile hitches happened and their total, average and worst duration (#42). One row per phase. Compilation is the biggest single source of first-interaction jank, and frame-rate averages hide it.                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `GET`  | `/api/v1/perf/resources`                 | `resource_summary`           | The average and peak of each footprint metric over the range (#44): JS heap, submitted triangles and vertices, resident texture and geometry bytes. Always a single row — the actual cost the scene asked of the device.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET`  | `/api/v1/perf/resource-percentiles`      | `resource_percentiles`       | Footprint percentiles computed per session then aggregated (ADR 0028 §1): a typical (p50) and peak (p95) JS heap, texture bytes and triangle count per session, summarised as the median across sessions. Always a single row.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `GET`  | `/api/v1/perf/stability`                 | `stability_counts`           | GPU context losses and shader/pipeline compile stalls over the range, plus their total. Always a single row. These are the hard failures a frame-rate average cannot show — a context loss blanks the canvas, a compile stall freezes first interaction.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET`  | `/api/v1/graphics-diagnostics`           | `graphics_diagnostics`       | Opt-in engine diagnostics crossed by (severity, category, backend) with a rollup-aware incident total (ADR 0021 part 2). One row per combination. Surfaces validation errors, shader-compile failures and context-loss detail the engine reports.                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `GET`  | `/api/v1/heatmaps/errors`                | `error_heatmap`              | Positioned runtime errors and engine diagnostics voxel-binned into a uniform grid (#154). One row per occupied voxel, busiest first. Reveals _where_ in the scene things break, not only when.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `GET`  | `/api/v1/rendering-technology`           | `rendering_technology`       | Session counts crossed by (api, backend, api version, shading language) from the always-on `session_start` graphics block (ADR 0021 part 1, ADR 0046). One row per combination — WebGPU vs WebGL2 adoption, and which shading language is in play.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET`  | `/api/v1/capabilities`                   | `capability_changes`         | How often the app reported a capability fallback or recovery, per (kind, from, to) (#49). One row per transition. Explains perf and visual-fidelity variance — e.g. how many sessions fell back from WebGPU to WebGL2.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `GET`  | `/api/v1/xr/rotation`                    | `xr_rotation`                | Per session, how fast the view turned over the camera pose stream — the angular path, the worst single jerk, and how many steps cleared the rapid-turn threshold. One row per session. A motion-sickness proxy.                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `GET`  | `/api/v1/xr/sources`                     | `xr_sources`                 | The immersive input mix: one row per XR input source (hand, controller, gaze, transient) with its interaction count and how many sessions used it. Flat-screen sources are excluded so the split is purely XR.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `GET`  | `/api/v1/xr/abandonment`                 | `xr_abandonment`             | For every session that used an XR input source, its wall-clock bounds and event / interaction counts. One row per XR session. A short span with few interactions is headset drop-off.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `GET`  | `/api/v1/xr/locomotion`                  | `xr_locomotion`              | Per XR session, its locomotion-style mix — fly and navigate gestures, discrete teleports, and total time in locomotion — plus the session's wall-clock span (#148). One row per XR session. Constant smooth locomotion is a motion-sickness risk; teleport-dominant sessions are not.                                                                                                                                                                                                                                                                                                                                                                                 |
+| `GET`  | `/api/v1/xr/tracking`                    | `xr_tracking_quality`        | Per session that reported a tracking transition, how much of it ran with degraded or lost spatial tracking, split by hand vs controller (#155, ADR 0048). One row per session. A session that looked fine on FPS can still have been unusable because the hands kept disappearing.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET`  | `/api/v1/heatmaps/boundary`              | `boundary_heatmap`           | Where room-scale VR visitors approached their play-space boundary, voxel-binned into a uniform grid (#157, ADR 0048). One row per occupied voxel, busiest first. The 'where did people keep bumping into their guardian' map.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET`  | `/api/v1/heatmaps/boundary/stats`        | `boundary_heatmap_stats`     | The un-truncated totals behind `boundary_heatmap` (ADR 0040 §3): occupied voxels and total boundary contacts, with no row cap. Always a single row.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `GET`  | `/api/v1/xr/boundary-contacts`           | `xr_boundary_contacts`       | For every session that touched its play-space boundary, how many approaches it made and how long it spent in the near-boundary zone (#157, ADR 0048). One row per session. Frequent contact means the physical space did not fit the experience.                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `GET`  | `/api/v1/ar/placement/time-to-place`     | `ar_placement_time_to_place` | How long visitors took to place a model on a surface, histogrammed into `bucketMs`-wide bins (#156, ADR 0048 §1). One row per bin, one settle per data point. The felt cost of getting a 'view in your room' model down — the AR analogue of a slow add-to-cart.                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `GET`  | `/api/v1/ar/placement/attempts`          | `ar_placement_attempts`      | How many place / re-place actions visitors made before committing (#156, ADR 0048 §1). One row per attempt count. `attempts = 1` is a clean first try; a long right tail is placement friction.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `GET`  | `/api/v1/ar/placement/surfaces`          | `ar_placement_surfaces`      | Per coarse surface bucket — floor, wall, table, ceiling, unknown — how many settles landed there and their average committed scale (#156, ADR 0048 §1). One row per surface. Shows where visitors place models and how far off the authored size they settle.                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET`  | `/api/v1/funnel`                         | `funnel`                     | An ordered, per-session conversion funnel over caller-supplied step predicates (ADR 0038): how many sessions reached each step in order. One row per step, 0-based. The OSS collector has no authoring surface, so the steps come from the caller.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET`  | `/api/v1/scene-retention`                | `scene_retention`            | Directed scene→scene links weighted by how many distinct sessions made each consecutive transition (#147), derived purely from the observed order of `scene_change` markers. One row per link, busiest first. The zero-config level funnel.                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `GET`  | `/api/v1/load-bounce`                    | `load_bounce_funnel`         | Sessions bucketed by their initial load time, with how many bounced in each band (#152) — a bounce being a session that produced no interaction at or after its first asset load. One row per band. Turns 'slow loads cost you customers' into a number.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET`  | `/api/v1/variant-leaderboard`            | `variant_leaderboard`        | For a product configurator (#150): per variant — a custom event grouped by its name — how often it was viewed, over how many sessions, how many of those converted, and the mean dwell before the visitor switched or converted. One row per variant, ranked by views.                                                                                                                                                                                                                                                                                                                                                                                                |
+| `GET`  | `/api/v1/insights/baseline`              | `insight_baseline`           | What is normal for one metric in one scene. Buckets a comparable metric's headline column into days or hours over a trailing window and reduces the series to its centre (mean, median), its ordinary spread (MAD, p10, p90) and its drift (least-squares slope per bucket). One row per request: the reference distribution a single later observation should be judged against, so 'is 42 FPS bad here?' has an answer that does not depend on the reader's memory.                                                                                                                                                                                                 |
+| `GET`  | `/api/v1/insights/movers`                | `insight_movers`             | What moved, ranked. For every comparable metric in scope, compares the current range with a reference range (the previous equal window by default) and ranks the differences by a robust z-score — the change divided by how much that metric normally swings, so a metric that is always volatile has to move much further than a steady one before it is called a mover. One row per metric: the top risers, the top fallers, and the ones that did not move.                                                                                                                                                                                                       |
+| `GET`  | `/api/v1/insights/anomalies`             | `insight_anomalies`          | When one metric stopped behaving, and what inside it accounts for that. Walks a comparable metric's day or hour bucket series and returns only the buckets that do not belong in it: a `spike` or a `drop` when a single bucket sits more than `sensitivity` median absolute deviations from the buckets just before it, and a `shift` at the bucket where a CUSUM change-point says the level moved and stayed moved. Where the metric declares a dimension it can be split by, the row also names the dimension value holding the largest share of the excess — the difference between 'errors tripled on the 14th' and 'graphics diagnostics tripled on the 14th'. |
+| `GET`  | `/api/v1/insights/significance`          | `insight_significance`       | Is that difference real? Compares one comparable metric across two windows and reports the effect, its 95% confidence interval and a two-sided p-value, with the test chosen from what the measure _is_: a two-proportion z with Wilson intervals for a declared rate, Welch's t over the per-bucket values for a level, an exact Poisson rate test for a bare count. One row per request, and a `powerNote` saying what these sample sizes could and could not have detected.                                                                                                                                                                                        |
+| `GET`  | `/api/v1/insights/scene-health`          | `insight_scene_health`       | Which scene is in trouble, and why. Scores each scene 0-100 over six weighted factors — perf stability, jank, errors, dead clicks, exploration coverage and XR abandonment — each normalised against the project's own baseline over the preceding equal window. One row per scene, least healthy first, and every factor carries the metric id, the raw value, the baseline it was compared with and the weight it contributed, so the score can always be taken apart.                                                                                                                                                                                              |
 
 <!-- generated:registry-endpoints:end -->
 
@@ -1663,6 +1739,264 @@ of them aggregates anything, so none of them takes `format` — a stray `format=
 | `GET`  | `/api/v1/sessions/:id/events` | Ordered raw event stream for replay. Requires **both** `ENABLE_RAW_SESSION_RETENTION` on the collector (ADR 0003) and the `query:raw` capability on the key (ADR 0051 §7); otherwise `403`.     |
 | `GET`  | `/api/v1/whoami`              | The calling key's identity — project, key id, capabilities, label and the rate-limit budget in force. See [API keys](#api-keys-capabilities-rate-limits-and-the-audit-log) above.               |
 | `GET`  | `/api/v1/audit`               | The project's agent-audit trail, newest first (`since` / `until` / `limit`). Needs the ordinary `query` capability. See [API keys](#api-keys-capabilities-rate-limits-and-the-audit-log) above. |
+
+### Query DSL (`POST /api/v1/query`)
+
+Every metric in the table above also answers to **one** endpoint. Instead of picking the route that
+happens to carry the flag you need, you name the metric, the window, the filters that metric
+declares and how you want the result shaped — in one validated JSON document (ADR 0051 §3).
+
+```bash
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{
+        "v": 1,
+        "metric": "mesh_sources",
+        "range": { "since": 1757000000000, "until": 1757600000000 },
+        "filters": { "scene": "lobby", "cameraMode": "first-person" },
+        "limit": 20,
+        "format": "summary"
+      }' \
+  "https://collect.example.com/api/v1/query"
+```
+
+`GET /api/v1/query?q=<url-encoded JSON>` takes the identical document in a single parameter (capped
+at 8 KiB), for GET-only clients such as `@uptimizr/agent-core`'s read-only collector client. Both
+forms are **reads**: they need the same `query` capability as everything above, they are audited the
+same way, and they can compute nothing the canned endpoints cannot.
+
+#### The grammar
+
+| Field        | Required | What it is                                                                                                                        |
+| ------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `v`          | yes      | Grammar version. Always `1`.                                                                                                      |
+| `metric`     | yes      | A registry metric id — the `Metric` column of the table above.                                                                    |
+| `range`      | yes      | `{ since, until }` in epoch milliseconds, `since` inclusive and `until` exclusive. There is no unbounded query.                   |
+| `filters`    | no       | The filters that metric declares, as JSON. Names and meanings are the canned endpoint's querystring parameters.                   |
+| `dimensions` | no       | Up to 3 group-by dimensions: the metric's own grain, or — for a metric with a generic tier — any subset it declares.              |
+| `segment`    | no       | `{ dimension: value }` held fixed for the whole query. Extra equality filters with a name.                                        |
+| `compare`    | no       | `{ range }` or `{ segment }` to measure this query against. The result comes back joined (see below).                             |
+| `order`      | no       | `{ by, dir }` over a measure column of a ranked or regrouped result.                                                              |
+| `explain`    | no       | `true` returns the compiled plan and its warnings instead of the rows.                                                            |
+| `limit`      | no       | Row cap, at most 1000 and at most the metric's own `limits.maxRows`.                                                              |
+| `format`     | no       | `full` \| `table` \| `summary` — the [result envelope](#result-formats-formatfull--table--summary). **Defaults to `table`** here. |
+
+The grammar is **closed**. There is no raw SQL, no expression language and no free-form value: every
+filter is typed, every identifier is checked against the registry, and the output is bounded. Unknown
+keys are rejected rather than ignored, so a typo is an error instead of a silently-dropped filter.
+
+Two conveniences over the querystring form, because the DSL is already JSON: `filters.steps`,
+`filters.variant` and `filters.conversion` take real [funnel step predicates](#funnels-apiv1funnel--caller-configured-adr-0038-78)
+rather than JSON-encoded strings, and `filters.region` takes either a registered region id or the
+`[minX,minY,minZ,maxX,maxY,maxZ]` box as an array.
+
+#### Two compilation tiers
+
+A query runs on one of two compilers, and which one is a property of the **metric**, not of the
+request:
+
+- **Delegated** — the metric's _existing_ aggregation runs, so the result is byte-for-byte what its
+  canned endpoint returns. Every query at a metric's own grain takes this path, and it is the only
+  path a spatial heatmap or a percentile has: their measure _is_ the grain (a binning of
+  coordinates, a quantile over a set), and neither decomposes onto another one.
+- **Generic group-by** — a metric whose measure is a portable count or sum over promoted columns is
+  recomputed at any grain it declares, by one shared `SELECT <dimensions>, <measures> … GROUP BY
+<dimensions>` builder. This is what lets `top_meshes` answer "per input source" and
+  `event_counts` answer "per device OS" without a new endpoint each.
+
+The delegated tier is preferred wherever it can answer, so an unchanged query keeps returning
+exactly what it always has.
+
+##### Metrics with a generic tier
+
+<!-- generated:registry-generic-groupby:start (pnpm gen:docs — do not edit by hand) -->
+
+| Metric                   | Default grain          | Can also group by                                                                                                             | Measures                                   |
+| ------------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `event_counts`           | `event_type`           | `scene`, `session`, `source`, `mesh`, `name`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer` | `count`                                    |
+| `top_meshes`             | `mesh`                 | `session`, `scene`, `source`, `event_type`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer`   | `count`                                    |
+| `mesh_sources`           | `mesh`, `source`       | `scene`, `session`, `cameraMode`, `name`, `event_type`, `device.os`, `device.browser`, `device.engine`, `device.renderer`     | `count`                                    |
+| `mesh_interaction_kinds` | `mesh`, `name`         | `scene`, `session`, `source`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer`                 | `count`                                    |
+| `interaction_sources`    | `event_type`, `source` | `scene`, `session`, `cameraMode`, `mesh`, `name`, `device.os`, `device.browser`, `device.engine`, `device.renderer`           | `count`, `sessions`                        |
+| `top_input_actions`      | `name`, `source`       | `scene`, `session`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer`                           | `count`                                    |
+| `camera_gestures`        | `name`                 | `scene`, `session`, `source`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer`                 | `gestures`, `total_ms`, `avg_ms`, `max_ms` |
+
+<!-- generated:registry-generic-groupby:end -->
+
+Anything not in that table is computed at one fixed grain and says so: asking to group it by
+something else is a `400` naming the grain it does support. `device.isMobile` is never a group-by —
+it is a boolean, and would key rows as `true`/`false` on one engine and `1`/`0` on another. Filter by
+it, or group by `device.os`.
+
+#### Comparing two windows or two segments
+
+`compare` runs the same query twice — with the comparison's `range`, or with its `segment`
+substituted — and joins the two results on the dimension key **for you**:
+
+```bash
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{
+        "v": 1,
+        "metric": "top_meshes",
+        "range":   { "since": 1757600000000, "until": 1758204800000 },
+        "compare": { "range": { "since": 1756995200000, "until": 1757600000000 } },
+        "format": "summary"
+      }' \
+  "https://collect.example.com/api/v1/query"
+```
+
+Each row is `{ key, label, current, previous, delta, deltaPct }`. A key present on one side only is
+still a row — `previous: null` is an arrival, `current: null` a disappearance — because those are
+usually the answer.
+
+`significance` is attached **only where the data supports it**: when the measure is a count or a
+session count (so a row's share of its window really is a proportion) and both windows clear the
+metric's own `minSample`. It is then a pooled two-proportion _z_ test with a 95 % Wilson interval on
+each share. For a mean-shaped measure (FPS, a ratio, an average duration) the field is absent and a
+caveat says why — a p-value the data cannot support is worse than none. A `bucket`-grain metric
+additionally gets `meta.overall`: Welch's unequal-variance _t_ test over the two windows'
+per-bucket values, which is the one place these two ranges really are two samples.
+
+`format` shapes the comparison the same way it shapes anything else: `full` is the joined rows,
+`table` wraps them in the envelope that says which windows they came from, and `summary` returns
+the biggest **movers** (`kind: "movers"`) with a one-sentence reading.
+
+#### Checking an answer before you quote it (`explain`)
+
+`explain: true` answers with the **plan** instead of the rows:
+
+```jsonc
+{
+  "metric": "top_input_actions",
+  "tier": "delegated",
+  "dialect": "duckdb",
+  "sql": "SELECT\n  name AS action, …", // parameters left as placeholders
+  "params": [{ "name": "since", "type": "timestamp" }], // names and types only, never values
+  "rowsScanned": 0,
+  "sampleSize": { "sessions": null, "events": 0 },
+  "warnings": ["No `input_action` events exist in this project over the selected range, …"],
+}
+```
+
+The SQL can be shown because there is nothing in it to redact: every caller-supplied value is a
+bound parameter, which is precisely what `explain` lets you verify. `params` therefore carries
+names and logical types and never values.
+
+`warnings` is the point of the endpoint. It covers the ways an Uptimizr answer is most often empty
+and wrong:
+
+| Warning                | When                                                                                           |
+| ---------------------- | ---------------------------------------------------------------------------------------------- |
+| Capture channel silent | One of the metric's `sourceChannels` produced nothing in the window — usually a capture dial   |
+|                        | that is switched off (ADR 0012), not an absence of behaviour.                                  |
+| Below the minimum      | The window holds fewer events than the metric's own `minSample`.                               |
+| No spatial labels      | A binned or voxelised metric in a project with no scene proxy and no regions, so a hotspot has |
+|                        | nothing to be named after.                                                                     |
+| Truncated              | The result hit its row cap, so totals and shares describe the returned rows only.              |
+
+`rowsScanned` is how many events of the metric's own capture channels exist in the window. No
+supported engine reports true rows-scanned without a second pass, and this number answers the
+question anyone actually asks; it is `null` for a metric that declares no channels.
+
+#### Drilling in
+
+Every row of a `format=summary` result carries `drill` (the filter values that narrow to it) and
+`drillQuery` — **the whole query, narrowed, ready to send back**. Where the metric has a filter for
+the dimension it goes in `filters`; where it has not (`top_meshes` has never taken a `mesh` filter)
+it goes in `segment`, which the generic tier honours. Following a drill-down is a copy-paste rather
+than a reconstruction, which is where the range or an already-applied scene usually gets lost.
+
+#### Event and device filters
+
+Two filters exist only on the generic tier, because no canned aggregation ever took them:
+
+- **`filters.event`** — an [ADR 0038 step predicate](#funnels-apiv1funnel--caller-configured-adr-0038-78)
+  (`{ type, name?, mesh? }`) used as a **cohort**: keep the sessions in which that event happened at
+  least once, then compute the metric over them. "What did the people who reached checkout look at."
+- **`filters.device`** — `os` and `browser` equality against the session's `session_start`, joined
+  by session. Both are derived server-side from the User-Agent at ingestion (ADR 0042), so they are
+  coarse families rather than versions. `gpuTier` is part of the published grammar but no connector
+  reports one, so it is refused rather than silently matching nothing; group by `device.renderer`
+  instead.
+
+On a metric with no generic tier both are a `400` naming the filters it does accept.
+
+#### Errors
+
+A query that names something the registry does not know is a `400` carrying **every** objection, each
+with a stable `code`, the path that offended and — where the answer is a closed list — what would
+have been accepted. An agent should read `accepted` rather than guess again:
+
+```json
+{
+  "error": "the query cannot be answered: \"top_meshes\" does not accept the filter \"scene\". It accepts `session`, `bins`, `limit`.",
+  "issues": [
+    {
+      "code": "unsupported_filter",
+      "path": "filters.scene",
+      "message": "\"top_meshes\" does not accept the filter \"scene\". It accepts `session`, `bins`, `limit`.",
+      "accepted": ["session", "bins", "limit"]
+    }
+  ]
+}
+```
+
+| `code`                    | Meaning                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| `unknown_metric`          | No such metric. Read the vocabulary from `GET /api/v1/openapi.json`.                      |
+| `metric_not_queryable`    | A stored record (`session_meta`, `scene_representation`), not an aggregation.             |
+| `unknown_dimension`       | The metric does not declare that dimension at all.                                        |
+| `dimension_not_native`    | It declares it, but is not keyed by it and has no generic tier — pass it as a filter.     |
+| `dimension_not_groupable` | It declares it, but the generic tier cannot render it (`device.isMobile`).                |
+| `unsupported_filter`      | The metric does not accept that filter (or takes no row cap).                             |
+| `missing_filter`          | A filter the metric cannot be queried without (`funnel.steps`, a trajectory's `session`). |
+| `limit_too_large`         | Above the metric's registry cap.                                                          |
+| `unsupported_order`       | `order.by` is not a measure column of this result, or the result has no chosen order.     |
+| `unsupported_segment`     | The metric can neither filter nor group by that dimension, so it cannot hold it fixed.    |
+| `unsupported_feature`     | `filters.event` / `filters.device` on a metric with no generic tier.                      |
+
+### Conditional subscriptions (ADR 0051 §6)
+
+Standing predicates over a registry metric, evaluated in-process and delivered over SSE and/or a
+signed webhook. Not metrics — project configuration with an outbound side effect — so they are
+outside the generated endpoint table above.
+
+| Endpoint                              | Method                     | Capability               |
+| ------------------------------------- | -------------------------- | ------------------------ |
+| `/api/v1/subscriptions`               | `GET`                      | `query`                  |
+| `/api/v1/subscriptions`               | `POST`                     | `annotate`               |
+| `/api/v1/subscriptions/:id`           | `GET` / `PATCH` / `DELETE` | `query` / `annotate`     |
+| `/api/v1/subscriptions/:id/events`    | `GET`                      | `query`                  |
+| `/api/v1/subscriptions/:id/test`      | `POST`                     | `annotate`               |
+| `/api/v1/subscriptions/stream?token=` | `GET` (SSE)                | live token (ADR 0032 §7) |
+
+```jsonc
+{
+  "name": "FPS drop in lobby",
+  "metric": "perf_summary", // registry id; validated against @uptimizr/metrics
+  "filters": { "scene": "lobby" },
+  "evaluate": { "every": "5m", "window": "1h" }, // every ≥ 1m, window ≥ 1h
+  "predicate": { "kind": "threshold", "column": "p50_fps", "op": "<", "value": 40 },
+  "cooldown": "1h",
+  "delivery": [{ "kind": "sse" }, { "kind": "webhook", "url": "https://…", "secret": "…" }],
+  "enabled": true,
+}
+```
+
+Predicate kinds (closed union): `threshold` {column, op, value, minSample?}, `anomaly`
+{sensitivity?}, `movers` {pct, direction?}, `new_value` {dimension}, `presence` {op, value}.
+`threshold.column` must be the metric's registry `comparable.primary`; `evaluate.window` is at
+least an hour, because the portable bucket series has hour/day grains only.
+
+Bounds: 100 subscriptions per project, last 100 firings retained per subscription, at most
+`COLLECTOR_SUBSCRIPTIONS_MAX_CONCURRENT` (default 4) evaluations in flight and one per
+subscription. Webhook egress requires `COLLECTOR_WEBHOOK_ALLOWED_HOSTS`; a webhook `secret` is
+write-only and reads carry a masked placeholder. Bodies are signed
+`X-Uptimizr-Signature: sha256=<hex>` over the raw bytes, with `X-Uptimizr-Delivery` for dedupe,
+and retried 3× with backoff. See the
+[Subscriptions & webhooks](https://uptimizr.com/docs/deploy/collector/#subscriptions--webhooks)
+guide.
+
+CLI: `uptimizr subscriptions list | add --file <sub.json> | remove <id> | test <id>`.
 
 ### Scene registry (representations)
 
@@ -1773,6 +2107,93 @@ uptimizr regions get lobby --project "$PROJECT_ID"
 envelope the endpoint takes, so one file works with both. `--project` may be
 replaced by the `UPTIMIZR_PROJECT_ID` environment variable.
 
+### Metadata: annotations, glossary, saved analyses
+
+Numbers alone do not carry what a team knows. This is where that knowledge goes:
+a note on a spike, a definition of a name only your project uses, a question
+worth re-asking with the answer it got. Three small, project-scoped tables
+(ADR 0051 §5):
+
+| Table            | What it holds                                                                                 |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `annotations`    | Notes pinned to the project, a scene, a mesh, a region, a metric, or a period of time.        |
+| `glossary`       | What a name means **in this project** — a mesh name, a scene id, a custom event, a shorthand. |
+| `saved_analyses` | A titled question plus the conclusion drawn from it, so it need not be re-derived.            |
+
+**These are the only rows a client can write besides events, and they are not
+events.** Nothing on this path can write, alter or delete an analytics event —
+the analytics API stays read-only and aggregate-only (ADR 0051 §9). Every write
+needs a key holding [`annotate`](#api-keys-capabilities-rate-limits-and-the-audit-log);
+reads need `query`. Every write is recorded in the agent audit log.
+
+| Method   | Path                      | Purpose                                            | Capability | Body / params                                       |
+| -------- | ------------------------- | -------------------------------------------------- | ---------- | --------------------------------------------------- |
+| `GET`    | `/api/v1/annotations`     | The project's notes, newest first.                 | `query`    | `targetKind`, `targetId`, `since`, `until`, `limit` |
+| `POST`   | `/api/v1/annotations`     | Leave a note. Answers `201` with the stored row.   | `annotate` | `{ targetKind, targetId?, since?, until?, text }`   |
+| `DELETE` | `/api/v1/annotations/:id` | Remove a note. `204`, or `404` if it is not there. | `annotate` | —                                                   |
+| `GET`    | `/api/v1/glossary`        | The whole glossary, ordered by term.               | `query`    | `limit`                                             |
+| `PUT`    | `/api/v1/glossary/:term`  | Define (or redefine) a term — idempotent.          | `annotate` | `{ meaning }`                                       |
+| `DELETE` | `/api/v1/glossary/:term`  | Undefine a term.                                   | `annotate` | —                                                   |
+| `GET`    | `/api/v1/analyses`        | Saved analyses, newest first.                      | `query`    | `limit`                                             |
+| `POST`   | `/api/v1/analyses`        | Save an analysis. Answers `201`.                   | `annotate` | `{ title, query, conclusion? }`                     |
+| `DELETE` | `/api/v1/analyses/:id`    | Remove a saved analysis.                           | `annotate` | —                                                   |
+
+```bash
+# A note about a period of time
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{"targetKind":"window","since":1757000000000,"until":1757003600000,
+       "text":"CDN incident — ignore the load-time spike here."}' \
+  "https://collect.example.com/api/v1/annotations"
+
+# What a mesh name means in this project
+curl -X PUT -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{"meaning":"the till cluster by the exit"}' \
+  "https://collect.example.com/api/v1/glossary/checkout%20counter"
+
+# A question worth keeping
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{"title":"Lobby FPS after the lighting change",
+       "query":{"metric":"perf_summary","scene":"lobby"},
+       "conclusion":"p50 fell from 58 to 41 on integrated GPUs."}' \
+  "https://collect.example.com/api/v1/analyses"
+```
+
+**An annotation's target.** `targetKind` is one of `project`, `scene`, `mesh`,
+`region`, `metric` or `window`. The four middle ones name something and need a
+`targetId` (the scene id, mesh name, region id or metric id); `window` needs a
+`since`; `project` is a standing note about everything. `since`/`until` are epoch
+milliseconds, and on a read they are an **overlap** filter — a note matches when
+its period intersects the requested window, and a standing note always matches.
+
+**Who wrote it.** Every stored row carries `authorKind` (`user` or `agent`) and
+`authorKeyId` (the key's row id, never the key). The collector decides
+`authorKind` from the calling client, never from the payload: requests carrying
+`x-uptimizr-client: dashboard` — a person clicking in a first-party UI — are
+`user`; everything else holding an `annotate` key, including the in-browser
+assistant writing up its own answer, is `agent`.
+
+**Bounds.** Free text is capped at the boundary (`text` ≤ 2 000 characters,
+`meaning` ≤ 500, `title` ≤ 120, `conclusion` ≤ 4 000, a saved `query` document
+≤ 8 000 serialized characters), and each project holds at most 500 annotations,
+200 glossary terms and 200 saved analyses. A write past a cap answers `409` —
+the payload was fine, the project is full; delete something and retry.
+
+**`query` on a saved analysis** is an opaque JSON object: the collector stores it
+and does not interpret it. Put the endpoint and filters that produced the answer
+in it, so the next reader can re-run what you actually ran.
+
+**Privacy.** These rows are written by your own operators and agents, not
+captured from visitors, so they are the one place in the collector that is not
+machine-bounded to non-PII. They are project-scoped, readable only with that
+project's key, bounded, and audited — but do not paste personal data into them
+(ADR 0003).
+
+**Agents.** `@uptimizr/mcp` exposes the same three writes as the MCP tools
+`annotate`, `define_term` and `save_analysis`, plus `list_annotations`,
+`list_glossary` and `list_analyses`. They are registered **only** when the
+configured key holds `annotate` — the server asks `GET /api/v1/whoami` once at
+start-up — so a read-only key yields a read-only server.
+
 ```bash
 curl -H "x-api-key: $KEY" \
   "https://collect.example.com/api/v1/perf?session=<session-id>"
@@ -1787,6 +2208,528 @@ curl -H "x-api-key: $KEY" \
 > A `null` is not a `0`: a single-row summary is still returned over a range that
 > matched no samples, with its aggregate columns `null`. Read that as "no data",
 > and check the row's plain count before dividing by it.
+
+### Project context (`/api/v1/context`) — what an agent should read first
+
+An agent that has never seen your project knows the _shape_ of this API (from the
+metric registry) but nothing about _your_ project: what the scenes are called,
+which regions have names, which capture channels are on, what your application
+calls its own events, whether raw retention is enabled, or how fresh the data is.
+Every one of those is something it would otherwise guess.
+
+`GET /api/v1/context` answers all of it in one read (ADR 0051 §5). It needs a
+`query`-capable key, it is bounded (well under 16 KB for a typical project), and
+the collector caches it per project for ~30 s.
+
+```bash
+curl -H "x-api-key: $KEY" "https://collect.example.com/api/v1/context"
+```
+
+```jsonc
+{
+  "project": {
+    "id": "…",
+    "store": "duckdb", // COLLECTOR_STORE engine behind this collector
+    "schemaVersion": "1.0", // event wire format (@uptimizr/schema)
+    "collectorVersion": "2.1.0",
+  },
+  "dataQuality": {
+    "lastEventAt": 1757600000000, // epoch ms, or null for an empty project
+    "sessions24h": 91,
+    "events24h": 18023,
+    "retention": { "rawSessions": false }, // ENABLE_RAW_SESSION_RETENTION
+  },
+  "capture": {
+    // One entry per canonical event type, so an absence is never ambiguous.
+    "channels": {
+      "camera_sample": { "seen": true, "events28d": 41203 },
+      "mesh_visibility": { "seen": false },
+    },
+  },
+  "scenes": [
+    {
+      "id": "lobby",
+      "label": "Main Lobby", // from the scene registry, or null
+      "regions": [{ "id": "counter", "label": "Checkout counter" }],
+      "proxy": true,
+      "events28d": 12043,
+    },
+  ],
+  "vocabulary": {
+    "customEvents": [
+      {
+        "name": "add_to_cart",
+        "count28d": 311,
+        "sessions28d": 180,
+        "props": { "sku": "string", "qty": "number" },
+      },
+    ],
+    "meshes": { "count": 63, "top": ["checkout_button", "door_left"] },
+    "inputActions": ["jump", "sprint"],
+  },
+  "definitions": { "funnels": [], "segments": [], "glossary": [] },
+  "annotations": { "recent": [] },
+  "metrics": {
+    "available": ["top_meshes", "…"], // registry ids this collector serves
+    "disabledByCapture": ["mesh_dwell"], // every source channel unseen ⇒ will be empty
+  },
+  "window": { "since": 1755008000000, "until": 1757600000000 },
+  "generatedAt": 1757600000000,
+}
+```
+
+Read it like this:
+
+- **`scenes[].id` / `regions[].id`** are the exact values for the `scene=` and
+  `region=` filters. Do not infer either.
+- **`vocabulary.customEvents[].name`** are the exact names for a funnel step or a
+  variant predicate; `props` gives each observed key a coarse type
+  (`string` / `number` / `boolean` / `null` / `mixed`). Prop **values** are never
+  reported (ADR 0003).
+- **`metrics.disabledByCapture`** lists metrics whose every source channel is
+  unseen. They return empty because the channel is off — say so, rather than
+  reporting the zero as a finding.
+- **`dataQuality.retention.rawSessions: false`** means the session timeline /
+  replay endpoint is unavailable by design, not broken.
+
+Bounds: at most 40 scenes (20 regions each), 25 custom events (40 prop keys
+each), 10 top meshes, 25 input actions, 10 annotations, 50 glossary entries.
+`definitions.funnels` / `segments` and `annotations.recent` are present and empty
+until the metadata write path stores any.
+
+MCP clients read the same document as the `uptimizr://context` resource; the
+in-browser assistant injects a compact rendering of it into its system prompt.
+
+#### Custom-event vocabulary (`/api/v1/vocabulary/custom-events`)
+
+The vocabulary block above is also a registry metric of its own, so it is a
+generated agent tool (`custom_event_vocabulary`) and takes the usual
+`since` / `until` / `scene` / `limit` / `format` parameters:
+
+````bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/vocabulary/custom-events?since=…&limit=50"
+### Insights (`/api/v1/insights/*`) — baselines and movers (ADR 0051 §4)
+### Insights (`/api/v1/insights/*`) — baselines, movers and anomalies (ADR 0051 §4)
+### Insights (`/api/v1/insights/*`) — baselines, movers, significance and health (ADR 0051 §4)
+
+Four questions come up on every look at a dashboard, and none is answerable from
+a single metric: **"is this number normal here?"**, **"what changed?"**, **"is
+that change real?"** and **"which scene should I look at first?"**
+Both used to be re-derived by hand (or by a model, from raw rows, differently
+every time). They are now registry metrics of their own, so they are also
+agent tools, OpenAPI operations and `format=summary` answers like any other read.
+
+All four are computed the same way: one **portable bucket series** — a comparable
+metric's headline column, aggregated per day or per hour — and then pure
+TypeScript over it, p-values and confidence intervals included. No statistics run in SQL, so DuckDB, ClickHouse, Postgres and
+SQL Server cannot disagree about what "the median" or "the MAD" means.
+
+> **Windows are snapped down to whole buckets.** A range that ended "now" would
+> otherwise end mid-day, and today's third-of-a-day would read as a collapse
+> against 27 whole days — every morning. The window that was actually measured is
+> echoed back in the `table` and `summary` envelopes. (`scene-health` is the one
+> exception, and says why below: none of its factors is a count.)
+
+#### `GET /api/v1/insights/baseline` — what is normal here
+
+| Param             | Default | Meaning                                                                                   |
+| ----------------- | ------- | ----------------------------------------------------------------------------------------- |
+| `metric`          | —       | **Required.** The registry metric to baseline. Must have a portable bucket series.        |
+| `scene`           | all     | Scope to one scene.                                                                       |
+| `window`          | `28`    | Window length in days, counted back from `until`. Max 365. Ignored when `since` is given. |
+| `bucket`          | `day`   | Time grain of the series: `day` or `hour`.                                                |
+| `since` / `until` | —       | Epoch ms, as everywhere else. `until` defaults to the last complete bucket.               |
+
+One row: `{ metric, scene, sampleSize, buckets, mean, median, mad, p10, p90, slope }`.
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/baseline?metric=perf_summary&scene=lobby&window=28"
+````
+
+```json
+[
+  {
+    "name": "add_to_cart",
+    "count": 311,
+    "sessions": 180,
+    "props": { "sku": "string", "qty": "number" }
+    "metric": "perf_summary",
+    "scene": "lobby",
+    "sampleSize": 18420,
+    "buckets": 28,
+    "mean": 54.1,
+    "median": 55,
+    "mad": 2,
+    "p10": 48.3,
+    "p90": 58.6,
+    "slope": -0.21
+  }
+]
+```
+
+`count` and `sessions` are exact over the range. `props` is discovered from the
+**20 most recent events per name**, so it is a vocabulary hint rather than a
+schema: a key that stopped being sent long ago will be absent, and a rarely-sent
+optional key can be missed. A key seen with more than one JSON kind is reported
+as `"mixed"`; `"null"` means every sampled value was null.
+
+### Scheduled agent reports (`uptimizr agent report`)
+
+A weekly digest should not need someone to open a chat. `uptimizr agent report`
+runs the headless agent loop **once**, from your shell, against this same query
+API, and writes Markdown to a file, stdout or a signed webhook (ADR 0051 §6):
+
+```bash
+# A read-only key is all it needs
+uptimizr new-key <projectId> --capabilities query --label "weekly-report"
+
+export UPTIMIZR_COLLECTOR_URL=https://collect.example.com
+export UPTIMIZR_API_KEY=utk_…            # the query-only key
+export UPTIMIZR_AGENT_API_KEY=sk-ant-…   # your own provider key
+
+uptimizr agent report --skill weekly_scene_health --scene lobby --window 7d \
+  --out report.md --json report.json --webhook https://hooks.example.com/uptimizr
+```
+
+| Flag                | Meaning                                                                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--skill <name>`    | The investigation to run (required): `weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`. `--list-skills` prints them with the metrics each reads. |
+| `--scene <id>`      | Scope the report to one scene (required by `attention_hotspots`).                                                                                               |
+| `--window <NdNhNw>` | Window counting back from now (`24h`, `7d` default, `2w`), or `--since`/`--until` in epoch ms.                                                                  |
+| `--out <file\|->`   | Markdown destination; default `-` (stdout).                                                                                                                     |
+| `--json <file\|->`  | Structured report: every tool call with arguments, duration and outcome, plus token usage when the provider reports it.                                         |
+| `--webhook <url>`   | `POST {markdown, report}` to an `http(s)` URL.                                                                                                                  |
+| `--max-steps <n>`   | Cap on provider turns (default `8`).                                                                                                                            |
+| `--dry-run`         | Print the exact prompt and tool list; call no provider.                                                                                                         |
+
+Configuration is read from the environment only and never persisted:
+`UPTIMIZR_COLLECTOR_URL`, `UPTIMIZR_API_KEY`, `UPTIMIZR_AGENT_PROVIDER`
+(`anthropic` | `openai` | `scripted`), `UPTIMIZR_AGENT_MODEL`,
+`UPTIMIZR_AGENT_API_KEY`, `UPTIMIZR_AGENT_ENDPOINT`, `UPTIMIZR_WEBHOOK_SECRET`.
+The provider key is never logged, echoed or written into a report.
+
+The system prompt is seeded with the `/api/v1/context` document above, so the run
+uses your real scene ids and custom-event names; a collector too old to serve it
+degrades silently. Every report ends with a **Method** section listing the tool
+calls and their arguments, which is what keeps an unattended, model-written
+document auditable.
+
+Webhook deliveries carry `X-Uptimizr-Signature: sha256=<hex HMAC-SHA-256 of the
+raw body>` keyed with `UPTIMIZR_WEBHOOK_SECRET`, plus a unique
+`X-Uptimizr-Delivery` id — verify over the raw bytes, before parsing, with a
+constant-time comparison. Exit codes: `0` success, `1` usage/configuration,
+`2` provider or delivery failure, `3` report produced but incomplete.
+
+Scheduling is yours — cron, a systemd timer or a GitHub Action. A copy-pasteable
+weekly workflow is in the
+[collector deployment guide](https://uptimizr.com/docs/deploy/collector/#scheduled-agent-reports).
+Read `median` as the centre and `mad` as the tolerance: a later reading more than
+a few MADs away is unusual _for this scene_, one inside `p10..p90` is ordinary.
+`slope` is the drift **within** the window — a baseline with a steep slope is not
+a stable reference, so re-read it over a shorter window before judging anything
+against it. Every statistic is `null` when the window carried no values (and
+`slope` is `null` under two buckets): read `null` as "no data", never as `0`.
+
+#### `GET /api/v1/insights/movers` — what changed
+
+| Param                   | Default                    | Meaning                                                  |
+| ----------------------- | -------------------------- | -------------------------------------------------------- |
+| `scene`                 | all                        | Scope to one scene.                                      |
+| `since` / `until`       | last 7 complete days       | The current range.                                       |
+| `refSince` / `refUntil` | the equal window before it | The reference the change is measured against.            |
+| `bucket`                | `day`                      | Time grain of the series the spread is measured over.    |
+| `limit`                 | `10` (max 50)              | How many risers and how many fallers to return.          |
+| `metrics`               | a curated set              | Comma-separated allowlist of metric ids to scan instead. |
+
+One row per scanned metric:
+`{ metric, dimensionValue, current, previous, delta, deltaPct, z, direction, aboveMinSample, sampleSize }`,
+ordered risers → fallers → the ones that did not move.
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/movers?scene=lobby&limit=5"
+```
+
+```json
+[
+  {
+    "metric": "error_heatmap",
+    "dimensionValue": null,
+    "current": 412,
+    "previous": 96,
+    "delta": 316,
+    "deltaPct": 3.2917,
+    "z": 39.5,
+    "direction": "down",
+    "aboveMinSample": true,
+    "sampleSize": 412
+  }
+]
+```
+
+Three things make the ranking trustworthy, and all three matter when reading it:
+
+- **`z` is a robust score, not a percentage.** It is `delta` divided by the
+  _median absolute deviation_ of the reference window's buckets, so a metric that
+  swings by 30% every day has to move much further than a steady one before it is
+  called a mover. Under about 2 the move is inside this metric's ordinary noise;
+  over about 3 it is worth explaining.
+- **`direction` is the registry's opinion, not the direction of the move.** It
+  says whether a _rise_ in that metric is good (`up`), bad (`down`) or merely a
+  fact (`neutral`). Combine it with the sign of `delta`: the example above is a
+  rise in a `down` metric, i.e. a regression.
+- **`aboveMinSample: false` is not a finding.** The delta is real arithmetic, but
+  the denominator is below the metric's declared minimum, so it is not evidence.
+  Those rows are kept — "we cannot tell" is a different answer from "nothing
+  changed" — and always sorted below every gated mover.
+
+**Cost is bounded.** Each scanned metric is one grouped scan, and a request scans
+at most 24 of them. Without a `metrics` allowlist a curated default set is used,
+so a move in a metric outside that set is not reported — name it explicitly to
+include it. An allowlist longer than the cap is a `400` rather than a silently
+truncated scan.
+
+**Which metrics can be baselined or moved.** Only `comparable` metrics that have a
+faithful per-bucket form. Funnels, cohort metrics and anything defined by the
+relationship between _consecutive_ events (click→gaze rays, flow links,
+reachability, backtracking, rage clusters, perf churn) are outside both
+primitives by construction: bucketing them would change what they mean, and an
+approximate baseline is worse than none. Asking for one is a `400` that names
+every id that _is_ available, so a client can recover on the next call:
+
+```json
+{
+  "error": "metric 'funnel' is comparable but has no portable bucket series …",
+  "metric": "funnel",
+  "comparable": ["ar_placement_attempts", "..."],
+  "available": ["ar_placement_attempts", "..."]
+}
+```
+
+#### `GET /api/v1/insights/anomalies` — when it went wrong, and what inside it did
+
+`baseline` says what normal looks like and `movers` says that something changed
+between two windows **you** chose. Neither names a day. `anomalies` walks one
+metric's bucket series and returns only the buckets that do not belong in it.
+
+| Param             | Default | Meaning                                                                         |
+| ----------------- | ------- | ------------------------------------------------------------------------------- |
+| `metric`          | —       | **Required.** The registry metric to score. Must have a portable bucket series. |
+| `scene`           | all     | Scope to one scene.                                                             |
+| `window`          | `28`    | Window length in days, counted back from `until`. Max 365.                      |
+| `bucket`          | `day`   | Time grain of the series: `day` or `hour`.                                      |
+| `sensitivity`     | `3`     | How far out a bucket must be, in standard deviations. 1–10; higher means fewer. |
+| `since` / `until` | —       | Epoch ms. `until` defaults to the last complete bucket.                         |
+
+One row per anomalous bucket, oldest first:
+`{ metric, scene, bucketStart, value, expected, z, kind, contributor, sampleSize }`.
+
+````bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/anomalies?metric=error_heatmap&scene=lobby&window=28"
+#### `GET /api/v1/insights/significance` — is that difference real
+
+`movers` ranks changes by how unusual they are. This answers the question a
+robust z-score deliberately does not: **given how much data is behind each side,
+could the difference have come from chance alone?**
+
+| Param                   | Default                    | Meaning                                                                                           |
+| ----------------------- | -------------------------- | ------------------------------------------------------------------------------------------------- |
+| `metric`                | —                          | **Required.** The registry metric to compare. Must have a portable bucket series.                 |
+| `scene`                 | all                        | Scope to one scene.                                                                               |
+| `since` / `until`       | last 7 complete days       | The window under test.                                                                            |
+| `refSince` / `refUntil` | the equal window before it | The window it is compared with.                                                                   |
+| `bucket`                | `day`                      | Time grain. Also the unit a Welch comparison counts observations in, so a finer grain buys power. |
+
+One row:
+`{ metric, scene, a: { value, n }, b: { value, n }, effect, ci95, p, test, effectUnit, significant, powerNote }`.
+
+**The test is chosen from what the measure is, never from the caller:**
+
+| The measure is…                                                   | Test                                           | `effect`                    | `ci95`                                                   |
+| ----------------------------------------------------------------- | ---------------------------------------------- | --------------------------- | -------------------------------------------------------- |
+| a **rate** — its headline column declares a `rateOf` denominator  | two-proportion z (pooled)                      | difference of proportions   | Newcombe hybrid score, from the two **Wilson** intervals |
+| a **count** with no denominator                                   | Poisson rate test (exact conditional binomial) | difference in events/bucket | normal approximation on the rate difference              |
+| anything else — a level or a summed quantity (`fps`, `ms`, bytes) | **Welch's** t over the per-bucket values       | difference of means         | `effect ± t(0.975, ν) · SE`                              |
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/significance?metric=dead_clicks&scene=lobby&bucket=hour"
+````
+
+```json
+[
+  {
+    "metric": "error_heatmap",
+    "scene": "lobby",
+    "bucketStart": 1718064000000,
+    "value": 32,
+    "expected": 2,
+    "z": 1500,
+    "kind": "spike",
+    "contributor": { "dimension": "event_type", "value": "graphics_diagnostic", "share": 1 },
+    "sampleSize": 32
+    "metric": "dead_clicks",
+    "scene": "lobby",
+    "a": { "value": 0.166667, "n": 6 },
+    "b": { "value": 0, "n": 8 },
+    "effect": 0.166667,
+    "ci95": [-0.185333, 0.563503],
+    "p": 0.230804,
+    "test": "two_proportion_z",
+    "effectUnit": "ratio",
+    "significant": false,
+    "powerNote": "With these sample sizes the smallest difference detectable at 80% power (alpha 0.05) is about 0.4262 in the rate; a smaller true difference would usually go unnoticed here."
+  }
+]
+```
+
+**Three kinds, two detectors.** A `spike` or a `drop` is one bucket far from the
+buckets just before it — a rolling median and MAD over the trailing window (14
+buckets at `day` grain, 168 at `hour`), with the bucket itself excluded so a big
+enough spike cannot hide inside its own expectation. A `shift` is a **level that
+moved and stayed moved**, found by a CUSUM over the same series; it is the case a
+point detector structurally cannot see, because a release that costs 6 FPS every
+day is never more than a MAD or two off on any single day. A sustained change is
+therefore reported twice — once as the `shift` at its change-point, and again as
+the `drop` rows for the days right after it, until the trailing window catches
+up. Those are two true statements about one event, not a duplicate.
+
+**`z` is in standard deviations.** The denominator is the trailing MAD rescaled
+by 1.4826 and floored at 1% of the level, so `sensitivity: 3` means "beyond three
+sigma" rather than "beyond two". (`insight_movers` reports the same ratio
+_unscaled_, because there it ranks rather than thresholds — the two `z` columns
+differ by that constant.)
+
+**`contributor` says where the excess sits.** When the metric declares a
+dimension it can be split by — a mesh, a source, an input action, an event type,
+a scene — the collector re-reads the anomalous window grouped by that column and
+reports the value holding the largest share of the excess. A `share` above ~0.8
+means the anomaly _is_ that value; a share near the reciprocal of the number of
+values means it was spread evenly and the cause is more likely global. It is
+`null` for a metric with no such dimension, and for a `scene`-split metric on a
+request already scoped to one scene (the split would return one value with a
+share of 1 and cost a scan to say so).
+
+**Cost is bounded.** One grouped scan builds the series; attribution costs **at
+most three more**, whatever the data looks like — adjacent findings share one
+window, and only the three most extreme windows are re-read. Quieter findings
+carry `contributor: null`; narrow `since`/`until` around one to attribute it.
+
+> A bucket with fewer than five buckets of history behind it is never judged, so
+> a new project reads "no anomalies" rather than "every day is an anomaly", and
+> buckets with no matching events are absent from the series rather than zero —
+> a gap in capture is not reported as a drop.
+> **Read `ci95` before `p`.** A narrow interval around a small effect is evidence
+> that nothing much changed; a wide interval containing 0 is evidence of nothing at
+> all, and `powerNote` tells you which of the two you are looking at — it states
+> the smallest difference these sample sizes could have detected at 80% power, and
+> flags any assumption the data strained (counts too overdispersed for the Poisson
+> model, too few buckets for a t-test). `p` is two-sided throughout: it answers "is
+> there a difference", not "is it an improvement".
+
+Three things worth knowing before quoting a number from here:
+
+- **Welch counts buckets, not events.** `n` is the number of days (or hours)
+  compared. Consecutive frame samples inside one day are anything but
+  independent, and treating them as `n` would manufacture a p-value of `1e-40`
+  for drift any observer can see is ordinary.
+- **Two windows, not two segments.** A variant-versus-variant or
+  device-versus-device contrast needs the series split by a promoted dimension,
+  which is not available yet. Passing `segment` or `refSegment` is a `400` that
+  names the window parameters rather than a p-value for the wrong comparison.
+- **Significance is not importance.** A large enough sample makes a difference of
+  no consequence significant. `effect` and `effectUnit` are what say whether it
+  matters.
+
+#### `GET /api/v1/insights/scene-health` — which scene is in trouble, and why
+
+One score per scene, and — more usefully — the six numbers it was built from.
+
+| Param             | Default            | Meaning                                                               |
+| ----------------- | ------------------ | --------------------------------------------------------------------- |
+| `scene`           | the busiest scenes | Score one scene instead of a bounded top-N.                           |
+| `window`          | `7`                | Window length in days. Max 90. Ignored when `since` is given.         |
+| `since` / `until` | —                  | Epoch ms. `until` rounds **up** to a whole bucket (see below).        |
+| `bucket`          | `day`              | Time grain each factor's series is bucketed at.                       |
+| `limit`           | `5` (max 10)       | How many scenes to score when none is named.                          |
+| `weights`         | the declared ones  | JSON object overriding per-factor weights, e.g. `{"error_rate":0.5}`. |
+
+One row per scene, least healthy first:
+`{ scene, score, factors: [{ id, metric, raw, baseline, score, weight, unit, note }], sampleSize, since, until }`.
+
+| Factor            | Metric           | Raw value                             | Good is | Weight |
+| ----------------- | ---------------- | ------------------------------------- | ------- | ------ |
+| `perf_stability`  | `perf_summary`   | 5th-percentile FPS                    | higher  | 0.25   |
+| `error_rate`      | `error_heatmap`  | errors + diagnostics per session      | lower   | 0.25   |
+| `jank_rate`       | `jank_rate`      | long frames per sampled perf window   | lower   | 0.20   |
+| `dead_click_rate` | `dead_clicks`    | share of clicks that hit nothing      | lower   | 0.15   |
+| `coverage`        | `scene_coverage` | positioned camera samples per session | higher  | 0.10   |
+| `xr_abandonment`  | `xr_abandonment` | interactions per XR session           | higher  | 0.05   |
+
+**The score is a comparison, not a grade.** Every factor is normalised against
+**the project's own baseline over the preceding equal window** — the same robust
+centre-and-spread `movers` ranks with. A factor exactly at the project norm scores
+**50**; four robust deviations better scores 100, the same distance worse scores 0. A project where every scene is equally bad therefore reads 50 everywhere,
+which is the honest answer to "which scene should I look at first".
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/scene-health?window=7&limit=3"
+```
+
+```json
+[
+  {
+    "scene": "lobby",
+    "score": 27.5,
+    "factors": [
+      {
+        "id": "perf_stability",
+        "metric": "perf_summary",
+        "raw": 19.4,
+        "baseline": 47.1,
+        "score": 0,
+        "weight": 0.25,
+        "unit": "FPS",
+        "note": "The 5th-percentile FPS of the scene's sampled frames — how bad it gets, not how good it usually is. …"
+      }
+    ],
+    "sampleSize": 214,
+    "since": 1757376000000,
+    "until": 1757980800000
+  }
+]
+```
+
+Every factor is traceable in one hop: `metric` names the endpoint that explains
+it, `raw` is what that metric produced, `baseline` is what it was compared with,
+and `weight` is how much of the headline it carried. A factor with `score: null`
+could not be measured — its `note` says why — and is excluded from the weighted
+mean rather than folded in as an average.
+
+> **This is the one insight window that includes the bucket in progress.**
+> `baseline` and `movers` floor `until` down to the last complete bucket because
+> they report counts. Every health factor is a rate or a percentile, and a
+> partial bucket gives half the numerator _and_ half the denominator — so
+> flooring here would only make the score answer about yesterday. The window
+> actually measured is echoed as `since` / `until` on every row.
+
+Two more things worth knowing:
+
+- **Default weights are a judgement, and they are declared** in the registry
+  entry (so they appear in `capabilities` and in the generated tool catalog)
+  precisely so they can be argued with. `weights` overrides any of them;
+  factors the object does not name keep their default, and an unknown factor id
+  is a `400` listing the ones that exist.
+- **Two factors are honest approximations**, named as such in every row's `note`:
+  `coverage` is camera samples per session, not a voxel-coverage percentage (that
+  needs the registered scene bounds, which have no portable per-bucket form), and
+  `jank_rate` is the pooled long-frame rate, while the `jank_rate` metric's own
+  endpoint reports a per-session median. Both are only ever read against the
+  project's own baseline, never as absolutes.
 
 ### Funnels (`/api/v1/funnel`) — caller-configured (ADR 0038, #78)
 

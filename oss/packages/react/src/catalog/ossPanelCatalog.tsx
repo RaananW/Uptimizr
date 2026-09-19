@@ -56,11 +56,13 @@ import type {
   RenderScaleTruth as RenderScaleTruthData,
   RenderingTechnologyCount,
   ResourcePercentiles,
+  SceneHealthScore,
   SceneProxyMesh,
   SceneRegionInfo,
   SceneRetentionLink,
   SessionSummary,
   StabilityCounts,
+  AnnotationRow,
   TimeseriesBucket,
   TrajectoryPoint,
   VariantLeaderboardRow,
@@ -80,6 +82,13 @@ import {
   EVENT_VOLUME_SUBTITLE,
 } from "./views/VolumeTimeseries";
 import { SceneHealthView, SCENE_HEALTH_TITLE, SCENE_HEALTH_SUBTITLE } from "./views/SceneHealth";
+// --- significance / scene health (#307) ---
+import {
+  SceneHealthScoreView,
+  SCENE_HEALTH_SCORE_HELP,
+  SCENE_HEALTH_SCORE_SUBTITLE,
+  SCENE_HEALTH_SCORE_TITLE,
+} from "./views/SceneHealthScore";
 import {
   GraphicsDiagnosticsView,
   ENGINE_DIAGNOSTICS_TITLE,
@@ -90,6 +99,13 @@ import {
   RENDERING_TECH_TITLE,
   RENDERING_TECH_SUBTITLE,
 } from "./views/RenderingTechnology";
+import {
+  SubscriptionsView,
+  SUBSCRIPTION_FIRING_LOGS,
+  SUBSCRIPTIONS_TITLE,
+  SUBSCRIPTIONS_SUBTITLE,
+  type SubscriptionsPanelData,
+} from "./views/Subscriptions";
 import {
   SceneTraversalView,
   SCENE_TRAVERSAL_TITLE,
@@ -592,6 +608,8 @@ async function resolveSceneRegions(ctx: PanelContext): Promise<SceneRegionInfo[]
 interface EventVolumeData {
   buckets: TimeseriesBucket[];
   intervalMs: number;
+  /** Project annotations overlapping the plotted window (#310). */
+  annotations: AnnotationRow[];
 }
 
 /**
@@ -622,17 +640,29 @@ export const eventVolumePanel = definePanel<EventVolumeData>({
       since = Number.isFinite(earliest) ? earliest : until - 86_400_000;
     }
     const intervalSec = pickInterval(Math.max(60_000, until - since));
-    const buckets = await ctx.api.timeseries({
-      since: range.since,
-      until: range.until,
-      scene: ctx.params.scene,
-      interval: intervalSec,
-    });
-    return { buckets, intervalMs: intervalSec * 1000 };
+    // The bars and the annotation markers are fetched **in parallel**: the
+    // markers are a label on the chart, so waiting for them would delay the
+    // chart itself for no reason (#310, ADR 0051 §5). A collector that does not
+    // serve them — or a key that cannot read them — simply leaves the axis
+    // unmarked. `annotations()` arrived with #310, so a host app supplying an
+    // older client of its own means "no markers", not a failed panel.
+    const [buckets, annotations] = await Promise.all([
+      ctx.api.timeseries({
+        since: range.since,
+        until: range.until,
+        scene: ctx.params.scene,
+        interval: intervalSec,
+      }),
+      typeof ctx.api.annotations === "function"
+        ? ctx.api.annotations({ since, until, limit: 100 }).catch(() => [] as AnnotationRow[])
+        : Promise.resolve([] as AnnotationRow[]),
+    ]);
+    return { buckets, intervalMs: intervalSec * 1000, annotations };
   },
   render: ({ data, ctx }) => (
     <VolumeTimeseriesView
       buckets={data?.buckets ?? []}
+      annotations={data?.annotations ?? []}
       intervalMs={data?.intervalMs ?? 3_600_000}
       onBrush={ctx.actions.setTimeRange}
       onClear={
@@ -673,6 +703,35 @@ export const sceneHealthPanel = definePanel<SceneHealthData>({
     return { counts, perf };
   },
   render: ({ data }) => <SceneHealthView counts={data?.counts ?? []} perf={data?.perf ?? null} />,
+});
+
+// --- significance / scene health (#307) ---
+
+/**
+ * Scene health score (ADR 0051 §4) — React/HTML, full width, overview only.
+ * The `insight_scene_health` primitive: one 0-100 score per scene over six
+ * weighted factors, each bar tooltipped with the metric id, raw value and
+ * project baseline behind it.
+ *
+ * Distinct from `scene-health` above, which is a raw event-count overview of
+ * the selected window. This one is a *comparison* against the project's own
+ * preceding window, and is the panel that answers 'which scene should I look
+ * at first'.
+ */
+export const sceneHealthScorePanel = definePanel<SceneHealthScore[]>({
+  id: "scene-health-score",
+  title: SCENE_HEALTH_SCORE_TITLE,
+  subtitle: SCENE_HEALTH_SCORE_SUBTITLE,
+  help: SCENE_HEALTH_SCORE_HELP,
+  span: 2,
+  surfaces: ["overview"],
+  load: (ctx) =>
+    ctx.api.sceneHealth({
+      since: ctx.params.since,
+      until: ctx.params.until,
+      scene: ctx.params.scene,
+    }),
+  render: ({ data }) => <SceneHealthScoreView rows={data ?? []} />,
 });
 
 /**
@@ -1979,11 +2038,55 @@ export const sessionsPanel = definePanel<SessionSummary[]>({
   ),
 });
 
+/**
+ * Conditional subscriptions (#311, ADR 0051 §6) — read-only. Lists what the
+ * collector is standing watch for and how each one last went; authoring stays
+ * in the API / CLI / an agent, so no form ever puts a webhook secret in a
+ * browser.
+ */
+export const subscriptionsPanel = definePanel<SubscriptionsPanelData>({
+  id: "subscriptions",
+  title: SUBSCRIPTIONS_TITLE,
+  subtitle: SUBSCRIPTIONS_SUBTITLE,
+  surfaces: ["overview"],
+  collapsible: true,
+  // No `ctx.params`: a subscription is standing configuration, so the dashboard's
+  // time range has nothing to say about it.
+  //
+  // The firing log is fetched per subscription, which is one request each — so
+  // it is capped at the few that have actually fired and to a handful of rows.
+  // A project may hold 100 subscriptions; a panel that read every one's log
+  // would open 100 requests to render a list nobody scrolls that far down.
+  load: async (ctx) => {
+    const subscriptions = await ctx.api.subscriptions();
+    const recent = subscriptions
+      .filter((sub) => sub.lastFiredAt != null)
+      .sort((a, b) => Date.parse(b.lastFiredAt ?? "") - Date.parse(a.lastFiredAt ?? ""))
+      .slice(0, SUBSCRIPTION_FIRING_LOGS);
+    const logs = await Promise.all(
+      recent.map(async (sub) => {
+        try {
+          return [sub.id, await ctx.api.subscriptionEvents(sub.id, { limit: 3 })] as const;
+        } catch {
+          // One unreadable log must not blank the whole panel.
+          return [sub.id, []] as const;
+        }
+      }),
+    );
+    return { subscriptions, firings: Object.fromEntries(logs) };
+  },
+  render: ({ data }) => (
+    <SubscriptionsView rows={data?.subscriptions ?? []} firings={data?.firings ?? {}} />
+  ),
+});
+
 export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   sessionReplayPanel,
   livePresencePanel,
   eventVolumePanel,
   sceneHealthPanel,
+  // --- significance / scene health (#307) ---
+  sceneHealthScorePanel,
   engineDiagnosticsPanel,
   renderingTechnologyPanel,
   sceneTraversalPanel,
@@ -2030,5 +2133,8 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   viewDirectionPanel,
   gazeHeatmapPanel,
   clickRaysPanel,
+  // Standing configuration rather than a measurement, so it sits just above the
+  // session table — the shell's ordering keeps `sessions` last (ADR 0036).
+  subscriptionsPanel,
   sessionsPanel,
 ] as PanelDefinition<unknown>[];

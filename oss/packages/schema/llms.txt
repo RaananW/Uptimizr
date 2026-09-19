@@ -15,5 +15,15 @@
 - `anyEventSchema` — discriminated union over all event `type`s.
 - `collectRequestSchema` — the `/api/v1/collect` batch body.
 - Per-event schemas and inferred types (e.g. `CameraSampleEvent`).
+- Config / metadata contracts (deliberately **not** events): `sceneProxySchema` (registry geometry),
+  `sceneRegionSchema` / `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`,
+  `queryV1Schema` (the analytics query DSL, ADR 0051 §3 — shape only; the metric/filter vocabulary
+  is checked by `validateQuery()` in `@uptimizr/metrics`), and the project-metadata shapes
+  `annotationSchema`, `glossaryEntrySchema`, `savedAnalysisSchema` with `metadataAuthorKindSchema`
+  (ADR 0051 §5). The metadata ones bound the collector's `annotate`-gated write path; they never
+  reach the ingest path, and events remain read-only.
 - Config contracts (deliberately **not** events): `sceneProxySchema` (registry geometry),
   `sceneRegionSchema` / `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`.
+- `subscriptionSchema` — a conditional subscription (ADR 0051 §6): a registry metric, a window,
+  a closed predicate union (threshold | anomaly | movers | new_value | presence), a cooldown and
+  delivery targets. Config, not an event. `parseDurationMs` parses its "5m"/"1h" literals.

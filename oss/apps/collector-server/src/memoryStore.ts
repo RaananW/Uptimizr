@@ -1,9 +1,32 @@
 import { randomUUID } from "node:crypto";
 import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
+import {
+  METADATA_LIMITS,
+  MetadataLimitError,
+  clampMetadataLimit,
+  evaluateBucketMeasure,
+  foldCustomEventVocabulary,
+  toEventRow,
+  MAX_ENABLED_SUBSCRIPTIONS,
+  MAX_SUBSCRIPTIONS_PER_PROJECT,
+  MAX_SUBSCRIPTION_EVENTS,
+  SubscriptionLimitError,
+  clampEventLimit,
+  clampSubscriptionError,
+  rowToSubscription,
+  toSubscriptionColumns,
+} from "@uptimizr/db";
 import type {
   AgentAuditEntry,
+  AnnotationRecord,
+  CustomEventVocabularySampleRow,
   ApiKeyCapability,
+  BucketEventLike,
+  GlossaryEntryRecord,
+  SavedAnalysisRecord,
   SceneRegionRecord,
+  SubscriptionEventRecord,
+  SubscriptionRecord,
   SceneRepresentation,
   SessionMeta,
 } from "@uptimizr/db";
@@ -58,6 +81,22 @@ export function createMemoryStore({
   const audit: AgentAuditEntry[] = [];
   /** Scene regions keyed by scene id; each value is that scene's whole set. */
   const regions = new Map<string, SceneRegionRecord[]>();
+  /** Project metadata (#310): annotations, glossary (keyed by term), analyses. */
+  const annotations: AnnotationRecord[] = [];
+  const glossary = new Map<string, GlossaryEntryRecord>();
+  const analyses: SavedAnalysisRecord[] = [];
+  /**
+   * Conditional subscriptions (#311). Kept in insertion order — the persistent
+   * stores order by `created_at, id`, and a `Map` preserves exactly that.
+   * `secrets` is separate from the records for the same reason the stores keep
+   * the secret in its own column: a record handed to a caller can then never
+   * carry it, whatever the caller does with it.
+   */
+  const subscriptions = new Map<string, SubscriptionRecord>();
+  const secrets = new Map<string, string>();
+  /** Firing log per subscription id, newest last; bounded on write. */
+  const firings = new Map<string, SubscriptionEventRecord[]>();
+  let subscriptionSeq = 0;
 
   const forSession = (sid: string): AnyEvent[] =>
     events
@@ -72,7 +111,38 @@ export function createMemoryStore({
   const inRange = (e: AnyEvent, opts: { since?: number; until?: number }): boolean =>
     (opts.since == null || e.ts >= opts.since) && (opts.until == null || e.ts < opts.until);
 
+  /**
+   * Project a captured event onto the promoted columns an insight bucket
+   * measure reads (ADR 0051 §4). `toEventRow` is the same mapping the
+   * persistent stores insert through, so the in-memory series is computed from
+   * the same columns the SQL series is — the one payload field a measure needs
+   * (`ar_placement.scale`) is lifted alongside it.
+   */
+  const toBucketEvent = (e: AnyEvent): BucketEventLike => {
+    const row = toEventRow(e);
+    const scale = (e as AnyEvent & { scale?: unknown }).scale;
+    return {
+      ts: e.ts,
+      event_type: row.event_type,
+      scene_id: row.scene_id,
+      session_id: row.session_id,
+      mesh: row.mesh,
+      name: row.name,
+      source: row.source,
+      fps: row.fps,
+      visible_ms: row.visible_ms,
+      js_heap_bytes: row.js_heap_bytes,
+      long_frames: row.long_frames,
+      position: row.position,
+      direction: row.direction,
+      hit_point: row.hit_point,
+      screen: row.screen,
+      ...(typeof scale === "number" ? { ar_placement_scale: scale } : {}),
+    };
+  };
+
   return {
+    engine: "memory",
     resolveApiKey: async (key) =>
       key === apiKey
         ? { projectId, keyId, capabilities: [...capabilities], label: null, rateLimit: null }
@@ -110,6 +180,16 @@ export function createMemoryStore({
     insertEvents: async (incoming) => {
       events.push(...incoming);
     },
+    // The query DSL (ADR 0051 §3) compiles to SQL, and this store has no SQL
+    // engine — it answers a handful of aggregates by walking the array above.
+    // Rather than grow a second, JavaScript re-implementation of seventy
+    // builders that could silently disagree with the real ones, it reports no
+    // rows, exactly as the spatial aggregates below already do. Use the DuckDB
+    // store (the OSS default) for the DSL.
+    runMetric: async () => [],
+    // No SQL is compiled here, so there is no plan to show; `explain` falls back
+    // to the registry-derived warnings (#304).
+    describeMetric: () => null,
     listSessions: async () => {
       const bySession = new Map<string, AnyEvent[]>();
       for (const e of events) {
@@ -194,6 +274,36 @@ export function createMemoryStore({
     trackingQuality: async () => [],
     interactionsBySource: async () => [],
     topInputActions: async () => [],
+    // Discovered custom-event vocabulary (ADR 0051 §5). Implemented here (unlike
+    // the heavier spatial aggregates) because the playground and the demo run on
+    // this store, and an empty vocabulary would make their project context
+    // document silently wrong about what the app emits.
+    customEventVocabulary: async (_projectId, opts = {}) => {
+      const limit = Math.min(opts.limit ?? 100, 200);
+      const sampleRows = Math.min(opts.sampleRows ?? 20, 100);
+      const byName = new Map<string, AnyEvent[]>();
+      for (const e of forProject()) {
+        if (e.type !== "custom" || !inRange(e, opts)) continue;
+        if (opts.scene != null && opts.scene.length > 0 && sceneOf(e) !== opts.scene) continue;
+        const name = (e as { name?: unknown }).name;
+        if (typeof name !== "string" || name.length === 0) continue;
+        const list = byName.get(name) ?? [];
+        list.push(e);
+        byName.set(name, list);
+      }
+      const samples: CustomEventVocabularySampleRow[] = [];
+      const ranked = [...byName.entries()]
+        .sort((a, b) => b[1].length - a[1].length || (a[0] < b[0] ? -1 : 1))
+        .slice(0, limit);
+      for (const [name, list] of ranked) {
+        const sessions = new Set(list.map((e) => e.sessionId)).size;
+        const recent = [...list].sort((a, b) => b.ts - a.ts).slice(0, sampleRows);
+        for (const event of recent) {
+          samples.push({ name, count: list.length, sessions, sample_payload: event });
+        }
+      }
+      return foldCustomEventVocabulary(samples);
+    },
     scenes: async (_projectId, opts = {}) => {
       const map = new Map<string, { events: number; last: number }>();
       for (const e of forProject()) {
@@ -251,6 +361,13 @@ export function createMemoryStore({
         .map(([event_type, count]) => ({ event_type, count }))
         .sort((a, b) => b.count - a.count);
     },
+    // The bucket series behind `baseline` and `movers` (ADR 0051 §4). The
+    // persistent stores render the declarative measure to SQL; here the same
+    // measure is evaluated over the in-memory events, so the insight endpoints
+    // answer in the playground and the E2E harness rather than reporting an
+    // empty series — which would read as "no data", a different claim.
+    metricBuckets: async (_projectId, opts) =>
+      evaluateBucketMeasure(forProject().map(toBucketEvent), opts),
     funnel: async (_projectId, opts) => {
       const steps = opts.steps ?? [];
       if (steps.length === 0) return [];
@@ -511,10 +628,181 @@ export function createMemoryStore({
         .flatMap(([sceneId, set]) =>
           set.map((r) => ({ sceneId, regionId: r.regionId, label: r.label })),
         ),
+    // --- Project metadata (#310, ADR 0051 §5) ------------------------------
+    // Same semantics as the persistent stores — per-project caps, newest-first
+    // ordering, overlap filtering, `MetadataLimitError` when a table is full —
+    // so an E2E run against this store exercises the real contract.
+    createAnnotation: async (_projectId, input) => {
+      if (annotations.length >= METADATA_LIMITS.annotations) {
+        throw new MetadataLimitError("annotations", METADATA_LIMITS.annotations);
+      }
+      const now = new Date();
+      const { annotation } = input;
+      const record: AnnotationRecord = {
+        id: randomUUID(),
+        projectId,
+        targetKind: annotation.targetKind,
+        targetId: annotation.targetId ?? null,
+        since: annotation.since == null ? null : new Date(annotation.since),
+        until: annotation.until == null ? null : new Date(annotation.until),
+        text: annotation.text,
+        authorKind: input.authorKind,
+        authorKeyId: input.authorKeyId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      annotations.push(record);
+      return record;
+    },
+    listAnnotations: async (_projectId, opts = {}) =>
+      annotations
+        .filter((row) => opts.targetKind == null || row.targetKind === opts.targetKind)
+        .filter((row) => opts.targetId == null || row.targetId === opts.targetId)
+        .filter(
+          (row) => opts.since == null || row.until == null || row.until.getTime() >= opts.since,
+        )
+        .filter(
+          (row) => opts.until == null || row.since == null || row.since.getTime() < opts.until,
+        )
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .slice(0, clampMetadataLimit(opts.limit)),
+    deleteAnnotation: async (_projectId, id) => {
+      const index = annotations.findIndex((row) => row.id === id);
+      if (index < 0) return false;
+      annotations.splice(index, 1);
+      return true;
+    },
+    putGlossaryEntry: async (_projectId, input) => {
+      const { term, meaning } = input.entry;
+      if (!glossary.has(term) && glossary.size >= METADATA_LIMITS.glossary) {
+        throw new MetadataLimitError("glossary", METADATA_LIMITS.glossary);
+      }
+      const record: GlossaryEntryRecord = { projectId, term, meaning, updatedAt: new Date() };
+      glossary.set(term, record);
+      return record;
+    },
+    listGlossary: async (_projectId, opts = {}) =>
+      [...glossary.values()]
+        .sort((a, b) => (a.term < b.term ? -1 : a.term > b.term ? 1 : 0))
+        .slice(
+          0,
+          clampMetadataLimit(opts.limit, METADATA_LIMITS.glossary, METADATA_LIMITS.glossary),
+        ),
+    deleteGlossaryEntry: async (_projectId, term) => glossary.delete(term),
+    createSavedAnalysis: async (_projectId, input) => {
+      if (analyses.length >= METADATA_LIMITS.savedAnalyses) {
+        throw new MetadataLimitError("savedAnalyses", METADATA_LIMITS.savedAnalyses);
+      }
+      const { analysis } = input;
+      const record: SavedAnalysisRecord = {
+        id: randomUUID(),
+        projectId,
+        title: analysis.title,
+        query: analysis.query,
+        conclusion: analysis.conclusion ?? null,
+        authorKind: input.authorKind,
+        authorKeyId: input.authorKeyId,
+        createdAt: new Date(),
+      };
+      analyses.push(record);
+      return record;
+    },
+    listSavedAnalyses: async (_projectId, opts = {}) =>
+      [...analyses]
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .slice(0, clampMetadataLimit(opts.limit)),
+    deleteSavedAnalysis: async (_projectId, id) => {
+      const index = analyses.findIndex((row) => row.id === id);
+      if (index < 0) return false;
+      analyses.splice(index, 1);
+      return true;
+    },
+    // --- Conditional subscriptions (#311, ADR 0051 §6) -------------------
+    listSubscriptions: async () => [...subscriptions.values()],
+    listEnabledSubscriptions: async (limit) =>
+      [...subscriptions.values()]
+        .filter((sub) => sub.enabled)
+        .slice(0, Math.max(1, Math.trunc(limit ?? MAX_ENABLED_SUBSCRIPTIONS))),
+    getSubscription: async (_projectId, id) => subscriptions.get(id) ?? null,
+    createSubscription: async (_projectId, sub) => {
+      if (subscriptions.size >= MAX_SUBSCRIPTIONS_PER_PROJECT) throw new SubscriptionLimitError();
+      const id = `sub_mem_${++subscriptionSeq}`;
+      const cols = toSubscriptionColumns(sub);
+      const now = Date.now();
+      // Round-trip through the shared row mapper rather than hand-building the
+      // record, so the in-memory store cannot drift from the four SQL stores
+      // (masking included).
+      const record = rowToSubscription({
+        id,
+        project_id: projectId,
+        name: cols.name,
+        metric: cols.metric,
+        config: cols.config,
+        enabled: cols.enabled,
+        created_at_ms: now,
+        updated_at_ms: now,
+        last_fired_at_ms: null,
+        last_error: null,
+        failures: 0,
+      });
+      subscriptions.set(id, record);
+      if (cols.webhookSecret != null) secrets.set(id, cols.webhookSecret);
+      return record;
+    },
+    setSubscriptionEnabled: async (_projectId, id, enabled) => {
+      const existing = subscriptions.get(id);
+      if (existing == null) return null;
+      const updated = { ...existing, enabled, updatedAt: new Date() };
+      subscriptions.set(id, updated);
+      return updated;
+    },
+    deleteSubscription: async (_projectId, id) => {
+      secrets.delete(id);
+      firings.delete(id);
+      return subscriptions.delete(id);
+    },
+    recordSubscriptionOutcome: async (_projectId, id, outcome) => {
+      const existing = subscriptions.get(id);
+      if (existing == null) return;
+      subscriptions.set(id, {
+        ...existing,
+        updatedAt: new Date(),
+        lastFiredAt: outcome.firedAt ?? existing.lastFiredAt,
+        lastError:
+          outcome.lastError === undefined
+            ? existing.lastError
+            : outcome.lastError == null
+              ? null
+              : clampSubscriptionError(outcome.lastError),
+        failures: outcome.failures ?? existing.failures,
+      });
+    },
+    getWebhookSecret: async (_projectId, id) => secrets.get(id) ?? null,
+    recordSubscriptionEvent: async (entry) => {
+      const log = firings.get(entry.subscriptionId) ?? [];
+      log.push({
+        id: randomUUID(),
+        subscriptionId: entry.subscriptionId,
+        projectId: entry.projectId,
+        at: entry.at ?? new Date(),
+        payload: entry.payload,
+      });
+      // Same bound as every persistent store: the oldest fall off the front.
+      while (log.length > MAX_SUBSCRIPTION_EVENTS) log.shift();
+      firings.set(entry.subscriptionId, log);
+    },
+    listSubscriptionEvents: async (_projectId, id, opts) =>
+      [...(firings.get(id) ?? [])].reverse().slice(0, clampEventLimit(opts?.limit)),
     close: async () => {
       events.length = 0;
       representations.clear();
       regions.clear();
+      annotations.length = 0;
+      glossary.clear();
+      analyses.length = 0;
+      subscriptions.clear();
+      secrets.clear();
+      firings.clear();
     },
   };
 }

@@ -37,6 +37,14 @@ export const TEST_CONFIG: CollectorConfig = {
   cspMode: "strict",
   auditRetentionDays: 30,
   auditDashboardRequests: false,
+  mcpHttpEnabled: false,
+  mcpMaxSessions: 50,
+  mcpSessionTtlMs: 1_800_000,
+  // The sweeps build an app per case; leaving the scheduler off keeps them free
+  // of timers they never assert on. Webhook egress stays disallowed by default.
+  subscriptions: false,
+  subscriptionsMaxConcurrent: 4,
+  webhookAllowedHosts: [],
 };
 
 /** Fixture scene proxy, so the `scene_representation` resource has a hit. */
@@ -67,13 +75,21 @@ export const PATH_PARAM_VALUES: Readonly<Record<string, string>> = {
 
 /**
  * Query parameters an endpoint needs beyond the shared range. Only the genuinely
- * required ones: `mesh` for the per-mesh UV heatmap and `steps` for the funnel.
+ * required ones: `mesh` for the per-mesh UV heatmap, `steps` for the funnel and
+ * `metric` for the baseline.
  */
 export const REQUIRED_QUERY: Readonly<Record<string, Record<string, string>>> = {
   "/api/v1/heatmaps/mesh-uv": { mesh: "box" },
   "/api/v1/funnel": {
     steps: JSON.stringify([{ type: "session_start" }, { type: "pointer_click" }]),
   },
+  // A baseline is a baseline *of* something: the metric is the subject rather
+  // than a filter, so it is the one insight parameter with no default.
+  "/api/v1/insights/baseline": { metric: "list_sessions" },
+  // --- anomalies (#306) --- same subject-is-the-parameter rule.
+  "/api/v1/insights/anomalies": { metric: "list_sessions" },
+  // --- significance / scene health (#307) ---
+  "/api/v1/insights/significance": { metric: "list_sessions" },
 };
 
 /** The two resource reads, which legitimately 404 when nothing is registered. */

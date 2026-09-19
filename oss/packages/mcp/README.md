@@ -1,14 +1,21 @@
 # @uptimizr/mcp
 
-A **read-only** [Model Context Protocol](https://modelcontextprotocol.io) server over an
-Uptimizr collector's query API. It lets an AI agent ask natural-language questions about your
+A [Model Context Protocol](https://modelcontextprotocol.io) server over an Uptimizr
+collector's API. It lets an AI agent ask natural-language questions about your
 3D analytics ("what was the most-clicked mesh this week?") and have them answered by querying
 **your own** collector — nothing is sent to any third party.
 
-The server is a thin wrapper: each tool maps one-to-one to a documented collector query endpoint
-(see [integration docs](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md)). It
-performs `GET` requests only — there are **no ingestion, mutation, or raw per-session event
-tools**.
+The server is a thin wrapper: each analytics tool maps one-to-one to a documented collector query
+endpoint (see
+[integration docs](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md)) and performs
+`GET` requests only. There are **no ingestion tools and no raw per-session event tools**, and
+nothing here can write, alter or delete an analytics event — **events are read-only**.
+
+The one exception is gated: when the configured key holds the `annotate` capability the server also
+registers the **project-metadata** tools `annotate`, `define_term` and `save_analysis` (plus
+`list_annotations`, `list_glossary`, `list_analyses`), which leave notes, definitions and saved
+analyses behind. The server asks `GET /api/v1/whoami` once at start-up, so a read-only key yields a
+read-only server, and every metadata write is recorded in the project's agent audit log.
 
 ## How it connects
 
@@ -28,10 +35,10 @@ UPTIMIZR_API_KEY="utk_…" \
 npx @uptimizr/mcp
 ```
 
-| Environment variable     | Required | Notes                                              |
-| ------------------------ | -------- | -------------------------------------------------- |
-| `UPTIMIZR_COLLECTOR_URL` | yes      | Base URL of **your** collector.                    |
-| `UPTIMIZR_API_KEY`       | yes      | Your project API key (`x-api-key`), read-only use. |
+| Environment variable     | Required | Notes                                                                                           |
+| ------------------------ | -------- | ----------------------------------------------------------------------------------------------- |
+| `UPTIMIZR_COLLECTOR_URL` | yes      | Base URL of **your** collector.                                                                 |
+| `UPTIMIZR_API_KEY`       | yes      | Your project API key (`x-api-key`). `query` reads; add `annotate` to enable the metadata tools. |
 
 ### Configure an MCP client
 
@@ -97,6 +104,7 @@ underlying endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, 
 | ---------------------------- | ---------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `list_sessions`              | `/api/v1/sessions`                       | Recent sessions                     | `since`, `until`, `bins`, `limit`, `cameraMode`, `format`                                                                 |
 | `session_meta`               | `/api/v1/sessions/:id/meta`              | Session descriptor                  | `session`                                                                                                                 |
+| `session_narrative`          | `/api/v1/sessions/:id/narrative`         | Session narrative                   | `session`, `minDwellMs`, `fpsThreshold`, `maxEntries`, `format`                                                           |
 | `scene_representation`       | `/api/v1/scenes/:sceneId/representation` | Scene representation                | `scene`                                                                                                                   |
 | `list_scenes`                | `/api/v1/scenes`                         | Active scenes                       | `since`, `until`, `limit`, `format`                                                                                       |
 | `timeseries`                 | `/api/v1/timeseries`                     | Event volume over time              | `since`, `until`, `interval`, `scene`, `type`, `format`                                                                   |
@@ -128,6 +136,7 @@ underlying endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, 
 | `hover_dwell`                | `/api/v1/hover/dwell`                    | Hover hesitation per object         | `since`, `until`, `bins`, `limit`, `scene`, `session`, `source`, `cameraMode`, `format`                                   |
 | `interaction_sources`        | `/api/v1/interactions/sources`           | Interactions by input source        | `since`, `until`, `bins`, `limit`, `scene`, `session`, `source`, `cameraMode`, `format`                                   |
 | `top_input_actions`          | `/api/v1/input-actions/top`              | Most-used shortcuts and actions     | `since`, `until`, `bins`, `limit`, `scene`, `session`, `source`, `cameraMode`, `format`                                   |
+| `custom_event_vocabulary`    | `/api/v1/vocabulary/custom-events`       | Discovered custom-event vocabulary  | `since`, `until`, `scene`, `limit`, `format`                                                                              |
 | `camera_gestures`            | `/api/v1/camera-gestures`                | Camera navigation gestures          | `since`, `until`, `bins`, `limit`, `scene`, `session`, `source`, `cameraMode`, `format`                                   |
 | `navigation_stats`           | `/api/v1/navigation`                     | Navigation effort per session       | `since`, `until`, `moveThreshold`, `limit`, `scene`, `session`, `format`                                                  |
 | `backtrack_ratio`            | `/api/v1/backtrack`                      | Path retrace / backtracking         | `since`, `until`, `cellSize`, `limit`, `scene`, `session`, `format`                                                       |
@@ -164,6 +173,11 @@ underlying endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, 
 | `scene_retention`            | `/api/v1/scene-retention`                | Scene-to-scene retention            | `since`, `until`, `limit`, `format`                                                                                       |
 | `load_bounce_funnel`         | `/api/v1/load-bounce`                    | Load → bounce funnel                | `since`, `until`, `scene`, `bands`, `format`                                                                              |
 | `variant_leaderboard`        | `/api/v1/variant-leaderboard`            | Variant → conversion leaderboard    | `since`, `until`, `scene`, `cameraMode`, `variant`, `conversion`, `limit`, `format`                                       |
+| `insight_baseline`           | `/api/v1/insights/baseline`              | Metric baseline                     | `metric`, `scene`, `window`, `bucket`, `since`, `until`, `format`                                                         |
+| `insight_movers`             | `/api/v1/insights/movers`                | What changed                        | `scene`, `metrics`, `bucket`, `limit`, `since`, `until`, `refSince`, `refUntil`, `format`                                 |
+| `insight_anomalies`          | `/api/v1/insights/anomalies`             | Anomalous buckets                   | `metric`, `scene`, `window`, `bucket`, `sensitivity`, `since`, `until`, `format`                                          |
+| `insight_significance`       | `/api/v1/insights/significance`          | Statistical significance            | `metric`, `scene`, `bucket`, `since`, `until`, `refSince`, `refUntil`, `format`                                           |
+| `insight_scene_health`       | `/api/v1/insights/scene-health`          | Scene health score                  | `scene`, `window`, `since`, `until`, `bucket`, `limit`, `weights`, `format`                                               |
 
 <!-- generated:registry-tools:end -->
 
@@ -174,9 +188,33 @@ The server also exposes read-only **resources** for self-discovery — `uptimizr
 `metrics`: the collector's whole semantic metric registry, with each metric's result grain, column
 units, row JSON Schema, row limits, interpretation and caveats — ADR 0051) and
 `uptimizr://scenes` (live scene ids) — and curated **prompts** (`weekly_scene_health`,
-`attention_hotspots`, `xr_comfort_review`) that drive the tools above. A remote Streamable HTTP
-transport is a deferred, auth-gated follow-up (ADR 0050 §7). See the
+`attention_hotspots`, `xr_comfort_review`) that drive the tools above. See the
 [MCP guide](https://uptimizr.com/docs/guides/mcp/) for details.
+
+## Hosted transport (Streamable HTTP)
+
+The collector can serve **this same server** itself, over MCP's Streamable HTTP transport, so a
+remote agent connects with a URL and a key instead of launching this package locally (ADR 0051 §7).
+Start the collector with `COLLECTOR_MCP_HTTP=1` and point a client at `/mcp`:
+
+```jsonc
+{
+  "mcpServers": {
+    "uptimizr": {
+      "type": "http",
+      "url": "https://collect.example.com/mcp",
+      "headers": { "Authorization": "Bearer utk_…" },
+    },
+  },
+}
+```
+
+`x-api-key` works in place of the bearer header, the key still needs only `query`, and the tools,
+resources and prompts are identical — both transports are built by the same `createMcpServer()`
+below. Tool calls made that way are recorded in the collector's audit log with
+`surface: "mcp-http"`; calls from this package over stdio are ordinary HTTP reads, recorded as
+`http`. See the
+[hosted transport guide](https://uptimizr.com/docs/guides/mcp/#hosted-transport-streamable-http).
 
 ## Programmatic use
 
@@ -189,8 +227,13 @@ const server = createMcpServer(client);
 await server.connect(new StdioServerTransport());
 ```
 
+`createMcpServer(client, options?)` takes an optional `options.capabilities` — the capability set of
+the API key the server instance is bound to. The collector-hosted transport passes the key it
+resolved, so a session's surface can only narrow to what its key may do; omitting it (as the stdio
+entry point does) registers the whole read catalog and leaves enforcement to the collector.
+
 The package also exports `readTools`, `CollectorError`, `version`, and the related public types.
-The read-only tool catalog (`readTools`) and the `GET`-only collector client are defined in the
+The read-only analytics catalog (`readTools`), the `annotate`-gated `writeTools`, and the collector client are defined in the
 framework-agnostic [`@uptimizr/agent-core`](../agent-core/README.md) package and re-exported here,
 so the agent tool surface is defined once and shared across the MCP server, the dashboard assistant,
 and the demo assistant (ADR 0050). Building a non-MCP agent? Depend on `@uptimizr/agent-core`

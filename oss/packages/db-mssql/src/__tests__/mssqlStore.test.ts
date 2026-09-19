@@ -14,7 +14,11 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
-import * as db from "@uptimizr/db";
+// The aggregation module specifically, not the package barrel: the barrel also
+// re-exports pure helpers whose names begin with `build` but which emit no
+// `QuerySpec` (`buildSessionNarrative`, ADR 0051 §7), and this sweep is about
+// SQL parity.
+import * as aggregations from "@uptimizr/db/query";
 import {
   PARITY_EVENTS,
   PARITY_PROJECT_ID,
@@ -23,6 +27,7 @@ import {
   buildEventTypeCounts,
   buildListSessions,
   createDuckdbClient,
+  ENGINE_FORMATTED_COLUMNS,
   diffParity,
   duckdbDialect,
   duckdbInsertEvents,
@@ -47,6 +52,17 @@ import {
   upsertSceneProxy,
 } from "../sceneRegistry.js";
 import { getSceneRegions, listSceneRegions, putSceneRegions } from "../sceneRegions.js";
+import {
+  createAnnotation,
+  createSavedAnalysis,
+  deleteAnnotation,
+  deleteGlossaryEntry,
+  deleteSavedAnalysis,
+  listAnnotations,
+  listGlossary,
+  listSavedAnalyses,
+  putGlossaryEntry,
+} from "../projectMetadata.js";
 import { runMssqlQuery } from "../queries.js";
 import { discardTestDatabase, mssqlReachable, openTestDatabase } from "./probe.js";
 
@@ -56,6 +72,8 @@ const DATABASE = "uptimizr_mssql_store_test";
 const available = await mssqlReachable(SETTINGS);
 
 const PID = PARITY_PROJECT_ID;
+/** A second project, so per-project isolation can be asserted. */
+const OTHER_PID = "other-project";
 const T0 = PARITY_T0;
 
 function ev(type: string, ts: number, extra: Record<string, unknown> = {}): AnyEvent {
@@ -164,14 +182,19 @@ describe.skipIf(!available)("mssql store", () => {
     );
     expect(tables.map((t) => t.table_name)).toEqual([
       "agent_audit",
+      "annotations",
       "api_keys",
       "events",
       "events_daily",
+      "glossary",
       "node_samples",
       "perf_daily",
       "projects",
+      "saved_analyses",
       "scene_regions",
       "scene_representations",
+      "subscription_events",
+      "subscriptions",
     ]);
   });
 
@@ -363,6 +386,11 @@ describe.skipIf(!available)("mssql store", () => {
       "mesh_visibility",
       "mesh_visibility",
       "xr_boundary_proximity",
+      // The two `custom` events the shared parity fixtures carry for the
+      // custom-event vocabulary (ADR 0051 §5) — both on s1, after the boundary
+      // sample, so they close the timeline.
+      "custom",
+      "custom",
     ]);
     const nodes = timeline.filter(
       (e): e is Extract<AnyEvent, { type: "node_transform" }> => e.type === "node_transform",
@@ -461,9 +489,91 @@ describe.skipIf(!available)("mssql store", () => {
     await putSceneRegions(ms, PID, "atrium", []);
   });
 
+  it("round-trips the project-metadata tables (#310)", async () => {
+    const author = { authorKind: "user", authorKeyId: "key_1" } as const;
+    const agentAuthor = { authorKind: "agent", authorKeyId: "key_2" } as const;
+
+    // Annotations: a targeted, time-bounded note and a standing one.
+    const since = 1_700_000_000_000;
+    const until = 1_700_003_600_000;
+    const note = await createAnnotation(ms, PID, {
+      ...agentAuthor,
+      annotation: { targetKind: "mesh", targetId: "counter", since, until, text: "dead clicks" },
+    });
+    expect(note).toMatchObject({
+      projectId: PID,
+      targetKind: "mesh",
+      targetId: "counter",
+      authorKind: "agent",
+      authorKeyId: "key_2",
+    });
+    expect(note.since?.getTime()).toBe(since);
+    expect(note.until?.getTime()).toBe(until);
+
+    const standing = await createAnnotation(ms, PID, {
+      ...author,
+      annotation: { targetKind: "project", text: "v2.1 shipped" },
+    });
+    expect(standing.since).toBeNull();
+    expect(standing.targetId).toBeNull();
+
+    // The range filter is an overlap test, and a standing note always matches.
+    const overlapping = await listAnnotations(ms, PID, { since: since + 60_000, until: until });
+    expect(overlapping.map((a) => a.text).sort()).toEqual(["dead clicks", "v2.1 shipped"]);
+    expect((await listAnnotations(ms, PID, { targetKind: "mesh" })).map((a) => a.id)).toEqual([
+      note.id,
+    ]);
+
+    // Another project cannot see or delete this project's rows.
+    expect(await listAnnotations(ms, OTHER_PID)).toEqual([]);
+    expect(await deleteAnnotation(ms, OTHER_PID, note.id)).toBe(false);
+    expect(await deleteAnnotation(ms, PID, note.id)).toBe(true);
+    expect(await deleteAnnotation(ms, PID, note.id)).toBe(false);
+    expect(await listAnnotations(ms, PID)).toHaveLength(1);
+    expect(await deleteAnnotation(ms, PID, standing.id)).toBe(true);
+
+    // Glossary: the term is the identity, so a second write replaces the meaning.
+    await putGlossaryEntry(ms, PID, { entry: { term: "TTFR", meaning: "time to first render" } });
+    const redefined = await putGlossaryEntry(ms, PID, {
+      entry: { term: "TTFR", meaning: "time to first rendered frame" },
+    });
+    expect(redefined.meaning).toBe("time to first rendered frame");
+    expect(await listGlossary(ms, PID)).toHaveLength(1);
+    expect(await listGlossary(ms, OTHER_PID)).toEqual([]);
+    expect(await deleteGlossaryEntry(ms, PID, "TTFR")).toBe(true);
+    expect(await deleteGlossaryEntry(ms, PID, "TTFR")).toBe(false);
+
+    // Saved analyses: the opaque query document survives the round trip.
+    const analysis = await createSavedAnalysis(ms, PID, {
+      ...agentAuthor,
+      analysis: {
+        title: "Lobby FPS",
+        query: { metric: "perf_summary", scene: "lobby", nested: { range: "7d" } },
+        conclusion: "p50 fell to 41.",
+      },
+    });
+    expect(analysis.query).toEqual({
+      metric: "perf_summary",
+      scene: "lobby",
+      nested: { range: "7d" },
+    });
+    expect((await listSavedAnalyses(ms, PID))[0]).toEqual(analysis);
+
+    const openEnded = await createSavedAnalysis(ms, PID, {
+      ...author,
+      analysis: { title: "watch this", query: {} },
+    });
+    expect(openEnded.conclusion).toBeNull();
+
+    expect(await deleteSavedAnalysis(ms, OTHER_PID, analysis.id)).toBe(false);
+    expect(await deleteSavedAnalysis(ms, PID, analysis.id)).toBe(true);
+    expect(await deleteSavedAnalysis(ms, PID, openEnded.id)).toBe(true);
+    expect(await listSavedAnalyses(ms, PID)).toEqual([]);
+  });
+
   describe("every aggregation matches DuckDB on the extended fixtures", () => {
     type Builder = (projectId: string, opts: never, d: Dialect) => QuerySpec;
-    const builders = Object.entries(db)
+    const builders = Object.entries(aggregations)
       .filter(([name, value]) => /^build[A-Z]/.test(name) && typeof value === "function")
       .map(([name, value]) => [name, value as Builder] as const);
 
@@ -524,7 +634,16 @@ describe.skipIf(!available)("mssql store", () => {
     for (const [variant, baseOpts] of Object.entries(VARIANTS)) {
       for (const [name, build] of builders) {
         // The per-session trajectory is the one builder with a required session.
-        const opts = name === "buildSessionTrajectory" ? { session: "s1", ...baseOpts } : baseOpts;
+        // Two builders need an argument the shared bag cannot supply: the
+        // per-session trajectory needs its session, and the insight bucket
+        // series needs the metric it is a series *of* (and a time grain, not the
+        // FPS bin width `bucket` means everywhere else).
+        const opts =
+          name === "buildSessionTrajectory"
+            ? { session: "s1", ...baseOpts }
+            : name === "buildMetricBuckets"
+              ? { ...baseOpts, metric: "list_sessions", bucket: "day" }
+              : baseOpts;
         it(`${name} (${variant})`, async () => {
           await insertEvents(ms, EXTENDED_EVENTS);
           const pgRows = await runMssqlQuery<Record<string, unknown>>(
@@ -537,7 +656,9 @@ describe.skipIf(!available)("mssql store", () => {
           );
           const first = duckRows[0] ?? {};
           const ignoreColumns = Object.keys(first).filter(
-            (k) => typeof first[k] === "string" && TEMPORAL.test(first[k] as string),
+            (k) =>
+              ENGINE_FORMATTED_COLUMNS.has(k) ||
+              (typeof first[k] === "string" && TEMPORAL.test(first[k] as string)),
           );
           const sortKeys = Object.keys(first).filter((k) => !ignoreColumns.includes(k));
           const errors = diffParity(pgRows, duckRows, { sortKeys, ignoreColumns });

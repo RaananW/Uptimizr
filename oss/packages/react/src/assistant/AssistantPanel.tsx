@@ -19,6 +19,7 @@ import type {
 } from "@uptimizr/agent-core/providers";
 import {
   useAssistant,
+  type AssistantAnnotationTarget,
   type AssistantNotice,
   type AssistantToolActivity,
   type ToolCallStatus,
@@ -33,6 +34,13 @@ export interface AssistantPanelProps extends UseAssistantOptions {
   placeholder?: string;
   /** Extra classes on the root element. */
   className?: string;
+  /**
+   * Where "Annotate this" should pin the note (#310). A dashboard passes its
+   * active filters — the scene being looked at, the range being shown — so the
+   * note lands on what the answer is actually about. Defaults to a note about
+   * the whole project.
+   */
+  annotationTarget?: AssistantAnnotationTarget;
 }
 
 /** Display-only view of a chat turn (system + tool turns are hidden). */
@@ -63,6 +71,25 @@ function toDisplayMessages(messages: AgentMessage[]): DisplayMessage[] {
     }
   }
   return out;
+}
+
+/**
+ * A starting title for "Save this analysis" (#310): the question that produced
+ * the answer, trimmed to the stored title bound. The user can rewrite it — this
+ * only saves them typing the obvious thing.
+ */
+export function defaultAnalysisTitle(
+  display: readonly DisplayMessage[],
+  answerIndex: number,
+): string {
+  for (let i = answerIndex - 1; i >= 0; i -= 1) {
+    const message = display[i];
+    if (message?.role === "user" && message.content.trim()) {
+      const title = message.content.trim();
+      return title.length > 120 ? `${title.slice(0, 117)}...` : title;
+    }
+  }
+  return "Saved analysis";
 }
 
 /**
@@ -121,6 +148,7 @@ export function AssistantPanel({
   title = "Analytics assistant",
   placeholder = "Ask about your 3D analytics…",
   className,
+  annotationTarget,
   ...options
 }: AssistantPanelProps) {
   // A consent dialog drives WebLLM's download gate unless the caller supplied one.
@@ -156,6 +184,9 @@ export function AssistantPanel({
     setBackend,
     models,
     clearCachedModels,
+    canAnnotate,
+    annotate,
+    saveAnalysis,
   } = assistant;
 
   const [draft, setDraft] = useState("");
@@ -178,6 +209,56 @@ export function AssistantPanel({
 
   const display = toDisplayMessages(messages);
   const firstRun = backend === null;
+
+  // --- Leave something behind (#310, ADR 0051 §5) --------------------------
+  //
+  // Two actions under each answer: store it as a project note, or save the turn
+  // as a titled analysis. Both write **metadata only** — nothing here touches an
+  // event — and both are hidden unless the key holds `annotate`.
+  /** Which answer's "save" form is open, or `null`. */
+  const [savingIndex, setSavingIndex] = useState<number | null>(null);
+  const [saveTitle, setSaveTitle] = useState("");
+  /** The in-flight metadata write, so the buttons cannot be double-fired. */
+  const [pendingAction, setPendingAction] = useState<"annotate" | "save" | null>(null);
+  /** One line of feedback under the actions: what happened, or what failed. */
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  const onAnnotate = useCallback(
+    async (text: string) => {
+      setPendingAction("annotate");
+      setActionMessage(null);
+      try {
+        await annotate(text, annotationTarget);
+        setActionMessage("Saved as an annotation.");
+      } catch (err) {
+        setActionMessage(
+          err instanceof Error ? `Could not annotate: ${err.message}` : "Could not annotate.",
+        );
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [annotate, annotationTarget],
+  );
+
+  const onSaveAnalysis = useCallback(
+    async (conclusion: string) => {
+      setPendingAction("save");
+      setActionMessage(null);
+      try {
+        await saveAnalysis(saveTitle.trim(), conclusion);
+        setSavingIndex(null);
+        setActionMessage("Analysis saved.");
+      } catch (err) {
+        setActionMessage(
+          err instanceof Error ? `Could not save: ${err.message}` : "Could not save the analysis.",
+        );
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [saveAnalysis, saveTitle],
+  );
 
   // Autoscroll the conversation to the newest message/indicator whenever the
   // transcript or in-flight status changes, so a freshly appended answer (or the
@@ -322,6 +403,72 @@ export function AssistantPanel({
                     {m.role === "user" ? "You" : "Assistant"}
                   </span>
                   <div className="whitespace-pre-wrap">{m.content}</div>
+                  {/* Leave something behind (#310). Shown only for a key that
+                      holds `annotate`, so the buttons are never offered for a
+                      write that would be refused. */}
+                  {m.role === "assistant" && canAnnotate && !isBusy && (
+                    <div
+                      className="mt-1 flex flex-wrap items-center gap-2 text-xs"
+                      data-role="answer-actions"
+                    >
+                      <button
+                        type="button"
+                        data-action="annotate"
+                        disabled={pendingAction !== null}
+                        onClick={() => void onAnnotate(m.content)}
+                        className="rounded-full border border-edge px-2 py-0.5 text-fg-muted hover:bg-ink/40 disabled:opacity-50"
+                      >
+                        Annotate this
+                      </button>
+                      <button
+                        type="button"
+                        data-action="save-analysis"
+                        disabled={pendingAction !== null}
+                        onClick={() => {
+                          setSavingIndex(i);
+                          setSaveTitle(defaultAnalysisTitle(display, i));
+                        }}
+                        className="rounded-full border border-edge px-2 py-0.5 text-fg-muted hover:bg-ink/40 disabled:opacity-50"
+                      >
+                        Save this analysis
+                      </button>
+                    </div>
+                  )}
+                  {savingIndex === i && (
+                    <form
+                      data-role="save-analysis-form"
+                      className="mt-1 flex flex-wrap items-center gap-2 text-xs"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void onSaveAnalysis(m.content);
+                      }}
+                    >
+                      <label className="sr-only" htmlFor="uptimizr-analysis-title">
+                        Analysis title
+                      </label>
+                      <input
+                        id="uptimizr-analysis-title"
+                        value={saveTitle}
+                        onChange={(e) => setSaveTitle(e.target.value)}
+                        placeholder="Title for this analysis"
+                        className="min-w-[12rem] flex-1 rounded border border-edge bg-transparent px-2 py-1 text-fg"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!saveTitle.trim() || pendingAction !== null}
+                        className="rounded-full border border-edge px-2 py-0.5 text-fg-muted hover:bg-ink/40 disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSavingIndex(null)}
+                        className="rounded-full border border-edge px-2 py-0.5 text-fg-muted hover:bg-ink/40"
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  )}
                 </li>
               ))}
               {/* The answer as it streams in. Kept OUT of the aria-live status
@@ -350,6 +497,12 @@ export function AssistantPanel({
                 </span>
               )}
             </div>
+
+            {actionMessage && (
+              <p className="shrink-0 text-xs text-fg-muted" data-role="metadata-status">
+                {actionMessage}
+              </p>
+            )}
 
             {toolActivity.length > 0 && (
               <ul

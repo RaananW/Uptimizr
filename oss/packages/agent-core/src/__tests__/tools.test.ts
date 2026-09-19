@@ -1,13 +1,17 @@
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import { allMetrics, metricCapability } from "@uptimizr/metrics";
 import {
   readTools,
+  rawTools,
   coreReadTools,
   selectReadTools,
   filterReadTools,
   CORE_READ_TOOL_NAMES,
 } from "../tools.js";
+import { NON_REGISTRY_READ_TOOLS } from "../nonRegistryTools.js";
 import { registryToTools } from "../registryTools.js";
+import { QUERY_TOOL_NAME, queryTool } from "../queryTool.js";
 
 const byName = (name: string) => {
   const tool = readTools.find((t) => t.name === name);
@@ -16,9 +20,45 @@ const byName = (name: string) => {
 };
 
 describe("read tools catalog", () => {
-  it("is the catalog generated from the metric registry", () => {
-    expect(readTools.map((t) => t.name)).toEqual(registryToTools().map((t) => t.name));
-    expect(readTools.length).toBe(69);
+  it("is the catalog generated from the registry, plus the non-metric reads and query", () => {
+    // The `query` half of the generated catalog — every tool whose endpoint
+    // needs nothing more than the ordinary read capability (ADR 0051 §7) — is
+    // the prefix, in registry order. Then the short, deliberate tail of
+    // collector reads that are configuration rather than measurements (#311,
+    // `nonRegistryTools.ts`), and last the one tool that is not per-metric at
+    // all, the query DSL (ADR 0051 §3).
+    const queryMetrics = allMetrics().filter((m) => metricCapability(m) === "query");
+    expect(readTools.map((t) => t.name)).toEqual([
+      ...registryToTools(queryMetrics).map((t) => t.name),
+      ...NON_REGISTRY_READ_TOOLS.map((t) => t.name),
+      QUERY_TOOL_NAME,
+    ]);
+    expect(readTools.length).toBe(77);
+  });
+
+  it("splits the query:raw tools out into their own catalog", () => {
+    // `session_narrative` must never be in `readTools`: a host registers it only
+    // after confirming the key holds `query:raw` (ADR 0051 §7), because a tool
+    // that always answers 403 is worse than no tool at all.
+    expect(readTools.map((t) => t.name)).not.toContain("session_narrative");
+    expect(rawTools.map((t) => t.name)).toEqual(["session_narrative"]);
+    for (const tool of rawTools) {
+      expect(readTools.some((read) => read.name === tool.name)).toBe(false);
+      expect(Object.keys(z.toJSONSchema(tool.outputSchema!).properties ?? {})).toContain("rows");
+    }
+  });
+
+  it("gives the narrative tool its registry parameters", () => {
+    const narrative = rawTools.find((tool) => tool.name === "session_narrative")!;
+    expect(Object.keys(narrative.inputSchema).sort()).toEqual(
+      ["sessionId", "minDwellMs", "fpsThreshold", "maxEntries", "format"].sort(),
+    );
+    expect(narrative.buildRequest({ sessionId: "s 1", maxEntries: 50 })).toEqual({
+      path: "api/v1/sessions/s%201/narrative",
+      // `format` defaults to `table` for every generated tool that declares it
+      // (#336); the narrative route serves that envelope too.
+      params: { minDwellMs: undefined, fpsThreshold: undefined, maxEntries: 50, format: "table" },
+    });
   });
 
   it("gives every tool an object output schema", () => {
@@ -26,6 +66,12 @@ describe("read tools catalog", () => {
       expect(tool.outputSchema, tool.name).toBeDefined();
       expect(z.toJSONSchema(tool.outputSchema!).type, tool.name).toBe("object");
     }
+    // The DSL tool's shape is chosen by its `format`, so it advertises the
+    // single `result` key (ADR 0051 §3) and supplies its own wrapper.
+    expect(Object.keys(z.toJSONSchema(queryTool.outputSchema!).properties ?? {})).toEqual([
+      "result",
+    ]);
+    expect(queryTool.structuredContent?.([1, 2])).toEqual({ result: [1, 2] });
   });
 
   it("exposes uniquely named tools", () => {

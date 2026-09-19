@@ -22,17 +22,39 @@
  * in `app.ts`).
  *
  * Routes that are not registry metrics are described only when they are trivial
- * and honest to describe (`/health`, this route, and the scene-representation
- * listing). Ingestion (`POST /api/v1/collect`), the scene-proxy write
+ * and honest to describe (`/health`, this route, the scene-representation
+ * listing, and the `metadata` group of #310 — annotations, glossary, saved
+ * analyses — whose bodies are converted from the Zod contracts that validate
+ * them). Ingestion (`POST /api/v1/collect`), the scene-proxy write
  * (`PUT …/representation`), the retention-gated raw event stream and the live
  * SSE surface are deliberately omitted rather than half-described.
+ * listing, and the conditional-subscription resource). Ingestion
+ * (`POST /api/v1/collect`), the scene-proxy write (`PUT …/representation`), the
+ * retention-gated raw event stream and every SSE surface — the live endpoints
+ * and `GET /api/v1/subscriptions/stream` alike — are deliberately omitted rather
+ * than half-described: a hijacked `text/event-stream` response is not an
+ * operation with a JSON body, and pretending otherwise misleads a generated
+ * client.
+ *
+ * Conditional subscriptions (#311) are the one **write** surface described here.
+ * They earn it: they are a CRUD resource rather than a query, and the only place
+ * a caller needs a written contract for a request *body* — a closed Zod union
+ * that cannot be inferred from a querystring.
  */
 
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { SCHEMA_VERSION } from "@uptimizr/schema";
+import {
+  LIMITS,
+  SCHEMA_VERSION,
+  annotationSchema,
+  queryV1Schema,
+  savedAnalysisSchema,
+} from "@uptimizr/schema";
+import { projectContextSchema } from "./context.js";
 import {
   FILTER_TARGETS,
+  metricCapability,
   allMetrics,
   isResourceMetric,
   type FilterId,
@@ -41,6 +63,20 @@ import {
 
 /** A JSON Schema object, as produced by `z.toJSONSchema`. */
 type JsonSchema = Record<string, unknown>;
+
+/**
+ * The project context document's JSON Schema, derived from the very Zod schema
+ * that serialises the response (`routes/context.ts`) rather than restated here —
+ * the same rule the registry rows follow, for the same reason.
+ */
+function contextSchema(): JsonSchema {
+  const schema = z.toJSONSchema(projectContextSchema, {
+    io: "output",
+    unrepresentable: "any",
+  }) as JsonSchema;
+  delete schema.$schema;
+  return { title: "Project context", ...schema };
+}
 
 /** A minimal OpenAPI document shape — enough to build and serve one. */
 export type OpenApiDocument = Record<string, unknown>;
@@ -247,12 +283,22 @@ function vendorExtensions(metric: MetricDefinition): Record<string, unknown> {
     ...(label ? { "x-uptimizr-label": label } : {}),
     "x-uptimizr-limits": metric.limits,
     "x-uptimizr-interpretation": metric.interpretation,
+    "x-uptimizr-capability": metricCapability(metric),
     "x-uptimizr-caveats": metric.caveats,
     "x-uptimizr-source-channels": metric.sourceChannels,
     "x-uptimizr-related": metric.related,
     ...(metric.comparable ? { "x-uptimizr-comparable": metric.comparable } : {}),
   };
 }
+
+/** The `{id}` path parameter shared by every per-subscription operation. */
+const SUBSCRIPTION_ID_PARAM = {
+  name: "id",
+  in: "path" as const,
+  required: true,
+  schema: { type: "string", maxLength: 64 },
+  description: "Collector-assigned subscription id (`sub_…`).",
+};
 
 /** The shared error responses every authenticated read can answer with. */
 const AUTHENTICATED_ERRORS = {
@@ -293,6 +339,74 @@ function operationFor(metric: MetricDefinition, route: RouteSchemaEntry | undefi
       ...(single ? { "404": { $ref: "#/components/responses/NotFound" } } : {}),
     },
     ...vendorExtensions(metric),
+  };
+}
+
+/**
+ * The **query DSL** operations (ADR 0051 §3). Unlike the paths above, these are
+ * not generated from a registry entry — one route serves every metric — so the
+ * operation is described here and its request body is the `queryV1` Zod schema
+ * converted to JSON Schema, which is the same schema that validates the request.
+ *
+ * The response is deliberately loose: the row shape is the metric's, and the
+ * document already describes every metric's row under `components.schemas`.
+ */
+function queryDslPath(): Record<string, unknown> {
+  const body = toJsonSchema(queryV1Schema, "input");
+  body.title = "Analytics query (v1)";
+  const description =
+    "Run **any** registry metric in one validated request: pick the `metric`, bound it with a " +
+    "`range`, narrow it with the filters that metric declares, cap it with `limit`, and choose " +
+    "the result envelope with `format` (`table` by default).\n\n" +
+    "The grammar is **closed**: there is no raw SQL and no free-form expression, and the metric, " +
+    "dimension and filter vocabularies are exactly this document's. A metric that does not accept " +
+    "a filter, a dimension it is not keyed by, or a `limit` above its cap is a `400` naming what " +
+    "it does accept.\n\n" +
+    "**v1 is the delegated tier**: a query runs the metric's existing aggregation, so it is " +
+    "reachable at exactly the power of its canned endpoint. `compare`, `segment`, `order`, " +
+    "`explain`, `filters.event` and `filters.device` are part of the published grammar and are " +
+    "answered with `400 … not supported yet` until the generic group-by tier lands.";
+
+  const responses = {
+    "200": {
+      description:
+        "The metric's rows (`format=full`), the rows plus a `meta` envelope (`table`), or a " +
+        "bounded digest (`summary`).",
+      content: { "application/json": { schema: { type: "object" } } },
+    },
+    ...AUTHENTICATED_ERRORS,
+  };
+
+  return {
+    "/api/v1/query": {
+      post: {
+        operationId: "query",
+        summary: "Run an analytics query",
+        description,
+        tags: ["meta"],
+        requestBody: { required: true, content: { "application/json": { schema: body } } },
+        responses,
+      },
+      get: {
+        operationId: "query_get",
+        summary: "Run an analytics query (GET form)",
+        description:
+          "The same query as `POST /api/v1/query`, URL-encoded into a single `q` parameter, for " +
+          "GET-only clients.\n\n" +
+          description,
+        tags: ["meta"],
+        parameters: [
+          {
+            name: "q",
+            in: "query",
+            required: true,
+            description: "The query document, JSON-encoded and URL-encoded (at most 8 KiB).",
+            schema: { type: "string", minLength: 1, maxLength: 8192 },
+          },
+        ],
+        responses,
+      },
+    },
   };
 }
 
@@ -338,6 +452,27 @@ function staticPaths(): Record<string, unknown> {
         },
       },
     },
+    "/api/v1/context": {
+      get: {
+        operationId: "project_context",
+        summary: "Project context document",
+        description:
+          "Everything an agent needs to know about *this* project before it asks anything: the store engine and versions, data freshness and retention flags, which capture channels produce data, the scenes with their labels and named regions, the discovered custom-event/mesh/input vocabulary, the glossary and recent annotations, and which registry metrics are disabled because their capture channels are off (ADR 0051 §5). Bounded and cached briefly per project. Not a registry metric — it describes the project, not a row grain.",
+        tags: ["meta"],
+        parameters: [],
+        responses: {
+          "200": {
+            description: "The project context document.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProjectContext" },
+              },
+            },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
     "/api/v1/scene-representations": {
       get: {
         operationId: "list_scene_representations",
@@ -362,6 +497,405 @@ function staticPaths(): Record<string, unknown> {
         },
       },
     },
+    // --- Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1–F.3) ----
+    // Described here rather than derived, because a subscription is project
+    // *configuration* and not a metric: it has no rows, no grain and no window,
+    // so there is nothing in the registry to generate an operation from.
+    //
+    // The SSE stream stays omitted, for the reason the module note gives: a
+    // hijacked `text/event-stream` response is not honestly describable as a
+    // JSON operation, and a half-description is worse than the docs-site prose.
+    "/api/v1/subscriptions": {
+      get: {
+        operationId: "list_subscriptions",
+        summary: "Conditional subscriptions",
+        description:
+          "The project's standing conditional subscriptions (ADR 0051 §6): what the collector watches for, how often it checks, where a firing is delivered, and how each one last went. Any webhook secret is masked. Needs the `query` capability.",
+        tags: ["subscriptions"],
+        parameters: [],
+        responses: {
+          "200": {
+            description: "One entry per subscription, oldest first.",
+            content: {
+              "application/json": {
+                schema: { type: "array", items: { $ref: "#/components/schemas/Subscription" } },
+              },
+            },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+      post: {
+        operationId: "create_subscription",
+        summary: "Create a conditional subscription",
+        description:
+          "Store a new subscription. Needs the `annotate` capability, because creating one is how a caller asks the collector to make an outbound request on its behalf. A webhook `secret` is write-only: it is accepted here and never returned again. A webhook URL must be http(s) and its host must appear in `COLLECTOR_WEBHOOK_ALLOWED_HOSTS`, or the request is refused.",
+        tags: ["subscriptions"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/Subscription" } },
+          },
+        },
+        responses: {
+          "201": {
+            description: "The stored subscription, with any secret masked.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/Subscription" } },
+            },
+          },
+          "409": {
+            description: "The project already holds the maximum number of subscriptions.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
+    "/api/v1/subscriptions/{id}": {
+      get: {
+        operationId: "get_subscription",
+        summary: "One conditional subscription",
+        tags: ["subscriptions"],
+        parameters: [SUBSCRIPTION_ID_PARAM],
+        responses: {
+          "200": {
+            description: "The subscription.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/Subscription" } },
+            },
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+      patch: {
+        operationId: "set_subscription_enabled",
+        summary: "Enable or disable a subscription",
+        description:
+          "The only patchable field is `enabled`. Everything else changes what the subscription *means*, so it is replaced rather than edited. Needs `annotate`.",
+        tags: ["subscriptions"],
+        parameters: [SUBSCRIPTION_ID_PARAM],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { enabled: { type: "boolean" } },
+                required: ["enabled"],
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "The updated subscription.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/Subscription" } },
+            },
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+      delete: {
+        operationId: "delete_subscription",
+        summary: "Delete a subscription and its firing log",
+        tags: ["subscriptions"],
+        parameters: [SUBSCRIPTION_ID_PARAM],
+        responses: {
+          "204": { description: "Deleted." },
+          "404": { $ref: "#/components/responses/NotFound" },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
+    "/api/v1/subscriptions/{id}/events": {
+      get: {
+        operationId: "list_subscription_events",
+        summary: "Recent firings of one subscription",
+        description:
+          "The bounded firing log — the last 100 firings, newest first. Each row is { id, subscriptionId, projectId, at, payload }, where `payload` is the firing record plus the `format=summary` block that was delivered with it.",
+        tags: ["subscriptions"],
+        parameters: [
+          SUBSCRIPTION_ID_PARAM,
+          {
+            name: "limit",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1, maximum: 100 },
+            description: "Newest-first cap; clamped to the retained window.",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "One entry per recorded firing.",
+            content: {
+              "application/json": { schema: { type: "array", items: { type: "object" } } },
+            },
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
+    "/api/v1/subscriptions/{id}/test": {
+      post: {
+        operationId: "test_subscription",
+        summary: "Evaluate a subscription once, now",
+        description:
+          "Runs the predicate immediately and answers with the evaluation, including why it did **not** fire. A dry run by default; `deliver=true` records and delivers a real firing (honouring the cooldown), which is how a webhook receiver is proved to work without waiting for the condition to occur. Needs `annotate`.",
+        tags: ["subscriptions"],
+        parameters: [
+          SUBSCRIPTION_ID_PARAM,
+          {
+            name: "deliver",
+            in: "query",
+            required: false,
+            schema: { type: "boolean", default: false },
+            description: "Record and deliver the firing if the predicate is satisfied.",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "The evaluation.",
+            content: { "application/json": { schema: { type: "object" } } },
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": {
+            description: "An evaluation of this subscription is already in flight.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
+  };
+}
+
+/**
+ * The **metadata** paths (#310, ADR 0051 §5): annotations, glossary, saved
+ * analyses. They are not registry metrics — they store what people and agents
+ * write rather than aggregate what visitors did — so they are described by hand
+ * here, next to the other non-metric routes. The two request bodies are
+ * converted from the very Zod contracts that validate them, so the document
+ * cannot drift from the validator.
+ */
+function metadataPaths(): Record<string, unknown> {
+  const jsonBody = (schema: JsonSchema): unknown => ({
+    required: true,
+    content: { "application/json": { schema } },
+  });
+  const rows = (name: string): unknown => ({
+    "application/json": {
+      schema: { type: "array", items: { $ref: `#/components/schemas/${name}` } },
+    },
+  });
+  const one = (name: string): unknown => ({
+    "application/json": { schema: { $ref: `#/components/schemas/${name}` } },
+  });
+  const writeErrors = {
+    ...AUTHENTICATED_ERRORS,
+    "409": { $ref: "#/components/responses/Conflict" },
+  };
+  const notFound = { "404": { $ref: "#/components/responses/NotFound" } };
+
+  return {
+    "/api/v1/annotations": {
+      get: {
+        operationId: "list_annotations",
+        summary: "Project annotations",
+        description:
+          "Notes left on the project, newest first. `since`/`until` select the annotations whose period **overlaps** the window; a standing note (no period) always matches. Requires the `query` capability.",
+        tags: ["metadata"],
+        responses: {
+          "200": { description: "Matching annotations.", content: rows("Annotation") },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+      post: {
+        operationId: "create_annotation",
+        summary: "Annotate something",
+        description:
+          "Leave a note on the project, a scene, a mesh, a region, a metric or a period of time. Requires the **`annotate`** capability; the stored row records whether a person or an agent wrote it, and the write is recorded in the agent audit log.",
+        tags: ["metadata"],
+        requestBody: jsonBody(toJsonSchema(annotationSchema, "input")),
+        responses: {
+          "201": { description: "The stored annotation.", content: one("Annotation") },
+          ...writeErrors,
+        },
+      },
+    },
+    "/api/v1/annotations/{id}": {
+      delete: {
+        operationId: "delete_annotation",
+        summary: "Delete an annotation",
+        description:
+          "Remove one annotation of this project. Requires the `annotate` capability. An id that does not exist — or belongs to another project — answers 404.",
+        tags: ["metadata"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "204": { description: "Deleted." }, ...AUTHENTICATED_ERRORS, ...notFound },
+      },
+    },
+    "/api/v1/glossary": {
+      get: {
+        operationId: "list_glossary",
+        summary: "Project glossary",
+        description:
+          "What this project's names mean, ordered by term — the vocabulary to read before interpreting mesh names, scene ids and custom events. Requires the `query` capability.",
+        tags: ["metadata"],
+        responses: {
+          "200": { description: "The whole glossary.", content: rows("GlossaryEntry") },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
+    "/api/v1/glossary/{term}": {
+      put: {
+        operationId: "define_term",
+        summary: "Define a term",
+        description:
+          "Idempotent upsert: the term is the identity, so defining it again replaces the meaning. Requires the **`annotate`** capability.",
+        tags: ["metadata"],
+        parameters: [{ name: "term", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: jsonBody({
+          type: "object",
+          properties: {
+            meaning: {
+              type: "string",
+              maxLength: LIMITS.maxGlossaryMeaningLength,
+              description: "What the term means in this project.",
+            },
+          },
+          required: ["meaning"],
+        }),
+        responses: {
+          "200": { description: "The stored entry.", content: one("GlossaryEntry") },
+          ...writeErrors,
+        },
+      },
+      delete: {
+        operationId: "delete_term",
+        summary: "Undefine a term",
+        description: "Remove one glossary entry. Requires the `annotate` capability.",
+        tags: ["metadata"],
+        parameters: [{ name: "term", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "204": { description: "Deleted." }, ...AUTHENTICATED_ERRORS, ...notFound },
+      },
+    },
+    "/api/v1/analyses": {
+      get: {
+        operationId: "list_analyses",
+        summary: "Saved analyses",
+        description:
+          "Questions worth re-asking and what was concluded from them, newest first. Requires the `query` capability.",
+        tags: ["metadata"],
+        responses: {
+          "200": { description: "Saved analyses.", content: rows("SavedAnalysis") },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+      post: {
+        operationId: "save_analysis",
+        summary: "Save an analysis",
+        description:
+          "Store a titled question plus the finding it produced. `query` is an opaque JSON document the collector stores but does not interpret. Requires the **`annotate`** capability.",
+        tags: ["metadata"],
+        requestBody: jsonBody(toJsonSchema(savedAnalysisSchema, "input")),
+        responses: {
+          "201": { description: "The stored analysis.", content: one("SavedAnalysis") },
+          ...writeErrors,
+        },
+      },
+    },
+    "/api/v1/analyses/{id}": {
+      delete: {
+        operationId: "delete_analysis",
+        summary: "Delete a saved analysis",
+        description: "Remove one saved analysis. Requires the `annotate` capability.",
+        tags: ["metadata"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "204": { description: "Deleted." }, ...AUTHENTICATED_ERRORS, ...notFound },
+      },
+    },
+  };
+}
+
+/** The stored-row schemas of the three metadata tables. */
+function metadataSchemas(): Record<string, unknown> {
+  const author = {
+    authorKind: {
+      type: "string",
+      enum: ["user", "agent"],
+      description:
+        "Whether a person (a first-party UI session) or an agent wrote the row. Derived by the collector from the calling client, never from the payload.",
+    },
+    authorKeyId: {
+      type: ["string", "null"],
+      description: "Id of the API key that carried the write — never the key or its hash.",
+    },
+  };
+  return {
+    Annotation: {
+      type: "object",
+      title: "Annotation",
+      properties: {
+        id: { type: "string" },
+        projectId: { type: "string" },
+        targetKind: {
+          type: "string",
+          enum: ["project", "scene", "mesh", "region", "metric", "window"],
+          description: "What the note is about.",
+        },
+        targetId: {
+          type: ["string", "null"],
+          description: "The scene id, mesh name, region id or metric id the note points at.",
+        },
+        since: {
+          type: ["string", "null"],
+          description: "Start of the annotated period (ISO 8601).",
+        },
+        until: { type: ["string", "null"], description: "End of the annotated period (ISO 8601)." },
+        text: { type: "string", maxLength: LIMITS.maxAnnotationTextLength },
+        ...author,
+        createdAt: { type: "string" },
+        updatedAt: { type: "string" },
+      },
+      required: ["id", "projectId", "targetKind", "text", "createdAt", "updatedAt"],
+    },
+    GlossaryEntry: {
+      type: "object",
+      title: "Glossary entry",
+      properties: {
+        projectId: { type: "string" },
+        term: { type: "string", maxLength: LIMITS.maxGlossaryTermLength },
+        meaning: { type: "string", maxLength: LIMITS.maxGlossaryMeaningLength },
+        updatedAt: { type: "string" },
+      },
+      required: ["projectId", "term", "meaning", "updatedAt"],
+    },
+    SavedAnalysis: {
+      type: "object",
+      title: "Saved analysis",
+      properties: {
+        id: { type: "string" },
+        projectId: { type: "string" },
+        title: { type: "string", maxLength: LIMITS.maxSavedAnalysisTitleLength },
+        query: {
+          type: "object",
+          description:
+            "The stored question, as an opaque JSON document the collector does not interpret.",
+        },
+        conclusion: {
+          type: ["string", "null"],
+          maxLength: LIMITS.maxSavedAnalysisConclusionLength,
+        },
+        ...author,
+        createdAt: { type: "string" },
+      },
+      required: ["id", "projectId", "title", "query", "createdAt"],
+    },
   };
 }
 
@@ -374,6 +908,7 @@ function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unk
       properties: { error: { type: "string", description: "Human-readable failure reason." } },
       required: ["error"],
     },
+    ProjectContext: contextSchema(),
     SceneRepresentationSummary: {
       type: "object",
       title: "Scene representation summary",
@@ -394,6 +929,59 @@ function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unk
       },
       required: ["sceneId", "kind", "updatedAt"],
     },
+    ...metadataSchemas(),
+    Subscription: {
+      type: "object",
+      title: "Conditional subscription",
+      description:
+        "A standing question (ADR 0051 §6): a registry metric, a window, a predicate over that window, and where a firing is delivered. A webhook secret is accepted on create and never returned — reads carry a masked placeholder.",
+      properties: {
+        id: { type: "string", description: "Collector-assigned (sub_…); absent on create." },
+        projectId: { type: "string" },
+        name: { type: "string", maxLength: 120 },
+        metric: { type: "string", description: "Registry metric id (`@uptimizr/metrics`)." },
+        filters: {
+          type: "object",
+          properties: { scene: { type: "string" } },
+          description: "Narrows the metric the subscription watches.",
+        },
+        evaluate: {
+          type: "object",
+          properties: {
+            every: { type: "string", description: "Evaluation interval, e.g. 5m. Minimum 1m." },
+            window: {
+              type: "string",
+              description: "Span each evaluation measures, e.g. 1h. Minimum 1h.",
+            },
+            bucket: { type: "string", enum: ["hour", "day"] },
+          },
+          required: ["every", "window"],
+        },
+        predicate: {
+          type: "object",
+          description:
+            "Closed union discriminated on `kind`: threshold {column, op, value, minSample}, anomaly {sensitivity}, movers {pct, direction}, new_value {dimension}, presence {op, value}.",
+          properties: {
+            kind: {
+              type: "string",
+              enum: ["threshold", "anomaly", "movers", "new_value", "presence"],
+            },
+          },
+          required: ["kind"],
+        },
+        cooldown: { type: "string", description: "Quiet period after a firing; 0s for none." },
+        delivery: {
+          type: "array",
+          description: "{ kind: sse } and/or one { kind: webhook, url, secret? }.",
+          items: { type: "object" },
+        },
+        enabled: { type: "boolean", default: true },
+        lastFiredAt: { type: ["string", "null"] },
+        lastError: { type: ["string", "null"] },
+        failures: { type: "integer" },
+      },
+      required: ["name", "metric", "evaluate", "predicate", "delivery"],
+    },
   };
   for (const metric of metrics) schemas[metric.id] = rowSchema(metric);
 
@@ -405,17 +993,27 @@ function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unk
         in: "header",
         name: "x-api-key",
         description:
-          "A project API key with the `query` capability. Reads are always scoped to the project the key resolves to; a client-supplied project id is ignored.",
+          "A project API key with the `query` capability. Reads are always scoped to the project the key resolves to; a client-supplied project id is ignored. An operation whose `x-uptimizr-capability` is `query:raw` needs a key holding that capability as well, on a collector started with `ENABLE_RAW_SESSION_RETENTION` (ADR 0003 / ADR 0051 §7).",
       },
     },
     responses: {
       BadRequest: { description: "A parameter failed validation.", content: errorContent },
       Unauthorized: { description: "Missing or unknown API key.", content: errorContent },
       Forbidden: {
-        description: "The key is ingest-only and may not read.",
+        description:
+          "The key does not hold the capability this operation requires — an ingest-only key " +
+          "trying to read, a `query` key asking for a `query:raw` operation, or a key without " +
+          "`annotate` trying to write metadata. A `query:raw` operation also answers 403 when " +
+          "the collector was started without `ENABLE_RAW_SESSION_RETENTION` (ADR 0003). Check " +
+          "each operation's `x-uptimizr-capability`.",
         content: errorContent,
       },
-      NotFound: { description: "No such session or scene.", content: errorContent },
+      NotFound: { description: "No such session, scene or metadata row.", content: errorContent },
+      Conflict: {
+        description:
+          "The project has reached its cap for that metadata table. Delete a row and retry.",
+        content: errorContent,
+      },
       TooManyRequests: { description: "Rate limit exceeded.", content: errorContent },
     },
     schemas,
@@ -436,10 +1034,11 @@ export function buildOpenApiDocument(
   const metrics = allMetrics();
   const served = metrics.filter((metric) => metric.endpoint != null);
 
-  const paths: Record<string, Record<string, unknown>> = staticPaths() as Record<
-    string,
-    Record<string, unknown>
-  >;
+  const paths: Record<string, Record<string, unknown>> = {
+    ...staticPaths(),
+    ...queryDslPath(),
+    ...metadataPaths(),
+  } as Record<string, Record<string, unknown>>;
   for (const metric of served) {
     const path = toOpenApiPath(metric.endpoint!.path);
     paths[path] ??= {};
@@ -462,8 +1061,14 @@ export function buildOpenApiDocument(
         "(`grain`), what its columns mean (`units`), the capture channels that must be enabled " +
         "for it to have data (`source-channels`), how far to trust it (`caveats`) and how to " +
         "read it (`interpretation`).\n\n" +
-        "The API is **read-only and aggregate-only**: there is no endpoint here that returns raw " +
-        "per-session events or personal data (ADR 0003).",
+        "The analytics API is **read-only**: no endpoint here ingests, mutates or returns " +
+        "personal data, and nothing can write, alter or delete an event (ADR 0003, " +
+        "ADR 0051 §9). It is aggregate-only with exactly one, doubly-gated exception — " +
+        "`session_narrative`, a bounded compaction of one session, which requires both a " +
+        "`query:raw` key and `ENABLE_RAW_SESSION_RETENTION`. The one writable surface is the " +
+        "`metadata` group — annotations, the glossary and saved analyses — which stores what a " +
+        "project's own people and agents write, requires the `annotate` capability, and is " +
+        "audited. Check each operation's `x-uptimizr-capability`.",
       license: { name: "Apache-2.0", identifier: "Apache-2.0" },
       contact: { name: "Uptimizr", url: "https://uptimizr.com/docs/" },
     },
@@ -475,6 +1080,16 @@ export function buildOpenApiDocument(
         description: CATEGORY_DESCRIPTIONS[category] ?? category,
       })),
       { name: "meta", description: "Self-description and liveness." },
+      {
+        name: "metadata",
+        description:
+          "What people and agents leave behind: annotations, the project glossary, saved analyses. Reads need `query`; every write needs `annotate` and is audited.",
+      },
+      {
+        name: "subscriptions",
+        description:
+          "Conditional subscriptions: standing predicates over a metric, delivered over SSE and signed webhooks (ADR 0051 §6).",
+      },
     ],
     paths,
     components: componentsFor(served),

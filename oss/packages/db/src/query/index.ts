@@ -32,6 +32,11 @@ export * from "./mssqlDialect.js";
 // Every `build*` aggregation (renders a QuerySpec for a given Dialect).
 export * from "./aggregations.js";
 
+// The custom-event vocabulary fold (ADR 0051 §5): the pure half of
+// `buildCustomEventVocabulary`, which turns the sampled payloads into prop keys
+// and coarse types. No I/O, no dialect — browser-safe like the builders.
+export * from "./customEventVocabulary.js";
+
 // Engine-neutral event → row mapping (isomorphic; imports only @uptimizr/schema).
 export {
   toEventRow,
@@ -46,3 +51,8 @@ export type { EventRow, NodeSampleRow, SessionMeta } from "../events.js";
 // DuckDB-Wasm database. Re-exported here so the in-browser store stays a single
 // source of truth with the Node store (no duplicated/drifting schema).
 export { DUCKDB_MIGRATIONS } from "../duckdb/migrations.js";
+
+// The delegated query-DSL compiler (ADR 0051 §3). Pure: it reads the metric
+// registry and renders a `QuerySpec` through the same builders above, so it is
+// browser-safe for the same reason they are.
+export * from "./dsl/index.js";

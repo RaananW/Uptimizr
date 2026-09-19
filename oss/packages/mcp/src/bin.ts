@@ -2,7 +2,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createCollectorClient } from "@uptimizr/agent-core";
 import { readMcpConfig } from "./config.js";
-import { createMcpServer } from "./server.js";
+import { createMcpServer, fetchKeyCapabilities } from "./server.js";
 
 /**
  * Entry point: read configuration from the environment, build a read-only
@@ -12,7 +12,14 @@ import { createMcpServer } from "./server.js";
 async function main(): Promise<void> {
   const config = readMcpConfig();
   const client = createCollectorClient(config);
-  const server = createMcpServer(client);
+  // Ask the collector what this key may do before building the server, so the
+  // capability-gated tools match the key: the raw-session tools of #314 only for
+  // `query:raw`, the metadata write tools of #310 only for `annotate`. Best
+  // effort — a collector older than `/api/v1/whoami`, an offline start or a
+  // transient failure yields "no extra capabilities", which serves the ordinary
+  // `query` surface this binary has always served.
+  const capabilities = await fetchKeyCapabilities(client);
+  const server = createMcpServer(client, { capabilities });
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

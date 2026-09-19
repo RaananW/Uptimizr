@@ -132,9 +132,14 @@ describe(`${SELF} — negative dependency gate`, () => {
   });
 
   it("declares only dependency-free runtime packages", () => {
+    // `@uptimizr/schema` was already reachable through `@uptimizr/metrics`; it
+    // became a *direct* dependency with the metadata write tools (#310), whose
+    // argument bounds are the schema's `LIMITS`. It depends on nothing but zod,
+    // so the browser-safety guarantee is unchanged.
     expect(runtimeDeps(self as Manifest).sort()).toEqual([
       "@mlc-ai/web-llm",
       "@uptimizr/metrics",
+      "@uptimizr/schema",
       "zod",
     ]);
   });

@@ -363,6 +363,142 @@ export const MSSQL_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
       );
     `,
   },
+  // Project metadata (ADR 0051 §5 / sketch §E.2): annotations, glossary and
+  // saved analyses — the three tables the `annotate` capability gates, mirroring
+  // the DuckDB tables column-for-column. The events tables are untouched.
+  //
+  // `text` is a (deprecated) T-SQL data-type name, so the annotation column is
+  // bracketed here and in every accessor; the column name matches the other
+  // three engines, where it needs no quoting.
+  {
+    id: "0015_annotations",
+    sql: /* sql */ `
+      IF OBJECT_ID(N'dbo.annotations', N'U') IS NULL
+      CREATE TABLE dbo.annotations (
+        id            ${KEY} NOT NULL PRIMARY KEY NONCLUSTERED,
+        project_id    ${KEY} NOT NULL,
+        target_kind   ${KEY} NOT NULL,
+        target_id     ${KEY} NULL,
+        since         datetime2(3) NULL,
+        until         datetime2(3) NULL,
+        [text]        ${TEXT} NOT NULL,
+        author_kind   ${KEY} NOT NULL DEFAULT N'user',
+        author_key_id ${KEY} NULL,
+        created_at    datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+        updated_at    datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME()
+      );
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                      WHERE name = N'annotations_project_created_idx'
+                        AND object_id = OBJECT_ID(N'dbo.annotations'))
+        CREATE INDEX annotations_project_created_idx
+          ON dbo.annotations (project_id, created_at DESC);
+    `,
+  },
+  // Glossary. The key is NONCLUSTERED for the same 900-byte reason as
+  // `scene_regions`: two `nvarchar(255)` columns exceed a clustered key.
+  {
+    id: "0016_glossary",
+    sql: /* sql */ `
+      IF OBJECT_ID(N'dbo.glossary', N'U') IS NULL
+      CREATE TABLE dbo.glossary (
+        project_id  ${KEY} NOT NULL,
+        term        ${KEY} NOT NULL,
+        meaning     ${TEXT} NOT NULL,
+        updated_at  datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+        PRIMARY KEY NONCLUSTERED (project_id, term)
+      );
+    `,
+  },
+  {
+    id: "0017_saved_analyses",
+    sql: /* sql */ `
+      IF OBJECT_ID(N'dbo.saved_analyses', N'U') IS NULL
+      CREATE TABLE dbo.saved_analyses (
+        id            ${KEY} NOT NULL PRIMARY KEY NONCLUSTERED,
+        project_id    ${KEY} NOT NULL,
+        title         ${TEXT} NOT NULL,
+        query         nvarchar(max) NOT NULL DEFAULT N'{}',
+        conclusion    ${TEXT} NULL,
+        author_kind   ${KEY} NOT NULL DEFAULT N'user',
+        author_key_id ${KEY} NULL,
+        created_at    datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME()
+      );
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                      WHERE name = N'saved_analyses_project_created_idx'
+                        AND object_id = OBJECT_ID(N'dbo.saved_analyses'))
+        CREATE INDEX saved_analyses_project_created_idx
+          ON dbo.saved_analyses (project_id, created_at DESC);
+    `,
+  },
+  // Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1–F.2). One row per
+  // standing question; the declaration lives in a JSON `config` column and the
+  // scalars beside it are exactly what the store filters (`project_id`,
+  // `enabled`), orders (`created_at`) or updates (`last_fired_at`, `failures`).
+  //
+  // `webhook_secret` is the shared HMAC key: deliberately NOT hashed — a one-way
+  // digest cannot sign an outbound body — and never selected by any read path
+  // other than `getWebhookSecret`.
+  //
+  // Like `scene_regions`, the key is `NONCLUSTERED`: the index-key size limit
+  // (1700 bytes) applies to the clustered key, and a heap with a nonclustered
+  // key is the right shape for point lookups anyway.
+  {
+    id: "0018_subscriptions",
+    sql: /* sql */ `
+      IF OBJECT_ID(N'dbo.subscriptions', N'U') IS NULL
+      CREATE TABLE dbo.subscriptions (
+        id             ${KEY} NOT NULL,
+        project_id     ${KEY} NOT NULL,
+        name           ${TEXT} NOT NULL,
+        metric         ${KEY} NOT NULL,
+        config         nvarchar(max) NOT NULL,
+        webhook_secret ${TEXT} NULL,
+        enabled        bit NOT NULL DEFAULT 1,
+        created_at     datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+        updated_at     datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+        last_fired_at  datetime2(3) NULL,
+        last_error     ${TEXT} NULL,
+        failures       bigint NOT NULL DEFAULT 0,
+        PRIMARY KEY NONCLUSTERED (id)
+      );
+    `,
+  },
+  {
+    id: "0019_subscriptions_idx",
+    sql: /* sql */ `
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                      WHERE name = N'subscriptions_project_idx'
+                        AND object_id = OBJECT_ID(N'dbo.subscriptions'))
+      CREATE INDEX subscriptions_project_idx
+        ON dbo.subscriptions (project_id, created_at);
+    `,
+  },
+  // The bounded firing log: `{ subscriptionId, at, payload }`, last 100 per
+  // subscription, trimmed in the same transaction as the insert.
+  {
+    id: "0020_subscription_events",
+    sql: /* sql */ `
+      IF OBJECT_ID(N'dbo.subscription_events', N'U') IS NULL
+      CREATE TABLE dbo.subscription_events (
+        id              ${KEY} NOT NULL,
+        subscription_id ${KEY} NOT NULL,
+        project_id      ${KEY} NOT NULL,
+        at              datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+        payload         nvarchar(max) NOT NULL,
+        PRIMARY KEY NONCLUSTERED (id)
+      );
+    `,
+  },
+  {
+    id: "0021_subscription_events_idx",
+    sql: /* sql */ `
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                      WHERE name = N'subscription_events_sub_at_idx'
+                        AND object_id = OBJECT_ID(N'dbo.subscription_events'))
+      CREATE INDEX subscription_events_sub_at_idx
+        ON dbo.subscription_events (subscription_id, at DESC);
+    `,
+  },
 ];
 
 /**

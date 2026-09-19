@@ -12,7 +12,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { readTools } from "@uptimizr/agent-core";
+import { rawTools, readTools } from "@uptimizr/agent-core";
 import { CASE_CATEGORIES, toolsReferenced, type CaseCategory, type EvalCase } from "./cases.js";
 
 const uncoveredSchema = z
@@ -38,7 +38,7 @@ export function loadUncovered(path: string = uncoveredPath()): Record<string, st
 
 /** What the bank does and does not reach. */
 export interface CoverageReport {
-  /** Every tool the generated catalog serves. */
+  /** Every tool the generated catalogs serve, capability-gated ones included. */
   served: string[];
   /** Tools named by at least one case. */
   covered: string[];
@@ -57,7 +57,9 @@ export function coverageReport(
   cases: readonly EvalCase[],
   uncovered: Record<string, string>,
 ): CoverageReport {
-  const served = readTools.map((tool) => tool.name);
+  // Both catalogs: a capability-gated tool still has to be measured, it is just
+  // asked through a key that holds the capability (ADR 0051 §7).
+  const served = [...readTools, ...rawTools].map((tool) => tool.name);
   const servedSet = new Set(served);
   const referenced = new Set(cases.flatMap((evalCase) => toolsReferenced(evalCase)));
   const withCase = new Set(cases.map((evalCase) => evalCase.category));

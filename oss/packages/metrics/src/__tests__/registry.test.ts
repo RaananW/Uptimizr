@@ -23,10 +23,14 @@ import {
   AGGREGATION_BUILDER_NAMES,
   DIMENSION_COLUMNS,
   FILTER_TARGETS,
+  DIMENSION_ROW_COLUMNS,
+  GENERIC_DIMENSIONS,
   METRIC_IDS,
   METRIC_REGISTRY,
   allMetrics,
   getMetric,
+  isAggregateMetric,
+  isDerivedMetric,
   isMetricId,
   isResourceMetric,
   metricForBuilder,
@@ -91,12 +95,44 @@ describe("metric registry — coverage", () => {
     }
   });
 
-  it("marks exactly the two store resources as builder-less", () => {
+  it("marks exactly the store resources and compactions as builder-less", () => {
+    // A builder-less entry is served by reading the store rather than by running
+    // an aggregation: the two metadata resources, plus the session narrative,
+    // which compacts the raw per-session stream in memory (ADR 0051 §7).
     const resources = allMetrics()
       .filter(isResourceMetric)
       .map((metric) => metric.id)
       .sort();
-    expect(resources).toEqual(["scene_representation", "session_meta"]);
+    expect(resources).toEqual(["scene_representation", "session_meta", "session_narrative"]);
+  });
+
+  it("marks the insight primitives as derived rather than as resources", () => {
+    const derived = allMetrics()
+      .filter(isDerivedMetric)
+      .map((metric) => metric.id)
+      .sort();
+    expect(derived).toEqual([
+      // --- anomalies (#306) ---
+      "insight_anomalies",
+      "insight_baseline",
+      "insight_movers",
+      // --- significance / scene health (#307) ---
+      "insight_scene_health",
+      "insight_significance",
+    ]);
+    for (const metric of allMetrics().filter(isDerivedMetric)) {
+      // A derived metric has no `build*` aggregation, but unlike a resource it
+      // is a real aggregate: an endpoint, a querystring, a time range and the
+      // `format` envelope. Confusing the two would drop it out of the summary
+      // surface and out of OpenAPI's parameter list.
+      expect(metric.builder, `${metric.id} must not claim a builder`).toBeUndefined();
+      expect(isResourceMetric(metric), `${metric.id} is not a resource`).toBe(false);
+      expect(isAggregateMetric(metric), `${metric.id} is an aggregate`).toBe(true);
+      expect(metric.endpoint?.path, `${metric.id} endpoint`).toMatch(/^\/api\/v1\/insights\//);
+      expect(metric.filters, `${metric.id} range`).toContain("since");
+      expect(metric.filters, `${metric.id} range`).toContain("until");
+      expect(metric.category).toBe("insights");
+    }
   });
 
   it("resolves a metric from its builder name", () => {
@@ -166,9 +202,12 @@ describe("metric registry — internal consistency", () => {
 
   it("offers every aggregate endpoint the shared `format` filter", () => {
     for (const metric of metrics) {
-      // The two resource reads take no querystring at all; the daily rollups are
-      // not served on an endpoint. Everything else must accept an envelope.
-      const servedOnAQuerystring = metric.endpoint != null && metric.builder != null;
+      // The two resource reads take no querystring at all; the daily rollups
+      // are not served on an endpoint. Everything that *is* served with
+      // parameters must accept an envelope — aggregations, the derived insight
+      // primitives (ADR 0051 §4) and the builder-less session narrative, whose
+      // querystring shapes the compaction (ADR 0051 §7), alike.
+      const servedOnAQuerystring = metric.endpoint != null && metric.filters.length > 0;
       expect(
         metric.filters.includes("format"),
         `${metric.id}: format filter ${servedOnAQuerystring ? "missing" : "should not be declared"}`,
@@ -242,6 +281,112 @@ describe("metric registry — internal consistency", () => {
       .map((metric) => metric.id)
       .sort();
     expect(withoutEndpoint).toEqual(["events_daily", "perf_daily"]);
+  });
+});
+
+describe("metric registry — the declared grain", () => {
+  /**
+   * `grainDimensions` used to be computed from `row.shape` at call time
+   * (`nativeDimensions`, #303). #304 promoted it to registry data so the generic
+   * group-by tier can tell "not this metric's grain" apart from "not groupable
+   * at all" — and the derivation that made it trustworthy survives here, as the
+   * gate on the declaration rather than as the source of it.
+   */
+  function derivedGrain(metric: MetricDefinition): readonly string[] {
+    const columns = new Set(Object.keys(metric.row.shape));
+    return metric.dimensions.filter((dimension) =>
+      DIMENSION_ROW_COLUMNS[dimension].some((column) => columns.has(column)),
+    );
+  }
+
+  it("declares the grain the rows actually carry", () => {
+    for (const metric of allMetrics()) {
+      expect([...metric.grainDimensions], metric.id).toEqual([...derivedGrain(metric)]);
+    }
+  });
+
+  it("keeps the grain a subset of the declared dimensions", () => {
+    for (const metric of allMetrics()) {
+      for (const dimension of metric.grainDimensions) {
+        expect(metric.dimensions, metric.id).toContain(dimension);
+      }
+    }
+  });
+
+  it("names the grain at most once per dimension", () => {
+    for (const metric of allMetrics()) {
+      expect(new Set(metric.grainDimensions).size, metric.id).toBe(metric.grainDimensions.length);
+    }
+  });
+});
+
+describe("metric registry — the generic group-by declaration", () => {
+  const generic = allMetrics().filter((metric) => metric.genericGroupBy != null);
+
+  it("is declared on at least one metric per interaction family", () => {
+    expect(generic.length).toBeGreaterThan(0);
+    for (const metric of generic) {
+      expect(
+        metric.builder,
+        `${metric.id} declares genericGroupBy without a builder`,
+      ).toBeDefined();
+    }
+  });
+
+  it("projects only columns the metric's own row already declares", () => {
+    for (const metric of generic) {
+      for (const measure of metric.genericGroupBy!.measures) {
+        expect(
+          Object.keys(metric.row.shape),
+          `${metric.id}: generic measure '${measure.column}' is not a row column`,
+        ).toContain(measure.column);
+      }
+    }
+  });
+
+  it("names a source column for the aggregates that need one, and none for the others", () => {
+    for (const metric of generic) {
+      for (const measure of metric.genericGroupBy!.measures) {
+        const needsColumn =
+          measure.kind === "sum" || measure.kind === "avg" || measure.kind === "max";
+        expect(measure.of != null, `${metric.id}.${measure.column} (${measure.kind})`).toBe(
+          needsColumn,
+        );
+      }
+    }
+  });
+
+  it("declares at least one measure, the first of which is the metric's own", () => {
+    for (const metric of generic) {
+      const measures = metric.genericGroupBy!.measures;
+      expect(measures.length, metric.id).toBeGreaterThan(0);
+      const declared = Object.entries(metric.columns).find(([, c]) => c.measure === true)?.[0];
+      expect(measures[0]?.column, `${metric.id}: first generic measure`).toBe(declared);
+    }
+  });
+
+  it("can render every dimension a generic metric declares, or says so by omission", () => {
+    for (const metric of generic) {
+      const renderable = metric.dimensions.filter((d) => GENERIC_DIMENSIONS.includes(d));
+      // A generic metric that declares nothing the tier can render would be
+      // declared generic for no reason.
+      expect(renderable.length, `${metric.id}: no renderable dimension`).toBeGreaterThan(0);
+      for (const dimension of metric.grainDimensions) {
+        expect(
+          GENERIC_DIMENSIONS,
+          `${metric.id}: grain '${dimension}' is not renderable`,
+        ).toContain(dimension);
+      }
+    }
+  });
+
+  it("leaves the spatial and percentile metrics delegated", () => {
+    const spatial = allMetrics().filter(
+      (metric) => metric.grain === "bin" || metric.grain === "voxel",
+    );
+    for (const metric of spatial) {
+      expect(metric.genericGroupBy, `${metric.id} is spatial`).toBeUndefined();
+    }
   });
 });
 

@@ -35,7 +35,7 @@ describe("duckdb parity (vs golden)", () => {
     await db.close();
   });
 
-  it("covers all 68 aggregations", () => {
+  it("covers all 69 aggregations, plus the query DSL and the insight bucket series", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
@@ -61,6 +61,7 @@ describe("duckdb parity (vs golden)", () => {
       "meshInteractionKinds",
       "reachability",
       "topInputActions",
+      "customEventVocabulary",
       "perfSummary",
       "renderScaleTruth",
       "perfDistribution",
@@ -105,6 +106,36 @@ describe("duckdb parity (vs golden)", () => {
       "interactionsBySource",
       "funnel",
       "loadBounceFunnel",
+      // Compiled through the query DSL rather than called directly (ADR 0051 §3).
+      "dsl:topMeshes",
+      "dsl:meshSourcesFiltered",
+      "dsl:funnel",
+      // Compiled through the generic group-by tier (#304): one shared
+      // `SELECT <dims>, <measures> … GROUP BY <dims>` rendered from registry
+      // data, at a grain the metric’s own builder cannot produce.
+      "dsl:genericMeshesByEventType",
+      "dsl:genericMeshesByScene",
+      "dsl:genericEventCountsByScene",
+      "dsl:genericEventCountsByEngine",
+      "dsl:genericMeshSourcesByScene",
+      "dsl:genericInteractionsByCameraMode",
+      // The one query behind both insight primitives (ADR 0051 §4), one case per
+      // aggregate shape its measure catalog can render.
+      "metricBuckets:count",
+      "metricBuckets:sessions",
+      "metricBuckets:quantile",
+      "metricBuckets:sum",
+      "metricBuckets:geometry",
+      "metricBuckets:emptySeries",
+      "metricBuckets:dayGrain",
+      // --- anomalies (#306): the grouped split behind contributor attribution.
+      "metricBuckets:splitEventType",
+      "metricBuckets:splitMesh",
+      "metricBuckets:splitScene",
+      // --- significance / scene health (#307) ---
+      "metricBuckets:rateDenominator",
+      "metricBuckets:longFrames",
+      "metricBuckets:tailQuantile",
     ]);
   });
 

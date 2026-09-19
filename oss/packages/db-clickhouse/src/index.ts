@@ -47,3 +47,29 @@ export type {
 
 export { putSceneRegions, getSceneRegions, listSceneRegions } from "./sceneRegions.js";
 export type { SceneRegionRecord, SceneRegionSummary } from "./sceneRegions.js";
+
+// Project metadata: annotations, glossary, saved analyses (#310, ADR 0051 §5).
+export {
+  createAnnotation,
+  listAnnotations,
+  deleteAnnotation,
+  putGlossaryEntry,
+  listGlossary,
+  deleteGlossaryEntry,
+  createSavedAnalysis,
+  listSavedAnalyses,
+  deleteSavedAnalysis,
+} from "./projectMetadata.js";
+// Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1–F.2).
+export {
+  listSubscriptions,
+  listEnabledSubscriptions,
+  getSubscription,
+  createSubscription,
+  setSubscriptionEnabled,
+  deleteSubscription,
+  recordSubscriptionOutcome,
+  getWebhookSecret,
+  recordSubscriptionEvent,
+  listSubscriptionEvents,
+} from "./subscriptions.js";

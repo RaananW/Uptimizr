@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { readTools } from "@uptimizr/agent-core";
-import { allMetrics, isResourceMetric } from "@uptimizr/metrics";
+import { rawTools, readTools, NON_REGISTRY_READ_TOOLS } from "@uptimizr/agent-core";
+import { allMetrics, isResourceMetric, metricCapability } from "@uptimizr/metrics";
 import { buildCapabilities } from "../capabilities.js";
 
 describe("buildCapabilities", () => {
   const cap = buildCapabilities();
   const metrics = allMetrics();
-  const served = metrics.filter((metric) => metric.endpoint != null);
+  // The default descriptor describes the ordinary `query` surface; a
+  // capability-gated metric is listed only for a key that holds its capability.
+  const served = metrics.filter(
+    (metric) => metric.endpoint != null && metricCapability(metric) === "query",
+  );
 
   it("declares the surface read-only", () => {
     expect(cap.readOnly).toBe(true);
@@ -19,15 +23,22 @@ describe("buildCapabilities", () => {
     expect(cap.eventTypes).toContain("session_start");
   });
 
-  it("represents every served registry metric exactly once", () => {
-    expect(cap.tools).toHaveLength(served.length);
-    const names = cap.tools.map((t) => t.name).sort();
-    expect(names).toEqual(served.map((metric) => metric.id).sort());
+  it("represents every served registry metric exactly once, plus the non-metric tools", () => {
+    // One descriptor per served metric, plus the short tail of collector reads
+    // that have no registry entry by design (#311, `nonRegistryTools.ts`) and
+    // one for the query DSL (ADR 0051 §3) — the only tool that is not a single
+    // metric.
+    const notMetrics = [...NON_REGISTRY_READ_TOOLS.map((tool) => tool.name), "query"];
+    const names = cap.tools.map((t) => t.name);
+    expect(names.filter((name) => !notMetrics.includes(name)).sort()).toEqual(
+      served.map((metric) => metric.id).sort(),
+    );
+    expect(cap.tools).toHaveLength(served.length + notMetrics.length);
   });
 
   it("matches the shipped tool catalog exactly (sketch §A.4)", () => {
     // `readTools` is now itself generated from the registry (#296), so the
-    // descriptor and the tools the server registers are the same 69 names —
+    // descriptor and the tools the server registers are the same names —
     // no longer merely a superset.
     expect(cap.tools.map((t) => t.name).sort()).toEqual(readTools.map((t) => t.name).sort());
   });
@@ -119,5 +130,31 @@ describe("buildCapabilities", () => {
 
   it("is JSON-serialisable, which is how the resource is served", () => {
     expect(() => JSON.stringify(cap)).not.toThrow();
+  });
+});
+
+describe("buildCapabilities — capability gating (ADR 0051 §7)", () => {
+  it("omits the query:raw tools for a plain query key", () => {
+    const names = buildCapabilities().tools.map((tool) => tool.name);
+    expect(names).not.toContain("session_narrative");
+    expect(names.sort()).toEqual(readTools.map((tool) => tool.name).sort());
+  });
+
+  it("lists them for a key that holds the capability", () => {
+    const names = buildCapabilities({ capabilities: ["query", "query:raw"] }).tools.map(
+      (tool) => tool.name,
+    );
+    expect(names).toContain("session_narrative");
+    expect(names.sort()).toEqual([...readTools, ...rawTools].map((tool) => tool.name).sort());
+  });
+
+  it("still documents every metric in the registry, with the capability it needs", () => {
+    // The tool list answers "what may I call?"; the metric list answers "what
+    // exists?". Hiding the metric entirely would leave an agent unable to tell a
+    // missing feature from a missing permission.
+    const descriptor = buildCapabilities();
+    const narrative = descriptor.metrics.find((metric) => metric.id === "session_narrative");
+    expect(narrative?.endpoint?.capability).toBe("query:raw");
+    expect(descriptor.metrics).toHaveLength(allMetrics().length);
   });
 });

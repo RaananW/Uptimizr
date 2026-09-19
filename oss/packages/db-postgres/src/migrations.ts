@@ -282,6 +282,104 @@ export const POSTGRES_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
       );
     `,
   },
+  // Project metadata (ADR 0051 §5 / sketch §E.2): annotations, glossary and
+  // saved analyses — the three tables a person or an agent can write to, gated
+  // by the `annotate` capability and audited on every write. Mirrors the DuckDB
+  // tables column-for-column; the events tables are untouched.
+  {
+    id: "0015_annotations",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS annotations (
+        id            text PRIMARY KEY,
+        project_id    text NOT NULL,
+        target_kind   text NOT NULL,
+        target_id     text,
+        since         timestamp,
+        until         timestamp,
+        text          text NOT NULL,
+        author_kind   text NOT NULL DEFAULT 'user',
+        author_key_id text,
+        created_at    timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+        updated_at    timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc')
+      );
+      CREATE INDEX IF NOT EXISTS annotations_project_created_idx
+        ON annotations (project_id, created_at DESC);
+    `,
+  },
+  {
+    id: "0016_glossary",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS glossary (
+        project_id  text NOT NULL,
+        term        text NOT NULL,
+        meaning     text NOT NULL,
+        updated_at  timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+        PRIMARY KEY (project_id, term)
+      );
+    `,
+  },
+  {
+    id: "0017_saved_analyses",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS saved_analyses (
+        id            text PRIMARY KEY,
+        project_id    text NOT NULL,
+        title         text NOT NULL,
+        query         text NOT NULL DEFAULT '{}',
+        conclusion    text,
+        author_kind   text NOT NULL DEFAULT 'user',
+        author_key_id text,
+        created_at    timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc')
+      );
+      CREATE INDEX IF NOT EXISTS saved_analyses_project_created_idx
+        ON saved_analyses (project_id, created_at DESC);
+    `,
+  },
+  // Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1–F.2). One row per
+  // standing question; the declaration lives in a JSON `config` column and the
+  // scalars beside it are exactly what the store filters (`project_id`,
+  // `enabled`), orders (`created_at`) or updates (`last_fired_at`, `failures`).
+  //
+  // `webhook_secret` is the shared HMAC key: deliberately NOT hashed — a one-way
+  // digest cannot sign an outbound body — and never selected by any read path
+  // other than `getWebhookSecret`.
+  {
+    id: "0018_subscriptions",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        id             text PRIMARY KEY,
+        project_id     text NOT NULL,
+        name           text NOT NULL,
+        metric         text NOT NULL,
+        config         text NOT NULL,
+        webhook_secret text,
+        enabled        boolean NOT NULL DEFAULT true,
+        created_at     timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+        updated_at     timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+        last_fired_at  timestamp,
+        last_error     text,
+        failures       bigint NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS subscriptions_project_idx
+        ON subscriptions (project_id, created_at);
+    `,
+  },
+  // The bounded firing log: `{ subscriptionId, at, payload }`, last 100 per
+  // subscription, trimmed in the same transaction as the insert.
+  {
+    id: "0019_subscription_events",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS subscription_events (
+        id              text PRIMARY KEY,
+        subscription_id text NOT NULL,
+        project_id      text NOT NULL,
+        at              timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+        payload         text NOT NULL DEFAULT '{}'
+      );
+      CREATE INDEX IF NOT EXISTS subscription_events_sub_at_idx
+        ON subscription_events (subscription_id, at DESC);
+    `,
+  },
 ];
 
 /**

@@ -4,6 +4,7 @@ import {
   buildCameraDistance,
   buildCameraPositionHeatmap,
   buildClickGazeRay,
+  buildCustomEventVocabulary,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -16,6 +17,8 @@ import {
   buildCameraGestures,
   buildDistinctScenes,
   buildEventTypeCounts,
+  buildMetricBuckets,
+  toMetricBucketRows,
   buildFlowHeatmap,
   buildFunnel,
   buildSceneRetention,
@@ -62,21 +65,42 @@ import {
   buildTopMeshesBySource,
   buildTopMeshesTrend,
   buildTopInputActions,
+  foldCustomEventVocabulary,
   buildWorldHeatmap,
   buildWorldHeatmapStats,
   buildGazeHeatmap,
   buildGazeHeatmapStats,
   createDuckdbClient,
+  compileMetric,
   duckdbDialect,
+  duckdbCreateAnnotation,
+  duckdbCreateSavedAnalysis,
+  duckdbDeleteAnnotation,
+  duckdbDeleteGlossaryEntry,
+  duckdbDeleteSavedAnalysis,
   duckdbGetSceneRegions,
   duckdbGetSceneRepresentation,
   duckdbGetSessionEvents,
   duckdbGetSessionMeta,
   duckdbGetProject,
   duckdbInsertEvents,
+  duckdbListAnnotations,
+  duckdbListGlossary,
+  duckdbListSavedAnalyses,
   duckdbListSceneRegions,
   duckdbListSceneRepresentations,
+  duckdbPutGlossaryEntry,
   duckdbPutSceneRegions,
+  duckdbListSubscriptions,
+  duckdbListEnabledSubscriptions,
+  duckdbGetSubscription,
+  duckdbCreateSubscription,
+  duckdbSetSubscriptionEnabled,
+  duckdbDeleteSubscription,
+  duckdbRecordSubscriptionOutcome,
+  duckdbGetWebhookSecret,
+  duckdbRecordSubscriptionEvent,
+  duckdbListSubscriptionEvents,
   duckdbResolveApiKey,
   duckdbRecordAudit,
   duckdbListAudit,
@@ -117,6 +141,7 @@ import {
   type ReachabilityBinRow,
   type MeshSourceCountRow,
   type MeshTrendPointRow,
+  type CustomEventVocabularySampleRow,
   type InputActionCountRow,
   type NavigationStatsRow,
   type BacktrackRatioRow,
@@ -168,12 +193,27 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
   await migrateDuckdb(db);
 
   return {
+    engine: "duckdb",
     resolveApiKey: (key) => duckdbResolveApiKey(db, key),
     recordAudit: (entry) => duckdbRecordAudit(db, entry),
     listAudit: (projectId, opts) => duckdbListAudit(db, projectId, opts),
     pruneAudit: (cutoffMs) => duckdbPruneAudit(db, cutoffMs),
     projectExists: async (projectId) => (await duckdbGetProject(db, projectId)) !== null,
     insertEvents: (events) => duckdbInsertEvents(db, [...events]),
+    // Query DSL v1 (ADR 0051 §3): any registry metric, compiled onto its own
+    // aggregation builder and run through the same DuckDB path — and therefore
+    // the same parity coverage and the same numeric coercion — as the canned
+    // aggregates below.
+    runMetric: (projectId, metric, options) =>
+      runDuckdbQuery<Record<string, unknown>>(
+        db,
+        compileMetric(metric, projectId, options, duckdbDialect),
+      ),
+    // `explain: true` (#304): the same compilation, not executed.
+    describeMetric: (projectId, metric, options) => ({
+      dialect: duckdbDialect.name,
+      spec: compileMetric(metric, projectId, options, duckdbDialect),
+    }),
     listSessions: (projectId, opts = {}) =>
       runDuckdbQuery<SessionSummaryRow>(db, buildListSessions(projectId, opts, duckdbDialect)),
     pointerHeatmap: (projectId, opts = {}) =>
@@ -369,12 +409,33 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       ),
     topInputActions: (projectId, opts = {}) =>
       runDuckdbQuery<InputActionCountRow>(db, buildTopInputActions(projectId, opts, duckdbDialect)),
+    // Discovered custom-event vocabulary (ADR 0051 §5): the SQL counts and
+    // samples, the pure fold turns the sampled payloads into prop types. The
+    // raw payload stops here and never reaches a route.
+    customEventVocabulary: async (projectId, opts = {}) =>
+      foldCustomEventVocabulary(
+        await runDuckdbQuery<CustomEventVocabularySampleRow>(
+          db,
+          buildCustomEventVocabulary(projectId, opts, duckdbDialect),
+        ),
+      ),
     scenes: (projectId, opts = {}) =>
       runDuckdbQuery<SceneRow>(db, buildDistinctScenes(projectId, opts, duckdbDialect)),
     timeseries: (projectId, opts = {}) =>
       runDuckdbQuery<TimeseriesBucketRow>(db, buildTimeseries(projectId, opts, duckdbDialect)),
     eventTypeCounts: (projectId, opts = {}) =>
       runDuckdbQuery<EventTypeCountRow>(db, buildEventTypeCounts(projectId, opts, duckdbDialect)),
+    // The one bucket series behind `baseline` and `movers` (ADR 0051 §4). The
+    // spec carries no registry metric of its own, so the store edge has no row
+    // schema to coerce it against — `toMetricBucketRows` parses the numbers,
+    // which is what keeps the engines that string-encode 64-bit counts honest.
+    metricBuckets: async (projectId, opts) =>
+      toMetricBucketRows(
+        await runDuckdbQuery<Record<string, unknown>>(
+          db,
+          buildMetricBuckets(projectId, opts, duckdbDialect),
+        ),
+      ),
     funnel: (projectId, opts) =>
       runDuckdbQuery<FunnelStepResultRow>(db, buildFunnel(projectId, opts, duckdbDialect)),
     sceneRetention: (projectId, opts) =>
@@ -398,6 +459,28 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       duckdbPutSceneRegions(db, projectId, sceneId, regions),
     getSceneRegions: (projectId, sceneId) => duckdbGetSceneRegions(db, projectId, sceneId),
     listSceneRegions: (projectId) => duckdbListSceneRegions(db, projectId),
+    createAnnotation: (projectId, input) => duckdbCreateAnnotation(db, projectId, input),
+    listAnnotations: (projectId, opts) => duckdbListAnnotations(db, projectId, opts),
+    deleteAnnotation: (projectId, id) => duckdbDeleteAnnotation(db, projectId, id),
+    putGlossaryEntry: (projectId, input) => duckdbPutGlossaryEntry(db, projectId, input),
+    listGlossary: (projectId, opts) => duckdbListGlossary(db, projectId, opts),
+    deleteGlossaryEntry: (projectId, term) => duckdbDeleteGlossaryEntry(db, projectId, term),
+    createSavedAnalysis: (projectId, input) => duckdbCreateSavedAnalysis(db, projectId, input),
+    listSavedAnalyses: (projectId, opts) => duckdbListSavedAnalyses(db, projectId, opts),
+    deleteSavedAnalysis: (projectId, id) => duckdbDeleteSavedAnalysis(db, projectId, id),
+    listSubscriptions: (projectId) => duckdbListSubscriptions(db, projectId),
+    listEnabledSubscriptions: (limit) => duckdbListEnabledSubscriptions(db, limit),
+    getSubscription: (projectId, id) => duckdbGetSubscription(db, projectId, id),
+    createSubscription: (projectId, sub) => duckdbCreateSubscription(db, projectId, sub),
+    setSubscriptionEnabled: (projectId, id, enabled) =>
+      duckdbSetSubscriptionEnabled(db, projectId, id, enabled),
+    deleteSubscription: (projectId, id) => duckdbDeleteSubscription(db, projectId, id),
+    recordSubscriptionOutcome: (projectId, id, outcome) =>
+      duckdbRecordSubscriptionOutcome(db, projectId, id, outcome),
+    getWebhookSecret: (projectId, id) => duckdbGetWebhookSecret(db, projectId, id),
+    recordSubscriptionEvent: (entry) => duckdbRecordSubscriptionEvent(db, entry),
+    listSubscriptionEvents: (projectId, id, opts) =>
+      duckdbListSubscriptionEvents(db, projectId, id, opts),
     async close() {
       await db.close();
     },

@@ -19,7 +19,8 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import { generateApiKey } from "@uptimizr/db";
+import { generateApiKey, type ApiKeyCapability } from "@uptimizr/db";
+import type { Subscription } from "@uptimizr/schema";
 import { buildApp } from "@uptimizr/collector-server/dist/app.js";
 import type { CollectorConfig } from "@uptimizr/collector-server/dist/config.js";
 import type { CollectorStore } from "@uptimizr/collector-server/dist/store.js";
@@ -28,23 +29,28 @@ import { CollectorError, type CollectorClient, type QueryParams } from "@uptimiz
 import {
   EVAL_EVENTS,
   EVAL_PROJECT_ID,
+  EVAL_SCENES,
   EVAL_SCENE_PROXY,
   EVAL_SCENE_PROXY_LABEL,
   EVAL_SCENE_REGIONS,
-  EVAL_SCENES,
 } from "./fixtures.js";
 
 /**
- * Collector configuration for an eval run: headless, no CORS, raw retention off
- * (the agent surface is aggregate-only, ADR 0003), and rate limits lifted so a
- * 40-case run with several tool calls each is never throttled.
+ * Collector configuration for an eval run: headless, no CORS, and rate limits
+ * lifted so a 40-case run with several tool calls each is never throttled.
+ *
+ * Raw-session retention is **on** so the `query:raw` half of the gate can be
+ * exercised (ADR 0051 §7). That is not a widening of the agent surface: the
+ * default key the harness hands out still holds `query` alone, so every
+ * ordinary case sees exactly the aggregate-only collector it saw before, and a
+ * case that asks for a narrative must opt in to {@link EvalHarness.rawClient}.
  */
 const EVAL_CONFIG: CollectorConfig = {
   host: "127.0.0.1",
   port: 0,
   corsOrigins: [],
   visitorHashSecret: "agent-eval-visitor-salt",
-  enableRawSessionRetention: false,
+  enableRawSessionRetention: true,
   liveWindowMs: 30_000,
   liveTokenSecret: "agent-eval-live-secret",
   liveTokenSecretIsDedicated: true,
@@ -62,12 +68,62 @@ const EVAL_CONFIG: CollectorConfig = {
   // dashboard's own requests — the harness has no dashboard.
   auditRetentionDays: 30,
   auditDashboardRequests: false,
+  mcpHttpEnabled: false,
+  mcpMaxSessions: 50,
+  mcpSessionTtlMs: 1_800_000,
+  // Conditional subscriptions (#311): the API is up so `list_subscriptions` has
+  // something to read, but the scheduler is off — an eval run must not grow
+  // background timers, and nothing here would ever fire. Webhook egress stays
+  // disallowed, which is also the default.
+  subscriptions: false,
+  subscriptionsMaxConcurrent: 4,
+  webhookAllowedHosts: [],
 };
 
-/** A booted, seeded collector plus the read-only client an agent run uses. */
+/**
+ * The one conditional subscription the fixtures carry (#311).
+ *
+ * Seeded directly through the store rather than over HTTP: the harness's key is
+ * `query`-only by design, and `POST /api/v1/subscriptions` rightly refuses it.
+ * It is `sse`-only, so nothing an eval run does can produce outbound traffic.
+ */
+const EVAL_SUBSCRIPTION: Subscription = {
+  name: "FPS drop in lobby",
+  metric: "perf_summary",
+  filters: { scene: "lobby" },
+  evaluate: { every: "5m", window: "1h" },
+  predicate: { kind: "threshold", column: "p50_fps", op: "<", value: 40, minSample: 1 },
+  cooldown: "1h",
+  delivery: [{ kind: "sse" }],
+  enabled: true,
+};
+
+/** How to start a harness. */
+export interface StartHarnessOptions {
+  /**
+   * Capabilities the run's key resolves with. Defaults to `["query"]` — the
+   * read-only key every scored question uses. The metadata cases of #310 pass
+   * `["query", "annotate"]` (and, for the refusal case, deliberately do not) so
+   * both sides of the capability gate are exercised against the real collector.
+   */
+  capabilities?: readonly ApiKeyCapability[];
+}
+
+/** A booted, seeded collector plus the clients an agent run uses. */
 export interface EvalHarness {
-  /** Read-only client over the in-process collector (Fastify `inject`). */
+  /**
+   * Client over the in-process collector (Fastify `inject`), bound to a key
+   * holding {@link StartHarnessOptions.capabilities} — `query` by default, the
+   * ordinary aggregate surface.
+   */
   client: CollectorClient;
+  /**
+   * The same collector through a key holding `query,query:raw`. Only a case
+   * that needs a raw-gated tool should use it; everything else is scored against
+   * the aggregate-only surface, which is the one a project owner hands out by
+   * default (ADR 0003).
+   */
+  rawClient: CollectorClient;
   /** Shut the Fastify instance down. */
   close(): Promise<void>;
 }
@@ -80,22 +136,41 @@ export interface EvalHarness {
  * difference between this and a deployed collector.
  */
 function injectClient(app: FastifyInstance, apiKey: string): CollectorClient {
+  /** Dispatch one request, applying the real client's error and parse rules. */
+  const send = async (
+    method: "GET" | "POST" | "PUT" | "DELETE",
+    url: string,
+    body?: unknown,
+  ): Promise<unknown> => {
+    const response = await app.inject({
+      method,
+      url,
+      headers: { "x-api-key": apiKey },
+      ...(body === undefined ? {} : { payload: body as object }),
+    });
+    if (response.statusCode >= 400) {
+      throw new CollectorError(response.body || String(response.statusCode), response.statusCode);
+    }
+    // A successful delete answers 204, which has no body to parse.
+    return response.statusCode === 204 ? null : response.json();
+  };
+
+  const resolve = (path: string, params: QueryParams = {}): string => {
+    const url = new URL(path.replace(/^\//, ""), "http://collector.invalid/");
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null) url.searchParams.set(key, String(value));
+    }
+    return `${url.pathname}${url.search}`;
+  };
+
   return {
-    async get(path: string, params: QueryParams = {}): Promise<unknown> {
-      const url = new URL(path.replace(/^\//, ""), "http://collector.invalid/");
-      for (const [key, value] of Object.entries(params)) {
-        if (value != null) url.searchParams.set(key, String(value));
-      }
-      const response = await app.inject({
-        method: "GET",
-        url: `${url.pathname}${url.search}`,
-        headers: { "x-api-key": apiKey },
-      });
-      if (response.statusCode >= 400) {
-        throw new CollectorError(response.body || String(response.statusCode), response.statusCode);
-      }
-      return response.json();
-    },
+    get: (path, params = {}) => send("GET", resolve(path, params)),
+    // The write methods let the metadata tools of #310 be scored against the
+    // same fixture-backed collector the read tools are. Whether a write is
+    // *allowed* remains the collector's decision, from the key's capabilities.
+    post: (path, body) => send("POST", resolve(path), body),
+    put: (path, body) => send("PUT", resolve(path), body),
+    delete: (path) => send("DELETE", resolve(path)),
   };
 }
 
@@ -104,31 +179,52 @@ function injectClient(app: FastifyInstance, apiKey: string): CollectorClient {
  * top of it, and return a read-only client bound to it. Every call gets its own
  * store and its own API key, so runs are independent and order-insensitive.
  */
-export async function startHarness(): Promise<EvalHarness> {
+export async function startHarness(options: StartHarnessOptions = {}): Promise<EvalHarness> {
+  const capabilities = options.capabilities ?? (["query"] as const);
   const apiKey = generateApiKey();
+  const rawApiKey = generateApiKey();
   const duckdb = await createDuckdbStore(":memory:");
   const store: CollectorStore = {
     ...duckdb,
-    resolveApiKey: async (key: string) =>
-      key === apiKey
-        ? {
-            projectId: EVAL_PROJECT_ID,
-            keyId: "eval-key",
-            capabilities: ["query"],
-            label: "agent-eval",
-            rateLimit: null,
-          }
-        : null,
+    resolveApiKey: async (key: string) => {
+      if (key === apiKey) {
+        return {
+          projectId: EVAL_PROJECT_ID,
+          keyId: "eval-key",
+          capabilities: [...capabilities],
+          label: "agent-eval",
+          rateLimit: null,
+        };
+      }
+      if (key === rawApiKey) {
+        return {
+          projectId: EVAL_PROJECT_ID,
+          keyId: "eval-raw-key",
+          capabilities: ["query", "query:raw"],
+          label: "agent-eval-raw",
+          rateLimit: null,
+        };
+      }
+      return null;
+    },
     projectExists: async (projectId: string) => projectId === EVAL_PROJECT_ID,
   };
   await store.insertEvents(EVAL_EVENTS);
   await store.putSceneProxy(EVAL_PROJECT_ID, EVAL_SCENE_PROXY, EVAL_SCENE_PROXY_LABEL);
-  // Named regions (ADR 0051 §2) so spatial answers can be graded on the words a
-  // developer uses for places, not only on voxel coordinates.
+  // Named scene regions (ADR 0051 §2): the spatial vocabulary a `region=` filter
+  // resolves against, and the words a spatial answer is graded on rather than
+  // voxel coordinates. An agent can only use a region id it was told about, so
+  // this is what makes the region-scoped questions in the bank answerable from
+  // the project context rather than by guessing a box.
   await store.putSceneRegions(EVAL_PROJECT_ID, EVAL_SCENES.lobby, EVAL_SCENE_REGIONS);
+  await store.createSubscription(EVAL_PROJECT_ID, EVAL_SUBSCRIPTION);
 
   const app = await buildApp({ store, config: EVAL_CONFIG });
   await app.ready();
 
-  return { client: injectClient(app, apiKey), close: () => app.close() };
+  return {
+    client: injectClient(app, apiKey),
+    rawClient: injectClient(app, rawApiKey),
+    close: () => app.close(),
+  };
 }

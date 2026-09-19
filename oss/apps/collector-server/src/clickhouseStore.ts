@@ -4,6 +4,7 @@ import {
   buildCameraDistance,
   buildCameraPositionHeatmap,
   buildClickGazeRay,
+  buildCustomEventVocabulary,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -16,6 +17,8 @@ import {
   buildCameraGestures,
   buildDistinctScenes,
   buildEventTypeCounts,
+  buildMetricBuckets,
+  toMetricBucketRows,
   buildFlowHeatmap,
   buildFunnel,
   buildSceneRetention,
@@ -62,11 +65,13 @@ import {
   buildTopMeshesBySource,
   buildTopMeshesTrend,
   buildTopInputActions,
+  foldCustomEventVocabulary,
   buildWorldHeatmap,
   buildWorldHeatmapStats,
   buildGazeHeatmap,
   buildGazeHeatmapStats,
   clickhouseDialect,
+  compileMetric,
   readDbSettings,
   type CameraDistanceBucketRow,
   type ClickGazeRayRow,
@@ -98,6 +103,7 @@ import {
   type ReachabilityBinRow,
   type MeshSourceCountRow,
   type MeshTrendPointRow,
+  type CustomEventVocabularySampleRow,
   type InputActionCountRow,
   type NavigationStatsRow,
   type BacktrackRatioRow,
@@ -147,8 +153,27 @@ import {
   getSceneRepresentation as chGetSceneRepresentation,
   listSceneRepresentations as chListSceneRepresentations,
   putSceneRegions as chPutSceneRegions,
+  listSubscriptions as chListSubscriptions,
+  listEnabledSubscriptions as chListEnabledSubscriptions,
+  getSubscription as chGetSubscription,
+  createSubscription as chCreateSubscription,
+  setSubscriptionEnabled as chSetSubscriptionEnabled,
+  deleteSubscription as chDeleteSubscription,
+  recordSubscriptionOutcome as chRecordSubscriptionOutcome,
+  getWebhookSecret as chGetWebhookSecret,
+  recordSubscriptionEvent as chRecordSubscriptionEvent,
+  listSubscriptionEvents as chListSubscriptionEvents,
   getSceneRegions as chGetSceneRegions,
   listSceneRegions as chListSceneRegions,
+  createAnnotation as chCreateAnnotation,
+  listAnnotations as chListAnnotations,
+  deleteAnnotation as chDeleteAnnotation,
+  putGlossaryEntry as chPutGlossaryEntry,
+  listGlossary as chListGlossary,
+  deleteGlossaryEntry as chDeleteGlossaryEntry,
+  createSavedAnalysis as chCreateSavedAnalysis,
+  listSavedAnalyses as chListSavedAnalyses,
+  deleteSavedAnalysis as chDeleteSavedAnalysis,
   type ClickhouseClient,
 } from "@uptimizr/db-clickhouse";
 import type { CollectorStore } from "./store.js";
@@ -174,12 +199,23 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
 
   const d = clickhouseDialect;
   return {
+    engine: "clickhouse",
     resolveApiKey: (key) => chResolveApiKey(ch, key),
     recordAudit: (entry) => chRecordAudit(ch, entry),
     listAudit: (projectId, opts) => chListAudit(ch, projectId, opts),
     pruneAudit: (cutoffMs) => chPruneAudit(ch, cutoffMs),
     projectExists: async (projectId) => (await chGetProject(ch, projectId)) !== null,
     insertEvents: (events) => chInsertEvents(ch, [...events]),
+    // Query DSL v1 (ADR 0051 §3): any registry metric, compiled onto its own
+    // aggregation builder and run through the same ClickHouse path — and therefore
+    // the same parity coverage and the same numeric coercion — as the canned
+    // aggregates below.
+    runMetric: (projectId, metric, options) =>
+      runClickhouseQuery<Record<string, unknown>>(ch, compileMetric(metric, projectId, options, d)),
+    describeMetric: (projectId, metric, options) => ({
+      dialect: d.name,
+      spec: compileMetric(metric, projectId, options, d),
+    }),
     listSessions: (projectId, opts = {}) =>
       runClickhouseQuery<SessionSummaryRow>(ch, buildListSessions(projectId, opts, d)),
     pointerHeatmap: (projectId, opts = {}) =>
@@ -330,12 +366,33 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       runClickhouseQuery<InteractionSourceRow>(ch, buildInteractionsBySource(projectId, opts, d)),
     topInputActions: (projectId, opts = {}) =>
       runClickhouseQuery<InputActionCountRow>(ch, buildTopInputActions(projectId, opts, d)),
+    // Discovered custom-event vocabulary (ADR 0051 §5): the SQL counts and
+    // samples, the pure fold turns the sampled payloads into prop types. The
+    // raw payload stops here and never reaches a route.
+    customEventVocabulary: async (projectId, opts = {}) =>
+      foldCustomEventVocabulary(
+        await runClickhouseQuery<CustomEventVocabularySampleRow>(
+          ch,
+          buildCustomEventVocabulary(projectId, opts, d),
+        ),
+      ),
     scenes: (projectId, opts = {}) =>
       runClickhouseQuery<SceneRow>(ch, buildDistinctScenes(projectId, opts, d)),
     timeseries: (projectId, opts = {}) =>
       runClickhouseQuery<TimeseriesBucketRow>(ch, buildTimeseries(projectId, opts, d)),
     eventTypeCounts: (projectId, opts = {}) =>
       runClickhouseQuery<EventTypeCountRow>(ch, buildEventTypeCounts(projectId, opts, d)),
+    // The one bucket series behind `baseline` and `movers` (ADR 0051 §4). The
+    // spec carries no registry metric of its own, so the store edge has no row
+    // schema to coerce it against — `toMetricBucketRows` parses the numbers,
+    // which is what keeps the engines that string-encode 64-bit counts honest.
+    metricBuckets: async (projectId, opts) =>
+      toMetricBucketRows(
+        await runClickhouseQuery<Record<string, unknown>>(
+          ch,
+          buildMetricBuckets(projectId, opts, d),
+        ),
+      ),
     funnel: (projectId, opts) =>
       runClickhouseQuery<FunnelStepResultRow>(ch, buildFunnel(projectId, opts, d)),
     sceneRetention: (projectId, opts) =>
@@ -355,6 +412,28 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
       chPutSceneRegions(ch, projectId, sceneId, regions),
     getSceneRegions: (projectId, sceneId) => chGetSceneRegions(ch, projectId, sceneId),
     listSceneRegions: (projectId) => chListSceneRegions(ch, projectId),
+    createAnnotation: (projectId, input) => chCreateAnnotation(ch, projectId, input),
+    listAnnotations: (projectId, opts) => chListAnnotations(ch, projectId, opts),
+    deleteAnnotation: (projectId, id) => chDeleteAnnotation(ch, projectId, id),
+    putGlossaryEntry: (projectId, input) => chPutGlossaryEntry(ch, projectId, input),
+    listGlossary: (projectId, opts) => chListGlossary(ch, projectId, opts),
+    deleteGlossaryEntry: (projectId, term) => chDeleteGlossaryEntry(ch, projectId, term),
+    createSavedAnalysis: (projectId, input) => chCreateSavedAnalysis(ch, projectId, input),
+    listSavedAnalyses: (projectId, opts) => chListSavedAnalyses(ch, projectId, opts),
+    deleteSavedAnalysis: (projectId, id) => chDeleteSavedAnalysis(ch, projectId, id),
+    listSubscriptions: (projectId) => chListSubscriptions(ch, projectId),
+    listEnabledSubscriptions: (limit) => chListEnabledSubscriptions(ch, limit),
+    getSubscription: (projectId, id) => chGetSubscription(ch, projectId, id),
+    createSubscription: (projectId, sub) => chCreateSubscription(ch, projectId, sub),
+    setSubscriptionEnabled: (projectId, id, enabled) =>
+      chSetSubscriptionEnabled(ch, projectId, id, enabled),
+    deleteSubscription: (projectId, id) => chDeleteSubscription(ch, projectId, id),
+    recordSubscriptionOutcome: (projectId, id, outcome) =>
+      chRecordSubscriptionOutcome(ch, projectId, id, outcome),
+    getWebhookSecret: (projectId, id) => chGetWebhookSecret(ch, projectId, id),
+    recordSubscriptionEvent: (entry) => chRecordSubscriptionEvent(ch, entry),
+    listSubscriptionEvents: (projectId, id, opts) =>
+      chListSubscriptionEvents(ch, projectId, id, opts),
     async close() {
       await ch.close();
     },

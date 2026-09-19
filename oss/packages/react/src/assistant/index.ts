@@ -17,6 +17,10 @@ export type {
   UseAssistantResult,
   AssistantStatus,
   AssistantToolActivity,
+  // Metadata write path (#310): where an assistant-written note lands, and the
+  // reads a saved analysis records as its question.
+  AssistantAnnotationTarget,
+  AssistantRead,
   ToolCallStatus,
 } from "./useAssistant";
 export { AssistantPanel } from "./AssistantPanel";

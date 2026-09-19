@@ -37,6 +37,7 @@
 
 import { z } from "zod";
 import type { EventType } from "@uptimizr/schema";
+import { NARRATIVE_LIMITS, sessionNarrativeEntrySchema } from "./narrative.js";
 
 /**
  * Every exported `build*` aggregation name in `@uptimizr/db`'s
@@ -67,6 +68,7 @@ export const AGGREGATION_BUILDER_NAMES = [
   "buildCapabilityChanges",
   "buildClickGazeRay",
   "buildCompileStalls",
+  "buildCustomEventVocabulary",
   "buildDeadClicks",
   "buildDistinctScenes",
   "buildErrorHeatmap",
@@ -163,6 +165,67 @@ export const DIMENSION_COLUMNS: Readonly<Record<DimensionId, string>> = {
 };
 
 /**
+ * The column a {@link DimensionId} appears as in a metric's `row` when that
+ * metric is keyed by it.
+ *
+ * Several dimensions are *filterable* on a metric without being part of its
+ * grain (`top_meshes` can be scoped to a `session` but returns one row per
+ * mesh), which is what {@link MetricDefinition.grainDimensions} exists to
+ * express — this map is how that declaration is **checked**: every grain
+ * dimension must project one of the names listed here, and
+ * `src/__tests__/registry.test.ts` fails the build when one does not.
+ *
+ * Alternatives are listed where the projection name has varied: a scene rollup
+ * spells `scene` as `scene_id` and a transition as `from_scene`, and the `name`
+ * column surfaces as `kind` (an interaction or gesture kind), `action` (an input
+ * action) or `phase` (a compile stall). The **first** entry is the canonical
+ * spelling the generic group-by tier projects when the metric's own row does not
+ * already name one. `cameraMode` has none: no aggregation projects the camera
+ * type as a column, so it is a filter on the delegated tier and a generic-only
+ * group-by column (`camera_mode`) on the other.
+ */
+export const DIMENSION_ROW_COLUMNS: Readonly<Record<DimensionId, readonly string[]>> = {
+  scene: ["scene_id", "scene"],
+  session: ["session_id"],
+  mesh: ["mesh"],
+  name: ["name", "kind", "action", "phase"],
+  source: ["source"],
+  event_type: ["event_type"],
+  cameraMode: [],
+  "device.engine": ["engine"],
+  "device.renderer": ["renderer"],
+  "device.isMobile": ["is_mobile"],
+  "device.browser": ["browser"],
+  "device.os": ["os"],
+};
+
+/**
+ * The dimensions the **generic group-by tier** can render (design sketch §C.2).
+ *
+ * Restricted to what the store promotes to a column (`scene_id`, `session_id`,
+ * `mesh`, `name`, `source`, `event_type`) plus the session attributes every
+ * engine can read out of one `session_start` sub-select with the same SQL
+ * (`cameraMode`, the four `device.*` strings). `device.isMobile` is deliberately
+ * absent: it is the one session attribute that is a boolean rather than a label,
+ * so grouping by it would produce `"true"` / `"false"` text on some engines and
+ * `1` / `0` on others — the exact cross-engine disagreement this tier exists to
+ * avoid. Filter by it instead, or group by `device.os`.
+ */
+export const GENERIC_DIMENSIONS: readonly DimensionId[] = [
+  "scene",
+  "session",
+  "mesh",
+  "name",
+  "source",
+  "event_type",
+  "cameraMode",
+  "device.engine",
+  "device.renderer",
+  "device.browser",
+  "device.os",
+];
+
+/**
  * Every request parameter the query surface accepts. Closed union, declared
  * once: a metric's `filters` are exactly the keys of the Zod querystring that
  * serves its endpoint (asserted by the collector's registry route test), and the
@@ -203,6 +266,26 @@ export type FilterId =
   | "bands"
   | "variant"
   | "conversion"
+  // --- session narrative (ADR 0051 §7, design sketch §G.2) ---
+  //
+  // Two parameters that shape a *compaction* rather than an aggregation: they
+  // are consumed by `buildSessionNarrative` in `@uptimizr/db` and never reach a
+  // SQL builder. `fpsThreshold` and `format` are shared with the aggregations
+  // above and so are not repeated here.
+  | "minDwellMs"
+  | "maxEntries"
+  // Insight primitives (ADR 0051 §4, design sketch §D). `metric` and `metrics`
+  // are the only filters whose *value* is itself a registry id: an insight is a
+  // metric computed over another metric, so its subject has to be named.
+  | "metric"
+  | "metrics"
+  | "window"
+  | "refSince"
+  | "refUntil"
+  // --- anomalies (#306) ---
+  | "sensitivity"
+  // --- significance / scene health (#307) ---
+  | "weights"
   // Cross-cutting result shaping (ADR 0051 §2, design sketch §B.1). Unlike every
   // other filter this one narrows nothing: it selects the *envelope* the
   // collector wraps the rows in, and is consumed by the response layer rather
@@ -228,6 +311,20 @@ export type FilterOptionInterface =
   | "LoadBounceFunnelOptions"
   | "VariantLeaderboardOptions"
   | "BuilderOptions"
+  /**
+   * Not an aggregation option either: the parameter is consumed by
+   * `buildSessionNarrative` — the pure compaction behind
+   * `GET /api/v1/sessions/:id/narrative` (ADR 0051 §7) — and never reaches a
+   * SQL builder.
+   */
+  | "SessionNarrativeOptions"
+  /**
+   * The option bag of an insight primitive (ADR 0051 §4). Not an aggregation
+   * option: it is consumed by `@uptimizr/db`'s pure `src/insights/` layer, which
+   * runs *over* another metric's bucket series rather than producing SQL of its
+   * own.
+   */
+  | "InsightOptions"
   /**
    * Not an aggregation option at all: the parameter is consumed by the
    * collector's response layer and never reaches a builder. Only `format`
@@ -323,7 +420,9 @@ export const FILTER_TARGETS: Readonly<Record<FilterId, FilterTarget>> = {
   bucket: {
     option: "BuilderOptions",
     field: "bucket",
-    description: "Histogram bin width in FPS.",
+    description:
+      "Bucket width. On `fps_histogram` a histogram bin width in FPS; on the insight " +
+      "primitives the time grain of the series, `day` or `hour`.",
   },
   bucketMs: {
     option: "BuilderOptions",
@@ -431,6 +530,71 @@ export const FILTER_TARGETS: Readonly<Record<FilterId, FilterTarget>> = {
     field: "conversion",
     description: "JSON funnel-step predicate for the success event. Omit to report views only.",
   },
+  minDwellMs: {
+    option: "SessionNarrativeOptions",
+    field: "minDwellMs",
+    description:
+      "Session narrative only: a mesh must hold attention for at least this many milliseconds " +
+      "before it earns a `dwell` entry. Raise it to keep only the meshes that were really looked at.",
+  },
+  maxEntries: {
+    option: "SessionNarrativeOptions",
+    field: "maxEntries",
+    description:
+      "Session narrative only: the maximum number of entries, oldest first. The closing `summary` " +
+      "entry always survives and reports whether anything was dropped.",
+  },
+  metric: {
+    option: "InsightOptions",
+    field: "metric",
+    description:
+      "The registry metric the insight is computed over. Must be a `comparable` metric that has a " +
+      "portable bucket series; a metric without one is rejected with the list of ids that do.",
+  },
+  metrics: {
+    option: "InsightOptions",
+    field: "metrics",
+    description:
+      "Comma-separated allowlist of registry metric ids to scan instead of the curated default " +
+      "set. Bounded by the per-request metric cap the registry `limits` declare.",
+  },
+  window: {
+    option: "InsightOptions",
+    field: "windowDays",
+    description:
+      "Length of the baseline window in days, counted back from `until`. Ignored when `since` is " +
+      "given explicitly.",
+  },
+  refSince: {
+    option: "InsightOptions",
+    field: "refSince",
+    description:
+      "Inclusive lower bound of the reference window a change is measured against, epoch " +
+      "milliseconds. Defaults to the equal-length window immediately before the current range.",
+  },
+  refUntil: {
+    option: "InsightOptions",
+    field: "refUntil",
+    description:
+      "Exclusive upper bound of the reference window, epoch milliseconds. Defaults to `since`.",
+  },
+  // --- anomalies (#306) ---
+  sensitivity: {
+    option: "InsightOptions",
+    field: "sensitivity",
+    description:
+      "How far out of line a bucket must be before it is reported, in median-absolute-deviations " +
+      "of the trailing window. Higher means fewer, more extreme findings. 1-10, default 3.",
+  },
+  // --- significance / scene health (#307) ---
+  weights: {
+    option: "InsightOptions",
+    field: "weights",
+    description:
+      "JSON object overriding the declared per-factor weights of a composite score, e.g. " +
+      '`{"error_rate":0.5}`. Factors the object does not name keep their declared weight; an ' +
+      "unknown factor id is rejected rather than ignored.",
+  },
   format: {
     option: "ResultEnvelope",
     field: "(response layer)",
@@ -496,7 +660,24 @@ export type MetricCategory =
   | "xr"
   | "ar"
   | "sessions"
-  | "conversion";
+  | "conversion"
+  /** Derived readings *about* other metrics — baselines, movers (ADR 0051 §4). */
+  | "insights";
+
+/**
+ * The API-key capability an endpoint requires (ADR 0051 §7).
+ *
+ * `query` is the whole aggregate read surface and is the default. `query:raw`
+ * is the narrow, opt-in door to per-session data: the collector honours it only
+ * when `ENABLE_RAW_SESSION_RETENTION` is on (ADR 0003), and a generated tool for
+ * such a metric must be registered **only** for a key that holds it.
+ *
+ * Declared as a literal union rather than imported from `@uptimizr/db`'s
+ * `ApiKeyCapability`: that package depends on *this* one, and the registry may
+ * never depend on a database driver. `@uptimizr/db` re-checks the two in its own
+ * test suite.
+ */
+export type MetricCapability = "query" | "query:raw";
 
 /** The collector route a metric is served on. */
 export interface MetricEndpoint {
@@ -508,6 +689,81 @@ export interface MetricEndpoint {
    * of a trajectory). One entry per `:param` segment, in order.
    */
   pathParams?: readonly FilterId[];
+  /**
+   * The capability a key must hold to call it. Omitted means `query` — the
+   * ordinary aggregate read surface. See {@link MetricCapability}.
+   */
+  capability?: MetricCapability;
+}
+
+/**
+ * The capability `metric`'s endpoint requires, with the `query` default applied.
+ * Consumers partition the catalog with this rather than reading the optional
+ * field directly, so "no capability declared" cannot be mistaken for "no
+ * capability required".
+ */
+export function metricCapability(metric: MetricDefinition): MetricCapability {
+  return metric.endpoint?.capability ?? "query";
+}
+
+/**
+ * How one column of a generic group-by result is computed. Four aggregate
+ * shapes, all of which SQL:2003 spells identically and every supported engine
+ * implements the same way — that is the whole test for admission.
+ */
+export type GenericMeasureKind =
+  /** `count(*)` — rows in the group. */
+  | "count"
+  /** `count(DISTINCT session_id)` — sessions represented in the group. */
+  | "sessions"
+  /** `sum(<column>)` over a promoted numeric column. */
+  | "sum"
+  /** `avg(<column>)` over a promoted numeric column. */
+  | "avg"
+  /** `max(<column>)` over a promoted numeric column. */
+  | "max";
+
+/** One measure column a generic group-by result carries. */
+export interface GenericMeasure {
+  /** The output column name. Must also be a column of the metric's `row`. */
+  column: string;
+  kind: GenericMeasureKind;
+  /**
+   * The promoted event column the aggregate reads. Required for `sum` / `avg` /
+   * `max`, meaningless for `count` / `sessions`.
+   */
+  of?: string;
+}
+
+/**
+ * Extra scope the generic builder applies beyond `event_type`, so a regrouped
+ * result counts the same events the metric's own builder counts.
+ *
+ * `top_meshes` is `count(*) … WHERE mesh != ''`; dropping that predicate when
+ * grouping by `source` would silently fold every mesh-less event into an empty
+ * mesh bucket. Each value is one non-empty-string predicate on a promoted
+ * column — closed, so the generic SQL stays free of anything caller-supplied.
+ */
+export type GenericScope = "hasMesh" | "hasName";
+
+/**
+ * The generic group-by declaration (design sketch §C.2, tier 2).
+ *
+ * Together these say: "over *these* events, narrowed by *this* scope, *these*
+ * measures can be recomputed at any grain the metric declares". The builder that
+ * reads it lives in `@uptimizr/db`'s `query/dsl/generic.ts`; nothing here knows
+ * what SQL is.
+ */
+export interface GenericGroupBy {
+  /**
+   * Event types in scope. Empty means **every** event type — only
+   * `event_counts`, whose subject really is the whole stream, leaves it empty.
+   */
+  eventTypes: readonly EventType[];
+  /** Additional closed predicates on promoted columns. */
+  scope?: readonly GenericScope[];
+  /** The measure columns the result carries, in order. The first is `measure`. */
+  measures: readonly GenericMeasure[];
 }
 
 /** Comparison semantics for `compare`, `movers` and `anomalies` (ADR 0051 §4). */
@@ -519,6 +775,14 @@ export interface MetricComparison {
   /** Minimum denominator before a delta is worth reporting. */
   minSample: number;
 }
+
+/**
+ * How a **derived** metric is computed, when it has no `build*` aggregation of
+ * its own. One value per module in `@uptimizr/db`'s `src/insights/`
+ * (ADR 0051 §4) — statistics over another metric's portable bucket series,
+ * evaluated in TypeScript so no two SQL engines can disagree about them.
+ */
+export type MetricDerivation = "insight";
 
 /**
  * Everything a consumer needs to call a metric, read its result and judge how
@@ -536,12 +800,57 @@ export interface MetricDefinition {
    * aggregations, but are part of the agent surface.
    */
   builder?: AggregationBuilderName;
+  /**
+   * Marks a **derived** entry: a metric computed in pure TypeScript *over other
+   * metrics' data* rather than by a `build*` aggregation of its own — the insight
+   * primitives (ADR 0051 §4). Like a resource it has no builder; unlike a
+   * resource it is a real aggregate, served on an endpoint with a querystring,
+   * a time range and the `format` envelope. The two are distinguished by this
+   * flag rather than by `builder === undefined`, so the registry guards that
+   * pin the resource set and the envelope surface stay exact.
+   *
+   * The value names where the computation lives, for a reader following the
+   * trail from a tool description to the code.
+   */
+  derived?: MetricDerivation;
   /** The canned collector route, when one exists. */
   endpoint?: MetricEndpoint;
   /** What one row represents. */
   grain: MetricGrain;
-  /** The dimension columns this metric's rows are keyed by. */
+  /**
+   * Every dimension this metric can be **keyed or filtered by** — the
+   * vocabulary, not the grain. `top_meshes` lists `session` because it can be
+   * scoped to one, while its rows are one per mesh. {@link grainDimensions} is
+   * the grain; for a {@link genericGroupBy} metric this list is also the set a
+   * caller may group by.
+   */
   dimensions: readonly DimensionId[];
+  /**
+   * The dimensions one row is **actually keyed by** — the metric's native grain,
+   * and what a `dimensions`-less DSL query returns.
+   *
+   * Declared rather than derived (ADR 0051 §3, #304). v1 read the grain back out
+   * of `row.shape`, which was correct but left the registry unable to *say* what
+   * it knew; the generic group-by tier has to distinguish "this metric cannot be
+   * grouped by that" from "it can, through the generic builder", and that is a
+   * statement about the metric rather than about the spelling of its columns.
+   * The old derivation survives as a gate: `src/__tests__/registry.test.ts`
+   * asserts every entry here is a subset of {@link dimensions} and really
+   * projects a column of `row`.
+   */
+  grainDimensions: readonly DimensionId[];
+  /**
+   * How the **generic group-by tier** (design sketch §C.2, tier 2) recomputes
+   * this metric at an arbitrary grain — omitted when it cannot.
+   *
+   * Present only where the measure is portable: a `count(*)`, a
+   * `count(DISTINCT session_id)`, or a `sum`/`avg`/`max` over a **promoted**
+   * column. Those render identically on all four engines whatever the group-by
+   * is. A spatial metric's measure *is* a binning of coordinates and a
+   * percentile does not decompose across an arbitrary grain, so neither declares
+   * one and both stay delegated.
+   */
+  genericGroupBy?: GenericGroupBy;
   /** Accepted querystring parameters — exactly the endpoint's Zod keys. */
   filters: readonly FilterId[];
   /** Output row schema: the source for OpenAPI, tool output schemas and coercion. */
@@ -618,6 +927,7 @@ export type MetricId =
   | "interaction_sources"
   | "top_input_actions"
   | "camera_gestures"
+  | "custom_event_vocabulary"
   // --- navigation ---
   | "navigation_stats"
   | "backtrack_ratio"
@@ -652,7 +962,17 @@ export type MetricId =
   // --- conversion ---
   | "scene_retention"
   | "load_bounce_funnel"
-  | "variant_leaderboard";
+  | "variant_leaderboard"
+  // --- raw per-session (`query:raw` + retention only, ADR 0051 §7) ---
+  | "session_narrative"
+  // --- insights (ADR 0051 §4) ---
+  | "insight_baseline"
+  | "insight_movers"
+  // --- anomalies (#306) ---
+  | "insight_anomalies"
+  // --- significance / scene health (#307) ---
+  | "insight_significance"
+  | "insight_scene_health";
 
 // --- Row-schema building blocks ------------------------------------------
 //
@@ -780,6 +1100,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/sessions" },
     grain: "session",
     dimensions: ["session"],
+    grainDimensions: ["session"],
     filters: ["since", "until", "bins", "limit", "cameraMode", "format"],
     row: z.object({
       session_id: text,
@@ -829,6 +1150,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/sessions/:id/meta", pathParams: ["session"] },
     grain: "session",
     dimensions: ["session"],
+    grainDimensions: [],
     filters: [],
     row: z.object({
       sessionId: text,
@@ -864,6 +1186,99 @@ export const METRIC_REGISTRY = {
     related: ["list_sessions", "perf_by_device"],
     category: "sessions",
   },
+  session_narrative: {
+    id: "session_narrative",
+    title: "Session narrative",
+    description:
+      "An ordered, compacted account of what one session did — scene changes, the meshes it " +
+      "dwelled on, its interactions, performance dips, errors and how it ended — timestamps " +
+      "relative to its first event, plus a closing totals entry. A compaction of the raw " +
+      "per-session stream, gated on `query:raw` and raw-session retention (ADR 0003).",
+    endpoint: {
+      method: "GET",
+      path: "/api/v1/sessions/:id/narrative",
+      pathParams: ["session"],
+      capability: "query:raw",
+    },
+    grain: "row",
+    dimensions: ["session"],
+    // A narrative entry is not keyed by the session: the session is the *scope*,
+    // named in the path, and no row column projects it (cf. `session_meta`).
+    grainDimensions: [],
+    filters: ["minDwellMs", "fpsThreshold", "maxEntries", "format"],
+    row: sessionNarrativeEntrySchema,
+    columns: {
+      tMs: {
+        description:
+          "Milliseconds since the session's first event. Relative by design — a narrative never carries a wall-clock time.",
+        unit: "ms",
+      },
+      kind: {
+        description:
+          "What the entry is about: scene / dwell / interaction / perf_dip / error / diagnostic / capability / xr / end / summary.",
+        unit: "label",
+        label: true,
+      },
+      summary: {
+        description:
+          "One templated line of prose, composed from the entry's own fields — never free text copied out of an event payload.",
+      },
+      refs: {
+        description:
+          "The named things the entry points at: `mesh`, `scene` and `name` (a custom-event or input-action name). Nothing else is ever referenced.",
+      },
+      durationMs: {
+        description: "How long the entry spans, for the kinds that cover a stretch of time.",
+        unit: "ms",
+      },
+      count: {
+        description: "How many source events the entry collapses (dwell samples, dip frames, …).",
+        unit: "count",
+      },
+      totals: {
+        description:
+          "Session totals (events, duration, scenes, meshes, interactions, dips, errors). Present on the closing `summary` entry only.",
+      },
+      truncated: {
+        description:
+          "Whether entries were dropped to honour `maxEntries`. Present on the closing `summary` entry only.",
+      },
+    },
+    limits: {
+      maxRows: NARRATIVE_LIMITS.maxMaxEntries,
+      maxSummaryRows: NARRATIVE_LIMITS.defaultMaxEntries,
+    },
+    interpretation:
+      "Read it top to bottom as a story: where the session went, what held its attention, what it " +
+      "touched, and what went wrong. The closing `summary` entry gives the totals and says whether " +
+      "anything was dropped — if `truncated` is true, raise `minDwellMs` or `maxEntries` rather " +
+      "than trusting the tail.",
+    caveats: [
+      "Refused with 403 unless the collector has `ENABLE_RAW_SESSION_RETENTION` enabled AND the key holds `query:raw` (ADR 0003).",
+      "Returns 404 when the session id is unknown to the project, or when retention was enabled only after it was recorded.",
+      "A projection, not the raw stream: no visitor hash, no URL or page metadata, no positions or rays, and no `device` detail. Custom-event property **keys** are listed; their values never are.",
+      "Dwell comes from the sampled `mesh_visibility` / `hover_dwell` channels (ADR 0012), so it ranks attention rather than measuring it exactly.",
+      "Not an aggregation — there is no `build*` builder, and it takes no time range.",
+    ],
+    sourceChannels: [
+      "session_start",
+      "session_end",
+      "scene_change",
+      "mesh_visibility",
+      "hover_dwell",
+      "mesh_interaction",
+      "pointer_click",
+      "input_action",
+      "custom",
+      "frame_perf",
+      "runtime_error",
+      "graphics_diagnostic",
+      "capability_change",
+      "xr_boundary_proximity",
+    ],
+    related: ["session_meta", "list_sessions", "session_trajectory"],
+    category: "sessions",
+  },
   scene_representation: {
     id: "scene_representation",
     title: "Scene representation",
@@ -878,6 +1293,7 @@ export const METRIC_REGISTRY = {
     },
     grain: "scene",
     dimensions: ["scene"],
+    grainDimensions: [],
     filters: [],
     row: z.object({
       projectId: text,
@@ -945,6 +1361,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/scenes" },
     grain: "scene",
     dimensions: ["scene"],
+    grainDimensions: ["scene"],
     filters: ["since", "until", "limit", "format"],
     row: z.object({ scene_id: text, events: int, last_seen: ts }),
     columns: {
@@ -980,6 +1397,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/timeseries" },
     grain: "bucket",
     dimensions: ["scene", "event_type"],
+    grainDimensions: [],
     filters: ["since", "until", "interval", "scene", "type", "format"],
     row: z.object({ bucket: int, events: int, avg_fps: num }),
     columns: {
@@ -1020,7 +1438,26 @@ export const METRIC_REGISTRY = {
     builder: "buildEventTypeCounts",
     endpoint: { method: "GET", path: "/api/v1/event-counts" },
     grain: "row",
-    dimensions: ["event_type", "scene"],
+    dimensions: [
+      "event_type",
+      "scene",
+      "session",
+      "source",
+      "mesh",
+      "name",
+      "cameraMode",
+      "device.os",
+      "device.browser",
+      "device.engine",
+      "device.renderer",
+    ],
+    grainDimensions: ["event_type"],
+    genericGroupBy: {
+      // The whole stream: this metric's subject *is* every event, so no
+      // `eventTypes` narrowing and no scope predicate.
+      eventTypes: [],
+      measures: [{ column: "count", kind: "count" }],
+    },
     filters: ["since", "until", "scene", "format"],
     row: z.object({ event_type: text, count: int }),
     columns: {
@@ -1055,6 +1492,7 @@ export const METRIC_REGISTRY = {
     builder: "buildEventsDaily",
     grain: "bucket",
     dimensions: ["event_type"],
+    grainDimensions: ["event_type"],
     filters: [],
     row: z.object({ day: day, event_type: text, events: int }),
     columns: {
@@ -1096,6 +1534,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/pointer" },
     grain: "bin",
     dimensions: ["scene", "session", "source", "cameraMode"],
+    grainDimensions: [],
     filters: [
       "since",
       "until",
@@ -1139,6 +1578,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/mesh-uv" },
     grain: "bin",
     dimensions: ["scene", "session", "source", "mesh"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "source", "mesh", "format"],
     row: heatmapBinRow,
     columns: {
@@ -1171,6 +1611,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/world" },
     grain: "voxel",
     dimensions: ["scene", "source", "cameraMode"],
+    grainDimensions: [],
     filters: [
       "since",
       "until",
@@ -1210,6 +1651,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/world/stats" },
     grain: "project",
     dimensions: ["scene", "source", "cameraMode"],
+    grainDimensions: [],
     filters: ["since", "until", "cellSize", "scene", "source", "cameraMode", "region", "format"],
     row: spatialStatsRow,
     columns: {
@@ -1243,6 +1685,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/gaze" },
     grain: "voxel",
     dimensions: ["scene", "session", "cameraMode"],
+    grainDimensions: [],
     filters: [
       "since",
       "until",
@@ -1287,6 +1730,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/gaze/stats" },
     grain: "project",
     dimensions: ["scene", "session", "cameraMode"],
+    grainDimensions: [],
     filters: ["since", "until", "cellSize", "scene", "session", "cameraMode", "region", "format"],
     row: spatialStatsRow,
     columns: {
@@ -1320,6 +1764,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/camera" },
     grain: "bin",
     dimensions: ["scene", "session", "cameraMode"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "cameraMode", "format"],
     row: z.object({ azimuth_bin: int, elevation_bin: int, count: int }),
     columns: {
@@ -1359,6 +1804,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/coverage/view-histogram" },
     grain: "bucket",
     dimensions: ["scene", "session", "cameraMode"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "cameraMode", "format"],
     row: z.object({ bucket: int, sessions: int }),
     columns: {
@@ -1401,6 +1847,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/position" },
     grain: "bin",
     dimensions: ["scene", "session", "cameraMode"],
+    grainDimensions: [],
     filters: [
       "since",
       "until",
@@ -1448,6 +1895,7 @@ export const METRIC_REGISTRY = {
     },
     grain: "row",
     dimensions: ["session", "scene"],
+    grainDimensions: [],
     filters: ["since", "until", "limit", "scene", "format"],
     row: z.object({ ts: int, x: num, y: num, z: num }),
     columns: {
@@ -1485,6 +1933,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/paths" },
     grain: "row",
     dimensions: ["session", "scene", "cameraMode"],
+    grainDimensions: ["session"],
     filters: ["since", "until", "cellSize", "limit", "scene", "cameraMode", "format"],
     row: z.object({ session_id: text, ts: int, gx: int, gz: int }),
     columns: {
@@ -1522,6 +1971,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/coverage" },
     grain: "voxel",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "cellSize", "limit", "scene", "session", "format"],
     row: voxelCountRow,
     columns: {
@@ -1556,6 +2006,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/camera/distance" },
     grain: "bucket",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: [
       "since",
       "until",
@@ -1603,6 +2054,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/click-rays" },
     grain: "voxel",
     dimensions: ["scene", "session", "source", "mesh"],
+    grainDimensions: ["mesh"],
     filters: ["since", "until", "cellSize", "limit", "scene", "source", "session", "format"],
     row: z.object({
       cam_vx: int,
@@ -1663,6 +2115,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/flow" },
     grain: "bin",
     dimensions: ["scene", "session", "mesh", "cameraMode"],
+    grainDimensions: ["mesh"],
     filters: [
       "since",
       "until",
@@ -1746,7 +2199,26 @@ export const METRIC_REGISTRY = {
     builder: "buildTopMeshes",
     endpoint: { method: "GET", path: "/api/v1/meshes/top" },
     grain: "mesh",
-    dimensions: ["mesh", "session"],
+    dimensions: [
+      "mesh",
+      "session",
+      "scene",
+      "source",
+      "event_type",
+      "cameraMode",
+      "device.os",
+      "device.browser",
+      "device.engine",
+      "device.renderer",
+    ],
+    grainDimensions: ["mesh"],
+    genericGroupBy: {
+      // Every mesh-referencing event, gaze included — the same population the
+      // canned builder counts, which is why `hasMesh` is not optional here.
+      eventTypes: [],
+      scope: ["hasMesh"],
+      measures: [{ column: "count", kind: "count" }],
+    },
     filters: ["since", "until", "bins", "limit", "session", "format"],
     row: z.object({ mesh: text, count: int }),
     columns: {
@@ -1779,7 +2251,25 @@ export const METRIC_REGISTRY = {
     builder: "buildTopMeshesBySource",
     endpoint: { method: "GET", path: "/api/v1/meshes/sources" },
     grain: "mesh",
-    dimensions: ["mesh", "source", "scene", "session", "cameraMode"],
+    dimensions: [
+      "mesh",
+      "source",
+      "scene",
+      "session",
+      "cameraMode",
+      "name",
+      "event_type",
+      "device.os",
+      "device.browser",
+      "device.engine",
+      "device.renderer",
+    ],
+    grainDimensions: ["mesh", "source"],
+    genericGroupBy: {
+      eventTypes: ["mesh_interaction", "pointer_click"],
+      scope: ["hasMesh"],
+      measures: [{ column: "count", kind: "count" }],
+    },
     filters: [
       "since",
       "until",
@@ -1823,6 +2313,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/meshes/trend" },
     grain: "bucket",
     dimensions: ["mesh", "scene", "session", "source", "cameraMode"],
+    grainDimensions: ["mesh"],
     filters: [
       "since",
       "until",
@@ -1867,6 +2358,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/meshes/dwell" },
     grain: "mesh",
     dimensions: ["mesh", "scene", "session"],
+    grainDimensions: ["mesh"],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       mesh: text,
@@ -1918,6 +2410,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/meshes/blind-spots" },
     grain: "mesh",
     dimensions: ["mesh", "scene", "session"],
+    grainDimensions: ["mesh"],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       mesh: text,
@@ -1964,7 +2457,24 @@ export const METRIC_REGISTRY = {
     builder: "buildMeshInteractionKinds",
     endpoint: { method: "GET", path: "/api/v1/meshes/kinds" },
     grain: "mesh",
-    dimensions: ["mesh", "name", "scene", "session", "source", "cameraMode"],
+    dimensions: [
+      "mesh",
+      "name",
+      "scene",
+      "session",
+      "source",
+      "cameraMode",
+      "device.os",
+      "device.browser",
+      "device.engine",
+      "device.renderer",
+    ],
+    grainDimensions: ["mesh", "name"],
+    genericGroupBy: {
+      eventTypes: ["mesh_interaction"],
+      scope: ["hasMesh"],
+      measures: [{ column: "count", kind: "count" }],
+    },
     filters: [
       "since",
       "until",
@@ -2012,6 +2522,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/meshes/reachability" },
     grain: "mesh",
     dimensions: ["mesh", "scene", "session", "source", "cameraMode"],
+    grainDimensions: ["mesh"],
     filters: [
       "since",
       "until",
@@ -2064,6 +2575,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/clicks/dead" },
     grain: "project",
     dimensions: ["scene", "session", "source", "cameraMode"],
+    grainDimensions: [],
     filters: [
       "since",
       "until",
@@ -2112,6 +2624,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/clicks/rage" },
     grain: "row",
     dimensions: ["session", "mesh", "scene", "source", "cameraMode"],
+    grainDimensions: ["session", "mesh"],
     filters: [
       "since",
       "until",
@@ -2161,6 +2674,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/hover/dwell" },
     grain: "mesh",
     dimensions: ["mesh", "scene", "session", "source", "cameraMode"],
+    grainDimensions: ["mesh"],
     filters: [
       "since",
       "until",
@@ -2203,7 +2717,38 @@ export const METRIC_REGISTRY = {
     builder: "buildInteractionsBySource",
     endpoint: { method: "GET", path: "/api/v1/interactions/sources" },
     grain: "row",
-    dimensions: ["event_type", "source", "scene", "session", "cameraMode"],
+    dimensions: [
+      "event_type",
+      "source",
+      "scene",
+      "session",
+      "cameraMode",
+      "mesh",
+      "name",
+      "device.os",
+      "device.browser",
+      "device.engine",
+      "device.renderer",
+    ],
+    grainDimensions: ["event_type", "source"],
+    genericGroupBy: {
+      // Exactly the event types the canned builder lists — the events that
+      // carry an input source.
+      eventTypes: [
+        "pointer_move",
+        "pointer_click",
+        "pointer_down",
+        "pointer_up",
+        "mesh_interaction",
+        "hover_dwell",
+        "camera_gesture",
+        "input_action",
+      ],
+      measures: [
+        { column: "count", kind: "count" },
+        { column: "sessions", kind: "sessions" },
+      ],
+    },
     filters: [
       "since",
       "until",
@@ -2245,7 +2790,23 @@ export const METRIC_REGISTRY = {
     builder: "buildTopInputActions",
     endpoint: { method: "GET", path: "/api/v1/input-actions/top" },
     grain: "row",
-    dimensions: ["name", "source", "scene", "session", "cameraMode"],
+    dimensions: [
+      "name",
+      "source",
+      "scene",
+      "session",
+      "cameraMode",
+      "device.os",
+      "device.browser",
+      "device.engine",
+      "device.renderer",
+    ],
+    grainDimensions: ["name", "source"],
+    genericGroupBy: {
+      eventTypes: ["input_action"],
+      scope: ["hasName"],
+      measures: [{ column: "count", kind: "count" }],
+    },
     filters: [
       "since",
       "until",
@@ -2281,6 +2842,63 @@ export const METRIC_REGISTRY = {
     comparable: { primary: "count", direction: "neutral", minSample: 30 },
     category: "interaction",
   },
+  custom_event_vocabulary: {
+    id: "custom_event_vocabulary",
+    title: "Discovered custom-event vocabulary",
+    description:
+      "Which developer-defined `custom` event names the project actually emits, how often, over " +
+      "how many distinct sessions, and the union of `props` keys observed on each name with a " +
+      "coarse type per key (ADR 0051 §5). One row per custom-event name. This is how an agent " +
+      "learns that `add_to_cart` exists and carries `sku` and `qty` — nothing else in the read " +
+      "surface enumerates an application's own event vocabulary.",
+    builder: "buildCustomEventVocabulary",
+    endpoint: { method: "GET", path: "/api/v1/vocabulary/custom-events" },
+    grain: "row",
+    dimensions: ["name", "scene"],
+    // One row per custom-event name; `scene` is a filter, never a key.
+    grainDimensions: ["name"],
+    filters: ["since", "until", "scene", "limit", "format"],
+    row: z.object({
+      name: text,
+      count: int,
+      sessions: int,
+      props: z.record(z.string(), z.enum(["string", "number", "boolean", "null", "mixed"])),
+    }),
+    columns: {
+      name: {
+        description: "Developer-chosen custom-event name, e.g. `add_to_cart`.",
+        unit: "label",
+        label: true,
+      },
+      count: { description: "Times the event fired over the range.", unit: "count", measure: true },
+      sessions: { description: "Distinct sessions that emitted it.", unit: "sessions" },
+      props: {
+        description:
+          "Observed `props` keys mapped to a coarse JSON type (`string` / `number` / `boolean` / " +
+          "`null` / `mixed`). `mixed` means the key arrived with more than one kind; `null` means " +
+          "every sampled value was null.",
+        unit: "label",
+      },
+    },
+    limits: { maxRows: 200, maxSummaryRows: 20 },
+    interpretation:
+      "A discovery read, not a KPI: use it to find the real event names and prop keys before " +
+      "filtering or funnelling on them. `count` and `sessions` are exact over the range; `props` " +
+      "is a sample.",
+    caveats: [
+      "`props` is discovered from the 20 most recent events per name, not from the whole range: a " +
+        "key that stopped being emitted long ago will be absent, and a rarely-sent optional key " +
+        "may be missed. Treat it as a vocabulary hint, never as a schema.",
+      "Only prop key names and value kinds are reported — never a prop value (ADR 0003).",
+      "Names are ranked by `count` and capped by `limit`, so a long tail of rare custom events may " +
+        "be truncated.",
+      "An empty result means the project emits no `custom` events over the range, not that custom " +
+        "events are unsupported.",
+    ],
+    sourceChannels: ["custom"],
+    related: ["variant_leaderboard", "funnel", "event_counts"],
+    category: "interaction",
+  },
   camera_gestures: {
     id: "camera_gestures",
     title: "Camera navigation gestures",
@@ -2291,7 +2909,30 @@ export const METRIC_REGISTRY = {
     builder: "buildCameraGestures",
     endpoint: { method: "GET", path: "/api/v1/camera-gestures" },
     grain: "row",
-    dimensions: ["name", "scene", "session", "source", "cameraMode"],
+    dimensions: [
+      "name",
+      "scene",
+      "session",
+      "source",
+      "cameraMode",
+      "device.os",
+      "device.browser",
+      "device.engine",
+      "device.renderer",
+    ],
+    grainDimensions: ["name"],
+    genericGroupBy: {
+      // The one generic metric whose measures are not all counts: gesture
+      // duration rides in the promoted `visible_ms` column, and sum / avg / max
+      // over a promoted column render the same on every engine.
+      eventTypes: ["camera_gesture"],
+      measures: [
+        { column: "gestures", kind: "count" },
+        { column: "total_ms", kind: "sum", of: "visible_ms" },
+        { column: "avg_ms", kind: "avg", of: "visible_ms" },
+        { column: "max_ms", kind: "max", of: "visible_ms" },
+      ],
+    },
     filters: [
       "since",
       "until",
@@ -2336,6 +2977,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/navigation" },
     grain: "session",
     dimensions: ["session", "scene"],
+    grainDimensions: ["session"],
     filters: ["since", "until", "moveThreshold", "limit", "scene", "session", "format"],
     row: z.object({
       session_id: text,
@@ -2383,6 +3025,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/backtrack" },
     grain: "scene",
     dimensions: ["scene", "session"],
+    grainDimensions: ["scene"],
     filters: ["since", "until", "cellSize", "limit", "scene", "session", "format"],
     row: z.object({
       scene: text,
@@ -2443,6 +3086,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf" },
     grain: "project",
     dimensions: ["session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "session", "format"],
     row: z.object({ samples: int, avg_fps: numOrNull, min_fps: numOrNull, p50_fps: numOrNull }),
     columns: {
@@ -2479,6 +3123,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/render-scale" },
     grain: "project",
     dimensions: ["session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "session", "format"],
     row: z.object({
       samples: int,
@@ -2535,6 +3180,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/distribution" },
     grain: "project",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       sessions: int,
@@ -2582,6 +3228,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/fps-histogram" },
     grain: "bucket",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "bucket", "format"],
     row: z.object({ bucket: int, sessions: int }),
     columns: {
@@ -2622,6 +3269,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/frame-time" },
     grain: "project",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ sessions: int, samples: intOrNull, p50_ms: numOrNull, p95_ms: numOrNull }),
     columns: {
@@ -2663,6 +3311,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/jank" },
     grain: "project",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       sessions: int,
@@ -2712,6 +3361,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/churn" },
     grain: "project",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: [
       "since",
       "until",
@@ -2785,6 +3435,13 @@ export const METRIC_REGISTRY = {
       "scene",
       "session",
     ],
+    grainDimensions: [
+      "device.engine",
+      "device.isMobile",
+      "device.renderer",
+      "device.browser",
+      "device.os",
+    ],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       engine: text,
@@ -2842,6 +3499,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/by-scene" },
     grain: "scene",
     dimensions: ["scene", "session"],
+    grainDimensions: ["scene"],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ scene_id: text, sessions: int, samples: int, p50_fps: num }),
     columns: {
@@ -2879,6 +3537,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/perf" },
     grain: "voxel",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "cellSize", "limit", "scene", "session", "format"],
     row: z.object({ vx: int, vy: int, vz: int, samples: int, avg_fps: num, min_fps: num }),
     columns: {
@@ -2913,6 +3572,7 @@ export const METRIC_REGISTRY = {
     builder: "buildPerfDaily",
     grain: "bucket",
     dimensions: [],
+    grainDimensions: [],
     filters: [],
     row: z.object({ day: day, samples: int, avg_fps: num, min_fps: num, p50_fps: num }),
     columns: {
@@ -2952,6 +3612,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/compile-stalls" },
     grain: "row",
     dimensions: ["name", "scene", "session"],
+    grainDimensions: ["name"],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ phase: text, stalls: int, total_ms: num, avg_ms: num, max_ms: num }),
     columns: {
@@ -2995,6 +3656,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/resources" },
     grain: "project",
     dimensions: ["session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "session", "format"],
     row: z.object({
       samples: int,
@@ -3049,6 +3711,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/resource-percentiles" },
     grain: "project",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       sessions: int,
@@ -3108,6 +3771,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/perf/stability" },
     grain: "project",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ context_losses: int, compile_stalls: int, incidents: int }),
     columns: {
@@ -3140,6 +3804,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/graphics-diagnostics" },
     grain: "row",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ severity: text, category: text, backend: text, incidents: int }),
     columns: {
@@ -3188,6 +3853,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/errors" },
     grain: "voxel",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: [
       "since",
       "until",
@@ -3234,6 +3900,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/rendering-technology" },
     grain: "row",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       api: text,
@@ -3279,6 +3946,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/capabilities" },
     grain: "row",
     dimensions: ["name", "scene", "session"],
+    grainDimensions: ["name"],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ kind: text, from: text, to: text, changes: int }),
     columns: {
@@ -3327,6 +3995,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/rotation" },
     grain: "session",
     dimensions: ["session", "scene"],
+    grainDimensions: ["session"],
     filters: ["since", "until", "rapidTurn", "limit", "scene", "session", "format"],
     row: z.object({
       session_id: text,
@@ -3381,6 +4050,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/sources" },
     grain: "row",
     dimensions: ["source", "scene", "session"],
+    grainDimensions: ["source"],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ source: text, interactions: int, sessions: int }),
     columns: {
@@ -3413,6 +4083,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/abandonment" },
     grain: "session",
     dimensions: ["session", "scene"],
+    grainDimensions: ["session"],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       session_id: text,
@@ -3458,6 +4129,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/locomotion" },
     grain: "session",
     dimensions: ["session", "scene"],
+    grainDimensions: ["session"],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       session_id: text,
@@ -3515,6 +4187,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/tracking" },
     grain: "session",
     dimensions: ["session", "scene", "source"],
+    grainDimensions: ["session"],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({
       session_id: text,
@@ -3567,6 +4240,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/boundary" },
     grain: "voxel",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "cellSize", "limit", "scene", "session", "region", "format"],
     row: voxelCountRow,
     columns: {
@@ -3606,6 +4280,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/heatmaps/boundary/stats" },
     grain: "project",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "cellSize", "scene", "session", "region", "format"],
     row: spatialStatsRow,
     columns: {
@@ -3636,6 +4311,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/xr/boundary-contacts" },
     grain: "session",
     dimensions: ["session", "scene"],
+    grainDimensions: ["session"],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ session_id: text, contacts: int, near_ms: num }),
     columns: {
@@ -3672,6 +4348,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/ar/placement/time-to-place" },
     grain: "bucket",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "bucketMs", "format"],
     row: z.object({ bucket: int, placements: int }),
     columns: {
@@ -3708,6 +4385,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/ar/placement/attempts" },
     grain: "bucket",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ attempts: int, placements: int }),
     columns: {
@@ -3748,6 +4426,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/ar/placement/surfaces" },
     grain: "row",
     dimensions: ["scene", "session"],
+    grainDimensions: [],
     filters: ["since", "until", "bins", "limit", "scene", "session", "format"],
     row: z.object({ surface: text, placements: int, avg_scale: num }),
     columns: {
@@ -3791,6 +4470,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/funnel" },
     grain: "bucket",
     dimensions: ["scene", "cameraMode"],
+    grainDimensions: [],
     filters: ["since", "until", "scene", "cameraMode", "steps", "format"],
     row: z.object({ step: int, sessions: int }),
     columns: {
@@ -3832,6 +4512,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/scene-retention" },
     grain: "row",
     dimensions: ["scene"],
+    grainDimensions: [],
     filters: ["since", "until", "limit", "format"],
     row: z.object({ from_scene: text, to_scene: text, sessions: int }),
     columns: {
@@ -3869,6 +4550,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/load-bounce" },
     grain: "bucket",
     dimensions: ["scene"],
+    grainDimensions: [],
     filters: ["since", "until", "scene", "bands", "format"],
     row: z.object({ band: int, sessions: int, bounced: int }),
     columns: {
@@ -3912,6 +4594,7 @@ export const METRIC_REGISTRY = {
     endpoint: { method: "GET", path: "/api/v1/variant-leaderboard" },
     grain: "row",
     dimensions: ["name", "scene", "cameraMode"],
+    grainDimensions: [],
     filters: ["since", "until", "scene", "cameraMode", "variant", "conversion", "limit", "format"],
     row: z.object({
       variant: text,
@@ -3954,6 +4637,487 @@ export const METRIC_REGISTRY = {
     related: ["funnel", "top_meshes", "scene_retention"],
     comparable: { primary: "conversions", direction: "up", minSample: 50 },
     category: "conversion",
+  },
+
+  // =========================================================================
+  // Insights (ADR 0051 §4, design sketch §D)
+  //
+  // Derived metrics: computed in pure TypeScript over *another* metric's
+  // portable bucket series (`@uptimizr/db`'s `src/insights/`) rather than by a
+  // `build*` aggregation of their own. They are the answer to the two questions
+  // an agent otherwise re-derives from raw rows on every turn — "what is normal
+  // here" and "what changed" — computed once, the same way, on every engine.
+  // =========================================================================
+  insight_baseline: {
+    id: "insight_baseline",
+    title: "Metric baseline",
+    description:
+      "What is normal for one metric in one scene. Buckets a comparable metric's headline column " +
+      "into days or hours over a trailing window and reduces the series to its centre (mean, " +
+      "median), its ordinary spread (MAD, p10, p90) and its drift (least-squares slope per " +
+      "bucket). One row per request: the reference distribution a single later observation should " +
+      "be judged against, so 'is 42 FPS bad here?' has an answer that does not depend on the " +
+      "reader's memory.",
+    derived: "insight",
+    endpoint: { method: "GET", path: "/api/v1/insights/baseline" },
+    grain: "project",
+    dimensions: ["scene"],
+    // One row per request; `scene` is both the filter and the key the row
+    // carries, so it is the grain (#304).
+    grainDimensions: ["scene"],
+    filters: ["metric", "scene", "window", "bucket", "since", "until", "format"],
+    row: z.object({
+      metric: text,
+      scene: text,
+      sampleSize: int,
+      buckets: int,
+      mean: numOrNull,
+      median: numOrNull,
+      mad: numOrNull,
+      p10: numOrNull,
+      p90: numOrNull,
+      slope: numOrNull,
+    }),
+    columns: {
+      metric: { description: "The registry metric the baseline is of.", unit: "id" },
+      scene: {
+        description: "The scene it was scoped to; empty when the baseline spans every scene.",
+        unit: "id",
+      },
+      sampleSize: {
+        description:
+          "Events (or distinct sessions, for a session-valued metric) behind the whole series.",
+        unit: "count",
+      },
+      buckets: { description: "How many buckets carried a value.", unit: "count" },
+      mean: { description: "Arithmetic mean of the bucket values." },
+      median: { description: "Median bucket value — the headline 'normal'.", measure: true },
+      mad: {
+        description:
+          "Median absolute deviation: the typical bucket-to-bucket swing, and the unit a robust " +
+          "z-score is measured in.",
+      },
+      p10: { description: "10th percentile of the bucket values — the ordinary floor." },
+      p90: { description: "90th percentile of the bucket values — the ordinary ceiling." },
+      slope: {
+        description:
+          "Least-squares slope against the bucket index: change per bucket over the window.",
+      },
+    },
+    limits: { maxRows: 1, maxSummaryRows: 1 },
+    interpretation:
+      "Read `median` as the centre and `mad` as the tolerance: a later observation more than a few " +
+      "MADs from the median is unusual for this scene, one inside p10..p90 is ordinary. `slope` is " +
+      "the drift *within* the window — a baseline with a steep slope is not a stable reference and " +
+      "should be re-read over a shorter window before it is used to judge anything.",
+    caveats: [
+      "Only `comparable` metrics with a portable bucket series can be baselined; a metric whose value is defined by a join, a window function or a caller-supplied funnel predicate is rejected rather than approximated, and the error names every id that is available.",
+      "Window bounds are snapped down to whole buckets, so the current (incomplete) day or hour is excluded — otherwise every morning would look like a collapse. The snapped window is echoed in the `table` / `summary` envelopes.",
+      "Buckets with no matching events are absent from the series rather than zero: a metric that was silent for a week has a narrower baseline, not a lower one.",
+      "Every statistic is `null` when the window carried no values, and `slope` is `null` under two buckets. Read `null` as 'no data', never as 0.",
+      "The series reproduces the metric's headline column per bucket; where the metric's own endpoint aggregates per session first (ADR 0028 §1), a bucket value and that endpoint's headline can differ slightly.",
+    ],
+    sourceChannels: [],
+    related: ["insight_movers", "timeseries", "perf_summary", "events_daily"],
+    category: "insights",
+  },
+  insight_movers: {
+    id: "insight_movers",
+    title: "What changed",
+    description:
+      "What moved, ranked. For every comparable metric in scope, compares the current range with a " +
+      "reference range (the previous equal window by default) and ranks the differences by a " +
+      "robust z-score — the change divided by how much that metric normally swings, so a metric " +
+      "that is always volatile has to move much further than a steady one before it is called a " +
+      "mover. One row per metric: the top risers, the top fallers, and the ones that did not move.",
+    derived: "insight",
+    endpoint: { method: "GET", path: "/api/v1/insights/movers" },
+    grain: "row",
+    dimensions: ["scene"],
+    // One row per metric. Its rows carry no registry dimension column at all —
+    // the key is the metric id, which is not one — so there is nothing for the
+    // generic group-by tier to regroup by (#304).
+    grainDimensions: [],
+    filters: [
+      "scene",
+      "metrics",
+      "bucket",
+      "limit",
+      "since",
+      "until",
+      "refSince",
+      "refUntil",
+      "format",
+    ],
+    row: z.object({
+      metric: text,
+      dimensionValue: z.string().nullable(),
+      current: numOrNull,
+      previous: numOrNull,
+      delta: numOrNull,
+      deltaPct: numOrNull,
+      z: numOrNull,
+      direction: text,
+      aboveMinSample: z.boolean(),
+      sampleSize: num,
+    }),
+    columns: {
+      metric: { description: "The registry metric that moved.", unit: "id", label: true },
+      dimensionValue: {
+        description:
+          "The dimension value the move is attributed to. Always null in v1 — movers are computed " +
+          "at the scene (or project) level; per-dimension attribution arrives with `anomalies`.",
+        unit: "id",
+      },
+      current: { description: "The metric's headline column over the current range." },
+      previous: { description: "The same over the reference range." },
+      delta: { description: "`current - previous`, in the metric's own unit." },
+      deltaPct: {
+        description: "Relative change; null when the reference value was zero or missing.",
+        unit: "ratio",
+      },
+      z: {
+        description:
+          "Robust z-score: `delta` divided by the median absolute deviation of the reference " +
+          "bucket series. The ranking key.",
+        unit: "ratio",
+        measure: true,
+      },
+      direction: {
+        description:
+          "Whether a rise is good (`up`), bad (`down`) or merely a fact (`neutral`), from the " +
+          "moved metric's own registry entry. It qualifies the sign of `delta`; it is not the " +
+          "direction this metric actually moved in.",
+        unit: "label",
+      },
+      aboveMinSample: {
+        description:
+          "Whether the current range cleared the metric's declared minimum denominator. False " +
+          "means the delta is real arithmetic but not evidence.",
+      },
+      sampleSize: {
+        description:
+          "The current range's denominator — events, or distinct sessions for a session-valued " +
+          "metric — that `aboveMinSample` was decided on.",
+      },
+    },
+    limits: { maxRows: 150, maxSummaryRows: 10 },
+    interpretation:
+      "Read the rows in order: risers first, then fallers, then the ones that did not move. |z| is " +
+      "'how many typical swings': under ~2 the move is inside this metric's ordinary noise, over " +
+      "~3 it is worth explaining. Combine `direction` with the sign of `delta` to know whether a " +
+      "move is good or bad — a rise in a `down` metric (errors, dead clicks, jank) is a " +
+      "regression. Rows with `aboveMinSample: false` are sorted last and must not be reported as " +
+      "findings.",
+    caveats: [
+      "Cost is bounded by a per-request cap on how many metrics are scanned (one grouped scan each); without a `metrics` allowlist a curated default set is used, so a move in a metric outside that set is not reported. Name it explicitly to include it.",
+      "Only metrics with a portable bucket series participate. Funnels, cohort metrics and anything defined by the relationship between consecutive events are outside the scan by construction.",
+      "`aboveMinSample: false` means the denominator is too small for the delta to be evidence — the row is kept rather than dropped so 'we cannot tell' stays distinguishable from 'nothing changed', but it must not be read as a finding.",
+      "The spread is taken over the *reference* window's buckets, floored at 1% of that window's level — so a one-bucket or perfectly flat reference cannot make every metric score in the billions and turn the ranking into a comparison of raw deltas across incompatible units. A reference that is flat *at zero* has no level to floor against, so the first data of its kind scores a very large |z|: correct (it is unprecedented) but only meaningful once `aboveMinSample` is true.",
+      "Window bounds are snapped down to whole buckets, so the current incomplete day or hour is excluded from both ranges and the two stay exactly comparable.",
+      "`deltaPct` is null when the reference value was zero: a percentage change from nothing is undefined. Read `delta` in that case.",
+      "A metric is compared with itself over time, never across projects or scenes: sampling rates (ADR 0012) make absolute counts incomparable between them.",
+    ],
+    sourceChannels: [],
+    related: ["insight_baseline", "events_daily", "perf_daily", "event_counts"],
+    category: "insights",
+  },
+  // =========================================================================
+  // --- anomalies (#306) ---
+  // =========================================================================
+  insight_anomalies: {
+    id: "insight_anomalies",
+    title: "Anomalous buckets",
+    description:
+      "When one metric stopped behaving, and what inside it accounts for that. Walks a comparable " +
+      "metric's day or hour bucket series and returns only the buckets that do not belong in it: " +
+      "a `spike` or a `drop` when a single bucket sits more than `sensitivity` median absolute " +
+      "deviations from the buckets just before it, and a `shift` at the bucket where a CUSUM " +
+      "change-point says the level moved and stayed moved. Where the metric declares a dimension " +
+      "it can be split by, the row also names the dimension value holding the largest share of " +
+      "the excess — the difference between 'errors tripled on the 14th' and 'graphics " +
+      "diagnostics tripled on the 14th'.",
+    derived: "insight",
+    endpoint: { method: "GET", path: "/api/v1/insights/anomalies" },
+    grain: "row",
+    dimensions: ["scene"],
+    // One row per anomalous bucket; `scene` is the only registry dimension the
+    // row carries (the metric id and the bucket start are not) (#304).
+    grainDimensions: ["scene"],
+    filters: ["metric", "scene", "window", "bucket", "sensitivity", "since", "until", "format"],
+    row: z.object({
+      metric: text,
+      scene: text,
+      bucketStart: num,
+      value: numOrNull,
+      expected: numOrNull,
+      z: numOrNull,
+      kind: text,
+      contributor: z.object({ dimension: text, value: text, share: numOrNull }).nullable(),
+      sampleSize: num,
+    }),
+    columns: {
+      metric: { description: "The registry metric the series is of.", unit: "id", label: true },
+      scene: {
+        description: "The scene it was scoped to; empty when the series spans every scene.",
+        unit: "id",
+      },
+      bucketStart: {
+        description:
+          "Start of the anomalous bucket, epoch milliseconds (UTC, aligned to the grain). For a " +
+          "`shift` this is the bucket the level changed at, not the bucket the change was detected in.",
+        unit: "timestamp",
+      },
+      value: {
+        description:
+          "The observed value. For a `shift`, the level that held after the change-point rather " +
+          "than one bucket's reading.",
+      },
+      expected: {
+        description:
+          "What the bucket should have read: the median of the trailing window, or for a " +
+          "`shift` the level that held before the change-point.",
+      },
+      z: {
+        description:
+          "Signed robust z-score: `(value - expected)` divided by the trailing window's median " +
+          "absolute deviation rescaled to a standard deviation (x1.4826) and floored at 1% of the " +
+          "level. It is measured in standard deviations, so `sensitivity: 3` means 'beyond three " +
+          "sigma'. `insight_movers` reports the same ratio *unscaled* because it ranks rather " +
+          "than thresholds, so the two columns differ by that constant factor.",
+        unit: "ratio",
+        measure: true,
+      },
+      kind: {
+        description:
+          "`spike` (one bucket far above the trailing window), `drop` (far below) or `shift` (the " +
+          "level moved and stayed moved).",
+        unit: "label",
+      },
+      contributor: {
+        description:
+          "The dimension value accounting for the excess: `{ dimension, value, share }`, where " +
+          "`share` is its fraction of the total same-signed excess. Null when the metric declares " +
+          "no split dimension, when the split would be degenerate, or when no value moved with the " +
+          "finding.",
+      },
+      sampleSize: {
+        description:
+          "The anomalous bucket's own denominator — events, or distinct sessions for a " +
+          "session-valued metric.",
+        unit: "count",
+      },
+    },
+    limits: { maxRows: 200, maxSummaryRows: 8 },
+    interpretation:
+      "Rows are ordered by bucket, oldest first, so the result reads as a timeline. |z| is 'how " +
+      "many typical swings out': at the default `sensitivity` of 3 nothing under 3 appears at all, " +
+      "and a `shift` is usually the more important finding than a `spike` because it is still " +
+      "true today. Read `contributor.share`: above ~0.8 the anomaly *is* that dimension value and " +
+      "the investigation has one place to start; near the reciprocal of the number of values it is " +
+      "spread evenly and the cause is more likely to be global. An empty result means the series " +
+      "held together over the window, not that there was no data - check `insight_baseline`'s " +
+      "`buckets` for that.",
+    caveats: [
+      "Only `comparable` metrics with a portable bucket series can be scored; a metric whose value is defined by a join, a window function or a caller-supplied funnel predicate is rejected with the list of ids that are available, rather than approximated.",
+      "A bucket is judged against the buckets before it (14 at day grain, 168 at hour grain), never against itself, and a bucket with fewer than 5 buckets of history behind it is not judged at all. The first days of a project are therefore silent by construction rather than a wall of findings.",
+      "The spread is floored at 1% of the trailing level, so a perfectly flat metric does not report every subsequent bucket as an infinite z. A series that is flat at *zero* has no level to floor against, so the first data of its kind can read as a very large spike.",
+      "Buckets with no matching events are absent from the series rather than zero, so a gap in capture is not reported as a drop. A metric that genuinely fell to zero *did* record events, so it is.",
+      "Change-points are detected sequentially, so a shift is reported at the bucket the level moved at but can only be found once enough buckets after it have accumulated. The most recent few buckets of a window are therefore under-covered for `shift` - re-read after more data lands.",
+      "Contributor attribution costs at most 3 extra grouped scans per request whatever the data looks like: adjacent findings share one window, and only the three most extreme windows are re-read. Quieter findings carry `contributor: null` - narrow `since` / `until` around one to attribute it.",
+      "The contributor is one dimension, chosen per metric from the promoted columns (mesh, source, name, event type, scene). It is not a cause: it is where the excess sits. A metric whose real explanation is the device or the release has no column for it and reports null.",
+      "Window bounds are snapped down to whole buckets, so the incomplete day or hour in progress is never scored - otherwise every morning would report a drop.",
+      "A sustained level change is reported twice over: once as the `shift` at its change-point, and again as `drop`/`spike` rows for the buckets right after it, until the trailing window has caught up with the new level. Those are two true statements about one event ('it moved on the 14th' and 'the 15th was far below what the fortnight before it predicted'), not a duplicate row - read the `shift` as the finding and the points as its first days.",
+      "`z` is measured in standard deviations (the MAD rescaled by 1.4826), so it is directly comparable with a normal-distribution intuition but **not** byte-comparable with `insight_movers`' `z`, which is the same ratio unscaled.",
+    ],
+    sourceChannels: [],
+    related: ["insight_baseline", "insight_movers", "timeseries", "error_heatmap"],
+    category: "insights",
+  },
+
+  // --- significance / scene health (#307) ---------------------------------
+  //
+  // The other two §4 primitives. `insight_significance` answers the question a
+  // robust z deliberately does not — *could this difference be chance?* — and
+  // `insight_scene_health` collapses six of those readings into one comparable
+  // score per scene, with every factor traceable back to the metric behind it.
+  insight_significance: {
+    id: "insight_significance",
+    title: "Statistical significance",
+    description:
+      "Is that difference real? Compares one comparable metric across two windows and reports the " +
+      "effect, its 95% confidence interval and a two-sided p-value, with the test chosen from what " +
+      "the measure *is*: a two-proportion z with Wilson intervals for a declared rate, Welch's t " +
+      "over the per-bucket values for a level, an exact Poisson rate test for a bare count. One " +
+      "row per request, and a `powerNote` saying what these sample sizes could and could not have " +
+      "detected.",
+    derived: "insight",
+    endpoint: { method: "GET", path: "/api/v1/insights/significance" },
+    grain: "project",
+    dimensions: ["scene"],
+    // One row per request; `scene` is the only registry dimension the row
+    // carries, so it is the grain (#304).
+    grainDimensions: ["scene"],
+    filters: ["metric", "scene", "bucket", "since", "until", "refSince", "refUntil", "format"],
+    row: z.object({
+      metric: text,
+      scene: text,
+      a: z.object({ value: numOrNull, n: num }),
+      b: z.object({ value: numOrNull, n: num }),
+      effect: numOrNull,
+      ci95: z.tuple([numOrNull, numOrNull]),
+      p: numOrNull,
+      test: text,
+      effectUnit: text,
+      significant: z.boolean(),
+      powerNote: text,
+    }),
+    columns: {
+      metric: { description: "The registry metric being compared.", unit: "id", label: true },
+      scene: {
+        description: "The scene it was scoped to; empty when the comparison spans every scene.",
+        unit: "id",
+      },
+      a: {
+        description:
+          "The current window: `value` in the metric's own unit (a proportion for a rate, a " +
+          "per-bucket rate for a count, a mean of bucket values for a level) and `n`, the " +
+          "denominator it rests on — trials for a proportion, buckets otherwise. `value * n` " +
+          "recovers the total the arm was computed from, whichever test ran.",
+      },
+      b: { description: "The reference window, in the same shape as `a`." },
+      effect: {
+        description: "`a.value - b.value`, in the unit named by `effectUnit`.",
+        measure: true,
+      },
+      ci95: {
+        description:
+          "The 95% confidence interval for `effect`, as `[lo, hi]`. An interval that straddles 0 " +
+          "is the finding, whatever `p` says.",
+      },
+      p: {
+        description: "Two-sided p-value for the null hypothesis of no difference.",
+        unit: "ratio",
+      },
+      test: {
+        description:
+          "Which test produced the row: `two_proportion_z`, `welch_t` or `poisson_rate`.",
+        unit: "label",
+      },
+      effectUnit: { description: "What one unit of `effect` means.", unit: "label" },
+      significant: {
+        description:
+          "Whether `p` cleared alpha = 0.05. A convenience, never a substitute for `ci95`.",
+      },
+      powerNote: {
+        description:
+          "The smallest difference these sample sizes could have detected at 80% power, plus any " +
+          "assumption the data strained (overdispersed counts, too few buckets).",
+        unit: "label",
+      },
+    },
+    limits: { maxRows: 1, maxSummaryRows: 1 },
+    interpretation:
+      "Read `ci95` before `p`. A narrow interval around a small effect is evidence that nothing " +
+      "much changed; a wide interval containing 0 is evidence of nothing at all, and `powerNote` " +
+      "says which of the two you are looking at. `p` is two-sided throughout: it answers 'is there " +
+      "a difference', not 'is it an improvement' — combine it with the sign of `effect` and the " +
+      "compared metric's own `direction` for that.",
+    caveats: [
+      "v1 compares two **time windows**, not two segments. A variant-versus-variant or device-versus-device contrast needs the bucket series split by a promoted dimension, which is not available yet; asking for one is rejected rather than answered with the wrong contrast.",
+      "The test is chosen from the measure, not from the caller: a metric whose comparable primary declares a `rateOf` denominator gets the two-proportion z, a bare count gets the Poisson rate test, and everything else gets Welch's t. A caller cannot ask for a different one.",
+      "Welch's t treats each **bucket** as one observation, so `n` is the number of days or hours compared, never the number of events. Consecutive frame samples inside a day are not independent, and counting them would manufacture a p-value of 1e-40 for ordinary day-to-day drift.",
+      "For a Welch comparison `a.value` is the **mean** of the bucket values even where `movers` would report the window sum, so that `effect` and `value` can be read together; `n` is the bucket count, so the sum is one multiplication away.",
+      "The Poisson test assumes counts that do not vary more than a Poisson process would. When the buckets say otherwise, the p-value is optimistic and `powerNote` says so — treat it as an upper bound on the evidence.",
+      "The Poisson interval is the normal approximation on the rate difference (there is no closed-form exact one); only the p-value is exact.",
+      "The two-proportion p-value uses the pooled variance under the null while the interval is unpooled and Newcombe-hybrid. In a borderline case the two can disagree about whether 0 is excluded; that is the textbook procedure, and the interval is the one to believe.",
+      "Window bounds are snapped down to whole buckets, so the current incomplete day or hour is excluded from both windows and the two stay exactly comparable.",
+      "Statistical significance is not importance. A large enough sample makes a difference of no consequence significant; `effect` and `effectUnit` are what say whether it matters.",
+    ],
+    sourceChannels: [],
+    related: ["insight_movers", "insight_baseline", "insight_scene_health"],
+    category: "insights",
+  },
+  insight_scene_health: {
+    id: "insight_scene_health",
+    title: "Scene health score",
+    description:
+      "Which scene is in trouble, and why. Scores each scene 0-100 over six weighted factors — " +
+      "perf stability, jank, errors, dead clicks, exploration coverage and XR abandonment — each " +
+      "normalised against the project's own baseline over the preceding equal window. One row per " +
+      "scene, least healthy first, and every factor carries the metric id, the raw value, the " +
+      "baseline it was compared with and the weight it contributed, so the score can always be " +
+      "taken apart.",
+    derived: "insight",
+    endpoint: { method: "GET", path: "/api/v1/insights/scene-health" },
+    grain: "scene",
+    dimensions: ["scene"],
+    // One row per scene — the grain is the scene itself (#304).
+    grainDimensions: ["scene"],
+    filters: ["scene", "window", "since", "until", "bucket", "limit", "weights", "format"],
+    row: z.object({
+      scene: text,
+      score: numOrNull,
+      factors: z.array(
+        z.object({
+          id: text,
+          metric: text,
+          raw: numOrNull,
+          baseline: numOrNull,
+          score: numOrNull,
+          weight: num,
+          unit: text,
+          note: text,
+        }),
+      ),
+      sampleSize: int,
+      since: int,
+      until: int,
+    }),
+    columns: {
+      scene: { description: "The scene scored.", unit: "id", label: true },
+      score: {
+        description:
+          "Weighted mean of the available factors, 0-100. 50 is exactly the project norm for the " +
+          "preceding window; higher is healthier. Null when no factor could be scored.",
+        measure: true,
+      },
+      factors: {
+        description:
+          "One entry per factor: `id`, the `metric` behind it, its `raw` value in `unit`, the " +
+          "project `baseline` it was compared with, its normalised `score`, the `weight` it " +
+          "carried, and a `note` saying what the raw number measures (or why it was not scored).",
+      },
+      sampleSize: {
+        description: "Sessions started in the scene over the window — what the score rests on.",
+        unit: "sessions",
+      },
+      since: { description: "Start of the scored window, epoch ms.", unit: "epoch-ms" },
+      until: { description: "End of the scored window, epoch ms.", unit: "epoch-ms" },
+    },
+    limits: { maxRows: 10, maxSummaryRows: 10 },
+    interpretation:
+      "The score is a **comparison, not a grade**: it says how this scene is doing against the " +
+      "rest of this project's recent past, so a project where everything is equally bad reads 50 " +
+      "everywhere. Read the lowest-scoring scene first, then the factor whose own score is " +
+      "furthest below 50 — that factor's `metric` is the endpoint to open next, and its `raw` " +
+      "versus `baseline` is the sentence to write. A factor with `score: null` was not counted; " +
+      "its `note` says why.",
+    caveats: [
+      "The default weights are a judgement, declared in this entry so they can be argued with: perf stability 0.25, error rate 0.25, jank rate 0.2, dead-click rate 0.15, coverage 0.1, XR abandonment 0.05. Pass `weights` as a JSON object to override any of them; unnamed factors keep their default.",
+      "Normalisation is against the **project as a whole** over the preceding equal window, not against an absolute target. A new project with one week of data has no baseline and scores null.",
+      "Unlike `insight_baseline` and `insight_movers`, the window **includes the bucket in progress** rather than snapping down to the last complete one: every factor is a rate or a percentile, neither of which a partial bucket distorts, and excluding today would make the score answer about yesterday. The window actually measured is echoed as `since` / `until` on every row.",
+      "A factor with no data in the window, or no project baseline to compare against, is reported with `score: null` and excluded from the weighted mean — the remaining weights are renormalised. The row still lists it, so a missing factor is visible rather than silently folded in.",
+      "XR abandonment is absent in a project with no XR traffic: a scene nobody visited in VR is not an unhealthy VR scene.",
+      "Coverage is positioned camera samples per session, not a voxel-coverage percentage: the true percentage needs the registered scene bounds and has no portable per-bucket form. It is only ever read against the project's own baseline.",
+      "The jank factor is the *pooled* long-frames-per-sampled-window rate, while the `jank_rate` metric's own endpoint reports a per-session median (ADR 0028 Section 1). They agree in direction, not in value.",
+      "Rage clicks are not folded into the dead-click factor: they are defined by the gap between consecutive clicks and have no portable per-bucket form.",
+      "Fewer than about 20 sessions makes a scene's score noise. The row is returned anyway, with its `sampleSize`, so 'we cannot tell' stays distinguishable from 'this scene is fine'.",
+      "Without a `scene` the scan is bounded to the busiest scenes by event volume, so a quiet scene can be missing from the list entirely. Name it explicitly to score it.",
+    ],
+    sourceChannels: [],
+    related: ["insight_movers", "insight_baseline", "insight_significance"],
+    category: "insights",
   },
 } satisfies Readonly<Record<MetricId, MetricDefinition>>;
 
@@ -4038,5 +5202,22 @@ export function metricForBuilder(builder: AggregationBuilderName): MetricDefinit
  * catalog stays a superset of the hand-written one (design sketch §A.4).
  */
 export function isResourceMetric(metric: MetricDefinition): boolean {
-  return metric.builder === undefined;
+  return metric.builder === undefined && metric.derived === undefined;
+}
+
+/**
+ * A **derived** entry is computed in TypeScript over another metric's data
+ * rather than by a `build*` aggregation (ADR 0051 §4): the insight primitives.
+ * It has no builder, but — unlike a {@link isResourceMetric resource} — it is a
+ * real aggregate with a querystring, a time range and the `format` envelope, so
+ * every consumer that treats `builder != null` as "is an aggregate" should ask
+ * this instead.
+ */
+export function isDerivedMetric(metric: MetricDefinition): boolean {
+  return metric.derived !== undefined;
+}
+
+/** Whether a metric is served as an aggregate over a querystring (not a resource read). */
+export function isAggregateMetric(metric: MetricDefinition): boolean {
+  return metric.builder !== undefined || metric.derived !== undefined;
 }

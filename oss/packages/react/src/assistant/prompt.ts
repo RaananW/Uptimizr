@@ -4,7 +4,11 @@
 // project-scoped query surface a human dashboard user sees (ADR 0003 / 0017).
 // It has no ingestion or mutation tools and cannot reach raw per-session events.
 
-import type { AgentMessage } from "@uptimizr/agent-core";
+import {
+  ANALYTICS_AGENT_GUIDELINES,
+  renderCurrentTimeLine,
+  type AgentMessage,
+} from "@uptimizr/agent-core";
 
 /**
  * The default system message that primes the assistant. Consumers can override
@@ -15,15 +19,9 @@ export const DEFAULT_SYSTEM_PROMPT = [
   "their 3D-scene analytics by calling read-only tools against their own collector's",
   "query API and summarising the results in clear, concise prose.",
   "",
-  "Guidelines:",
-  "- Use the provided tools to fetch data before answering; never invent numbers.",
-  "- All data is aggregate and privacy-preserving — there are no raw per-session events,",
-  "  no PII, and no way to ingest or modify data. Do not claim otherwise.",
-  "- Timestamps are epoch milliseconds. When the user gives a relative range",
-  '  ("this week", "last 24h"), convert it to `since`/`until` before calling a tool.',
-  "- Prefer a short, direct answer with the key figures. Call out caveats (small sample",
-  "  sizes, missing scenes) when relevant.",
-  "- If a tool returns an error, explain what went wrong and, if useful, try a corrected call.",
+  // The behavioural half is shared with the headless `uptimizr agent report` CLI
+  // (ADR 0051 §6) so what the two clients promise about the data cannot drift.
+  ANALYTICS_AGENT_GUIDELINES,
 ].join("\n");
 
 /**
@@ -41,20 +39,28 @@ export const DEFAULT_SYSTEM_PROMPT = [
  * Plain string building only — no regex — so there is no ReDoS surface even though
  * `basePrompt` may be a consumer-supplied override.
  *
+ * The optional third part is the **project context block** (ADR 0051 §5): the
+ * compact rendering of the collector's `GET /api/v1/context` document produced by
+ * `renderContextForPrompt` in `@uptimizr/agent-core` — the project's real scene
+ * ids, region ids and custom-event names, and which metrics cannot have data.
+ * It is appended last, closest to the question, and omitted entirely when empty
+ * (an older collector without the endpoint, or a project with nothing to say),
+ * so the prompt is byte-identical to before in that case.
+ *
  * @param basePrompt The base system instructions (defaults to {@link DEFAULT_SYSTEM_PROMPT}).
  * @param nowMs The current time in epoch milliseconds (e.g. `Date.now()`).
+ * @param projectContext Pre-rendered project context block, or `""` for none.
  */
 export function composeSystemPrompt(
   basePrompt: string = DEFAULT_SYSTEM_PROMPT,
   nowMs: number = Date.now(),
+  projectContext = "",
 ): string {
-  const iso = new Date(nowMs).toISOString();
-  const currentTimeLine =
-    `Current time: ${iso} (epoch milliseconds: ${nowMs}). ` +
-    "Resolve any relative time range in the question against this — " +
-    '"today" is the current calendar day, "this week" the last 7 days, ' +
-    '"last 24h" the preceding 24 hours — into concrete `since`/`until` epoch-ms arguments.';
-  return `${basePrompt}\n\n${currentTimeLine}`;
+  const currentTimeLine = renderCurrentTimeLine(nowMs);
+  const context = projectContext.trim();
+  return context.length > 0
+    ? `${basePrompt}\n\n${currentTimeLine}\n\n${context}`
+    : `${basePrompt}\n\n${currentTimeLine}`;
 }
 
 /**
@@ -78,13 +84,20 @@ export function composeSystemPrompt(
  * @param messages The current transcript (may be empty).
  * @param basePrompt The base system instructions (defaults to {@link DEFAULT_SYSTEM_PROMPT}).
  * @param nowMs The current time in epoch milliseconds (e.g. `Date.now()`).
+ * @param projectContext Pre-rendered project context block, or `""` for none.
+ *   Re-stamped on every send too, so a context that arrives after the first turn
+ *   still reaches the model.
  */
 export function refreshSystemPrompt(
   messages: readonly AgentMessage[],
   basePrompt: string = DEFAULT_SYSTEM_PROMPT,
   nowMs: number = Date.now(),
+  projectContext = "",
 ): AgentMessage[] {
-  const system: AgentMessage = { role: "system", content: composeSystemPrompt(basePrompt, nowMs) };
+  const system: AgentMessage = {
+    role: "system",
+    content: composeSystemPrompt(basePrompt, nowMs, projectContext),
+  };
   const rest = messages.filter((message) => message.role !== "system");
   return [system, ...rest];
 }

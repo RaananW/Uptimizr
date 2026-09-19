@@ -220,6 +220,76 @@ export interface SceneInfo {
   last_seen: string;
 }
 
+// --- Project metadata (#310, ADR 0051 §5) ----------------------------------
+
+/** What `GET /api/v1/whoami` reports about the configured key. */
+export interface WhoAmI {
+  projectId: string;
+  keyId: string;
+  /** e.g. `["query", "annotate"]` — what this key may do. */
+  capabilities: string[];
+  label: string | null;
+}
+
+/** What an annotation is about (ADR 0051 §5). */
+export type AnnotationTargetKind = "project" | "scene" | "mesh" | "region" | "metric" | "window";
+
+/** An annotation as written by a client. */
+export interface AnnotationInput {
+  targetKind: AnnotationTargetKind;
+  /** Required for `scene` / `mesh` / `region` / `metric`. */
+  targetId?: string;
+  /** Start of the annotated period, epoch ms. Required for `window`. */
+  since?: number;
+  /** End of the annotated period, epoch ms. */
+  until?: number;
+  text: string;
+}
+
+/** A stored annotation, as the collector returns it (timestamps are ISO 8601). */
+export interface AnnotationRow {
+  id: string;
+  projectId: string;
+  targetKind: AnnotationTargetKind;
+  targetId: string | null;
+  since: string | null;
+  until: string | null;
+  text: string;
+  /** Whether a person or an agent wrote it — the collector decides, not the payload. */
+  authorKind: "user" | "agent";
+  authorKeyId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A stored glossary entry. */
+export interface GlossaryRow {
+  projectId: string;
+  term: string;
+  meaning: string;
+  updatedAt: string;
+}
+
+/** A saved analysis as written by a client. */
+export interface SavedAnalysisInput {
+  title: string;
+  /** The question, as an opaque JSON document the collector stores but does not interpret. */
+  query: Record<string, unknown>;
+  conclusion?: string;
+}
+
+/** A stored saved analysis. */
+export interface SavedAnalysisRow {
+  id: string;
+  projectId: string;
+  title: string;
+  query: Record<string, unknown>;
+  conclusion: string | null;
+  authorKind: "user" | "agent";
+  authorKeyId: string | null;
+  createdAt: string;
+}
+
 /** Axis-aligned bounding box `[minX, minY, minZ, maxX, maxY, maxZ]`. */
 export type Aabb = [number, number, number, number, number, number];
 
@@ -276,6 +346,39 @@ export interface TimeseriesBucket {
 export interface EventTypeCount {
   event_type: string;
   count: number;
+}
+
+// --- significance / scene health (#307) ------------------------------------
+
+/**
+ * One factor of a scene-health score (ADR 0051 §4).
+ *
+ * Every field exists so the score can be taken apart: `metric` is the registry
+ * id behind the reading, `raw` the value that metric produced in `unit`,
+ * `baseline` the project norm it was compared with, `score` the 0-100 it
+ * contributed and `weight` how much of the total it carried. `score` is null
+ * for a factor that could not be measured; `note` says why.
+ */
+export interface SceneHealthFactor {
+  id: string;
+  metric: string;
+  raw: number | null;
+  baseline: number | null;
+  score: number | null;
+  weight: number;
+  unit: string;
+  note: string;
+}
+
+/** One scene's health score and the factors behind it (ADR 0051 §4). */
+export interface SceneHealthScore {
+  scene: string;
+  /** 0-100 against the project's own preceding window; 50 is the project norm. */
+  score: number | null;
+  factors: SceneHealthFactor[];
+  sampleSize: number;
+  since: number;
+  until: number;
 }
 
 /**
@@ -709,6 +812,50 @@ export interface LiveToken {
   expiresAt: number;
 }
 
+/**
+ * A conditional subscription as the collector's read API returns it (#311,
+ * ADR 0051 §6).
+ *
+ * Deliberately read-only in `@uptimizr/react`: OSS ships no authoring UI for
+ * subscriptions (ADR 0038's stance on configuration that belongs in a file or a
+ * CLI), so the panel shows what is standing and how it last went, and creation
+ * happens through the API, `uptimizr subscriptions add` or an agent.
+ *
+ * A webhook target's `secret` is always the collector's mask, never the secret.
+ */
+export interface Subscription {
+  id: string;
+  projectId: string;
+  name: string;
+  /** Registry metric id the subscription watches. */
+  metric: string;
+  filters: { scene?: string };
+  evaluate: { every: string; window: string; bucket?: "hour" | "day" };
+  /** Closed union, discriminated on `kind` (see `@uptimizr/schema`). */
+  predicate: { kind: string } & Record<string, unknown>;
+  cooldown: string;
+  delivery: ({ kind: string } & Record<string, unknown>)[];
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** ISO timestamp of the last firing, or `null` if it never has. */
+  lastFiredAt: string | null;
+  /** Bounded, redacted text of the last delivery failure, or `null`. */
+  lastError: string | null;
+  /** Consecutive delivery failures since the last success. */
+  failures: number;
+}
+
+/** One recorded firing of a subscription (bounded to the last 100 per id). */
+export interface SubscriptionEvent {
+  id: string;
+  subscriptionId: string;
+  projectId: string;
+  /** ISO timestamp of the firing. */
+  at: string;
+  payload: Record<string, unknown>;
+}
+
 /** Shared time-range + binning query parameters. */
 export interface QueryParams {
   since?: number;
@@ -813,6 +960,13 @@ export class ApiError extends Error {
  * range no longer includes a pre-#298 release.
  */
 const num = (value: unknown): number => (typeof value === "number" ? value : Number(value));
+/**
+ * A nullable numeric cell (#307). A derived insight reports `null` for "not
+ * defined for this data", which must survive the client rather than collapsing
+ * to `0` — a score of 0 is the worst possible reading, and absence is not.
+ */
+const numOrNull = (value: unknown): number | null =>
+  value == null ? null : Number.isFinite(Number(value)) ? Number(value) : null;
 
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 15_000;
@@ -919,6 +1073,87 @@ export class CollectorApi {
    */
   read(path: string, params?: QueryParams): Promise<unknown> {
     return this.get<unknown>(path, params);
+  }
+
+  /**
+   * The one non-GET transport in this client, used only by the metadata methods
+   * below. A `204 No Content` (every successful delete) resolves to `null`
+   * rather than failing to parse an empty body.
+   */
+  private async send<T>(
+    method: "POST" | "PUT" | "DELETE",
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
+    const url = new URL(path, ensureTrailingSlash(this.baseUrl));
+    const res = await fetch(url, {
+      method,
+      headers:
+        body === undefined
+          ? this.headers()
+          : { ...this.headers(), "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new ApiError(text || res.statusText, res.status);
+    }
+    if (res.status === 204) return null as T;
+    return (await res.json()) as T;
+  }
+
+  // --- Project metadata (#310, ADR 0051 §5) --------------------------------
+  //
+  // The only writes this client can make. They reach three endpoints —
+  // annotations, glossary, saved analyses — and nothing else: no method here
+  // can write, alter or delete an analytics event (ADR 0051 §9). Each write
+  // needs an API key holding `annotate`, which {@link whoami} reports, and the
+  // collector audits every one.
+
+  /**
+   * What the configured key is allowed to do. The assistant calls it once so it
+   * offers its "Annotate this" / "Save this analysis" actions only when they
+   * would actually work.
+   */
+  whoami(): Promise<WhoAmI> {
+    return this.get<WhoAmI>("api/v1/whoami");
+  }
+
+  /** The project's annotations, newest first; a range filter is an overlap test. */
+  annotations(params?: QueryParams): Promise<AnnotationRow[]> {
+    return this.get<AnnotationRow[]>("api/v1/annotations", params);
+  }
+
+  /** Leave a note. Requires an `annotate` key. */
+  createAnnotation(annotation: AnnotationInput): Promise<AnnotationRow> {
+    return this.send<AnnotationRow>("POST", "api/v1/annotations", annotation);
+  }
+
+  /** Remove a note. Requires an `annotate` key. */
+  async deleteAnnotation(id: string): Promise<void> {
+    await this.send<null>("DELETE", `api/v1/annotations/${encodeURIComponent(id)}`);
+  }
+
+  /** The project's glossary, ordered by term. */
+  glossary(params?: QueryParams): Promise<GlossaryRow[]> {
+    return this.get<GlossaryRow[]>("api/v1/glossary", params);
+  }
+
+  /** Define (or redefine) a term. Requires an `annotate` key. */
+  defineTerm(term: string, meaning: string): Promise<GlossaryRow> {
+    return this.send<GlossaryRow>("PUT", `api/v1/glossary/${encodeURIComponent(term)}`, {
+      meaning,
+    });
+  }
+
+  /** The project's saved analyses, newest first. */
+  analyses(params?: QueryParams): Promise<SavedAnalysisRow[]> {
+    return this.get<SavedAnalysisRow[]>("api/v1/analyses", params);
+  }
+
+  /** Save an analysis. Requires an `annotate` key. */
+  saveAnalysis(analysis: SavedAnalysisInput): Promise<SavedAnalysisRow> {
+    return this.send<SavedAnalysisRow>("POST", "api/v1/analyses", analysis);
   }
 
   sessions(params?: QueryParams): Promise<SessionSummary[]> {
@@ -1273,6 +1508,23 @@ export class CollectorApi {
    * counts crossed by `(api, backend, apiVersion, shadingLanguage)`. Always-on, so
    * a populated array is the common case.
    */
+  /**
+   * The project's conditional subscriptions (#311, ADR 0051 §6), oldest first.
+   * A `query` key is enough — a subscription is project configuration, not a
+   * credential, and any webhook secret is masked by the collector.
+   */
+  subscriptions(): Promise<Subscription[]> {
+    return this.get<Subscription[]>("api/v1/subscriptions");
+  }
+
+  /** One subscription's recent firings, newest first. */
+  subscriptionEvents(id: string, params?: QueryParams): Promise<SubscriptionEvent[]> {
+    return this.get<SubscriptionEvent[]>(
+      `api/v1/subscriptions/${encodeURIComponent(id)}/events`,
+      params,
+    );
+  }
+
   renderingTechnology(params?: QueryParams): Promise<RenderingTechnologyCount[]> {
     return this.get<Record<string, unknown>[]>("api/v1/rendering-technology", params).then((rows) =>
       rows.map((r) => ({
@@ -1477,6 +1729,40 @@ export class CollectorApi {
   eventCounts(params?: QueryParams): Promise<EventTypeCount[]> {
     return this.get<Record<string, unknown>[]>("api/v1/event-counts", params).then((rows) =>
       rows.map((r) => ({ event_type: String(r.event_type), count: num(r.count ?? 0) })),
+    );
+  }
+
+  // --- significance / scene health (#307) ---
+
+  /**
+   * Scene health scores, least healthy first (ADR 0051 §4).
+   *
+   * Derived rather than aggregated: the collector reads one bucket series per
+   * factor and computes the score in TypeScript, so the rows are the same on
+   * every store. Omit `scene` to score the busiest scenes in the range.
+   */
+  sceneHealth(params?: QueryParams): Promise<SceneHealthScore[]> {
+    return this.get<Record<string, unknown>[]>("api/v1/insights/scene-health", params).then(
+      (rows) =>
+        rows.map((r) => ({
+          scene: String(r.scene ?? ""),
+          score: numOrNull(r.score),
+          factors: Array.isArray(r.factors)
+            ? (r.factors as Record<string, unknown>[]).map((f) => ({
+                id: String(f.id ?? ""),
+                metric: String(f.metric ?? ""),
+                raw: numOrNull(f.raw),
+                baseline: numOrNull(f.baseline),
+                score: numOrNull(f.score),
+                weight: num(f.weight ?? 0),
+                unit: String(f.unit ?? ""),
+                note: String(f.note ?? ""),
+              }))
+            : [],
+          sampleSize: num(r.sampleSize ?? 0),
+          since: num(r.since ?? 0),
+          until: num(r.until ?? 0),
+        })),
     );
   }
 

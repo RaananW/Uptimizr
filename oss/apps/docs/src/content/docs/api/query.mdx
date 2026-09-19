@@ -127,6 +127,7 @@ including each column's unit and each metric's caveats.
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/v1/sessions` | `list_sessions` | session | `since`, `until`, `bins`, `limit`, `cameraMode`, `format` | One row per session seen in the range: its id, the server-derived daily-rotating visitor hash, how many events it produced, and its first/last event timestamps. The entry point for 'what traffic did this project get' and for picking a session to drill into. |
 | `GET` | `/api/v1/sessions/:id/meta` | `session_meta` | session | `session` | The coarse descriptor for one session — start time, the device/graphics block reported at `session_start`, the scene metadata and the app-supplied anonymous user descriptor. A single-object resource read from the store, not an aggregation, and deliberately not the raw event stream. |
+| `GET` | `/api/v1/sessions/:id/narrative` | `session_narrative` | row | `session`, `minDwellMs`, `fpsThreshold`, `maxEntries`, `format` | An ordered, compacted account of what one session did — scene changes, the meshes it dwelled on, its interactions, performance dips, errors and how it ended — timestamps relative to its first event, plus a closing totals entry. A compaction of the raw per-session stream, gated on `query:raw` and raw-session retention (ADR 0003). |
 | `GET` | `/api/v1/scenes/:sceneId/representation` | `scene_representation` | scene | `scene` | The registered proxy geometry for one scene (ADR 0014): its world bounds, up-axis and unit scale, and the named proxy boxes when one was uploaded. A metadata resource read, not an aggregation — it is what turns the voxel coordinates of the spatial metrics into named places. |
 | `GET` | `/api/v1/scenes` | `list_scenes` | scene | `since`, `until`, `limit`, `format` | The distinct developer-assigned scenes (ADR 0010) that saw activity in the range, with their event count and most recent activity. One row per scene; the orientation query before any scene-scoped question. |
 | `GET` | `/api/v1/timeseries` | `timeseries` | bucket | `since`, `until`, `interval`, `scene`, `type`, `format` | Event volume bucketed into fixed `interval`-second windows, with the average FPS of any `frame_perf` samples in the same bucket. One row per bucket: the shape of traffic with the coarse perf trend beside it. |
@@ -176,6 +177,7 @@ including each column's unit and each metric's caveats.
 | `GET` | `/api/v1/clicks/rage` | `rage_clicks` | row | `since`, `until`, `bins`, `limit`, `scene`, `session`, `source`, `cameraMode`, `interval`, `minRepeats`, `format` | Rapid repeated clicks on the same mesh inside one time window (#47) — the 'I keep clicking and nothing happens' frustration signal. One row per (session, mesh, window) that reached `minRepeats`, biggest burst first. |
 | `GET` | `/api/v1/interactions/sources` | `interaction_sources` | row | `since`, `until`, `bins`, `limit`, `scene`, `session`, `source`, `cameraMode`, `format` | For every interaction event that carries an input source, how many fired per (event type, source) and across how many distinct sessions (ADR 0011). One row per pairing. Turns `source` from a filter into the modality mix of the audience. |
 | `GET` | `/api/v1/input-actions/top` | `top_input_actions` | row | `since`, `until`, `bins`, `limit`, `scene`, `session`, `source`, `cameraMode`, `format` | App-level `input_action` labels — bound keyboard chords and gamepad buttons — ranked by how often they fired, split by input source (#75, ADR 0023). One row per (action, source). |
+| `GET` | `/api/v1/vocabulary/custom-events` | `custom_event_vocabulary` | row | `since`, `until`, `scene`, `limit`, `format` | Which developer-defined `custom` event names the project actually emits, how often, over how many distinct sessions, and the union of `props` keys observed on each name with a coarse type per key (ADR 0051 §5). One row per custom-event name. This is how an agent learns that `add_to_cart` exists and carries `sku` and `qty` — nothing else in the read surface enumerates an application's own event vocabulary. |
 
 ## Performance & stability
 
@@ -235,9 +237,448 @@ including each column's unit and each metric's caveats.
 | `GET` | `/api/v1/load-bounce` | `load_bounce_funnel` | bucket | `since`, `until`, `scene`, `bands`, `format` | Sessions bucketed by their initial load time, with how many bounced in each band (#152) — a bounce being a session that produced no interaction at or after its first asset load. One row per band. Turns 'slow loads cost you customers' into a number. |
 | `GET` | `/api/v1/variant-leaderboard` | `variant_leaderboard` | row | `since`, `until`, `scene`, `cameraMode`, `variant`, `conversion`, `limit`, `format` | For a product configurator (#150): per variant — a custom event grouped by its name — how often it was viewed, over how many sessions, how many of those converted, and the mean dwell before the visitor switched or converted. One row per variant, ranked by views. |
 
+## insights
+
+| Method | Path | Metric | One row is | Parameters | Purpose |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/v1/insights/baseline` | `insight_baseline` | project | `metric`, `scene`, `window`, `bucket`, `since`, `until`, `format` | What is normal for one metric in one scene. Buckets a comparable metric's headline column into days or hours over a trailing window and reduces the series to its centre (mean, median), its ordinary spread (MAD, p10, p90) and its drift (least-squares slope per bucket). One row per request: the reference distribution a single later observation should be judged against, so 'is 42 FPS bad here?' has an answer that does not depend on the reader's memory. |
+| `GET` | `/api/v1/insights/movers` | `insight_movers` | row | `scene`, `metrics`, `bucket`, `limit`, `since`, `until`, `refSince`, `refUntil`, `format` | What moved, ranked. For every comparable metric in scope, compares the current range with a reference range (the previous equal window by default) and ranks the differences by a robust z-score — the change divided by how much that metric normally swings, so a metric that is always volatile has to move much further than a steady one before it is called a mover. One row per metric: the top risers, the top fallers, and the ones that did not move. |
+| `GET` | `/api/v1/insights/anomalies` | `insight_anomalies` | row | `metric`, `scene`, `window`, `bucket`, `sensitivity`, `since`, `until`, `format` | When one metric stopped behaving, and what inside it accounts for that. Walks a comparable metric's day or hour bucket series and returns only the buckets that do not belong in it: a `spike` or a `drop` when a single bucket sits more than `sensitivity` median absolute deviations from the buckets just before it, and a `shift` at the bucket where a CUSUM change-point says the level moved and stayed moved. Where the metric declares a dimension it can be split by, the row also names the dimension value holding the largest share of the excess — the difference between 'errors tripled on the 14th' and 'graphics diagnostics tripled on the 14th'. |
+| `GET` | `/api/v1/insights/significance` | `insight_significance` | project | `metric`, `scene`, `bucket`, `since`, `until`, `refSince`, `refUntil`, `format` | Is that difference real? Compares one comparable metric across two windows and reports the effect, its 95% confidence interval and a two-sided p-value, with the test chosen from what the measure *is*: a two-proportion z with Wilson intervals for a declared rate, Welch's t over the per-bucket values for a level, an exact Poisson rate test for a bare count. One row per request, and a `powerNote` saying what these sample sizes could and could not have detected. |
+| `GET` | `/api/v1/insights/scene-health` | `insight_scene_health` | scene | `scene`, `window`, `since`, `until`, `bucket`, `limit`, `weights`, `format` | Which scene is in trouble, and why. Scores each scene 0-100 over six weighted factors — perf stability, jank, errors, dead clicks, exploration coverage and XR abandonment — each normalised against the project's own baseline over the preceding equal window. One row per scene, least healthy first, and every factor carries the metric id, the raw value, the baseline it was compared with and the weight it contributed, so the score can always be taken apart. |
+
 {/* generated:registry-query-reference:end */}
 
+## One query endpoint (the query DSL)
+
+Every metric above also answers to **one** endpoint. Rather than finding the route that carries the
+flag you need, name the metric, the window and the filters that metric declares, in a single
+validated JSON document.
+
+```bash
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{
+        "v": 1,
+        "metric": "mesh_sources",
+        "range": { "since": 1757000000000, "until": 1757600000000 },
+        "filters": { "scene": "lobby", "cameraMode": "first-person" },
+        "limit": 20,
+        "format": "summary"
+      }' \
+  "https://collect.example.com/api/v1/query"
+```
+
+`GET /api/v1/query?q=<url-encoded JSON>` takes the same document in one parameter (8 KiB max), for
+clients that only issue `GET`s. Both need the ordinary `query` capability, and both are audited like
+every other read — the DSL can compute nothing the endpoints above cannot.
+
+| Field        | Required | What it is                                                                                              |
+| ------------ | -------- | -------------------------------------------------------------------------------------------------------- |
+| `v`          | yes      | Grammar version. Always `1`.                                                                            |
+| `metric`     | yes      | A metric id from the tables above.                                                                      |
+| `range`      | yes      | `{ since, until }` in epoch milliseconds. There is no unbounded query.                                  |
+| `filters`    | no       | The filters that metric declares, as JSON — the same names as its querystring parameters.               |
+| `dimensions` | no       | Up to 3 group-by dimensions: the metric's grain, or any subset it declares if it can be regrouped.      |
+| `segment`    | no       | `{ dimension: value }` held fixed for the whole query.                                                  |
+| `compare`    | no       | Another `{ range }` or `{ segment }` to measure this query against; the result comes back joined.       |
+| `order`      | no       | `{ by, dir }` over a measure column of a ranked or regrouped result.                                    |
+| `explain`    | no       | `true` returns the compiled plan and its warnings instead of the rows.                                  |
+| `limit`      | no       | Row cap, at most 1000 and at most the metric's own limit.                                               |
+| `format`     | no       | `full` / `table` / `summary`. **Defaults to `table`** here, unlike the endpoints above.                 |
+
+The grammar is closed: no SQL, no expression language, every identifier checked against the registry,
+unknown keys rejected, output bounded. `filters.steps`, `filters.variant` and `filters.conversion`
+take real step predicates (not JSON-encoded strings), and `filters.region` takes a registered region
+id or the six-number box as an array.
+
+### Two compilation tiers
+
+Which compiler answers a query is a property of the **metric**, not of the request.
+
+Most metrics are **delegated**: the metric's existing aggregation runs, so the result is exactly what
+its own endpoint returns. That is the only tier a spatial heatmap or a percentile has — their measure
+*is* their grain, and neither decomposes onto another one, so grouping them by something else is a
+`400` naming the grain they do support.
+
+Metrics whose measure is a portable count or sum are also available through a **generic group-by**
+tier, which recomputes them at any grain they declare:
+
+{/* generated:registry-generic-groupby:start — generated by `pnpm gen:docs`; edit the metric registry, not this table */}
+
+| Metric | Default grain | Can also group by | Measures |
+| --- | --- | --- | --- |
+| `event_counts` | `event_type` | `scene`, `session`, `source`, `mesh`, `name`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer` | `count` |
+| `top_meshes` | `mesh` | `session`, `scene`, `source`, `event_type`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer` | `count` |
+| `mesh_sources` | `mesh`, `source` | `scene`, `session`, `cameraMode`, `name`, `event_type`, `device.os`, `device.browser`, `device.engine`, `device.renderer` | `count` |
+| `mesh_interaction_kinds` | `mesh`, `name` | `scene`, `session`, `source`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer` | `count` |
+| `interaction_sources` | `event_type`, `source` | `scene`, `session`, `cameraMode`, `mesh`, `name`, `device.os`, `device.browser`, `device.engine`, `device.renderer` | `count`, `sessions` |
+| `top_input_actions` | `name`, `source` | `scene`, `session`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer` | `count` |
+| `camera_gestures` | `name` | `scene`, `session`, `source`, `cameraMode`, `device.os`, `device.browser`, `device.engine`, `device.renderer` | `gestures`, `total_ms`, `avg_ms`, `max_ms` |
+
+{/* generated:registry-generic-groupby:end */}
+
+`device.isMobile` is never a group-by — a boolean would key rows as `true`/`false` on one engine and
+`1`/`0` on another. Filter by it, or group by `device.os`.
+
+### Comparing, explaining, drilling
+
+```bash
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{
+        "v": 1,
+        "metric": "top_meshes",
+        "range":   { "since": 1757600000000, "until": 1758204800000 },
+        "compare": { "range": { "since": 1756995200000, "until": 1757600000000 } },
+        "format": "summary"
+      }' \
+  "https://collect.example.com/api/v1/query"
+```
+
+**`compare`** runs the query twice — with the comparison's range, or with its segment substituted —
+and joins the two results on the dimension key, so each row is
+`{ key, label, current, previous, delta, deltaPct }`. A key on one side only is still a row:
+`previous: null` is an arrival and `current: null` a disappearance. `significance` is attached only
+where the measure is a count and both windows clear the metric's own minimum (a pooled
+two-proportion *z* with Wilson intervals); for a mean-shaped measure the field is absent and a caveat
+says why. `format=summary` returns the biggest **movers** with a one-sentence reading.
+
+**`explain: true`** answers with the plan instead of the rows: the tier that would run, the dialect,
+the SQL with its parameters left as placeholders, `params` as names and logical types (never values),
+`rowsScanned`, and `warnings` — a capture channel that produced nothing in the window, a sample below
+the metric's minimum, a spatial result with no proxy or regions to name hotspots after, a result cut
+off by `limit`. Worth one call before reporting a zero.
+
+**Drill-down** is built in: every row of a `format=summary` result carries `drillQuery`, the whole
+query narrowed to that row and ready to send straight back.
+
+:::note[Two generic-tier-only filters]
+`filters.event` is an ADR 0038 step predicate used as a **cohort** — keep the sessions in which that
+event happened at least once, then compute the metric over them. `filters.device` matches `os` and
+`browser` on the session's `session_start` (both derived server-side from the User-Agent, ADR 0042).
+Neither exists on a metric with no generic tier, which refuses them by name. `gpuTier` is in the
+published grammar but no connector reports one, so it is refused rather than silently matching
+nothing — group by `device.renderer` instead.
+:::
+
+A query naming something the registry does not know returns a `400` listing **every** objection, each
+with a stable `code`, the offending path and — where it is a closed list — the values that would have
+been accepted, so a client can correct itself instead of guessing:
+
+```jsonc
+{
+  "error": "the query cannot be answered: \"top_meshes\" does not accept the filter \"scene\"…",
+  "issues": [
+    {
+      "code": "unsupported_filter",
+      "path": "filters.scene",
+      "message": "\"top_meshes\" does not accept the filter \"scene\". It accepts `session`, `bins`, `limit`.",
+      "accepted": ["session", "bins", "limit"],
+    },
+  ],
+}
+```
+
+## Insights — baselines and movers
+## Insights — baselines, movers and anomalies
+
+Three of the metrics above are not measurements but **readings about the other
+metrics**: `insight_baseline` answers "is this number normal here?",
+`insight_movers` answers "what changed?" and `insight_anomalies` answers "*when*
+did it go wrong, and what inside it did?". All three are ordinary registry
+metrics, so they take the same parameters, the same `format` envelopes and the
+same API key as everything else on this page.
+| `GET` | `/api/v1/insights/significance` | `insight_significance` | project | `metric`, `scene`, `bucket`, `since`, `until`, `refSince`, `refUntil`, `format` | Is that difference real? Compares one comparable metric across two windows and reports the effect, its 95% confidence interval and a two-sided p-value, with the test chosen from what the measure *is*: a two-proportion z with Wilson intervals for a declared rate, Welch's t over the per-bucket values for a level, an exact Poisson rate test for a bare count. One row per request, and a `powerNote` saying what these sample sizes could and could not have detected. |
+| `GET` | `/api/v1/insights/scene-health` | `insight_scene_health` | scene | `scene`, `window`, `since`, `until`, `bucket`, `limit`, `weights`, `format` | Which scene is in trouble, and why. Scores each scene 0-100 over six weighted factors — perf stability, jank, errors, dead clicks, exploration coverage and XR abandonment — each normalised against the project's own baseline over the preceding equal window. One row per scene, least healthy first, and every factor carries the metric id, the raw value, the baseline it was compared with and the weight it contributed, so the score can always be taken apart. |
+
+{/* generated:registry-query-reference:end */}
+
+## Insights — baselines, movers, significance and health
+
+Four of the metrics above are not measurements but **readings about the other
+metrics**: `insight_baseline` answers "is this number normal here?",
+`insight_movers` "what changed?", `insight_significance` "is that change real?"
+and `insight_scene_health` "which scene should I look at first?". All four are
+ordinary registry metrics, so they take the same parameters, the same `format`
+envelopes and the same API key as everything else on this page.
+
+They all work the same way: one comparable metric's headline column is bucketed
+by day or hour, and every statistic over that series — mean, median, MAD,
+percentiles, slope, robust z, confidence intervals and p-values alike — is
+computed in plain TypeScript rather than SQL. That is deliberate: five SQL
+engines disagree about `quantile` and `median`, and an insight that changes when
+you switch storage backend is not an insight.
+
+:::note
+Window bounds are **snapped down to whole buckets**, so the day or hour in
+progress is excluded — otherwise every morning would look like a traffic
+collapse. The window that was actually measured comes back in the `table` and
+`summary` envelopes. `scene-health` is the one exception (it says why below):
+none of its factors is a count, so a partial bucket does not distort it.
+:::
+
+### `/api/v1/insights/baseline`
+
+`metric` (required) plus `scene`, `window` (days, default 28, max 365), `bucket`
+(`day` | `hour`) and the usual `since` / `until`. One row:
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/baseline?metric=perf_summary&scene=lobby"
+```
+
+```jsonc
+{
+  "metric": "perf_summary",
+  "scene": "lobby",
+  "sampleSize": 18420,
+  "buckets": 28,
+  "mean": 54.1,
+  "median": 55,
+  "mad": 2, // the typical day-to-day swing
+  "p10": 48.3,
+  "p90": 58.6,
+  "slope": -0.21, // change per bucket, i.e. drift within the window
+}
+```
+
+`median` is the centre and `mad` the tolerance: a later reading more than a few
+MADs away is unusual *for this scene*; one inside `p10..p90` is ordinary. A
+baseline with a steep `slope` is not a stable reference — re-read it over a
+shorter window before judging anything against it. `null` means "no data", never
+zero.
+
+### `/api/v1/insights/movers`
+
+`scene`, `since` / `until` (default: the last 7 complete days), `refSince` /
+`refUntil` (default: the equal window immediately before), `bucket`, `limit`
+(default 10, max 50) and an optional comma-separated `metrics` allowlist. One row
+per scanned metric — risers, then fallers, then the ones that did not move:
+
+```jsonc
+{
+  "metric": "error_heatmap",
+  "current": 412,
+  "previous": 96,
+  "delta": 316,
+  "deltaPct": 3.2917,
+  "z": 39.5, // delta ÷ the reference window's spread
+  "direction": "down", // a *rise* in this metric is bad
+  "aboveMinSample": true,
+  "sampleSize": 412,
+}
+```
+
+- **`z` ranks, `deltaPct` describes.** `z` is the change divided by the median
+  absolute deviation of the reference window's buckets, so a metric that swings
+  wildly every day must move much further than a steady one to be called a mover.
+  Under ~2 is ordinary noise for that metric; over ~3 is worth explaining.
+- **`direction` is not the direction of the move.** It is the registry's opinion
+  of what a *rise* in that metric means — good (`up`), bad (`down`) or neutral.
+  Read it with the sign of `delta`: above is a rise in a `down` metric, i.e. a
+  regression.
+- **`aboveMinSample: false` is not a finding.** The delta is real arithmetic but
+  the denominator is below the metric's declared minimum. Such rows are kept —
+  "we cannot tell" and "nothing changed" are different answers — and always sort
+  below every gated mover.
+
+:::caution[Bounded by design, and not every metric qualifies]
+A request scans at most **24** metrics, one grouped scan each; without a
+`metrics` allowlist a curated default set is used, so a move outside that set is
+not reported unless you name it. Only `comparable` metrics with a faithful
+per-bucket form participate at all — funnels, cohort metrics and anything defined
+by the relationship between *consecutive* events (click→gaze rays, flow links,
+reachability, backtracking, rage clusters, perf churn) are excluded by
+construction, because bucketing them would change what they mean. Asking for one
+returns `400` listing every metric id that *is* available. The same rule governs
+`/api/v1/insights/anomalies`.
+:::
+
+### `/api/v1/insights/anomalies`
+
+`metric` (required) plus `scene`, `window` (days, default 28, max 365), `bucket`
+(`day` | `hour`), `sensitivity` (1–10, default 3) and the usual `since` /
+`until`. One row per bucket that does not belong in the series, oldest first:
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/anomalies?metric=error_heatmap&scene=lobby"
+```
+
+```jsonc
+{
+  "metric": "error_heatmap",
+  "scene": "lobby",
+  "bucketStart": 1718064000000, // the day itself, not the day it was detected
+  "value": 32,
+  "expected": 2, // the median of the trailing window
+  "z": 1500, // signed, in standard deviations
+  "kind": "spike", // spike | drop | shift
+  "contributor": { "dimension": "event_type", "value": "graphics_diagnostic", "share": 1 },
+  "sampleSize": 32,
+}
+```
+
+- **`spike` / `drop` are one bucket; `shift` is a level.** The first two come
+  from a rolling median and MAD over the trailing window (14 buckets at `day`
+  grain, 168 at `hour`) with the bucket itself excluded. The third comes from a
+  CUSUM over the same series and catches what a point detector structurally
+  cannot: a regression that is only a MAD or two deep on any single day but
+  never recovers. A sustained change appears as both — the `shift` at its
+  change-point, then `drop` rows for the days after it until the trailing window
+  catches up.
+- **`z` is in standard deviations.** The trailing MAD, rescaled by 1.4826 and
+  floored at 1% of the level, so `sensitivity: 3` means "beyond three sigma".
+  `insight_movers` reports the same ratio *unscaled* — it ranks rather than
+  thresholds — so the two columns differ by that constant.
+- **`contributor` says where the excess sits, not what caused it.** When the
+  metric declares a dimension it can be split by (a mesh, a source, an input
+  action, an event type, a scene), the anomalous window is re-read grouped by
+  that column and the value with the largest share of the excess is reported. A
+  `share` above ~0.8 means the anomaly *is* that value. It is `null` for a metric
+  with no such dimension — and for a `scene`-split metric on a request already
+  scoped to one scene, where the split could only ever return a share of 1.
+
+:::note
+A bucket with fewer than five buckets of history behind it is never judged, so a
+new project reads "no anomalies" rather than "every day is an anomaly". Buckets
+with no matching events are absent from the series rather than zero, so a gap in
+capture is not reported as a drop. Attribution costs **at most three** extra
+grouped scans per request however many buckets are anomalous: adjacent findings
+share one window, and only the three most extreme windows are re-read — quieter
+findings carry `contributor: null`.
+:::
+
+### `/api/v1/insights/significance`
+
+`metric` (required) plus `scene`, `bucket`, the usual `since` / `until` and
+`refSince` / `refUntil` (default: the equal window immediately before). One row —
+and the **test is picked from what the measure is**, never from the caller:
+
+| The measure is…                                             | Test                                           | `ci95`                                          |
+| ----------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------- |
+| a rate (its headline column declares a `rateOf` denominator) | two-proportion z, pooled                       | Newcombe hybrid score, from the two Wilson intervals |
+| a bare count                                                 | Poisson rate test (exact conditional binomial) | normal approximation on the rate difference     |
+| a level or a summed quantity (`fps`, `ms`, bytes)            | Welch's t over the per-bucket values           | `effect ± t(0.975, ν) · SE`                     |
+
+```jsonc
+{
+  "metric": "dead_clicks",
+  "a": { "value": 0.166667, "n": 6 }, // the window under test
+  "b": { "value": 0, "n": 8 }, // the window it is compared with
+  "effect": 0.166667,
+  "ci95": [-0.185333, 0.563503], // straddles 0 → cannot tell yet
+  "p": 0.230804,
+  "test": "two_proportion_z",
+  "effectUnit": "ratio",
+  "significant": false,
+  "powerNote": "With these sample sizes the smallest difference detectable at 80% power (alpha 0.05) is about 0.4262 in the rate; …",
+}
+```
+
+- **Read `ci95` before `p`.** A narrow interval around a small effect says
+  nothing much changed; a wide interval containing 0 says nothing at all, and
+  `powerNote` tells you which you are looking at.
+- **Welch counts buckets, not events.** `n` is the number of days or hours
+  compared. Frame samples inside one day are not independent, and counting them
+  would manufacture a p-value of `1e-40` for ordinary drift.
+- **Significance is not importance.** A large enough sample makes an irrelevant
+  difference significant; `effect` and `effectUnit` say whether it matters.
+
+:::caution[Two windows, not two segments]
+A variant-versus-variant or device-versus-device contrast needs the bucket series
+split by a promoted dimension, which is not available yet. Passing `segment` or
+`refSegment` returns `400` naming the window parameters, rather than answering a
+segment question with a window comparison.
+:::
+
+### `/api/v1/insights/scene-health`
+
+`scene` (default: the busiest scenes), `window` (days, default 7, max 90),
+`bucket`, `limit` (default 5, max 10), an optional `weights` JSON object, and the
+usual `since` / `until`. One row per scene, least healthy first, each carrying the
+six factors behind its score:
+
+| Factor            | Metric            | Raw value                             | Good is | Weight |
+| ----------------- | ----------------- | ------------------------------------- | ------- | ------ |
+| `perf_stability`  | `perf_summary`    | 5th-percentile FPS                    | higher  | 0.25   |
+| `error_rate`      | `error_heatmap`   | errors + diagnostics per session      | lower   | 0.25   |
+| `jank_rate`       | `jank_rate`       | long frames per sampled perf window   | lower   | 0.20   |
+| `dead_click_rate` | `dead_clicks`     | share of clicks that hit nothing      | lower   | 0.15   |
+| `coverage`        | `scene_coverage`  | positioned camera samples per session | higher  | 0.10   |
+| `xr_abandonment`  | `xr_abandonment`  | interactions per XR session           | higher  | 0.05   |
+
+```jsonc
+{
+  "scene": "lobby",
+  "score": 27.5, // weighted mean of the factors that could be scored
+  "factors": [
+    {
+      "id": "perf_stability",
+      "metric": "perf_summary", // the endpoint that explains this factor
+      "raw": 19.4, // what that metric produced, in `unit`
+      "baseline": 47.1, // the project norm it was compared with
+      "score": 0, // 0-100; 50 is exactly the project norm
+      "weight": 0.25,
+      "unit": "FPS",
+      "note": "The 5th-percentile FPS of the scene's sampled frames — …",
+    },
+  ],
+  "sampleSize": 214,
+  "since": 1757376000000,
+  "until": 1757980800000,
+}
+```
+
+**The score is a comparison, not a grade.** Every factor is normalised against
+the project's own baseline over the preceding equal window, using the same robust
+centre and spread `movers` ranks with. 50 is exactly the project norm, four
+robust deviations better is 100 and the same distance worse is 0 — so a project
+where every scene is equally bad reads 50 everywhere. That is the right shape for
+"which scene should I look at first", and the wrong shape for "is this scene
+good".
+
+Default weights are declared in the registry entry (and so appear in
+`capabilities`) precisely so they can be argued with; `weights` overrides any of
+them, factors it does not name keep their default, and an unknown factor id is a
+`400`. A factor with `score: null` could not be measured — its `note` says why —
+and is left out of the weighted mean rather than folded in as an average.
+
+:::note
+This is the one insight window that **includes the bucket in progress**. Every
+health factor is a rate or a percentile, and a partial bucket gives half the
+numerator *and* half the denominator — so flooring `until` here would only make
+the score answer about yesterday. The window actually measured comes back as
+`since` / `until` on every row.
+:::
+## Subscriptions
+
+Conditional subscriptions (ADR 0051 §6) are **not** metrics — they are project configuration with
+an outbound side effect — so they live outside the generated table above.
+
+| Endpoint                                | Method                      | Capability | What it does                                        |
+| --------------------------------------- | --------------------------- | ---------- | --------------------------------------------------- |
+| `/api/v1/subscriptions`                 | `GET`                       | `query`    | List the project's subscriptions, oldest first.     |
+| `/api/v1/subscriptions`                 | `POST`                      | `annotate` | Create one. A webhook `secret` is write-only.       |
+| `/api/v1/subscriptions/:id`             | `GET` / `PATCH` / `DELETE`   | see note   | Read; enable/disable; delete with its firing log.   |
+| `/api/v1/subscriptions/:id/events`      | `GET`                       | `query`    | The last 100 firings, newest first.                 |
+| `/api/v1/subscriptions/:id/test`        | `POST`                      | `annotate` | Evaluate once now; `?deliver=true` really delivers. |
+| `/api/v1/subscriptions/stream?token=`   | `GET` (SSE)                 | live token | `event: subscription` frames; optional `&id=`.     |
+
+Reads need `query`; `PATCH` and `DELETE` need `annotate`, like `POST` — creating or changing a
+subscription is how a caller asks the collector to act on its behalf.
+
+Only `enabled` is patchable. Everything else changes what the subscription _means_, and silently
+re-pointing a standing alert is how an on-call rotation ends up watching the wrong thing; replace
+it instead.
+
+`POST …/test` answers with the evaluation **including why it did not fire** — "window held 12
+samples, below minSample 30" — which is what makes a subscription tunable rather than mysterious.
+
+See [Subscriptions & webhooks](/docs/deploy/collector/#subscriptions--webhooks) for the predicate
+vocabulary, the signature scheme and the egress allow-list.
+
 ## Scene regions
+
 
 Named, labelled boxes that give a scene a vocabulary for _where_ — "the
 entrance", "the checkout counter" — so spatial answers read in words and any
@@ -274,6 +715,7 @@ developer-only path.
 | Method | Path                          | Purpose                                                       | Capability  | Extra params           |
 | ------ | ----------------------------- | ------------------------------------------------------------- | ----------- | ---------------------- |
 | `GET`  | `/api/v1/sessions/:id/events` | Ordered raw event stream for replay.                          | `query:raw` | `format=json\|ndjson`  |
+| `GET`  | `/api/v1/sessions/:id/narrative` | Ordered, compacted account of what one session did.       | `query:raw` | `minDwellMs`, `fpsThreshold`, `maxEntries`, `format=full\|table\|text` |
 | `GET`  | `/api/v1/live/sessions/:id`   | Live per-session follow — an SSE tail of that same raw stream. | `query:raw` | `token`                |
 | `POST` | `/api/v1/live/token`          | Exchange the API key for the short-lived live-stream `token`.  | `query`     | —                      |
 
@@ -295,6 +737,14 @@ token, so `query:raw` is enforced there too.
 The aggregate endpoints never expose raw events — don't reach for the raw stream to build an
 aggregate.
 :::
+
+`/api/v1/sessions/:id/narrative` is the readable sibling of the event stream: the same gates, but
+it returns an ordered, bounded account of the session (scene changes, dwell, interactions, perf
+dips, errors, how it ended, then a totals entry) instead of every sampled event. It is the only
+route on this page that accepts **`format=text`** — a line per entry, for putting a whole session
+in a model's context — alongside the usual `full` and `table`. See
+[Session narrative](/docs/guides/sessions/#session-narrative) for the parameters and
+[Privacy & retention](/docs/deploy/privacy/#what-a-session-narrative-shows) for what it omits.
 
 ## Example
 

@@ -38,12 +38,30 @@ const batch = collectRequestSchema.parse(requestBody);
 `session_start`, `session_end`, `frame_perf`, `camera_sample`, `pointer_move`, `pointer_click`,
 `mesh_interaction`, `asset_load`, `custom`.
 
+## Config shapes (not events)
+
+`funnelConfigSchema`, `sceneRegionsSchema` and `subscriptionSchema` are **configuration**
+contracts, not analytics events: they are deliberately outside the event union and never reach
+the public ingest path. `subscriptionSchema` (ADR 0051 §6) declares a standing predicate over a
+registry metric — `{ name, metric, filters, evaluate: { every, window }, predicate, cooldown,
+delivery[], enabled }` — with a closed predicate union (`threshold`, `anomaly`, `movers`,
+`new_value`, `presence`). `parseDurationMs` / `formatDurationMs` convert its `"5m"`-style
+literals.
+
 ## Rules for agents
 
 - **Events live once.** Import types/schemas from here; do not re-declare event shapes.
-- Some shapes here are **config, not events** — `sceneProxySchema`, `sceneRegionSchema` /
-  `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`. They are authored
-  out-of-band and are deliberately absent from `anyEventSchema`; never add them to the union.
+- Some shapes here are **config / metadata, not events** — `sceneProxySchema`, `sceneRegionSchema` /
+  `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`, `queryV1Schema` (the analytics
+  query DSL, ADR 0051 §3) and the project-metadata contracts `annotationSchema` /
+  `glossaryEntrySchema` / `savedAnalysisSchema` (ADR 0051 §5). They are authored out-of-band and are
+  deliberately absent from `anyEventSchema`; never add them to the union. Events stay read-only —
+  metadata is written through the collector's `annotate`-gated endpoints, never through the ingest
+  path (ADR 0051 §9).
+- `queryV1Schema` validates a query's **shape** only. Whether `metric` names a real metric, and
+  whether that metric accepts a given dimension or filter, is `validateQuery()` in
+  `@uptimizr/metrics` — the vocabulary lives in the registry, and this package is the registry's
+  dependency rather than the other way round. Both run, in that order, at the collector edge.
 - Keep events **replay-complete**: ordered, timestamped, `sessionId`-keyed.
 - Clients never set `visitorId` (privacy model — ADR 0003).
 - To add an event type, use `defineEvent` and register it in `src/events/index.ts`; see the

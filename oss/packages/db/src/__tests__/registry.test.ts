@@ -39,14 +39,20 @@ import {
   allMetrics,
   getMetric,
   metricForBuilder,
+  type DimensionId,
   type MetricId,
 } from "@uptimizr/metrics";
 import { coerceRows, numericColumns } from "../query/coerce.js";
+import {
+  foldCustomEventVocabulary,
+  type CustomEventVocabularySampleRow,
+} from "../query/customEventVocabulary.js";
 import * as aggregations from "../query/aggregations.js";
 import { duckdbDialect } from "../query/duckdbDialect.js";
 import type { Dialect } from "../query/dialect.js";
 import type { QuerySpec } from "../query/types.js";
-import { PARITY_CASES } from "../parity/cases.js";
+import { GENERIC_PARITY_CASE_NAMES, PARITY_CASES } from "../parity/cases.js";
+import { genericResultColumns } from "../query/dsl/index.js";
 import { PARITY_PROJECT_ID, PARITY_EVENTS, PARITY_RANGE, PARITY_T0 } from "../parity/fixtures.js";
 import { createDuckdbClient, type DuckdbClient } from "../duckdb/client.js";
 import { migrateDuckdb } from "../duckdb/migrations.js";
@@ -157,8 +163,16 @@ function callBuilder(build: (...args: unknown[]) => QuerySpec, name: string): Qu
  * Which registry metric each parity case exercises. Several cases are filter
  * variants of the same aggregation (a region drill-down, a by-mesh UV heatmap),
  * so the mapping is many-to-one.
+ *
+ * `null` means the case exercises no metric's row schema: the `metricBuckets:*`
+ * cases render the shared insight bucket series (ADR 0051 §4), whose
+ * `{ bucket, value, sample_size }` shape is an *input* to `insight_baseline` /
+ * `insight_movers` rather than either metric's output row. Those two rows are
+ * computed in TypeScript and are covered by the collector's response-schema
+ * suite. The mapping still has to name every case, so a new parity case cannot
+ * skip this check by omission.
  */
-const PARITY_CASE_METRIC: Readonly<Record<string, MetricId>> = {
+const PARITY_CASE_METRIC: Readonly<Record<string, MetricId | null>> = {
   listSessions: "list_sessions",
   pointerHeatmap: "pointer_heatmap",
   meshUvHeatmap: "mesh_uv_heatmap",
@@ -183,6 +197,7 @@ const PARITY_CASE_METRIC: Readonly<Record<string, MetricId>> = {
   meshInteractionKinds: "mesh_interaction_kinds",
   reachability: "mesh_reachability",
   topInputActions: "top_input_actions",
+  customEventVocabulary: "custom_event_vocabulary",
   perfSummary: "perf_summary",
   renderScaleTruth: "render_scale_truth",
   perfDistribution: "perf_distribution",
@@ -227,6 +242,49 @@ const PARITY_CASE_METRIC: Readonly<Record<string, MetricId>> = {
   interactionsBySource: "interaction_sources",
   funnel: "funnel",
   loadBounceFunnel: "load_bounce_funnel",
+  // The query DSL (ADR 0051 §3) compiles onto the metric's own builder, so a
+  // DSL case exercises exactly that metric's row schema.
+  "dsl:topMeshes": "top_meshes",
+  "dsl:meshSourcesFiltered": "mesh_sources",
+  "dsl:funnel": "funnel",
+  // The generic group-by tier (#304) recomputes a metric at another grain, so
+  // its rows are keyed by the dimensions that were *asked for* rather than by
+  // the metric's own `row` schema. They are still that metric's rows — the
+  // measures are its measures — but the row schema is the wrong gate for them,
+  // so `GENERIC_PARITY_CASE_NAMES` excludes them from the strict check below and
+  // "generic group-by rows are self-describing" checks them instead.
+  "dsl:genericMeshesByEventType": "top_meshes",
+  "dsl:genericMeshesByScene": "top_meshes",
+  "dsl:genericEventCountsByScene": "event_counts",
+  "dsl:genericEventCountsByEngine": "event_counts",
+  "dsl:genericMeshSourcesByScene": "mesh_sources",
+  "dsl:genericInteractionsByCameraMode": "interaction_sources",
+  // The shared insight bucket series — an input, not a metric's output row.
+  "metricBuckets:count": null,
+  "metricBuckets:sessions": null,
+  "metricBuckets:quantile": null,
+  "metricBuckets:sum": null,
+  "metricBuckets:geometry": null,
+  "metricBuckets:emptySeries": null,
+  "metricBuckets:dayGrain": null,
+  // --- anomalies (#306) ---
+  "metricBuckets:splitEventType": null,
+  "metricBuckets:splitMesh": null,
+  "metricBuckets:splitScene": null,
+  // --- significance / scene health (#307) ---
+  "metricBuckets:rateDenominator": null,
+  "metricBuckets:longFrames": null,
+  "metricBuckets:tailQuantile": null,
+};
+
+/** The dimensions each generic parity case grouped by, for the column check. */
+const GENERIC_CASE_DIMENSIONS: Readonly<Record<string, readonly DimensionId[]>> = {
+  "dsl:genericMeshesByEventType": ["mesh", "event_type"],
+  "dsl:genericMeshesByScene": ["scene"],
+  "dsl:genericEventCountsByScene": ["event_type", "scene"],
+  "dsl:genericEventCountsByEngine": ["device.engine"],
+  "dsl:genericMeshSourcesByScene": ["scene", "source"],
+  "dsl:genericInteractionsByCameraMode": ["cameraMode"],
 };
 
 /**
@@ -417,6 +475,29 @@ const REGISTRY_EXTRA_EVENTS: readonly AnyEvent[] = [
  * Pinned so a fixture change that silently empties a metric surfaces here
  * instead of passing vacuously.
  */
+
+/**
+ * The rows the **API** serves for a metric, given the rows its builder produced.
+ *
+ * For all but one metric these are the same thing, and the registry `row` schema
+ * describes the builder output directly. `custom_event_vocabulary` is the
+ * exception (ADR 0051 §5): its SQL emits the per-name totals repeated across the
+ * sampled raw payloads, and `foldCustomEventVocabulary` — a pure function, not a
+ * query — turns those into the one-row-per-name result with discovered prop
+ * types. The raw payload is an intermediate that never leaves the store layer,
+ * so it is the *folded* rows the registry schema must describe, and the folded
+ * rows this suite checks.
+ */
+function apiRows(
+  metric: MetricId,
+  rows: readonly Record<string, unknown>[],
+): Record<string, unknown>[] {
+  if (metric !== "custom_event_vocabulary") return [...rows];
+  return foldCustomEventVocabulary(
+    rows as unknown as readonly CustomEventVocabularySampleRow[],
+  ) as unknown as Record<string, unknown>[];
+}
+
 const EMPTY_AGAINST_FIXTURES: readonly MetricId[] = [];
 
 /** Render every JSON number in a row as a string — the ClickHouse HTTP shape. */
@@ -432,6 +513,8 @@ describe("metric registry — row schemas against real DuckDB output", () => {
   let db: DuckdbClient;
   /** metric id -> the rows every query for that metric produced. */
   const produced = new Map<MetricId, Record<string, unknown>[]>();
+  /** generic parity case name -> the rows it produced (#304). */
+  const genericRows = new Map<string, Record<string, unknown>[]>();
 
   beforeAll(async () => {
     db = await createDuckdbClient(":memory:");
@@ -439,15 +522,31 @@ describe("metric registry — row schemas against real DuckDB output", () => {
     await insertEvents(db, [...PARITY_EVENTS, ...REGISTRY_EXTRA_EVENTS]);
 
     const queries: ReadonlyArray<{ metric: MetricId; build: (d: Dialect) => QuerySpec }> = [
-      ...PARITY_CASES.map((parityCase) => ({
+      // Generic group-by rows are keyed by the dimensions that were asked for
+      // rather than by the metric's own `row`, and the `metricBuckets:*` cases
+      // are not a metric's rows at all — both are checked separately below.
+      ...PARITY_CASES.filter(
+        (parityCase) =>
+          !GENERIC_PARITY_CASE_NAMES.includes(parityCase.name) &&
+          PARITY_CASE_METRIC[parityCase.name] != null,
+      ).map((parityCase) => ({
         metric: PARITY_CASE_METRIC[parityCase.name] as MetricId,
         build: parityCase.build.bind(parityCase),
       })),
       ...EXTRA_METRIC_QUERIES,
     ];
 
+    for (const parityCase of PARITY_CASES) {
+      if (!GENERIC_PARITY_CASE_NAMES.includes(parityCase.name)) continue;
+      genericRows.set(
+        parityCase.name,
+        await runDuckdbQuery<Record<string, unknown>>(db, parityCase.build(duckdbDialect)),
+      );
+    }
+
     for (const query of queries) {
-      const rows = await runDuckdbQuery<Record<string, unknown>>(db, query.build(duckdbDialect));
+      const raw = await runDuckdbQuery<Record<string, unknown>>(db, query.build(duckdbDialect));
+      const rows = apiRows(query.metric, raw);
       const existing = produced.get(query.metric) ?? [];
       produced.set(query.metric, [...existing, ...rows]);
     }
@@ -455,6 +554,36 @@ describe("metric registry — row schemas against real DuckDB output", () => {
 
   afterAll(async () => {
     await db?.close();
+  });
+
+  it("produces exactly the declared columns for a generic group-by", () => {
+    for (const [name, dimensions] of Object.entries(GENERIC_CASE_DIMENSIONS)) {
+      const metric = getMetric(PARITY_CASE_METRIC[name] as MetricId)!;
+      const expected = [...genericResultColumns(metric, dimensions)].sort();
+      const rows = genericRows.get(name) ?? [];
+      expect(rows.length, `${name}: produced no rows`).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(Object.keys(row).sort(), name).toEqual(expected);
+      }
+    }
+  });
+
+  it("keeps a generic group-by's measures numeric and its dimensions text", () => {
+    for (const [name, dimensions] of Object.entries(GENERIC_CASE_DIMENSIONS)) {
+      const metric = getMetric(PARITY_CASE_METRIC[name] as MetricId)!;
+      const measures = (metric.genericGroupBy?.measures ?? []).map((measure) => measure.column);
+      const keys = genericResultColumns(metric, dimensions).filter(
+        (column) => !measures.includes(column),
+      );
+      for (const row of genericRows.get(name) ?? []) {
+        for (const column of measures) {
+          expect(typeof row[column], `${name}.${column}`).toBe("number");
+        }
+        for (const column of keys) {
+          expect(typeof row[column], `${name}.${column}`).toBe("string");
+        }
+      }
+    }
   });
 
   it("maps every parity case to a registry metric", () => {

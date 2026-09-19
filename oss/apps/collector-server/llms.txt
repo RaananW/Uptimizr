@@ -27,12 +27,34 @@
 
 ## Key facts
 
-- **CLI:** `uptimizr init | serve | new-project <name> | new-key <projectId> | migrate | regions set|get <sceneId> | help`. `new-key` takes `--capabilities`, `--label`, `--rate-limit-max`, `--rate-limit-window-ms`. Every command targets `COLLECTOR_STORE`.
+- **CLI:** `uptimizr init | serve | new-project <name> | new-key <projectId> | migrate | regions set|get <sceneId> | agent report | help`. `new-key` takes `--capabilities`, `--label`, `--rate-limit-max`, `--rate-limit-window-ms`. Every command targets `COLLECTOR_STORE`.
+- **Scheduled reports:** `uptimizr agent report --skill <weekly_scene_health|attention_hotspots|xr_comfort_review> [--scene] [--window 7d] [--out file|-] [--json file] [--webhook url] [--max-steps n] [--dry-run]` runs the headless agent loop once against the query API and writes Markdown (ADR 0051 §6). Provider config from the environment only, never persisted: `UPTIMIZR_AGENT_PROVIDER` (`anthropic`|`openai`|`scripted`), `UPTIMIZR_AGENT_MODEL`, `UPTIMIZR_AGENT_API_KEY`, `UPTIMIZR_AGENT_ENDPOINT`. Webhooks are signed `X-Uptimizr-Signature: sha256=<hex HMAC-SHA-256 of the raw body>` with `UPTIMIZR_WEBHOOK_SECRET`. Exit codes: 0 ok, 1 usage, 2 provider/delivery, 3 incomplete. Scheduling is the operator's (cron / systemd / GitHub Actions); the collector runs no LLM loop of its own.
 - **Capabilities:** `ingest` (server-side writes), `query` (aggregates, scene registry, live token, audit), `annotate` (project metadata writes), `query:raw` (raw per-session + live-follow streams). `new-key` defaults to `query`; `init` / `new-project` mint one **owner** key (label `owner`) holding `query,query:raw,annotate`.
 - **Raw data is gated twice:** `ENABLE_RAW_SESSION_RETENTION` **and** a `query:raw` key, or `403`.
+- **Query DSL (ADR 0051 §3):** `POST /api/v1/query` — and `GET /api/v1/query?q=<url-encoded JSON>` for GET-only clients — runs **any** registry metric from one closed, validated JSON document: `{ v, metric, range: { since, until }, filters?, dimensions?, limit?, format? }`. `range` is required, `format` defaults to `table`, `dimensions` must be the metric's own grain. No SQL and no free-form expression; anything outside the registry's vocabulary is a `400` whose `issues[].accepted` names what would have worked. `compare` / `segment` / `order` / `explain` / `filters.event` / `filters.device` parse but are not answered yet.
 - **Result envelopes:** `format=full | table | summary` on every aggregate endpoint (ADR 0051 §2) — `summary` is the bounded, LLM-affordable digest.
 - **Filters:** `since`, `until`, `bins`, `limit`, `scene`, `session`, `cameraMode`, `source`, `cellSize`, and `region=<id>` to drill a spatial query into a named place.
 - **Audit retention:** `AUDIT_RETENTION_DAYS` (default `30`, `0` = forever); `AUDIT_DASHBOARD_REQUESTS` to also record dashboard traffic.
 - **Stores:** `COLLECTOR_STORE=duckdb` (default, single-file, single-writer, `DUCKDB_PATH`) | `memory` | `postgres` | `mssql` | `clickhouse` — identical analytics on all four (parity suite).
 - **Required:** `VISITOR_HASH_SECRET`. The server fails fast without it; the raw IP is never stored.
+- **Hosted MCP:** `COLLECTOR_MCP_HTTP=1` serves the Model Context Protocol over Streamable HTTP at `POST`/`GET`/`DELETE` `/mcp` (off by default) — the same server `@uptimizr/mcp` runs over stdio, so a remote agent needs only a URL + `x-api-key` (or `Authorization: Bearer`). Bounded by `COLLECTOR_MCP_MAX_SESSIONS` (50) and `COLLECTOR_MCP_SESSION_TTL_MS` (30 min); tool calls are audited with `surface: mcp-http`.
 - **Bins:** `uptimizr` (`dist/cli.js`) and the legacy `uptimizr-collector` (`dist/server.js`).
+
+## Session narrative (`query:raw`)
+
+- `GET /api/v1/sessions/:id/narrative` — an ordered, compacted account of what one session did (scene changes, mesh dwell, interactions, perf dips, errors, end reason, then a totals entry), timestamps relative to the session start, bounded by `maxEntries` (default 200, hard cap 1000). Params: `minDwellMs`, `fpsThreshold`, `maxEntries`, `format=full|table|text`.
+- Gated twice — `ENABLE_RAW_SESSION_RETENTION` **and** a `query:raw` key; either missing is `403`, an unknown session is `404`.
+- `format=text` (this route only) is one line per entry — the cheapest way to put a whole session in a model's context.
+- A projection, not the raw stream: no `visitorId`, URL or page metadata, no positions or rays, no `device` detail beyond the engine, custom-event property keys only (ADR 0003).
+## Conditional subscriptions (ADR 0051 §6)
+
+- GET/POST /api/v1/subscriptions, GET/PATCH/DELETE /api/v1/subscriptions/:id,
+  GET /api/v1/subscriptions/:id/events, POST /api/v1/subscriptions/:id/test[?deliver=true],
+  GET /api/v1/subscriptions/stream?token= (SSE, live-token auth).
+- Reads need `query`; every write and `test` needs `annotate`.
+- Predicate kinds: threshold, anomaly, movers, new_value, presence. `every` >= 1m,
+  `window` >= 1h. 100 subscriptions per project; last 100 firings retained each.
+- A webhook secret is write-only and never returned. Webhook egress is disabled until
+  COLLECTOR_WEBHOOK_ALLOWED_HOSTS names the hosts the collector may POST to.
+- Bodies are signed `X-Uptimizr-Signature: sha256=<hex>` over the raw body, with
+  `X-Uptimizr-Delivery` for dedupe; 3 attempts with backoff.

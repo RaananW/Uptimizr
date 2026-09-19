@@ -9,7 +9,12 @@ import {
   RAW_API_KEY,
   RAW_KEY_ID,
 } from "./constants.js";
-import { bootEngine, enableAllCapture, waitForEventTypes } from "./helpers/capture.js";
+import {
+  bootEngine,
+  driveInteractions,
+  enableAllCapture,
+  waitForEventTypes,
+} from "./helpers/capture.js";
 
 /**
  * Agent-scoped API keys, end to end (#309, sketch §G.2 / ADR 0051 §7).
@@ -35,6 +40,15 @@ interface WhoAmI {
   label: string | null;
   rateLimit: { max: number; windowMs: number };
   rateLimitSource: "key" | "default";
+}
+
+interface NarrativeEntry {
+  tMs: number;
+  kind: string;
+  summary: string;
+  refs: { mesh?: string; scene?: string; name?: string };
+  totals?: { events: number };
+  truncated?: boolean;
 }
 
 interface AuditRow {
@@ -134,6 +148,78 @@ test("raw session stream requires query:raw even with retention enabled", async 
   // to raw per-session data, not to the analytics API.
   const aggregate = await get(request, "/api/v1/sessions?limit=5", QUERY_ONLY_API_KEY);
   expect(aggregate.status()).toBe(200);
+});
+
+test("the session narrative honours the same double gate and reads back the session", async ({
+  page,
+  request,
+}) => {
+  // A real captured session, driven through the full interaction script so the
+  // compaction has scene changes, mesh picks, clicks and key actions to describe.
+  await enableAllCapture(page, "babylon");
+  const sessionId = await bootEngine(page, "babylon");
+  await driveInteractions(page, { keyboard: true });
+  await waitForEventTypes(request, sessionId, [
+    "session_start",
+    "mesh_interaction",
+    "scene_change",
+    "input_action",
+  ]);
+
+  // The interesting half of the matrix: retention is ON here, so the only thing
+  // separating these two requests is the capability on the key.
+  const refused = await get(request, `/api/v1/sessions/${sessionId}/narrative`, QUERY_ONLY_API_KEY);
+  expect(refused.status()).toBe(403);
+  expect((await refused.json()) as { error: string }).toEqual({
+    error: "api key not permitted to read raw session data",
+  });
+
+  const allowed = await get(request, `/api/v1/sessions/${sessionId}/narrative`, RAW_API_KEY);
+  expect(allowed.status()).toBe(200);
+  const entries = (await allowed.json()) as NarrativeEntry[];
+  expect(entries.length).toBeGreaterThan(1);
+  // Ordered, relative to the session start, and closed by the totals entry.
+  expect(entries.map((entry) => entry.tMs)).toEqual(
+    [...entries.map((entry) => entry.tMs)].sort((a, b) => a - b),
+  );
+  expect(entries[0]!.kind).toBe("scene");
+  const summary = entries.at(-1)!;
+  expect(summary.kind).toBe("summary");
+  expect(summary.totals!.events).toBeGreaterThan(0);
+  expect(summary.truncated).toBe(false);
+  // It names what the session actually did — every interaction the script drove.
+  const interactions = entries.filter((entry) => entry.kind === "interaction");
+  expect(interactions.length).toBeGreaterThan(0);
+  expect(interactions.some((entry) => entry.refs.mesh != null)).toBe(true);
+  expect(interactions.some((entry) => entry.refs.name != null)).toBe(true);
+  // And where it went: the script switches to the gallery scene.
+  expect(
+    entries.filter((entry) => entry.kind === "scene").map((entry) => entry.refs.scene),
+  ).toContain("gallery");
+
+  // The acceptance criterion from #314: the plain-text rendering an LLM reads is
+  // under 200 lines for a real captured session.
+  const text = await request.get(
+    `${COLLECTOR_URL}/api/v1/sessions/${sessionId}/narrative?format=text`,
+    { headers: { "x-api-key": RAW_API_KEY } },
+  );
+  expect(text.status()).toBe(200);
+  expect(text.headers()["content-type"]).toContain("text/plain");
+  const lines = (await text.text()).trimEnd().split("\n");
+  expect(lines.length).toBeLessThan(200);
+  expect(lines[0]).toContain(`session ${sessionId}`);
+
+  // Nothing a narrative must never carry (ADR 0003): no visitor hash, no URL.
+  const body = await text.text();
+  expect(body).not.toContain("http://");
+  expect(body).not.toContain("https://");
+  const meta = await get(request, `/api/v1/sessions/${sessionId}/meta`, RAW_API_KEY);
+  const visitorId = ((await meta.json()) as { visitorId?: string }).visitorId;
+  if (visitorId) expect(body).not.toContain(visitorId);
+
+  // An unknown session is a 404, not an empty narrative.
+  const missing = await get(request, "/api/v1/sessions/no-such-session/narrative", RAW_API_KEY);
+  expect(missing.status()).toBe(404);
 });
 
 test("the live per-session follow honours query:raw through the live token", async ({

@@ -49,7 +49,14 @@ describe("registerPrompts", () => {
     const cb = prompts.get("weekly_scene_health")!.cb;
     const withScene = textOf(cb, { scene: "lobby" });
     expect(withScene).toContain('scene "lobby"');
-    for (const tool of ["event_counts", "timeseries", "perf_summary", "top_meshes"]) {
+    for (const tool of [
+      "event_counts",
+      "timeseries",
+      "perf_summary",
+      "top_meshes",
+      // --- anomalies (#306): the prompt must put a date on whatever moved.
+      "insight_anomalies",
+    ]) {
       expect(withScene).toContain(tool);
     }
     const allScenes = textOf(cb, {});
@@ -68,6 +75,17 @@ describe("registerPrompts", () => {
     const text = textOf(prompts.get("xr_comfort_review")!.cb, {});
     for (const tool of ["xr_rotation", "xr_locomotion", "xr_abandonment", "xr_sources"]) {
       expect(text).toContain(tool);
+    }
+  });
+
+  it("tells every template to read the project context first (ADR 0051 §5)", () => {
+    for (const [name, prompt] of prompts) {
+      const text = textOf(prompt.cb, { scene: "lobby" });
+      expect(text, name).toContain("uptimizr://context");
+      // …and before it names any tool, so the agent orients before it asks.
+      const firstTool = text.indexOf("Use these read-only tools");
+      expect(firstTool, name).toBeGreaterThan(-1);
+      expect(text.indexOf("uptimizr://context"), name).toBeLessThan(firstTool);
     }
   });
 });

@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { ApiKeyCapability, ResolvedApiKey } from "@uptimizr/db";
+import type { ApiKeyCapability, MetadataAuthorKind, ResolvedApiKey } from "@uptimizr/db";
 import type { CollectorStore } from "./store.js";
 
 /**
@@ -30,6 +30,13 @@ declare module "fastify" {
     resolvedKey: ResolvedApiKey | null;
     /** Rows in the response body, when it serialized to an array (audit log). */
     auditRowCount: number | null;
+    /**
+     * What the audit log should record as this request's parameters, when the
+     * querystring is not the whole story. `POST /api/v1/query` carries its
+     * query in the body (ADR 0051 §3), so without this the audit trail would
+     * show a bare path and nothing about what was asked for.
+     */
+    auditParams: unknown;
   }
 }
 
@@ -52,6 +59,52 @@ export const CLIENT_HEADER = "x-uptimizr-client";
  */
 export function isDashboardRequest(request: FastifyRequest): boolean {
   return request.headers[CLIENT_HEADER] === "dashboard";
+}
+
+/** The route the bearer-header alias below is accepted on, and only that one. */
+export const MCP_ROUTE_URL = "/mcp";
+
+/**
+ * Accept `Authorization: Bearer <key>` as an alias for `x-api-key` **on the
+ * hosted MCP route only** (ADR 0051 §7, design sketch §G.1).
+ *
+ * MCP clients configure a remote server as a URL plus headers and send the
+ * bearer form the MCP specification describes; the rest of the collector has
+ * always used `x-api-key`. Normalising one into the other here — in the same
+ * `onRequest` hook, *before* {@link attachApiKey} — keeps exactly one
+ * key-resolution path, so the capability check, the audit row and the per-key
+ * rate-limit bucket all work for a bearer-authenticated MCP client too.
+ *
+ * Scoped to `/mcp` on purpose: this is an alias for one route, not a new
+ * site-wide authentication scheme. An explicit `x-api-key` always wins, and a
+ * malformed or empty bearer value is ignored rather than rejected, so the usual
+ * "no key → 401" path handles it.
+ */
+export function normalizeMcpBearer(request: FastifyRequest): void {
+  if (request.routeOptions.url !== MCP_ROUTE_URL) return;
+  const existing = request.headers["x-api-key"];
+  if (typeof existing === "string" && existing.length > 0) return;
+  const authorization = request.headers.authorization;
+  if (typeof authorization !== "string") return;
+  const match = /^Bearer[ \t]+(\S+)$/i.exec(authorization.trim());
+  if (match) request.headers["x-api-key"] = match[1];
+}
+
+/**
+ * Who a metadata write (#310, ADR 0051 §5) is attributed to.
+ *
+ * It reuses the surface marker the audit log already distinguishes on rather
+ * than inventing a second notion of "who": the dashboard's own session is a
+ * **person** clicking in a UI, and everything else holding an `annotate` key —
+ * an MCP client, the in-browser assistant writing up its own answer, a
+ * scheduled report — is an **agent**.
+ *
+ * It is derived from the request, never read from the payload, so a stored row
+ * cannot claim an authorship its writer did not send. Like the audit filter it
+ * is an honest label, not a security boundary.
+ */
+export function metadataAuthorKind(request: FastifyRequest): MetadataAuthorKind {
+  return isDashboardRequest(request) ? "user" : "agent";
 }
 
 /**

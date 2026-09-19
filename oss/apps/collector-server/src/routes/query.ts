@@ -10,6 +10,10 @@ import {
   funnelStepSchema,
 } from "@uptimizr/schema";
 import {
+  // The dashboard camera-mode toggle → the stored `cameraType` (ADR 0026).
+  // Defined once in `@uptimizr/db`, so this route and the query DSL translate it
+  // the same way and cannot drift.
+  cameraTypeForMode,
   defaultCellSizeForBounds,
   isWorldSpatialMetric,
   resultEnvelopeSchema,
@@ -67,19 +71,12 @@ const cameraModeFilter = z.enum(["viewer", "first-person"]).optional();
  */
 const formatFilter = resultFormatSchema.optional();
 
-/** Map the dashboard camera-mode toggle to the stored `cameraType` value. */
-function cameraTypeForMode(mode: "viewer" | "first-person" | undefined): string | undefined {
-  if (mode === "first-person") return "free";
-  if (mode === "viewer") return "arc-rotate";
-  return undefined;
-}
-
 /**
  * A parsed `region` querystring value: either an explicit box or the id of a
  * region registered in the scene registry (ADR 0051 §2), which the route
  * resolves to that region's stored bounds before the store ever sees it.
  */
-type RegionFilter = { kind: "box"; bounds: WorldAabb } | { kind: "id"; id: string };
+export type RegionFilter = { kind: "box"; bounds: WorldAabb } | { kind: "id"; id: string };
 
 /**
  * World-space region filter (ADR 0040 §4, extended by ADR 0051 §2). Accepts
@@ -141,9 +138,9 @@ const regionFilter = z
   });
 
 /** Why a `region=<id>` filter could not be resolved, for the 400 body. */
-type RegionResolutionError = { error: string };
+export type RegionResolutionError = { error: string };
 
-function isRegionError(value: unknown): value is RegionResolutionError {
+export function isRegionError(value: unknown): value is RegionResolutionError {
   return typeof value === "object" && value !== null && "error" in value;
 }
 
@@ -158,7 +155,7 @@ function isRegionError(value: unknown): value is RegionResolutionError {
  * the region. Returns the box, `undefined` when no filter was given, or an error
  * object the caller turns into a `400`.
  */
-async function resolveRegionFilter(
+export async function resolveRegionFilter(
   store: CollectorStore,
   projectId: string,
   scene: string | undefined,
@@ -210,7 +207,7 @@ async function resolveSpatialCellSize(
 const resolvedCellSizes = new WeakMap<FastifyRequest, number>();
 
 /** The resolution rule itself; see {@link resolveSpatialCellSize}. */
-async function computeSpatialCellSize(
+export async function computeSpatialCellSize(
   store: CollectorStore,
   projectId: string,
   opts: { cellSize?: number; scene?: string; region?: WorldAabb },
@@ -463,6 +460,20 @@ const scenesQueryParams = z.object({
   since: z.coerce.number().int().optional(),
   until: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().positive().max(1000).optional(),
+  format: formatFilter,
+});
+
+/**
+ * Custom-event vocabulary params (ADR 0051 §5): range + optional scene, and a
+ * cap on how many distinct event names come back. The payload-sampling depth is
+ * deliberately NOT a request parameter — it is a cost knob, not a filter, and
+ * the registry-declared default is what keeps the context document bounded.
+ */
+const customEventVocabularyQueryParams = z.object({
+  since: z.coerce.number().int().optional(),
+  until: z.coerce.number().int().optional(),
+  scene: sceneFilter,
+  limit: z.coerce.number().int().positive().max(200).optional(),
   format: formatFilter,
 });
 
@@ -2129,6 +2140,26 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
       const projectId = await authProject(req, reply, store);
       if (!projectId) return reply;
       return store.topInputActions(projectId, req.query);
+    },
+  );
+
+  // Discovered custom-event vocabulary (ADR 0051 §5, design sketch §E.1) — the
+  // developer-defined `custom` event names this project actually emits, with the
+  // `props` keys observed on each. The one read that tells an agent what an
+  // application calls its own events, so it can filter or funnel on a real name
+  // instead of guessing one. Prop *values* are never reported (ADR 0003).
+  r.get(
+    "/api/v1/vocabulary/custom-events",
+    {
+      schema: {
+        querystring: customEventVocabularyQueryParams,
+        response: { 200: rowsFor("/api/v1/vocabulary/custom-events") },
+      },
+    },
+    async (req, reply) => {
+      const projectId = await authProject(req, reply, store);
+      if (!projectId) return reply;
+      return store.customEventVocabulary(projectId, req.query);
     },
   );
 

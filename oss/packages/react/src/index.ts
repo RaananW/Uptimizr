@@ -19,6 +19,7 @@ export {
   INPUT_SOURCES,
   resolveRange,
   toQueryParams,
+  annotationTargetFor,
   pickInterval,
   formatSource,
 } from "./filters";
@@ -134,6 +135,7 @@ export {
   sessionReplayPanel,
   eventVolumePanel,
   sceneHealthPanel,
+  sceneHealthScorePanel,
   engineDiagnosticsPanel,
   renderingTechnologyPanel,
   sceneTraversalPanel,
@@ -149,6 +151,7 @@ export {
   gazeHeatmapPanel,
   clickRaysPanel,
   sessionsPanel,
+  subscriptionsPanel,
 } from "./catalog/ossPanelCatalog";
 
 // --- Panel view components (2D / HTML / canvas — Babylon-free). --------------
@@ -161,6 +164,13 @@ export { DesireLinesView } from "./catalog/views/DesireLines";
 export { WalkedPathView } from "./catalog/views/WalkedPath";
 export { VolumeTimeseriesView, formatBucket } from "./catalog/views/VolumeTimeseries";
 export { SceneHealthView } from "./catalog/views/SceneHealth";
+// --- significance / scene health (#307) ---
+export {
+  SceneHealthScoreView,
+  SCENE_HEALTH_SCORE_HELP,
+  SCENE_HEALTH_SCORE_SUBTITLE,
+  SCENE_HEALTH_SCORE_TITLE,
+} from "./catalog/views/SceneHealthScore";
 export {
   GraphicsDiagnosticsView,
   foldGraphicsDiagnostics,
@@ -171,6 +181,16 @@ export {
   foldRenderingTechnology,
 } from "./catalog/views/RenderingTechnology";
 export type { TechBucket, TechBreakdown } from "./catalog/views/RenderingTechnology";
+export {
+  SUBSCRIPTION_FIRING_LOGS,
+  SubscriptionsView,
+  describeDelivery,
+  describePredicate,
+  firingReason,
+  formatAge,
+  healthOf,
+} from "./catalog/views/Subscriptions";
+export type { SubscriptionHealth, SubscriptionsPanelData } from "./catalog/views/Subscriptions";
 export { SceneTraversalView } from "./catalog/views/SceneTraversal";
 export { InputSourcesView } from "./catalog/views/InputSources";
 export {

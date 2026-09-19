@@ -15,15 +15,22 @@
 ## Key exports
 
 - `METRIC_REGISTRY` / `METRIC_IDS` — every metric, keyed by its stable snake_case id (which is also the MCP tool name).
-- `allMetrics()`, `getMetric(id)`, `isMetricId(value)`, `metricForBuilder(name)`, `isResourceMetric(metric)`.
+- `allMetrics()`, `getMetric(id)`, `isMetricId(value)`, `metricForBuilder(name)`, and the three entry-kind predicates `isResourceMetric` (a store read: no builder, no querystring, no `format`), `isDerivedMetric` (computed in TypeScript over other metrics — the insight primitives `insight_baseline`, `insight_movers`, `insight_significance`, `insight_scene_health`, ADR 0051 §4; `insight_significance` picks its test from the compared metric's own `columns[...].rateOf`, and `insight_scene_health` publishes its per-factor weights in its `caveats`) and `isAggregateMetric` (either, i.e. "takes a querystring"). Prefer `isAggregateMetric` over `metric.builder != null`, or a derived metric silently drops out of the envelope and OpenAPI surfaces.
 - `FILTER_TARGETS` — every request parameter and what it does; `DIMENSION_COLUMNS` — every group-by dimension.
 - `AGGREGATION_BUILDER_NAMES` — the closed set of `build*` aggregations in `@uptimizr/db`.
 - `resultFormatSchema`, `tableEnvelopeSchema(row)`, `summaryEnvelopeSchema`, `tableMetaSchema` — the `format` envelopes as Zod (ADR 0051 §2).
 - `resultEnvelopeSchema(row, full?)` — the union of the three; `structuredEnvelopeSchema(row)` — the merged object form an MCP `outputSchema` needs.
 - Types: `MetricDefinition`, `MetricId`, `MetricEndpoint`, `ColumnSemantics`, `ColumnUnit`, `DimensionId`, `FilterId`, `MetricCategory`, `MetricGrain`.
+- Types: `MetricDefinition`, `MetricId`, `MetricEndpoint`, `ColumnSemantics`, `ColumnUnit`, `DimensionId`, `FilterId`, `MetricCategory`, `MetricGrain`, `GenericGroupBy`, `GenericMeasure`, `QueryTier`.
+- The grain is registry data: `MetricDefinition.grainDimensions` (read it through `nativeDimensions`) is what a row is keyed by, while `dimensions` is everything the metric can be filtered, keyed or regrouped by. A metric that also declares `genericGroupBy` can be recomputed at any grain in `genericDimensions(metric)` by the shared group-by builder in `@uptimizr/db`; `queryTier(metric, query)` says which compiler a query takes.
+- Types: `MetricDefinition`, `MetricId`, `MetricEndpoint`, `MetricDerivation`, `ColumnSemantics`, `ColumnUnit`, `DimensionId`, `FilterId`, `MetricCategory`, `MetricGrain`.
 
 ## Rules
 
 - Derive tool catalogs, OpenAPI documents and docs tables from the registry; never restate them by hand.
 - A new aggregation is not done until it has a registry entry.
 - Keep this package free of `@uptimizr/db`, `node:` built-ins and native dependencies.
+- `sourceChannels` is load-bearing beyond documentation: the collector's project context document
+  (`GET /api/v1/context`, ADR 0051 §5) reports a metric as `disabledByCapture` when **every** channel
+  it declares produced no events over the window. A metric with an empty `sourceChannels` is a
+  derived rollup and is never reported as disabled — so declare the channels a metric really reads.

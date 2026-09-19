@@ -33,6 +33,7 @@ import {
 import type {
   QuerySpec,
   CameraModeOptions,
+  CustomEventVocabularyOptions,
   ErrorHeatmapOptions,
   FunnelOptions,
   FunnelStepInput,
@@ -3584,6 +3585,110 @@ export function buildVariantLeaderboard(
       LIMIT ${limit}
     `,
     metric: "variant_leaderboard",
+    query_params: bag.values,
+  };
+}
+
+/**
+ * Default number of distinct custom-event names returned by
+ * {@link buildCustomEventVocabulary}, ranked by event count.
+ */
+export const CUSTOM_EVENT_VOCABULARY_LIMIT = 100;
+/** Hard cap on the distinct names the vocabulary returns. */
+export const CUSTOM_EVENT_VOCABULARY_MAX_LIMIT = 200;
+/**
+ * Default number of **most recent** payloads sampled per name for prop-key
+ * discovery. Bounded on purpose (ADR 0051 §5): the union of prop keys is a
+ * vocabulary hint for an agent, not an exhaustive schema, and scanning every
+ * historical `custom` row to prove a key never appears again is not worth the
+ * I/O. Twenty recent rows per name catch what a live integration emits today; a
+ * key that stopped being sent long ago correctly ages out of the vocabulary.
+ */
+export const CUSTOM_EVENT_VOCABULARY_SAMPLE_ROWS = 20;
+/** Hard cap on the payloads sampled per name. */
+export const CUSTOM_EVENT_VOCABULARY_MAX_SAMPLE_ROWS = 100;
+
+/**
+ * Discovered **custom-event vocabulary** (ADR 0051 §5, design sketch §E.1):
+ * which developer-defined `custom` event names a project actually emits, how
+ * often, over how many distinct sessions, and which `props` keys ride along.
+ * Agents start blind about an application's own event names — this is the read
+ * that tells them `add_to_cart` exists and carries `sku` and `qty`.
+ *
+ * The result is two things at once, and the SQL says so:
+ *
+ * - **totals** per `name` (`count`, `sessions`) over the whole range; and
+ * - up to `sampleRows` of that name's **most recent** raw `payload` documents,
+ *   from which `foldCustomEventVocabulary` derives the prop keys and their
+ *   coarse types in TypeScript.
+ *
+ * Prop keys are discovered in TypeScript rather than in SQL deliberately. Key
+ * *enumeration* over an open JSON object is the one JSON operation the four
+ * supported engines have no portable spelling for (`json_keys` /
+ * `JSONExtractKeys` / `jsonb_object_keys` / `OPENJSON`), and `Dialect.jsonText`
+ * cannot express it — reading a value at a *known* path is precisely what it
+ * does. Sampling the documents and folding them leaves the dialect surface
+ * untouched and keeps the discovery logic pure and unit-testable. The raw
+ * payload never leaves the store layer: the collector serves the folded rows.
+ *
+ * Cost is bounded on both axes — at most `limit` names (one grouped pass) and at
+ * most `limit × sampleRows` payload documents.
+ */
+export function buildCustomEventVocabulary(
+  projectId: string,
+  opts: CustomEventVocabularyOptions,
+  d: Dialect,
+): QuerySpec {
+  const bag = new ParamBag(d);
+  const pid = bag.add("projectId", "string", projectId);
+  const range = rangeClause(bag, opts);
+  const scene = sceneClause(bag, opts);
+  const limit = bag.add(
+    "limit",
+    "u32",
+    Math.min(opts.limit ?? CUSTOM_EVENT_VOCABULARY_LIMIT, CUSTOM_EVENT_VOCABULARY_MAX_LIMIT),
+  );
+  const sampleRows = bag.add(
+    "sampleRows",
+    "u32",
+    Math.min(
+      opts.sampleRows ?? CUSTOM_EVENT_VOCABULARY_SAMPLE_ROWS,
+      CUSTOM_EVENT_VOCABULARY_MAX_SAMPLE_ROWS,
+    ),
+  );
+
+  return {
+    query: `
+      WITH custom_events AS (
+        SELECT name, session_id, ts, payload
+        FROM events
+        WHERE project_id = ${pid} AND event_type = 'custom' AND name != ''${range}${scene}
+      ),
+      totals AS (
+        SELECT name, count(*) AS count, count(DISTINCT session_id) AS sessions
+        FROM custom_events
+        GROUP BY name
+        ORDER BY count DESC, name ASC
+        LIMIT ${limit}
+      ),
+      ranked AS (
+        SELECT
+          name,
+          payload,
+          row_number() OVER (PARTITION BY name ORDER BY ts DESC) AS sample_rank
+        FROM custom_events
+      )
+      SELECT
+        t.name AS name,
+        t.count AS count,
+        t.sessions AS sessions,
+        r.payload AS sample_payload
+      FROM totals t
+      JOIN ranked r ON r.name = t.name
+      WHERE r.sample_rank <= ${sampleRows}
+      ORDER BY t.count DESC, t.name ASC, r.sample_rank ASC
+    `,
+    metric: "custom_event_vocabulary",
     query_params: bag.values,
   };
 }

@@ -12,6 +12,7 @@
 
 import dynamic from "next/dynamic";
 import { useState } from "react";
+import { annotationTargetFor, type FilterState } from "@uptimizr/react";
 
 // The `import()` here is the code-split seam: the panel and everything it pulls
 // (agent-core, and — lazily inside it — the WebLLM runtime) land in an on-demand
@@ -30,13 +31,19 @@ interface AssistantDrawerProps {
   collectorUrl: string;
   /** Project API key for the active connection. */
   apiKey: string;
+  /**
+   * The dashboard's active filters. They pre-fill the target of an
+   * "Annotate this" note (#310) — the scene being looked at, the window being
+   * shown — so a note lands where the user was actually looking.
+   */
+  filters: FilterState;
 }
 
 /**
  * A collapsible panel that mounts `<AssistantPanel>` on first open, wired to the
  * active project's collector connection.
  */
-export function AssistantDrawer({ collectorUrl, apiKey }: AssistantDrawerProps) {
+export function AssistantDrawer({ collectorUrl, apiKey, filters }: AssistantDrawerProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -65,7 +72,11 @@ export function AssistantDrawer({ collectorUrl, apiKey }: AssistantDrawerProps) 
 
       {open ? (
         <div className="mt-4 border-t border-edge pt-4">
-          <AssistantPanel collectorUrl={collectorUrl} apiKey={apiKey} />
+          <AssistantPanel
+            collectorUrl={collectorUrl}
+            apiKey={apiKey}
+            annotationTarget={annotationTargetFor(filters)}
+          />
         </div>
       ) : null}
     </section>

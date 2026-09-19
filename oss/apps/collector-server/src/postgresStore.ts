@@ -4,6 +4,7 @@ import {
   buildCameraDistance,
   buildCameraPositionHeatmap,
   buildClickGazeRay,
+  buildCustomEventVocabulary,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -16,6 +17,8 @@ import {
   buildCameraGestures,
   buildDistinctScenes,
   buildEventTypeCounts,
+  buildMetricBuckets,
+  toMetricBucketRows,
   buildFlowHeatmap,
   buildFunnel,
   buildSceneRetention,
@@ -62,11 +65,13 @@ import {
   buildTopMeshesBySource,
   buildTopMeshesTrend,
   buildTopInputActions,
+  foldCustomEventVocabulary,
   buildWorldHeatmap,
   buildWorldHeatmapStats,
   buildGazeHeatmap,
   buildGazeHeatmapStats,
   postgresDialect,
+  compileMetric,
   readDbSettings,
   type CameraDistanceBucketRow,
   type ClickGazeRayRow,
@@ -98,6 +103,7 @@ import {
   type ReachabilityBinRow,
   type MeshSourceCountRow,
   type MeshTrendPointRow,
+  type CustomEventVocabularySampleRow,
   type InputActionCountRow,
   type NavigationStatsRow,
   type BacktrackRatioRow,
@@ -147,8 +153,27 @@ import {
   getSceneRepresentation as pgGetSceneRepresentation,
   listSceneRepresentations as pgListSceneRepresentations,
   putSceneRegions as pgPutSceneRegions,
+  listSubscriptions as pgListSubscriptions,
+  listEnabledSubscriptions as pgListEnabledSubscriptions,
+  getSubscription as pgGetSubscription,
+  createSubscription as pgCreateSubscription,
+  setSubscriptionEnabled as pgSetSubscriptionEnabled,
+  deleteSubscription as pgDeleteSubscription,
+  recordSubscriptionOutcome as pgRecordSubscriptionOutcome,
+  getWebhookSecret as pgGetWebhookSecret,
+  recordSubscriptionEvent as pgRecordSubscriptionEvent,
+  listSubscriptionEvents as pgListSubscriptionEvents,
   getSceneRegions as pgGetSceneRegions,
   listSceneRegions as pgListSceneRegions,
+  createAnnotation as pgCreateAnnotation,
+  listAnnotations as pgListAnnotations,
+  deleteAnnotation as pgDeleteAnnotation,
+  putGlossaryEntry as pgPutGlossaryEntry,
+  listGlossary as pgListGlossary,
+  deleteGlossaryEntry as pgDeleteGlossaryEntry,
+  createSavedAnalysis as pgCreateSavedAnalysis,
+  listSavedAnalyses as pgListSavedAnalyses,
+  deleteSavedAnalysis as pgDeleteSavedAnalysis,
   type PostgresClient,
 } from "@uptimizr/db-postgres";
 import type { CollectorStore } from "./store.js";
@@ -177,12 +202,23 @@ export async function createPostgresStore(): Promise<CollectorStore> {
 
   const d = postgresDialect;
   return {
+    engine: "postgres",
     resolveApiKey: (key) => pgResolveApiKey(pgc, key),
     recordAudit: (entry) => pgRecordAudit(pgc, entry),
     listAudit: (projectId, opts) => pgListAudit(pgc, projectId, opts),
     pruneAudit: (cutoffMs) => pgPruneAudit(pgc, cutoffMs),
     projectExists: async (projectId) => (await pgGetProject(pgc, projectId)) !== null,
     insertEvents: (events) => pgInsertEvents(pgc, [...events]),
+    // Query DSL v1 (ADR 0051 §3): any registry metric, compiled onto its own
+    // aggregation builder and run through the same Postgres path — and therefore
+    // the same parity coverage and the same numeric coercion — as the canned
+    // aggregates below.
+    runMetric: (projectId, metric, options) =>
+      runPostgresQuery<Record<string, unknown>>(pgc, compileMetric(metric, projectId, options, d)),
+    describeMetric: (projectId, metric, options) => ({
+      dialect: d.name,
+      spec: compileMetric(metric, projectId, options, d),
+    }),
     listSessions: (projectId, opts = {}) =>
       runPostgresQuery<SessionSummaryRow>(pgc, buildListSessions(projectId, opts, d)),
     pointerHeatmap: (projectId, opts = {}) =>
@@ -333,12 +369,33 @@ export async function createPostgresStore(): Promise<CollectorStore> {
       runPostgresQuery<InteractionSourceRow>(pgc, buildInteractionsBySource(projectId, opts, d)),
     topInputActions: (projectId, opts = {}) =>
       runPostgresQuery<InputActionCountRow>(pgc, buildTopInputActions(projectId, opts, d)),
+    // Discovered custom-event vocabulary (ADR 0051 §5): the SQL counts and
+    // samples, the pure fold turns the sampled payloads into prop types. The
+    // raw payload stops here and never reaches a route.
+    customEventVocabulary: async (projectId, opts = {}) =>
+      foldCustomEventVocabulary(
+        await runPostgresQuery<CustomEventVocabularySampleRow>(
+          pgc,
+          buildCustomEventVocabulary(projectId, opts, d),
+        ),
+      ),
     scenes: (projectId, opts = {}) =>
       runPostgresQuery<SceneRow>(pgc, buildDistinctScenes(projectId, opts, d)),
     timeseries: (projectId, opts = {}) =>
       runPostgresQuery<TimeseriesBucketRow>(pgc, buildTimeseries(projectId, opts, d)),
     eventTypeCounts: (projectId, opts = {}) =>
       runPostgresQuery<EventTypeCountRow>(pgc, buildEventTypeCounts(projectId, opts, d)),
+    // The one bucket series behind `baseline` and `movers` (ADR 0051 §4). The
+    // spec carries no registry metric of its own, so the store edge has no row
+    // schema to coerce it against — `toMetricBucketRows` parses the numbers,
+    // which is what keeps the engines that string-encode 64-bit counts honest.
+    metricBuckets: async (projectId, opts) =>
+      toMetricBucketRows(
+        await runPostgresQuery<Record<string, unknown>>(
+          pgc,
+          buildMetricBuckets(projectId, opts, d),
+        ),
+      ),
     funnel: (projectId, opts) =>
       runPostgresQuery<FunnelStepResultRow>(pgc, buildFunnel(projectId, opts, d)),
     sceneRetention: (projectId, opts) =>
@@ -358,6 +415,28 @@ export async function createPostgresStore(): Promise<CollectorStore> {
       pgPutSceneRegions(pgc, projectId, sceneId, regions),
     getSceneRegions: (projectId, sceneId) => pgGetSceneRegions(pgc, projectId, sceneId),
     listSceneRegions: (projectId) => pgListSceneRegions(pgc, projectId),
+    createAnnotation: (projectId, input) => pgCreateAnnotation(pgc, projectId, input),
+    listAnnotations: (projectId, opts) => pgListAnnotations(pgc, projectId, opts),
+    deleteAnnotation: (projectId, id) => pgDeleteAnnotation(pgc, projectId, id),
+    putGlossaryEntry: (projectId, input) => pgPutGlossaryEntry(pgc, projectId, input),
+    listGlossary: (projectId, opts) => pgListGlossary(pgc, projectId, opts),
+    deleteGlossaryEntry: (projectId, term) => pgDeleteGlossaryEntry(pgc, projectId, term),
+    createSavedAnalysis: (projectId, input) => pgCreateSavedAnalysis(pgc, projectId, input),
+    listSavedAnalyses: (projectId, opts) => pgListSavedAnalyses(pgc, projectId, opts),
+    deleteSavedAnalysis: (projectId, id) => pgDeleteSavedAnalysis(pgc, projectId, id),
+    listSubscriptions: (projectId) => pgListSubscriptions(pgc, projectId),
+    listEnabledSubscriptions: (limit) => pgListEnabledSubscriptions(pgc, limit),
+    getSubscription: (projectId, id) => pgGetSubscription(pgc, projectId, id),
+    createSubscription: (projectId, sub) => pgCreateSubscription(pgc, projectId, sub),
+    setSubscriptionEnabled: (projectId, id, enabled) =>
+      pgSetSubscriptionEnabled(pgc, projectId, id, enabled),
+    deleteSubscription: (projectId, id) => pgDeleteSubscription(pgc, projectId, id),
+    recordSubscriptionOutcome: (projectId, id, outcome) =>
+      pgRecordSubscriptionOutcome(pgc, projectId, id, outcome),
+    getWebhookSecret: (projectId, id) => pgGetWebhookSecret(pgc, projectId, id),
+    recordSubscriptionEvent: (entry) => pgRecordSubscriptionEvent(pgc, entry),
+    listSubscriptionEvents: (projectId, id, opts) =>
+      pgListSubscriptionEvents(pgc, projectId, id, opts),
     async close() {
       await pgc.close();
     },
