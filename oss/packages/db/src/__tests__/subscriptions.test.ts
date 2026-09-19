@@ -171,14 +171,25 @@ describe("duckdb subscriptions", () => {
     const created = await createSubscription(db, PID, declaration());
     const total = MAX_SUBSCRIPTION_EVENTS + 20;
 
-    for (let i = 0; i < total; i += 1) {
-      await recordSubscriptionEvent(db, {
-        subscriptionId: created.id,
-        projectId: PID,
-        at: new Date(1_700_000_000_000 + i * 1000),
-        payload: { seq: i },
-      });
-    }
+    // Backfill everything but the newest row in one statement, then append that
+    // one through `recordSubscriptionEvent`: the trim runs on write, so a single
+    // real append over an oversized log is exactly what proves the bound — and
+    // 120 sequential DuckDB transactions is the slowest way to learn the same
+    // thing (it timed out under CI's parallel load).
+    await db.run(
+      `INSERT INTO subscription_events (id, subscription_id, project_id, "at", payload)
+       SELECT 'evt_' || i, $subscriptionId, $projectId,
+              make_timestamp(CAST((1700000000000 + i * 1000) AS BIGINT) * 1000),
+              '{"seq": ' || i || '}'
+         FROM range(0, ${total - 1}) AS t(i)`,
+      { subscriptionId: created.id, projectId: PID },
+    );
+    await recordSubscriptionEvent(db, {
+      subscriptionId: created.id,
+      projectId: PID,
+      at: new Date(1_700_000_000_000 + (total - 1) * 1000),
+      payload: { seq: total - 1 },
+    });
 
     const rows = await listSubscriptionEvents(db, PID, created.id, { limit: 1000 });
     expect(rows).toHaveLength(MAX_SUBSCRIPTION_EVENTS);

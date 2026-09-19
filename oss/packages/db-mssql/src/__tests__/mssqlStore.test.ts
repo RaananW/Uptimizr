@@ -172,6 +172,8 @@ describe.skipIf(!available)("mssql store", () => {
       "projects",
       "scene_regions",
       "scene_representations",
+      "subscription_events",
+      "subscriptions",
     ]);
   });
 

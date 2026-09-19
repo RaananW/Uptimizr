@@ -177,6 +177,8 @@ describe.skipIf(!available)("postgres store", () => {
       "projects",
       "scene_regions",
       "scene_representations",
+      "subscription_events",
+      "subscriptions",
     ]);
   });
 
