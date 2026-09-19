@@ -155,6 +155,13 @@ metric in the catalog above with any filter that metric declares:
 Its `structuredContent` is `{ result }` rather than `{ rows }`, because what comes back depends on
 the `format` asked for.
 
+## Non-metric reads
+
+Alongside the generated per-metric tools, the server registers `list_subscriptions` (ADR 0051
+§6): the project's standing conditional subscriptions, what each watches for, and how each last
+went. It takes no arguments. It is read-only like everything else here — creating or deleting a
+subscription needs the `annotate` capability and is done over plain HTTP, not through MCP.
+
 ## Result formats (`format`)
 
 Every **aggregate** tool takes a `format` argument choosing the envelope its rows arrive in

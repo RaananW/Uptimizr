@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from "vitest";
 import { queryV1Schema, type QueryV1 } from "@uptimizr/schema";
-import { allMetrics, getMetric, isResourceMetric, requiredFilters } from "@uptimizr/metrics";
+import { allMetrics, getMetric, requiredFilters } from "@uptimizr/metrics";
 import type { Dialect } from "../query/dialect.js";
 import { duckdbDialect } from "../query/duckdbDialect.js";
 import { clickhouseDialect } from "../query/clickhouseDialect.js";

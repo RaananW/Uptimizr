@@ -502,6 +502,69 @@ export const DUCKDB_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
         ON saved_analyses (project_id, created_at);
     `,
   },
+  // --- Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1–F.2) ------
+  // One row per standing question: which registry metric, over what window, with
+  // what predicate, and where a firing is delivered. The declaration itself is a
+  // closed Zod union validated at the request boundary and never queried *into*,
+  // so it lives in one JSON `config` column; the scalars beside it are exactly
+  // what the store must filter (`project_id`, `enabled`), order (`created_at`) or
+  // update (`last_fired_at`, `last_error`, `failures`).
+  //
+  // `webhook_secret` is the shared HMAC key. It is deliberately NOT hashed — a
+  // one-way digest cannot sign an outbound body — and is the one column no read
+  // path ever selects into a record: `duckdb/subscriptions.ts` reads it only in
+  // `getWebhookSecret`, and every API response carries a masked placeholder.
+  {
+    id: "0044_subscriptions",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        id             VARCHAR PRIMARY KEY,
+        project_id     VARCHAR NOT NULL,
+        name           VARCHAR NOT NULL,
+        metric         VARCHAR NOT NULL,
+        config         VARCHAR NOT NULL,
+        webhook_secret VARCHAR,
+        enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at     TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at     TIMESTAMP NOT NULL DEFAULT now(),
+        last_fired_at  TIMESTAMP,
+        last_error     VARCHAR,
+        failures       BIGINT NOT NULL DEFAULT 0
+      );
+    `,
+  },
+  {
+    id: "0045_subscriptions_idx",
+    sql: /* sql */ `
+      CREATE INDEX IF NOT EXISTS subscriptions_project_idx
+        ON subscriptions (project_id, created_at);
+    `,
+  },
+  // The bounded firing log: `{ subscriptionId, at, payload }`, last 100 per
+  // subscription. The trim runs in the same transaction as the insert
+  // (`recordSubscriptionEvent`), so the bound is never observed broken.
+  //
+  // `at` is a DuckDB keyword, so it is double-quoted here and in every accessor.
+  // The column name matches the other three engines, where it needs no quoting.
+  {
+    id: "0046_subscription_events",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS subscription_events (
+        id              VARCHAR PRIMARY KEY,
+        subscription_id VARCHAR NOT NULL,
+        project_id      VARCHAR NOT NULL,
+        "at"            TIMESTAMP NOT NULL DEFAULT now(),
+        payload         VARCHAR NOT NULL DEFAULT '{}'
+      );
+    `,
+  },
+  {
+    id: "0047_subscription_events_idx",
+    sql: /* sql */ `
+      CREATE INDEX IF NOT EXISTS subscription_events_sub_at_idx
+        ON subscription_events (subscription_id, "at");
+    `,
+  },
 ];
 
 /**

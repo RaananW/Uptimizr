@@ -220,30 +220,55 @@ describe("GET /api/v1/openapi.json", () => {
     expect(Object.keys(paths).filter((path) => path.startsWith("/api/v1/live"))).toEqual([]);
   });
 
-  it("describes a write only on the metadata paths (#310)", () => {
-    // Every other documented operation is a GET, with one read-only exception:
-    // the query DSL also accepts `POST /api/v1/query`, because a query is a JSON
-    // document rather than a querystring (ADR 0051 §3) — same `query`
-    // capability, same aggregations, nothing written. The only genuinely
-    // writable surface is the `annotate`-gated metadata group (ADR 0051 §5/§9).
-    // Ingestion is deliberately not described at all.
-    const written = Object.entries(paths)
-      .filter(([, methods]) => Object.keys(methods).some((method) => method !== "get"))
-      .map(([path]) => path)
-      .sort();
-    expect(written).toEqual([
+  it("describes a write only where one really exists (#310, #311)", () => {
+    // The document was GET-only until two changes gave it genuine writes: the
+    // `annotate`-gated metadata group (ADR 0051 §5/§9) and conditional
+    // subscriptions, a CRUD resource rather than a query and the one place a
+    // caller needs a written contract for a request *body*. There is also one
+    // read-only exception: the query DSL accepts `POST /api/v1/query`, because a
+    // query is a JSON document rather than a querystring (ADR 0051 §3) — same
+    // `query` capability, same aggregations, nothing written. Ingestion is
+    // deliberately not described at all, and nothing else may grow a write
+    // method without a deliberate change here.
+    const METADATA_WRITES = [
       "/api/v1/analyses",
       "/api/v1/analyses/{id}",
       "/api/v1/annotations",
       "/api/v1/annotations/{id}",
       "/api/v1/glossary/{term}",
-      "/api/v1/query",
-    ]);
+    ];
+    const written = Object.entries(paths)
+      .filter(([, methods]) => Object.keys(methods).some((method) => method !== "get"))
+      .map(([path]) => path)
+      .sort();
+    for (const path of written) {
+      expect(
+        path === "/api/v1/query" ||
+          METADATA_WRITES.includes(path) ||
+          path.startsWith("/api/v1/subscriptions"),
+        `${path} grew a write method`,
+      ).toBe(true);
+    }
+    expect(written.filter((path) => METADATA_WRITES.includes(path))).toEqual(METADATA_WRITES);
+
+    // The DSL's POST is a read, and the metadata group is tagged as such.
     expect(Object.keys(paths["/api/v1/query"]!).sort()).toEqual(["get", "post"]);
-    for (const path of written.filter((candidate) => candidate !== "/api/v1/query")) {
+    for (const path of METADATA_WRITES) {
       for (const operation of Object.values(paths[path]!)) {
         expect(operation.tags, path).toEqual(["metadata"]);
       }
     }
+
+    // The subscriptions resource, in full.
+    expect(Object.keys(paths["/api/v1/subscriptions"] as object).sort()).toEqual(["get", "post"]);
+    expect(Object.keys(paths["/api/v1/subscriptions/{id}"] as object).sort()).toEqual([
+      "delete",
+      "get",
+      "patch",
+    ]);
+    // The subscriptions SSE stream is omitted for the same reason the live ones
+    // are: a hijacked `text/event-stream` response is not honestly describable
+    // as a JSON operation.
+    expect(Object.keys(paths)).not.toContain("/api/v1/subscriptions/stream");
   });
 });

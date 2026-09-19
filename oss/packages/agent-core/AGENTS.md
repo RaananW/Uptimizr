@@ -95,6 +95,15 @@ Its input _is_ the query DSL, so it can run any metric above with any filter tha
 It reaches the collector as `GET /api/v1/query?q=<url-encoded JSON>`, so `CollectorClient` stays
 `GET`-only — an Uptimizr agent remains structurally incapable of writing.
 
+## Non-metric reads
+
+`readTools` is generated from the metric registry, with one deliberate exception: collector reads
+that are **configuration rather than measurements** and so have no registry entry
+(`nonRegistryTools.ts`). Today that is `list_subscriptions` (ADR 0051 §6) — the project's
+standing conditional subscriptions, what they watch for and how each last went. It takes no
+arguments and no time range. Creating or deleting a subscription needs the `annotate` capability
+and is not available as a tool; do it over plain HTTP.
+
 ## Result formats (`format`)
 
 Every **aggregate** tool in the catalog declares a `format` argument — `full | table | summary`.

@@ -6,11 +6,19 @@ import type { CollectorStore } from "../store.js";
 import type { LiveBus } from "../liveBus.js";
 import { mintLiveToken, verifyLiveToken, type LiveTokenClaims } from "../liveToken.js";
 import { requireCapability } from "../auth.js";
+import { createConnectionLimiter, type ConnectionLimiter } from "../connectionLimiter.js";
 
 interface Options {
   store: CollectorStore;
   config: CollectorConfig;
   liveBus: LiveBus;
+  /**
+   * The collector-wide SSE connection budget (ADR §6). Shared with the
+   * conditional-subscription stream (#311), which is the same kind of
+   * held-open socket — one counter, so `LIVE_MAX_CONNECTIONS` means what it
+   * says. Omitted in tests that build this plugin alone.
+   */
+  connections?: ConnectionLimiter;
 }
 
 const HEARTBEAT_MS = 15_000;
@@ -94,17 +102,17 @@ function openSse(
  * live-follow tail (gated by raw-session retention, like replay). All fan out
  * from the in-process bus and are bounded (ADR §6).
  */
-export const liveRoutes: FastifyPluginAsync<Options> = async (app, { store, config, liveBus }) => {
+export const liveRoutes: FastifyPluginAsync<Options> = async (app, options) => {
+  const { store, config, liveBus } = options;
   const r = app.withTypeProvider<ZodTypeProvider>();
-  let connections = 0;
+  const connections = options.connections ?? createConnectionLimiter(config.liveMaxConnections);
 
   /** Reserve a live connection slot, or send 503 when at capacity (ADR §6). */
   function acquireSlot(reply: FastifyReply): boolean {
-    if (connections >= config.liveMaxConnections) {
+    if (!connections.acquire()) {
       void reply.code(503).send({ error: "live connection limit reached" });
       return false;
     }
-    connections += 1;
     return true;
   }
 
@@ -139,7 +147,7 @@ export const liveRoutes: FastifyPluginAsync<Options> = async (app, { store, conf
 
     req.raw.on("close", () => {
       clearInterval(timer);
-      connections -= 1;
+      connections.release();
     });
   });
 
@@ -173,7 +181,7 @@ export const liveRoutes: FastifyPluginAsync<Options> = async (app, { store, conf
     req.raw.on("close", () => {
       clearInterval(heartbeat);
       sub.close();
-      connections -= 1;
+      connections.release();
     });
   });
 
@@ -215,7 +223,7 @@ export const liveRoutes: FastifyPluginAsync<Options> = async (app, { store, conf
       req.raw.on("close", () => {
         clearInterval(heartbeat);
         sub.close();
-        connections -= 1;
+        connections.release();
       });
     },
   );

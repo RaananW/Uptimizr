@@ -41,6 +41,10 @@ export const CASE_CATEGORIES = [
   "sessions",
   "conversion",
   "insights",
+  // Not a registry category: `list_subscriptions` is configuration rather than a
+  // measurement (#311), and its questions ("what are we watching for?") belong
+  // with neither the metrics nor the insight primitives.
+  "subscriptions",
 ] as const;
 
 /** One registry category. */

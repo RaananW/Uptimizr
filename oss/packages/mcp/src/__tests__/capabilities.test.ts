@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rawTools, readTools } from "@uptimizr/agent-core";
+import { rawTools, readTools, NON_REGISTRY_READ_TOOLS } from "@uptimizr/agent-core";
 import { allMetrics, isResourceMetric, metricCapability } from "@uptimizr/metrics";
 import { buildCapabilities } from "../capabilities.js";
 
@@ -23,12 +23,17 @@ describe("buildCapabilities", () => {
     expect(cap.eventTypes).toContain("session_start");
   });
 
-  it("represents every served registry metric exactly once, plus the query tool", () => {
-    // One descriptor per served metric, and one more for the query DSL
-    // (ADR 0051 §3) — the only tool that is not a single metric.
-    expect(cap.tools).toHaveLength(served.length + 1);
-    const names = cap.tools.map((t) => t.name).sort();
-    expect(names).toEqual([...served.map((metric) => metric.id), "query"].sort());
+  it("represents every served registry metric exactly once, plus the non-metric tools", () => {
+    // One descriptor per served metric, plus the short tail of collector reads
+    // that have no registry entry by design (#311, `nonRegistryTools.ts`) and
+    // one for the query DSL (ADR 0051 §3) — the only tool that is not a single
+    // metric.
+    const notMetrics = [...NON_REGISTRY_READ_TOOLS.map((tool) => tool.name), "query"];
+    const names = cap.tools.map((t) => t.name);
+    expect(names.filter((name) => !notMetrics.includes(name)).sort()).toEqual(
+      served.map((metric) => metric.id).sort(),
+    );
+    expect(cap.tools).toHaveLength(served.length + notMetrics.length);
   });
 
   it("matches the shipped tool catalog exactly (sketch §A.4)", () => {

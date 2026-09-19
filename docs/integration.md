@@ -1954,6 +1954,50 @@ have been accepted. An agent should read `accepted` rather than guess again:
 | `unsupported_segment`     | The metric can neither filter nor group by that dimension, so it cannot hold it fixed.    |
 | `unsupported_feature`     | `filters.event` / `filters.device` on a metric with no generic tier.                      |
 
+### Conditional subscriptions (ADR 0051 §6)
+
+Standing predicates over a registry metric, evaluated in-process and delivered over SSE and/or a
+signed webhook. Not metrics — project configuration with an outbound side effect — so they are
+outside the generated endpoint table above.
+
+| Endpoint                              | Method                     | Capability               |
+| ------------------------------------- | -------------------------- | ------------------------ |
+| `/api/v1/subscriptions`               | `GET`                      | `query`                  |
+| `/api/v1/subscriptions`               | `POST`                     | `annotate`               |
+| `/api/v1/subscriptions/:id`           | `GET` / `PATCH` / `DELETE` | `query` / `annotate`     |
+| `/api/v1/subscriptions/:id/events`    | `GET`                      | `query`                  |
+| `/api/v1/subscriptions/:id/test`      | `POST`                     | `annotate`               |
+| `/api/v1/subscriptions/stream?token=` | `GET` (SSE)                | live token (ADR 0032 §7) |
+
+```jsonc
+{
+  "name": "FPS drop in lobby",
+  "metric": "perf_summary", // registry id; validated against @uptimizr/metrics
+  "filters": { "scene": "lobby" },
+  "evaluate": { "every": "5m", "window": "1h" }, // every ≥ 1m, window ≥ 1h
+  "predicate": { "kind": "threshold", "column": "p50_fps", "op": "<", "value": 40 },
+  "cooldown": "1h",
+  "delivery": [{ "kind": "sse" }, { "kind": "webhook", "url": "https://…", "secret": "…" }],
+  "enabled": true,
+}
+```
+
+Predicate kinds (closed union): `threshold` {column, op, value, minSample?}, `anomaly`
+{sensitivity?}, `movers` {pct, direction?}, `new_value` {dimension}, `presence` {op, value}.
+`threshold.column` must be the metric's registry `comparable.primary`; `evaluate.window` is at
+least an hour, because the portable bucket series has hour/day grains only.
+
+Bounds: 100 subscriptions per project, last 100 firings retained per subscription, at most
+`COLLECTOR_SUBSCRIPTIONS_MAX_CONCURRENT` (default 4) evaluations in flight and one per
+subscription. Webhook egress requires `COLLECTOR_WEBHOOK_ALLOWED_HOSTS`; a webhook `secret` is
+write-only and reads carry a masked placeholder. Bodies are signed
+`X-Uptimizr-Signature: sha256=<hex>` over the raw bytes, with `X-Uptimizr-Delivery` for dedupe,
+and retried 3× with backoff. See the
+[Subscriptions & webhooks](https://uptimizr.com/docs/deploy/collector/#subscriptions--webhooks)
+guide.
+
+CLI: `uptimizr subscriptions list | add --file <sub.json> | remove <id> | test <id>`.
+
 ### Scene registry (representations)
 
 A scene can register a **proxy** of its geometry (per-mesh AABBs, ADR 0014) so the

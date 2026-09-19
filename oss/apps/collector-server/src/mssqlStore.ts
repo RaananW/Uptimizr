@@ -155,6 +155,16 @@ import {
   getSceneRepresentation as msGetSceneRepresentation,
   listSceneRepresentations as msListSceneRepresentations,
   putSceneRegions as msPutSceneRegions,
+  listSubscriptions as msListSubscriptions,
+  listEnabledSubscriptions as msListEnabledSubscriptions,
+  getSubscription as msGetSubscription,
+  createSubscription as msCreateSubscription,
+  setSubscriptionEnabled as msSetSubscriptionEnabled,
+  deleteSubscription as msDeleteSubscription,
+  recordSubscriptionOutcome as msRecordSubscriptionOutcome,
+  getWebhookSecret as msGetWebhookSecret,
+  recordSubscriptionEvent as msRecordSubscriptionEvent,
+  listSubscriptionEvents as msListSubscriptionEvents,
   getSceneRegions as msGetSceneRegions,
   listSceneRegions as msListSceneRegions,
   createAnnotation as msCreateAnnotation,
@@ -414,6 +424,19 @@ export async function createMssqlStore(): Promise<CollectorStore> {
     createSavedAnalysis: (projectId, input) => msCreateSavedAnalysis(msc, projectId, input),
     listSavedAnalyses: (projectId, opts) => msListSavedAnalyses(msc, projectId, opts),
     deleteSavedAnalysis: (projectId, id) => msDeleteSavedAnalysis(msc, projectId, id),
+    listSubscriptions: (projectId) => msListSubscriptions(msc, projectId),
+    listEnabledSubscriptions: (limit) => msListEnabledSubscriptions(msc, limit),
+    getSubscription: (projectId, id) => msGetSubscription(msc, projectId, id),
+    createSubscription: (projectId, sub) => msCreateSubscription(msc, projectId, sub),
+    setSubscriptionEnabled: (projectId, id, enabled) =>
+      msSetSubscriptionEnabled(msc, projectId, id, enabled),
+    deleteSubscription: (projectId, id) => msDeleteSubscription(msc, projectId, id),
+    recordSubscriptionOutcome: (projectId, id, outcome) =>
+      msRecordSubscriptionOutcome(msc, projectId, id, outcome),
+    getWebhookSecret: (projectId, id) => msGetWebhookSecret(msc, projectId, id),
+    recordSubscriptionEvent: (entry) => msRecordSubscriptionEvent(msc, entry),
+    listSubscriptionEvents: (projectId, id, opts) =>
+      msListSubscriptionEvents(msc, projectId, id, opts),
     async close() {
       await msc.close();
     },

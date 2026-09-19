@@ -9,6 +9,7 @@ import {
   filterReadTools,
   CORE_READ_TOOL_NAMES,
 } from "../tools.js";
+import { NON_REGISTRY_READ_TOOLS } from "../nonRegistryTools.js";
 import { registryToTools } from "../registryTools.js";
 import { QUERY_TOOL_NAME, queryTool } from "../queryTool.js";
 
@@ -19,16 +20,20 @@ const byName = (name: string) => {
 };
 
 describe("read tools catalog", () => {
-  it("is the catalog generated from the metric registry, plus the query tool", () => {
+  it("is the catalog generated from the registry, plus the non-metric reads and query", () => {
     // The `query` half of the generated catalog — every tool whose endpoint
-    // needs nothing more than the ordinary read capability (ADR 0051 §7) — plus
-    // the one tool that is not per-metric, the query DSL (ADR 0051 §3).
+    // needs nothing more than the ordinary read capability (ADR 0051 §7) — is
+    // the prefix, in registry order. Then the short, deliberate tail of
+    // collector reads that are configuration rather than measurements (#311,
+    // `nonRegistryTools.ts`), and last the one tool that is not per-metric at
+    // all, the query DSL (ADR 0051 §3).
     const queryMetrics = allMetrics().filter((m) => metricCapability(m) === "query");
     expect(readTools.map((t) => t.name)).toEqual([
       ...registryToTools(queryMetrics).map((t) => t.name),
+      ...NON_REGISTRY_READ_TOOLS.map((t) => t.name),
       QUERY_TOOL_NAME,
     ]);
-    expect(readTools.length).toBe(76);
+    expect(readTools.length).toBe(77);
   });
 
   it("splits the query:raw tools out into their own catalog", () => {

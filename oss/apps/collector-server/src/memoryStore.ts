@@ -7,6 +7,14 @@ import {
   evaluateBucketMeasure,
   foldCustomEventVocabulary,
   toEventRow,
+  MAX_ENABLED_SUBSCRIPTIONS,
+  MAX_SUBSCRIPTIONS_PER_PROJECT,
+  MAX_SUBSCRIPTION_EVENTS,
+  SubscriptionLimitError,
+  clampEventLimit,
+  clampSubscriptionError,
+  rowToSubscription,
+  toSubscriptionColumns,
 } from "@uptimizr/db";
 import type {
   AgentAuditEntry,
@@ -17,6 +25,8 @@ import type {
   GlossaryEntryRecord,
   SavedAnalysisRecord,
   SceneRegionRecord,
+  SubscriptionEventRecord,
+  SubscriptionRecord,
   SceneRepresentation,
   SessionMeta,
 } from "@uptimizr/db";
@@ -75,6 +85,18 @@ export function createMemoryStore({
   const annotations: AnnotationRecord[] = [];
   const glossary = new Map<string, GlossaryEntryRecord>();
   const analyses: SavedAnalysisRecord[] = [];
+  /**
+   * Conditional subscriptions (#311). Kept in insertion order — the persistent
+   * stores order by `created_at, id`, and a `Map` preserves exactly that.
+   * `secrets` is separate from the records for the same reason the stores keep
+   * the secret in its own column: a record handed to a caller can then never
+   * carry it, whatever the caller does with it.
+   */
+  const subscriptions = new Map<string, SubscriptionRecord>();
+  const secrets = new Map<string, string>();
+  /** Firing log per subscription id, newest last; bounded on write. */
+  const firings = new Map<string, SubscriptionEventRecord[]>();
+  let subscriptionSeq = 0;
 
   const forSession = (sid: string): AnyEvent[] =>
     events
@@ -695,6 +717,82 @@ export function createMemoryStore({
       analyses.splice(index, 1);
       return true;
     },
+    // --- Conditional subscriptions (#311, ADR 0051 §6) -------------------
+    listSubscriptions: async () => [...subscriptions.values()],
+    listEnabledSubscriptions: async (limit) =>
+      [...subscriptions.values()]
+        .filter((sub) => sub.enabled)
+        .slice(0, Math.max(1, Math.trunc(limit ?? MAX_ENABLED_SUBSCRIPTIONS))),
+    getSubscription: async (_projectId, id) => subscriptions.get(id) ?? null,
+    createSubscription: async (_projectId, sub) => {
+      if (subscriptions.size >= MAX_SUBSCRIPTIONS_PER_PROJECT) throw new SubscriptionLimitError();
+      const id = `sub_mem_${++subscriptionSeq}`;
+      const cols = toSubscriptionColumns(sub);
+      const now = Date.now();
+      // Round-trip through the shared row mapper rather than hand-building the
+      // record, so the in-memory store cannot drift from the four SQL stores
+      // (masking included).
+      const record = rowToSubscription({
+        id,
+        project_id: projectId,
+        name: cols.name,
+        metric: cols.metric,
+        config: cols.config,
+        enabled: cols.enabled,
+        created_at_ms: now,
+        updated_at_ms: now,
+        last_fired_at_ms: null,
+        last_error: null,
+        failures: 0,
+      });
+      subscriptions.set(id, record);
+      if (cols.webhookSecret != null) secrets.set(id, cols.webhookSecret);
+      return record;
+    },
+    setSubscriptionEnabled: async (_projectId, id, enabled) => {
+      const existing = subscriptions.get(id);
+      if (existing == null) return null;
+      const updated = { ...existing, enabled, updatedAt: new Date() };
+      subscriptions.set(id, updated);
+      return updated;
+    },
+    deleteSubscription: async (_projectId, id) => {
+      secrets.delete(id);
+      firings.delete(id);
+      return subscriptions.delete(id);
+    },
+    recordSubscriptionOutcome: async (_projectId, id, outcome) => {
+      const existing = subscriptions.get(id);
+      if (existing == null) return;
+      subscriptions.set(id, {
+        ...existing,
+        updatedAt: new Date(),
+        lastFiredAt: outcome.firedAt ?? existing.lastFiredAt,
+        lastError:
+          outcome.lastError === undefined
+            ? existing.lastError
+            : outcome.lastError == null
+              ? null
+              : clampSubscriptionError(outcome.lastError),
+        failures: outcome.failures ?? existing.failures,
+      });
+    },
+    getWebhookSecret: async (_projectId, id) => secrets.get(id) ?? null,
+    recordSubscriptionEvent: async (entry) => {
+      const log = firings.get(entry.subscriptionId) ?? [];
+      log.push({
+        id: randomUUID(),
+        subscriptionId: entry.subscriptionId,
+        projectId: entry.projectId,
+        at: entry.at ?? new Date(),
+        payload: entry.payload,
+      });
+      // Same bound as every persistent store: the oldest fall off the front.
+      while (log.length > MAX_SUBSCRIPTION_EVENTS) log.shift();
+      firings.set(entry.subscriptionId, log);
+    },
+    listSubscriptionEvents: async (_projectId, id, opts) =>
+      [...(firings.get(id) ?? [])].reverse().slice(0, clampEventLimit(opts?.limit)),
     close: async () => {
       events.length = 0;
       representations.clear();
@@ -702,6 +800,9 @@ export function createMemoryStore({
       annotations.length = 0;
       glossary.clear();
       analyses.length = 0;
+      subscriptions.clear();
+      secrets.clear();
+      firings.clear();
     },
   };
 }

@@ -16,13 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 import { queryFiltersSchema, queryV1Schema, type QueryV1 } from "@uptimizr/schema";
-import {
-  FILTER_TARGETS,
-  allMetrics,
-  getMetric,
-  isResourceMetric,
-  metricCapability,
-} from "../registry.js";
+import { FILTER_TARGETS, allMetrics, getMetric, metricCapability } from "../registry.js";
 import type { FilterId } from "../registry.js";
 import {
   genericDimensions,

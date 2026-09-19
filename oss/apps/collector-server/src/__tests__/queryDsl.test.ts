@@ -21,7 +21,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { PARITY_EVENTS, PARITY_PROJECT_ID, PARITY_RANGE } from "@uptimizr/db";
-import { allMetrics, isResourceMetric, requiredFilters } from "@uptimizr/metrics";
+import { allMetrics, requiredFilters } from "@uptimizr/metrics";
 import type { ApiKeyCapability } from "@uptimizr/db";
 import { buildApp } from "../app.js";
 import { createDuckdbStore } from "../duckdbStore.js";

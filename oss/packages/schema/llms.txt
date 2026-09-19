@@ -22,3 +22,8 @@
   `annotationSchema`, `glossaryEntrySchema`, `savedAnalysisSchema` with `metadataAuthorKindSchema`
   (ADR 0051 §5). The metadata ones bound the collector's `annotate`-gated write path; they never
   reach the ingest path, and events remain read-only.
+- Config contracts (deliberately **not** events): `sceneProxySchema` (registry geometry),
+  `sceneRegionSchema` / `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`.
+- `subscriptionSchema` — a conditional subscription (ADR 0051 §6): a registry metric, a window,
+  a closed predicate union (threshold | anomaly | movers | new_value | presence), a cooldown and
+  delivery targets. Config, not an event. `parseDurationMs` parses its "5m"/"1h" literals.

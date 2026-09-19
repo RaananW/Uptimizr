@@ -91,6 +91,16 @@ import {
   duckdbListSceneRepresentations,
   duckdbPutGlossaryEntry,
   duckdbPutSceneRegions,
+  duckdbListSubscriptions,
+  duckdbListEnabledSubscriptions,
+  duckdbGetSubscription,
+  duckdbCreateSubscription,
+  duckdbSetSubscriptionEnabled,
+  duckdbDeleteSubscription,
+  duckdbRecordSubscriptionOutcome,
+  duckdbGetWebhookSecret,
+  duckdbRecordSubscriptionEvent,
+  duckdbListSubscriptionEvents,
   duckdbResolveApiKey,
   duckdbRecordAudit,
   duckdbListAudit,
@@ -458,6 +468,19 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
     createSavedAnalysis: (projectId, input) => duckdbCreateSavedAnalysis(db, projectId, input),
     listSavedAnalyses: (projectId, opts) => duckdbListSavedAnalyses(db, projectId, opts),
     deleteSavedAnalysis: (projectId, id) => duckdbDeleteSavedAnalysis(db, projectId, id),
+    listSubscriptions: (projectId) => duckdbListSubscriptions(db, projectId),
+    listEnabledSubscriptions: (limit) => duckdbListEnabledSubscriptions(db, limit),
+    getSubscription: (projectId, id) => duckdbGetSubscription(db, projectId, id),
+    createSubscription: (projectId, sub) => duckdbCreateSubscription(db, projectId, sub),
+    setSubscriptionEnabled: (projectId, id, enabled) =>
+      duckdbSetSubscriptionEnabled(db, projectId, id, enabled),
+    deleteSubscription: (projectId, id) => duckdbDeleteSubscription(db, projectId, id),
+    recordSubscriptionOutcome: (projectId, id, outcome) =>
+      duckdbRecordSubscriptionOutcome(db, projectId, id, outcome),
+    getWebhookSecret: (projectId, id) => duckdbGetWebhookSecret(db, projectId, id),
+    recordSubscriptionEvent: (entry) => duckdbRecordSubscriptionEvent(db, entry),
+    listSubscriptionEvents: (projectId, id, opts) =>
+      duckdbListSubscriptionEvents(db, projectId, id, opts),
     async close() {
       await db.close();
     },

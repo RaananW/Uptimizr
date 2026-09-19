@@ -198,6 +198,8 @@ describe.skipIf(!available)("postgres store", () => {
       "saved_analyses",
       "scene_regions",
       "scene_representations",
+      "subscription_events",
+      "subscriptions",
     ]);
   });
 

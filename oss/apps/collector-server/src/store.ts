@@ -88,6 +88,7 @@ import type {
   SceneRepresentationSummary,
   SceneRow,
   SourceOptions,
+  SubscriptionStore,
   SessionOptions,
   MeshOptions,
   SessionMeta,
@@ -109,7 +110,7 @@ export type StoreEngine = "duckdb" | "postgres" | "mssql" | "clickhouse" | "memo
  * interface keeps handlers thin and lets tests inject a fake store without a
  * live ClickHouse/Postgres (the framework and the DB stay swappable — ADR 0005).
  */
-export interface CollectorStore {
+export interface CollectorStore extends SubscriptionStore {
   /**
    * Which storage engine is behind this store. Descriptive only — no handler
    * branches on it — but the project context document reports it (ADR 0051 §5)

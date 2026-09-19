@@ -335,6 +335,51 @@ export const POSTGRES_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
         ON saved_analyses (project_id, created_at DESC);
     `,
   },
+  // Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1–F.2). One row per
+  // standing question; the declaration lives in a JSON `config` column and the
+  // scalars beside it are exactly what the store filters (`project_id`,
+  // `enabled`), orders (`created_at`) or updates (`last_fired_at`, `failures`).
+  //
+  // `webhook_secret` is the shared HMAC key: deliberately NOT hashed — a one-way
+  // digest cannot sign an outbound body — and never selected by any read path
+  // other than `getWebhookSecret`.
+  {
+    id: "0018_subscriptions",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        id             text PRIMARY KEY,
+        project_id     text NOT NULL,
+        name           text NOT NULL,
+        metric         text NOT NULL,
+        config         text NOT NULL,
+        webhook_secret text,
+        enabled        boolean NOT NULL DEFAULT true,
+        created_at     timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+        updated_at     timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+        last_fired_at  timestamp,
+        last_error     text,
+        failures       bigint NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS subscriptions_project_idx
+        ON subscriptions (project_id, created_at);
+    `,
+  },
+  // The bounded firing log: `{ subscriptionId, at, payload }`, last 100 per
+  // subscription, trimmed in the same transaction as the insert.
+  {
+    id: "0019_subscription_events",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS subscription_events (
+        id              text PRIMARY KEY,
+        subscription_id text NOT NULL,
+        project_id      text NOT NULL,
+        at              timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+        payload         text NOT NULL DEFAULT '{}'
+      );
+      CREATE INDEX IF NOT EXISTS subscription_events_sub_at_idx
+        ON subscription_events (subscription_id, at DESC);
+    `,
+  },
 ];
 
 /**

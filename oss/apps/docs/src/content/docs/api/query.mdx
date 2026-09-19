@@ -650,6 +650,32 @@ numerator *and* half the denominator — so flooring `until` here would only mak
 the score answer about yesterday. The window actually measured comes back as
 `since` / `until` on every row.
 :::
+## Subscriptions
+
+Conditional subscriptions (ADR 0051 §6) are **not** metrics — they are project configuration with
+an outbound side effect — so they live outside the generated table above.
+
+| Endpoint                                | Method                      | Capability | What it does                                        |
+| --------------------------------------- | --------------------------- | ---------- | --------------------------------------------------- |
+| `/api/v1/subscriptions`                 | `GET`                       | `query`    | List the project's subscriptions, oldest first.     |
+| `/api/v1/subscriptions`                 | `POST`                      | `annotate` | Create one. A webhook `secret` is write-only.       |
+| `/api/v1/subscriptions/:id`             | `GET` / `PATCH` / `DELETE`   | see note   | Read; enable/disable; delete with its firing log.   |
+| `/api/v1/subscriptions/:id/events`      | `GET`                       | `query`    | The last 100 firings, newest first.                 |
+| `/api/v1/subscriptions/:id/test`        | `POST`                      | `annotate` | Evaluate once now; `?deliver=true` really delivers. |
+| `/api/v1/subscriptions/stream?token=`   | `GET` (SSE)                 | live token | `event: subscription` frames; optional `&id=`.     |
+
+Reads need `query`; `PATCH` and `DELETE` need `annotate`, like `POST` — creating or changing a
+subscription is how a caller asks the collector to act on its behalf.
+
+Only `enabled` is patchable. Everything else changes what the subscription _means_, and silently
+re-pointing a standing alert is how an on-call rotation ends up watching the wrong thing; replace
+it instead.
+
+`POST …/test` answers with the evaluation **including why it did not fire** — "window held 12
+samples, below minSample 30" — which is what makes a subscription tunable rather than mysterious.
+
+See [Subscriptions & webhooks](/docs/deploy/collector/#subscriptions--webhooks) for the predicate
+vocabulary, the signature scheme and the egress allow-list.
 
 ## Scene regions
 

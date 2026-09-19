@@ -41,6 +41,9 @@ export {
 // The compact system-prompt rendering of the collector context document.
 export { renderContextForPrompt, CONTEXT_PROMPT_MAX_CHARS } from "./context.js";
 export type { PromptContextDocument } from "./context.js";
+// Collector reads that are configuration rather than measurements, and so have
+// no registry entry to generate a tool from (#311, ADR 0051 §6).
+export { NON_REGISTRY_READ_TOOLS } from "./nonRegistryTools.js";
 export type {
   AgentMessage,
   AgentToolCall,

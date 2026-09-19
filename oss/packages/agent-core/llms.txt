@@ -183,3 +183,9 @@ not aggregations, and declare no `format`.
 
 - `readTools` is the `query` surface; `rawTools` holds the tools whose registry endpoint declares `capability: "query:raw"` (today `session_narrative`, the compacted account of one session).
 - Keep them apart: the capability belongs to the key the agent was handed. Register `rawTools` only after `GET /api/v1/whoami` confirms `query:raw` — the collector also requires `ENABLE_RAW_SESSION_RETENTION`, so the capability is necessary but not sufficient (ADR 0003).
+
+## Non-metric reads
+
+- `list_subscriptions` — the project's conditional subscriptions (ADR 0051 §6). Not a registry
+  metric: configuration, not a measurement. No arguments, no time range. Creating/deleting one
+  needs `annotate` and is not a tool.

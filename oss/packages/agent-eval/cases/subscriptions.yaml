@@ -1,0 +1,29 @@
+# Conditional subscriptions (#311, ADR 0051 §6).
+#
+# These do not measure anything — they ask what the collector has been told to
+# watch for. What they score is tool *selection*: a question about standing
+# alerts must reach for `list_subscriptions` rather than re-deriving the answer
+# from `perf_summary`, which is exactly the mistake an agent without the tool
+# makes.
+#
+# The fixture seeds one sse-only subscription (see `src/harness.ts`), so the
+# expected phrases are values the collector really returns.
+- id: subscriptions_configured
+  category: subscriptions
+  question: What conditional subscriptions are configured on this project, and what does each one watch for?
+  expectedTools:
+    - [list_subscriptions]
+  expectedAnswer:
+    phrases: ["FPS drop in lobby", "perf_summary", "threshold"]
+    forbiddenPhrases: ["no subscriptions", "I don't have"]
+
+- id: subscriptions_alert_health
+  category: subscriptions
+  question: Has any subscription failed to deliver recently, and has any of them fired yet?
+  expectedTools:
+    - [list_subscriptions]
+  expectedAnswer:
+    numbers:
+      - { value: 0, label: consecutive delivery failures }
+    phrases: ["lastFiredAt"]
+    forbiddenPhrases: ["I don't have", "cannot determine"]

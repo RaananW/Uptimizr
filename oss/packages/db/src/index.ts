@@ -377,6 +377,35 @@ export type {
   VariantLeaderboardRow,
 } from "./query/types.js";
 
+// --- Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1-F.3) ---
+// Engine-neutral record shape, row mapping and the store contract the four
+// engine packages implement. The webhook secret is write-only: only
+// `getWebhookSecret` returns it, and every record carries `MASKED_SECRET`.
+export {
+  DEFAULT_COOLDOWN,
+  MASKED_SECRET,
+  MAX_ENABLED_SUBSCRIPTIONS,
+  MAX_SUBSCRIPTIONS_PER_PROJECT,
+  MAX_SUBSCRIPTION_EVENTS,
+  SUBSCRIPTION_ERROR_MAX_LENGTH,
+  SubscriptionLimitError,
+  clampEventLimit,
+  clampSubscriptionError,
+  rowToSubscription,
+  rowToSubscriptionEvent,
+  toSubscriptionColumns,
+} from "./subscriptions.js";
+export type {
+  SubscriptionDeliveryOutcome,
+  SubscriptionEventInput,
+  SubscriptionEventQueryOptions,
+  SubscriptionEventRecord,
+  SubscriptionEventRowLike,
+  SubscriptionRecord,
+  SubscriptionRowLike,
+  SubscriptionStore,
+} from "./subscriptions.js";
+
 // --- DuckDB (OSS single-file store, ADR 0020) ---
 export { createDuckdbClient, convertValue } from "./duckdb/client.js";
 export type { DuckdbClient, DuckdbRow } from "./duckdb/client.js";
@@ -420,6 +449,18 @@ export {
   listSavedAnalyses as duckdbListSavedAnalyses,
   deleteSavedAnalysis as duckdbDeleteSavedAnalysis,
 } from "./duckdb/projectMetadata.js";
+export {
+  listSubscriptions as duckdbListSubscriptions,
+  listEnabledSubscriptions as duckdbListEnabledSubscriptions,
+  getSubscription as duckdbGetSubscription,
+  createSubscription as duckdbCreateSubscription,
+  setSubscriptionEnabled as duckdbSetSubscriptionEnabled,
+  deleteSubscription as duckdbDeleteSubscription,
+  recordSubscriptionOutcome as duckdbRecordSubscriptionOutcome,
+  getWebhookSecret as duckdbGetWebhookSecret,
+  recordSubscriptionEvent as duckdbRecordSubscriptionEvent,
+  listSubscriptionEvents as duckdbListSubscriptionEvents,
+} from "./duckdb/subscriptions.js";
 
 // --- Cross-engine parity harness (ADR 0020) ---
 // Shared fixtures, golden expectations, and a tolerance-aware comparator. OSS

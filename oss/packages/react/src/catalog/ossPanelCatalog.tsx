@@ -100,6 +100,13 @@ import {
   RENDERING_TECH_SUBTITLE,
 } from "./views/RenderingTechnology";
 import {
+  SubscriptionsView,
+  SUBSCRIPTION_FIRING_LOGS,
+  SUBSCRIPTIONS_TITLE,
+  SUBSCRIPTIONS_SUBTITLE,
+  type SubscriptionsPanelData,
+} from "./views/Subscriptions";
+import {
   SceneTraversalView,
   SCENE_TRAVERSAL_TITLE,
   SCENE_TRAVERSAL_SUBTITLE,
@@ -2031,6 +2038,48 @@ export const sessionsPanel = definePanel<SessionSummary[]>({
   ),
 });
 
+/**
+ * Conditional subscriptions (#311, ADR 0051 §6) — read-only. Lists what the
+ * collector is standing watch for and how each one last went; authoring stays
+ * in the API / CLI / an agent, so no form ever puts a webhook secret in a
+ * browser.
+ */
+export const subscriptionsPanel = definePanel<SubscriptionsPanelData>({
+  id: "subscriptions",
+  title: SUBSCRIPTIONS_TITLE,
+  subtitle: SUBSCRIPTIONS_SUBTITLE,
+  surfaces: ["overview"],
+  collapsible: true,
+  // No `ctx.params`: a subscription is standing configuration, so the dashboard's
+  // time range has nothing to say about it.
+  //
+  // The firing log is fetched per subscription, which is one request each — so
+  // it is capped at the few that have actually fired and to a handful of rows.
+  // A project may hold 100 subscriptions; a panel that read every one's log
+  // would open 100 requests to render a list nobody scrolls that far down.
+  load: async (ctx) => {
+    const subscriptions = await ctx.api.subscriptions();
+    const recent = subscriptions
+      .filter((sub) => sub.lastFiredAt != null)
+      .sort((a, b) => Date.parse(b.lastFiredAt ?? "") - Date.parse(a.lastFiredAt ?? ""))
+      .slice(0, SUBSCRIPTION_FIRING_LOGS);
+    const logs = await Promise.all(
+      recent.map(async (sub) => {
+        try {
+          return [sub.id, await ctx.api.subscriptionEvents(sub.id, { limit: 3 })] as const;
+        } catch {
+          // One unreadable log must not blank the whole panel.
+          return [sub.id, []] as const;
+        }
+      }),
+    );
+    return { subscriptions, firings: Object.fromEntries(logs) };
+  },
+  render: ({ data }) => (
+    <SubscriptionsView rows={data?.subscriptions ?? []} firings={data?.firings ?? {}} />
+  ),
+});
+
 export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   sessionReplayPanel,
   livePresencePanel,
@@ -2084,5 +2133,8 @@ export const ossPanelCatalog: PanelDefinition<unknown>[] = [
   viewDirectionPanel,
   gazeHeatmapPanel,
   clickRaysPanel,
+  // Standing configuration rather than a measurement, so it sits just above the
+  // session table — the shell's ordering keeps `sessions` last (ADR 0036).
+  subscriptionsPanel,
   sessionsPanel,
 ] as PanelDefinition<unknown>[];

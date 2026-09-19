@@ -3,6 +3,7 @@ import { allMetrics, metricCapability } from "@uptimizr/metrics";
 import type { QueryParams } from "./client.js";
 import { registryToTools } from "./registryTools.js";
 import { queryTool } from "./queryTool.js";
+import { NON_REGISTRY_READ_TOOLS } from "./nonRegistryTools.js";
 
 /** A resolved read request: the collector path and its query parameters. */
 export interface ReadToolRequest {
@@ -84,6 +85,11 @@ export interface ReadTool {
  */
 export const readTools: readonly ReadTool[] = [
   ...registryToTools(allMetrics().filter((metric) => metricCapability(metric) === "query")),
+  // The one deliberate exception to "generated, not hand-written": collector
+  // reads that are configuration rather than measurements and so have no
+  // registry entry to generate from (#311). See `nonRegistryTools.ts` for why
+  // inventing a registry entry for them would be worse.
+  ...NON_REGISTRY_READ_TOOLS,
   queryTool,
 ];
 

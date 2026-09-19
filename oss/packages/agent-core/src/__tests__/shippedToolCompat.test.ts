@@ -16,6 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 import { rawTools, readTools } from "../tools.js";
+import { NON_REGISTRY_READ_TOOLS } from "../nonRegistryTools.js";
 import { DEFAULT_TOOL_FORMAT, registryToTools } from "../registryTools.js";
 import { toToolSchemas } from "../loop.js";
 import shippedSchemas from "./fixtures/shippedToolSchemas.json" with { type: "json" };
@@ -116,15 +117,16 @@ describe("shipped tool compatibility", () => {
     for (const shipped of Object.keys(frozen)) expect(generated.has(shipped)).toBe(true);
   });
 
-  it("is the catalog the package actually exports, plus the query tool", () => {
+  it("is the catalog the package actually exports, plus the tools that are not metrics", () => {
     // `generated` is every metric with an endpoint. `readTools` is the `query`
-    // half of it plus the one tool that is not per-metric — the query DSL
-    // (ADR 0051 §3) — and the capability-gated tools are split out into
-    // `rawTools` (ADR 0051 §7).
+    // half of it, plus the two kinds of tool that are not per-metric — the
+    // non-registry collector reads (#311) and the query DSL (ADR 0051 §3) — and
+    // the capability-gated tools are split out into `rawTools` (ADR 0051 §7).
+    const notMetrics = new Set([...NON_REGISTRY_READ_TOOLS.map((tool) => tool.name), "query"]);
     expect(
       [...readTools, ...rawTools]
         .map((tool) => tool.name)
-        .filter((name) => name !== "query")
+        .filter((name) => !notMetrics.has(name))
         .sort(),
     ).toEqual([...generated.keys()].sort());
     expect(readTools.at(-1)?.name).toBe("query");

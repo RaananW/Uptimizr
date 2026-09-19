@@ -28,6 +28,18 @@
  * them). Ingestion (`POST /api/v1/collect`), the scene-proxy write
  * (`PUT …/representation`), the retention-gated raw event stream and the live
  * SSE surface are deliberately omitted rather than half-described.
+ * listing, and the conditional-subscription resource). Ingestion
+ * (`POST /api/v1/collect`), the scene-proxy write (`PUT …/representation`), the
+ * retention-gated raw event stream and every SSE surface — the live endpoints
+ * and `GET /api/v1/subscriptions/stream` alike — are deliberately omitted rather
+ * than half-described: a hijacked `text/event-stream` response is not an
+ * operation with a JSON body, and pretending otherwise misleads a generated
+ * client.
+ *
+ * Conditional subscriptions (#311) are the one **write** surface described here.
+ * They earn it: they are a CRUD resource rather than a query, and the only place
+ * a caller needs a written contract for a request *body* — a closed Zod union
+ * that cannot be inferred from a querystring.
  */
 
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
@@ -279,6 +291,15 @@ function vendorExtensions(metric: MetricDefinition): Record<string, unknown> {
   };
 }
 
+/** The `{id}` path parameter shared by every per-subscription operation. */
+const SUBSCRIPTION_ID_PARAM = {
+  name: "id",
+  in: "path" as const,
+  required: true,
+  schema: { type: "string", maxLength: 64 },
+  description: "Collector-assigned subscription id (`sub_…`).",
+};
+
 /** The shared error responses every authenticated read can answer with. */
 const AUTHENTICATED_ERRORS = {
   "400": { $ref: "#/components/responses/BadRequest" },
@@ -471,6 +492,180 @@ function staticPaths(): Record<string, unknown> {
                 },
               },
             },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
+    // --- Conditional subscriptions (#311, ADR 0051 §6 / sketch §F.1–F.3) ----
+    // Described here rather than derived, because a subscription is project
+    // *configuration* and not a metric: it has no rows, no grain and no window,
+    // so there is nothing in the registry to generate an operation from.
+    //
+    // The SSE stream stays omitted, for the reason the module note gives: a
+    // hijacked `text/event-stream` response is not honestly describable as a
+    // JSON operation, and a half-description is worse than the docs-site prose.
+    "/api/v1/subscriptions": {
+      get: {
+        operationId: "list_subscriptions",
+        summary: "Conditional subscriptions",
+        description:
+          "The project's standing conditional subscriptions (ADR 0051 §6): what the collector watches for, how often it checks, where a firing is delivered, and how each one last went. Any webhook secret is masked. Needs the `query` capability.",
+        tags: ["subscriptions"],
+        parameters: [],
+        responses: {
+          "200": {
+            description: "One entry per subscription, oldest first.",
+            content: {
+              "application/json": {
+                schema: { type: "array", items: { $ref: "#/components/schemas/Subscription" } },
+              },
+            },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+      post: {
+        operationId: "create_subscription",
+        summary: "Create a conditional subscription",
+        description:
+          "Store a new subscription. Needs the `annotate` capability, because creating one is how a caller asks the collector to make an outbound request on its behalf. A webhook `secret` is write-only: it is accepted here and never returned again. A webhook URL must be http(s) and its host must appear in `COLLECTOR_WEBHOOK_ALLOWED_HOSTS`, or the request is refused.",
+        tags: ["subscriptions"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/Subscription" } },
+          },
+        },
+        responses: {
+          "201": {
+            description: "The stored subscription, with any secret masked.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/Subscription" } },
+            },
+          },
+          "409": {
+            description: "The project already holds the maximum number of subscriptions.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
+    "/api/v1/subscriptions/{id}": {
+      get: {
+        operationId: "get_subscription",
+        summary: "One conditional subscription",
+        tags: ["subscriptions"],
+        parameters: [SUBSCRIPTION_ID_PARAM],
+        responses: {
+          "200": {
+            description: "The subscription.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/Subscription" } },
+            },
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+      patch: {
+        operationId: "set_subscription_enabled",
+        summary: "Enable or disable a subscription",
+        description:
+          "The only patchable field is `enabled`. Everything else changes what the subscription *means*, so it is replaced rather than edited. Needs `annotate`.",
+        tags: ["subscriptions"],
+        parameters: [SUBSCRIPTION_ID_PARAM],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { enabled: { type: "boolean" } },
+                required: ["enabled"],
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "The updated subscription.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/Subscription" } },
+            },
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+      delete: {
+        operationId: "delete_subscription",
+        summary: "Delete a subscription and its firing log",
+        tags: ["subscriptions"],
+        parameters: [SUBSCRIPTION_ID_PARAM],
+        responses: {
+          "204": { description: "Deleted." },
+          "404": { $ref: "#/components/responses/NotFound" },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
+    "/api/v1/subscriptions/{id}/events": {
+      get: {
+        operationId: "list_subscription_events",
+        summary: "Recent firings of one subscription",
+        description:
+          "The bounded firing log — the last 100 firings, newest first. Each row is { id, subscriptionId, projectId, at, payload }, where `payload` is the firing record plus the `format=summary` block that was delivered with it.",
+        tags: ["subscriptions"],
+        parameters: [
+          SUBSCRIPTION_ID_PARAM,
+          {
+            name: "limit",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1, maximum: 100 },
+            description: "Newest-first cap; clamped to the retained window.",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "One entry per recorded firing.",
+            content: {
+              "application/json": { schema: { type: "array", items: { type: "object" } } },
+            },
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          ...AUTHENTICATED_ERRORS,
+        },
+      },
+    },
+    "/api/v1/subscriptions/{id}/test": {
+      post: {
+        operationId: "test_subscription",
+        summary: "Evaluate a subscription once, now",
+        description:
+          "Runs the predicate immediately and answers with the evaluation, including why it did **not** fire. A dry run by default; `deliver=true` records and delivers a real firing (honouring the cooldown), which is how a webhook receiver is proved to work without waiting for the condition to occur. Needs `annotate`.",
+        tags: ["subscriptions"],
+        parameters: [
+          SUBSCRIPTION_ID_PARAM,
+          {
+            name: "deliver",
+            in: "query",
+            required: false,
+            schema: { type: "boolean", default: false },
+            description: "Record and deliver the firing if the predicate is satisfied.",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "The evaluation.",
+            content: { "application/json": { schema: { type: "object" } } },
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": {
+            description: "An evaluation of this subscription is already in flight.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
           },
           ...AUTHENTICATED_ERRORS,
         },
@@ -735,6 +930,58 @@ function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unk
       required: ["sceneId", "kind", "updatedAt"],
     },
     ...metadataSchemas(),
+    Subscription: {
+      type: "object",
+      title: "Conditional subscription",
+      description:
+        "A standing question (ADR 0051 §6): a registry metric, a window, a predicate over that window, and where a firing is delivered. A webhook secret is accepted on create and never returned — reads carry a masked placeholder.",
+      properties: {
+        id: { type: "string", description: "Collector-assigned (sub_…); absent on create." },
+        projectId: { type: "string" },
+        name: { type: "string", maxLength: 120 },
+        metric: { type: "string", description: "Registry metric id (`@uptimizr/metrics`)." },
+        filters: {
+          type: "object",
+          properties: { scene: { type: "string" } },
+          description: "Narrows the metric the subscription watches.",
+        },
+        evaluate: {
+          type: "object",
+          properties: {
+            every: { type: "string", description: "Evaluation interval, e.g. 5m. Minimum 1m." },
+            window: {
+              type: "string",
+              description: "Span each evaluation measures, e.g. 1h. Minimum 1h.",
+            },
+            bucket: { type: "string", enum: ["hour", "day"] },
+          },
+          required: ["every", "window"],
+        },
+        predicate: {
+          type: "object",
+          description:
+            "Closed union discriminated on `kind`: threshold {column, op, value, minSample}, anomaly {sensitivity}, movers {pct, direction}, new_value {dimension}, presence {op, value}.",
+          properties: {
+            kind: {
+              type: "string",
+              enum: ["threshold", "anomaly", "movers", "new_value", "presence"],
+            },
+          },
+          required: ["kind"],
+        },
+        cooldown: { type: "string", description: "Quiet period after a firing; 0s for none." },
+        delivery: {
+          type: "array",
+          description: "{ kind: sse } and/or one { kind: webhook, url, secret? }.",
+          items: { type: "object" },
+        },
+        enabled: { type: "boolean", default: true },
+        lastFiredAt: { type: ["string", "null"] },
+        lastError: { type: ["string", "null"] },
+        failures: { type: "integer" },
+      },
+      required: ["name", "metric", "evaluate", "predicate", "delivery"],
+    },
   };
   for (const metric of metrics) schemas[metric.id] = rowSchema(metric);
 
@@ -837,6 +1084,11 @@ export function buildOpenApiDocument(
         name: "metadata",
         description:
           "What people and agents leave behind: annotations, the project glossary, saved analyses. Reads need `query`; every write needs `annotate` and is audited.",
+      },
+      {
+        name: "subscriptions",
+        description:
+          "Conditional subscriptions: standing predicates over a metric, delivered over SSE and signed webhooks (ADR 0051 §6).",
       },
     ],
     paths,

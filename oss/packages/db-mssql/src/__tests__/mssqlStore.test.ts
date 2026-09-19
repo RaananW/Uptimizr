@@ -193,6 +193,8 @@ describe.skipIf(!available)("mssql store", () => {
       "saved_analyses",
       "scene_regions",
       "scene_representations",
+      "subscription_events",
+      "subscriptions",
     ]);
   });
 

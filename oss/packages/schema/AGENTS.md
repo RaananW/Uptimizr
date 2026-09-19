@@ -38,6 +38,16 @@ const batch = collectRequestSchema.parse(requestBody);
 `session_start`, `session_end`, `frame_perf`, `camera_sample`, `pointer_move`, `pointer_click`,
 `mesh_interaction`, `asset_load`, `custom`.
 
+## Config shapes (not events)
+
+`funnelConfigSchema`, `sceneRegionsSchema` and `subscriptionSchema` are **configuration**
+contracts, not analytics events: they are deliberately outside the event union and never reach
+the public ingest path. `subscriptionSchema` (ADR 0051 §6) declares a standing predicate over a
+registry metric — `{ name, metric, filters, evaluate: { every, window }, predicate, cooldown,
+delivery[], enabled }` — with a closed predicate union (`threshold`, `anomaly`, `movers`,
+`new_value`, `presence`). `parseDurationMs` / `formatDurationMs` convert its `"5m"`-style
+literals.
+
 ## Rules for agents
 
 - **Events live once.** Import types/schemas from here; do not re-declare event shapes.

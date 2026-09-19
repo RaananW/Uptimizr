@@ -26,6 +26,10 @@ import { metadataRoutes } from "./routes/metadata.js";
 import { narrativeRoutes } from "./routes/narrative.js";
 import { queryRoutes } from "./routes/query.js";
 import { queryDslRoutes } from "./routes/query-dsl.js";
+import { subscriptionRoutes } from "./routes/subscriptions.js";
+import { createSubscriptionScheduler } from "./subscriptions/scheduler.js";
+import { createSubscriptionStream } from "./subscriptions/stream.js";
+import { createConnectionLimiter } from "./connectionLimiter.js";
 
 export interface BuildAppDeps {
   store: CollectorStore;
@@ -35,6 +39,11 @@ export interface BuildAppDeps {
    * in-process bus is created from `config.liveWindowMs` when omitted.
    */
   liveBus?: LiveBus;
+  /**
+   * Outbound HTTP for subscription webhooks (#311). Injectable so a test can
+   * assert the signed body without a real socket; defaults to global `fetch`.
+   */
+  fetchImpl?: typeof fetch;
   /** Pass `true` (or Fastify logger options) to enable request logging. */
   logger?: boolean;
   /**
@@ -177,7 +186,11 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   app.get("/health", async () => ({ status: "ok" }));
 
   await app.register(collectRoutes, { store, config, liveBus });
-  await app.register(liveRoutes, { store, config, liveBus });
+  // One SSE budget for the whole collector: the live endpoints and the
+  // conditional-subscription stream hold the same kind of socket, so
+  // `LIVE_MAX_CONNECTIONS` bounds their total rather than each of them.
+  const sseConnections = createConnectionLimiter(config.liveMaxConnections);
+  await app.register(liveRoutes, { store, config, liveBus, connections: sseConnections });
   await app.register(queryRoutes, { store, config });
   // The query DSL (ADR 0051 §3): one route that can run any registry metric.
   await app.register(queryDslRoutes, { store });
@@ -205,6 +218,42 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   // Its own plugin so the envelope hook and the metric-resolution 400s stay
   // scoped to the two insight routes.
   await app.register(insightRoutes, { store });
+  // Conditional subscriptions (ADR 0051 §6): the CRUD resource, the firing log
+  // and the SSE stream. The scheduler behind them is created unconditionally —
+  // the routes need it for `POST …/test` even when evaluation is off — but only
+  // `reload()` installs timers, and that is gated on `COLLECTOR_SUBSCRIPTIONS`.
+  const subscriptionStream = createSubscriptionStream();
+  const scheduler = createSubscriptionScheduler({
+    store,
+    config,
+    liveBus,
+    stream: subscriptionStream,
+    log: app.log,
+    fetchImpl: deps.fetchImpl,
+  });
+  await app.register(subscriptionRoutes, {
+    store,
+    config,
+    scheduler,
+    stream: subscriptionStream,
+    connections: sseConnections,
+  });
+  app.addHook("onClose", async () => {
+    scheduler.stop();
+    subscriptionStream.stop();
+  });
+  if (config.subscriptions) {
+    // After `ready()`, so a store that is still migrating on boot is not read
+    // mid-migration; a failure only logs, because an unreadable subscription
+    // table must not stop the collector serving.
+    app.addHook("onReady", async () => {
+      try {
+        await scheduler.reload();
+      } catch (err) {
+        app.log.warn({ err }, "failed to start the subscription scheduler");
+      }
+    });
+  }
   await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API

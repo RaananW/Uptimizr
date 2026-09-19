@@ -441,6 +441,35 @@ collector serves has at least one question an agent is measured on, so a tool de
 a model choose badly shows up as a failed case rather than as a quiet wrong answer in production.
 CI gates the deterministic run on every change to the catalog.
 
+## Push, not pull
+
+Everything above is an agent asking a question. A **conditional subscription** (ADR 0051 §6) is
+the collector answering one it was not asked — the inversion that turns "I checked and the lobby
+was fine" into "the lobby stopped being fine at 14:02".
+
+```bash
+uptimizr subscriptions add --file fps-drop.json
+```
+
+A subscription names a registry metric, a window and a predicate — a threshold crossing, an
+`anomalies` finding, a mover beyond a percentage, a never-before-seen scene or custom event, a
+live-presence level — and where a firing goes: an SSE stream for a connected agent, a signed
+webhook for automation (Slack, a GitHub Action, your own agent), or both. The payload carries the
+firing **and** a bounded `format=summary` result of the metric, so the receiver can act without a
+second call.
+
+Two things worth knowing before you write one:
+
+- **Nothing leaves the process until you say so.** Webhook delivery is disabled until
+  `COLLECTOR_WEBHOOK_ALLOWED_HOSTS` names the hosts your collector may reach. An `sse`-only
+  subscription has no egress at all.
+- **`list_subscriptions` is a read tool**, so an agent can see what is already being watched
+  before proposing another one. Creating and deleting are not tools yet — an agent does it over
+  plain HTTP with an `annotate` key.
+
+The full vocabulary, the signature scheme and the retry policy are in
+[Subscriptions & webhooks](/docs/deploy/collector/#subscriptions--webhooks).
+
 ## What's next
 
 The AI-first layer ships in stages; these are the tracked follow-ups, linked so you can see what is

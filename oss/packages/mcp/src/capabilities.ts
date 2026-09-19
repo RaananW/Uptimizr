@@ -15,6 +15,7 @@ import {
   type MetricDefinition,
   type MetricGrain,
 } from "@uptimizr/metrics";
+import { NON_REGISTRY_READ_TOOLS } from "@uptimizr/agent-core";
 
 /**
  * One tool the server exposes, described for self-discovery: its name, a human
@@ -202,12 +203,24 @@ export function buildCapabilities(options: BuildCapabilitiesOptions = {}): Capab
     (metric) => metric.endpoint != null && granted.has(metricCapability(metric)),
   );
 
-  const tools: CapabilityToolDescriptor[] = served.map((metric) => ({
-    name: metric.id,
-    title: metric.title,
-    description: metric.description,
-    params: paramsOf(metric),
-  }));
+  const tools: CapabilityToolDescriptor[] = [
+    ...served.map((metric) => ({
+      name: metric.id,
+      title: metric.title,
+      description: metric.description,
+      params: paramsOf(metric),
+    })),
+    // The descriptor must describe what the server actually registers, and the
+    // server registers `readTools` — which carries a short tail of collector
+    // reads that are configuration rather than measurements and so have no
+    // registry entry (#311). They take no filters, hence the empty `params`.
+    ...NON_REGISTRY_READ_TOOLS.map((tool) => ({
+      name: tool.name,
+      title: tool.title,
+      description: tool.description,
+      params: [] as readonly FilterId[],
+    })),
+  ];
 
   // The one tool that is not per-metric: the query DSL (ADR 0051 §3). It is
   // described here too, because this descriptor is what an agent reads to learn

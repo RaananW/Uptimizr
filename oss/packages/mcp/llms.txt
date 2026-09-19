@@ -210,3 +210,8 @@ with `403`.
 - The default catalog is the `query` surface: aggregate reads only, no raw per-session tool.
 - `createMcpServer(client, { capabilities })` takes the key's capability set (from `GET /api/v1/whoami`). When it includes `query:raw`, the server also registers `session_narrative` — an ordered, bounded account of what one session did, gated on the collector also running with `ENABLE_RAW_SESSION_RETENTION`. Omit the option and only the `query` surface is served.
 - The `uptimizr-mcp` binary discovers the capability set at start-up (best effort; a failure falls back to the `query` surface).
+## Non-metric reads
+
+- `list_subscriptions` — the project's conditional subscriptions (ADR 0051 §6): what the
+  collector is watching for and how each one last went. No arguments. Read-only; creating or
+  deleting one needs `annotate` and is not exposed as a tool.

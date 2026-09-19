@@ -585,6 +585,18 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
   }
   if (req.method === "GET" && path === "/api/v1/audit") return ok([]);
 
+  // Conditional subscriptions (#311, ADR 0051 §6). The demo runs entirely in the
+  // browser with no scheduler, no timers and no way to make an outbound request,
+  // so it has none and always will: the read answers with an empty list and the
+  // dashboard's Subscriptions panel renders its "none configured" state instead
+  // of a 404.
+  //
+  // Deliberately NOT in {@link DEMO_SPECIAL_GET_ROUTES}: that list exists to be
+  // diffed against the collector's `query.ts` (see `routeParity.test.ts`), and
+  // this route is served by `routes/subscriptions.ts`. Adding it there would
+  // make the parity test report a stale route.
+  if (req.method === "GET" && path === "/api/v1/subscriptions") return ok([]);
+
   if (req.method === "POST" && path === "/api/v1/collect") {
     return handleCollect(db, req.body);
   }

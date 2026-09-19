@@ -151,6 +151,7 @@ export {
   gazeHeatmapPanel,
   clickRaysPanel,
   sessionsPanel,
+  subscriptionsPanel,
 } from "./catalog/ossPanelCatalog";
 
 // --- Panel view components (2D / HTML / canvas — Babylon-free). --------------
@@ -180,6 +181,16 @@ export {
   foldRenderingTechnology,
 } from "./catalog/views/RenderingTechnology";
 export type { TechBucket, TechBreakdown } from "./catalog/views/RenderingTechnology";
+export {
+  SUBSCRIPTION_FIRING_LOGS,
+  SubscriptionsView,
+  describeDelivery,
+  describePredicate,
+  firingReason,
+  formatAge,
+  healthOf,
+} from "./catalog/views/Subscriptions";
+export type { SubscriptionHealth, SubscriptionsPanelData } from "./catalog/views/Subscriptions";
 export { SceneTraversalView } from "./catalog/views/SceneTraversal";
 export { InputSourcesView } from "./catalog/views/InputSources";
 export {

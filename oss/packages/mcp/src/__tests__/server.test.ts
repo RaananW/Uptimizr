@@ -10,7 +10,12 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CollectorClient, QueryParams } from "@uptimizr/agent-core";
-import { QUERY_TOOL_NAME, rawTools, readTools } from "@uptimizr/agent-core";
+import {
+  NON_REGISTRY_READ_TOOLS,
+  QUERY_TOOL_NAME,
+  rawTools,
+  readTools,
+} from "@uptimizr/agent-core";
 import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createMcpServer } from "../server.js";
@@ -73,10 +78,17 @@ describe("tools/list", () => {
       expect(tool.outputSchema?.type, tool.name).toBe("object");
       const properties = Object.keys(tool.outputSchema?.properties ?? {});
       expect(tool.description).toContain("Caveats:");
-      if (tool.name === "query") {
+      if (tool.name === QUERY_TOOL_NAME) {
         // The query DSL tool is not a registry metric, and its shape is chosen
         // by its `format`, so it advertises a single `result` key (ADR 0051 §3).
         expect(properties, tool.name).toEqual(["result"]);
+        continue;
+      }
+      if (NOT_METRICS.has(tool.name)) {
+        // Collector reads that are configuration rather than measurements have
+        // no registry entry to check against (#311); they return `{ rows }`
+        // and take no `format`.
+        expect(properties, tool.name).toEqual(["rows"]);
         continue;
       }
       expect(properties, tool.name).toContain("rows");
@@ -202,6 +214,9 @@ describe("tools/call", () => {
 
 const METRICS = new Map<string, MetricDefinition>(allMetrics().map((m) => [m.id, m]));
 
+/** Tool names that are deliberately not registry metrics (#303, #311). */
+const NOT_METRICS = new Set([QUERY_TOOL_NAME, ...NON_REGISTRY_READ_TOOLS.map((tool) => tool.name)]);
+
 function metricOf(name: string): MetricDefinition {
   const metric = METRICS.get(name);
   if (!metric) throw new Error(`no registry metric for tool '${name}'`);
@@ -280,9 +295,11 @@ function summaryEnvelope(metric: MetricDefinition): unknown {
 describe("result envelopes", () => {
   it("accepts all three formats for every generated tool", async () => {
     for (const tool of readTools) {
-      // The query DSL tool is not a registry metric and wraps every envelope
-      // in its own `{ result }` key (ADR 0051 §3); it has its own test below.
-      if (tool.name === QUERY_TOOL_NAME) continue;
+      // Two tools are not registry metrics: the query DSL, which wraps every
+      // envelope in its own `{ result }` key (ADR 0051 §3) and has its own test
+      // below, and the non-metric collector reads of #311, which take no
+      // `format` at all.
+      if (NOT_METRICS.has(tool.name)) continue;
       const metric = metricOf(tool.name);
       const args = { ...(REQUIRED_ARGS[tool.name] ?? {}) };
       const row = nullRow(metric);

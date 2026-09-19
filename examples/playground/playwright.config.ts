@@ -82,6 +82,15 @@ export default defineConfig({
         // (e.g. `GET /sessions/:id/events`) would intermittently get a 429 and the
         // assertion `expect(res.ok()).toBeTruthy()` failed non-deterministically.
         COLLECTOR_RATE_LIMIT_MAX: "1000000",
+        // Conditional subscriptions (#311): the API is up — `subscriptions.spec.ts`
+        // creates one and evaluates it on demand — but the background scheduler
+        // is off. A timer re-evaluating every subscription a spec left behind
+        // would add non-deterministic store load to every other spec, and
+        // nothing here needs an evaluation the spec did not ask for.
+        //
+        // COLLECTOR_WEBHOOK_ALLOWED_HOSTS is deliberately unset, so the harness
+        // cannot make an outbound request at all.
+        COLLECTOR_SUBSCRIPTIONS: "0",
       },
     },
     {

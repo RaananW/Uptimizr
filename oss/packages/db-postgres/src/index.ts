@@ -60,3 +60,16 @@ export {
   listSavedAnalyses,
   deleteSavedAnalysis,
 } from "./projectMetadata.js";
+// Conditional subscriptions (#311, ADR 0051 §6).
+export {
+  listSubscriptions,
+  listEnabledSubscriptions,
+  getSubscription,
+  createSubscription,
+  setSubscriptionEnabled,
+  deleteSubscription,
+  recordSubscriptionOutcome,
+  getWebhookSecret,
+  recordSubscriptionEvent,
+  listSubscriptionEvents,
+} from "./subscriptions.js";
