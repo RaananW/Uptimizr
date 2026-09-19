@@ -587,7 +587,9 @@ describe("anomalies: the grouped split over in-memory events", () => {
 });
 
 describe("anomalies: bounded cost", () => {
-  it("scores a 90-day hourly series in well under a second", () => {
+  // Four calls at CI speed (~2 s each under parallel package suites) exceed
+  // vitest's default 5 s per-test budget, so this test carries its own.
+  it("scores a 90-day hourly series in well under a second", { timeout: 60_000 }, () => {
     // 2 160 buckets at hour grain, each judged against a 168-bucket trailing
     // window — the largest shape the endpoint can be asked for at this grain.
     const buckets = 90 * 24;
