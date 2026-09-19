@@ -66,9 +66,12 @@ async function runGenerator(args: string[]): Promise<RunResult> {
 }
 
 let scratch: string | undefined;
+/** Throwaway target copies made by the marker suite below. */
+const corrupted: string[] = [];
 
 afterAll(async () => {
   if (scratch) await rm(scratch, { recursive: true, force: true });
+  for (const dir of corrupted) await rm(dir, { recursive: true, force: true });
 });
 
 describe("gen-registry-docs", () => {
@@ -112,5 +115,160 @@ describe("gen-registry-docs", () => {
     const repair = await runGenerator(["--root", scratch]);
     expect(repair.code, repair.stderr).toBe(0);
     expect(await readFile(stalePath, "utf8")).toEqual(contents);
+  }, 60_000);
+});
+
+/**
+ * Generated-block marker hygiene (#370).
+ *
+ * The generator replaces the text *between* a block's `:start` and `:end`
+ * markers. The wave-2 integration merge (#367) left a second
+ * `generated:registry-query-reference:end` in `api/query.mdx` with a stale copy
+ * of the old table behind it: the generator stopped at the first `:end`, so
+ * `--check` compared only the first span and called the file up to date while
+ * contradictory content sat a few lines below. Anything that makes a block's
+ * span ambiguous is therefore an error, not a best-effort rewrite.
+ *
+ * Each case corrupts one copy of a real target file under `--root`, so the
+ * committed files are never touched, and asserts that both `--check` and the
+ * writing mode refuse it by name.
+ */
+describe("gen-registry-docs marker validation (#370)", () => {
+  /** An `.md` target (HTML-comment markers) and an `.mdx` one (JSX comments). */
+  const MD_TARGET = "oss/packages/mcp/AGENTS.md";
+  const MDX_TARGET = "oss/apps/docs/src/content/docs/guides/agents.mdx";
+
+  /** A throwaway copy of every generated file, for one test to corrupt. */
+  async function copyTargets(): Promise<string> {
+    const dir = await mkdtemp(path.join(tmpdir(), "uptimizr-gen-markers-"));
+    corrupted.push(dir);
+    for (const file of GENERATED_FILES) {
+      const destination = path.join(dir, file);
+      await mkdir(path.dirname(destination), { recursive: true });
+      await copyFile(path.join(REPO_ROOT, file), destination);
+    }
+    return dir;
+  }
+
+  /**
+   * Corrupt one file's markers, then assert both modes refuse it.
+   *
+   * `--check` has to fail too: a check that passes on an ambiguous file is the
+   * exact bug #370 describes.
+   */
+  async function expectRefused(
+    target: string,
+    mutate: (contents: string) => string,
+    ...expected: string[]
+  ): Promise<void> {
+    const dir = await copyTargets();
+    const file = path.join(dir, target);
+    const original = await readFile(file, "utf8");
+    const mutated = mutate(original);
+    expect(mutated, "the fixture must actually change the file").not.toEqual(original);
+    await writeFile(file, mutated, "utf8");
+
+    for (const args of [["--check"], []]) {
+      const result = await runGenerator([...args, "--root", dir]);
+      expect(result.code, `expected a failure, got:\n${result.stdout}`).not.toBe(0);
+      for (const fragment of [target, ...expected]) expect(result.stderr).toContain(fragment);
+    }
+
+    // Refusing means refusing to write: the file is left exactly as it was.
+    expect(await readFile(file, "utf8")).toEqual(mutated);
+  }
+
+  it("accepts the committed files, whose markers are well formed", async () => {
+    const dir = await copyTargets();
+    const result = await runGenerator(["--check", "--root", dir]);
+    expect(result.code, result.stderr).toBe(0);
+  }, 60_000);
+
+  it("rejects a duplicated `:end` marker — the #367 regression", async () => {
+    await expectRefused(
+      MD_TARGET,
+      (contents) =>
+        contents.replace(
+          "<!-- generated:registry-tool-names:end -->",
+          "<!-- generated:registry-tool-names:end -->\n\nstale leftovers\n\n<!-- generated:registry-tool-names:end -->",
+        ),
+      "2 `generated:registry-tool-names:end` markers",
+      "expected exactly one",
+    );
+  }, 60_000);
+
+  it("rejects a duplicated `:start` marker", async () => {
+    await expectRefused(
+      MD_TARGET,
+      (contents) =>
+        contents.replace(
+          "<!-- generated:registry-skill-names:start",
+          "<!-- generated:registry-skill-names:start (a stray copy) -->\n\n<!-- generated:registry-skill-names:start",
+        ),
+      "2 `generated:registry-skill-names:start` markers",
+      "expected exactly one",
+    );
+  }, 60_000);
+
+  it("rejects an `:end` with no matching `:start`", async () => {
+    await expectRefused(
+      MD_TARGET,
+      (contents) =>
+        contents.replace(/<!-- generated:registry-tool-names:start[^>]*-->/, "(marker removed)"),
+      "`generated:registry-tool-names:end`",
+      "has no matching `:start` marker",
+    );
+  }, 60_000);
+
+  it("rejects a `:start` with no matching `:end`", async () => {
+    await expectRefused(
+      MD_TARGET,
+      (contents) => contents.replace("<!-- generated:registry-tool-names:end -->", "(gone)"),
+      "`generated:registry-tool-names:start`",
+      "has no matching `:end` marker",
+    );
+  }, 60_000);
+
+  it("rejects an `:end` that comes before its `:start`", async () => {
+    await expectRefused(
+      MD_TARGET,
+      (contents) => {
+        const start = /<!-- generated:registry-tool-names:start[^>]*-->/.exec(contents)!;
+        const end = "<!-- generated:registry-tool-names:end -->";
+        // Swap the pair: same two markers, wrong order.
+        return contents
+          .replace(start[0], "@@START@@")
+          .replace(end, start[0])
+          .replace("@@START@@", end);
+      },
+      "comes before",
+    );
+  }, 60_000);
+
+  it("rejects nested blocks — one section opening inside another", async () => {
+    await expectRefused(
+      MD_TARGET,
+      (contents) =>
+        contents
+          .replace(/<!-- generated:registry-skill-names:start[^>]*-->/, "(moved)")
+          .replace(
+            "<!-- generated:registry-tool-names:end -->",
+            "<!-- generated:registry-skill-names:start (nested) -->\n\n<!-- generated:registry-tool-names:end -->",
+          ),
+      "sections overlap",
+    );
+  }, 60_000);
+
+  it("rejects a marker naming a block the file does not declare", async () => {
+    await expectRefused(
+      MDX_TARGET,
+      (contents) =>
+        contents.replace(
+          "{/* generated:registry-skills:end */}",
+          "{/* generated:registry-skills:end */}\n\n{/* generated:registry-tools:start (nothing owns this) */}\n\n{/* generated:registry-tools:end */}",
+        ),
+      "`generated:registry-tools:start`",
+      "does not declare",
+    );
   }, 60_000);
 });

@@ -30,12 +30,12 @@ pnpm add @uptimizr/metrics
 ```ts
 import { allMetrics, getMetric, METRIC_IDS } from "@uptimizr/metrics";
 
-METRIC_IDS.length; // 71 metrics (69 aggregations + 2 store resources)
+METRIC_IDS.length; // 78 metrics (70 aggregations + 5 insight derivations + 3 store resources)
 
 const metric = getMetric("top_meshes");
 metric?.title; // "Most-interacted meshes"
 metric?.endpoint?.path; // "/api/v1/meshes/top"
-metric?.filters; // ["since", "until", "bins", "limit", "session"]
+metric?.filters; // ["since", "until", "bins", "limit", "session", "format"]
 metric?.row; // z.ZodObject — the shape of one row
 metric?.columns.count?.unit; // "count"
 metric?.limits.maxRows; // the hard cap no consumer may exceed
@@ -46,23 +46,23 @@ const byCategory = Object.groupBy(allMetrics(), (m) => m.category);
 
 ## What a `MetricDefinition` carries
 
-| Field                   | Meaning                                                                                                                                                               |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                    | Stable snake_case id. Also the DSL metric name and the **agent tool name**.                                                                                           |
-| `title`, `description`  | Agent-facing prose: what it measures and what one row is.                                                                                                             |
-| `builder`               | The `build*` aggregation in `@uptimizr/db` that computes it. Absent for the two **resource** entries (`session_meta`, `scene_representation`), which are store reads. |
-| `endpoint`              | `{ method, path, pathParams }` — the canned collector route, when one exists.                                                                                         |
-| `grain`                 | What one row represents (`project`, `scene`, `session`, `mesh`, `bin`, `voxel`, `bucket`, `row`).                                                                     |
-| `dimensions`            | The `DimensionId`s the rows are keyed by. Closed vocabulary.                                                                                                          |
-| `filters`               | The `FilterId`s the endpoint accepts — exactly its Zod querystring keys.                                                                                              |
-| `row`                   | `z.ZodObject` for one row: the source for OpenAPI, tool output schemas (wrapped in the result envelopes below) and numeric coercion.                                  |
-| `columns`               | Per-column `{ description, unit, measure, label, rateOf }`.                                                                                                           |
-| `limits`                | `{ maxRows, maxSummaryRows }` — no consumer can ask for an unbounded payload.                                                                                         |
-| `interpretation`        | How to read the result.                                                                                                                                               |
-| `caveats`               | Small-sample, capture-gating and sampling-rate warnings.                                                                                                              |
-| `sourceChannels`        | The `EventType` capture channels that feed it (ADR 0012).                                                                                                             |
-| `related`, `comparable` | Metrics worth reading alongside; comparison semantics for deltas.                                                                                                     |
-| `category`              | Grouping used by the docs, the capabilities resource and the health score.                                                                                            |
+| Field                   | Meaning                                                                                                                                                                                                                                                                       |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                    | Stable snake_case id. Also the DSL metric name and the **agent tool name**.                                                                                                                                                                                                   |
+| `title`, `description`  | Agent-facing prose: what it measures and what one row is.                                                                                                                                                                                                                     |
+| `builder`               | The `build*` aggregation in `@uptimizr/db` that computes it. Absent for the three **resource** entries (`session_meta`, `session_narrative`, `scene_representation`), which are store reads, and for the five `derived: "insight"` entries, which are computed in TypeScript. |
+| `endpoint`              | `{ method, path, pathParams }` — the canned collector route, when one exists.                                                                                                                                                                                                 |
+| `grain`                 | What one row represents (`project`, `scene`, `session`, `mesh`, `bin`, `voxel`, `bucket`, `row`).                                                                                                                                                                             |
+| `dimensions`            | The `DimensionId`s it can be filtered, keyed or regrouped by — `grainDimensions` is what its rows are actually keyed by. Closed vocabulary.                                                                                                                                   |
+| `filters`               | The `FilterId`s the endpoint accepts — exactly its Zod querystring keys.                                                                                                                                                                                                      |
+| `row`                   | `z.ZodObject` for one row: the source for OpenAPI, tool output schemas (wrapped in the result envelopes below) and numeric coercion.                                                                                                                                          |
+| `columns`               | Per-column `{ description, unit, measure, label, rateOf }`.                                                                                                                                                                                                                   |
+| `limits`                | `{ maxRows, maxSummaryRows }` — no consumer can ask for an unbounded payload.                                                                                                                                                                                                 |
+| `interpretation`        | How to read the result.                                                                                                                                                                                                                                                       |
+| `caveats`               | Small-sample, capture-gating and sampling-rate warnings.                                                                                                                                                                                                                      |
+| `sourceChannels`        | The `EventType` capture channels that feed it (ADR 0012).                                                                                                                                                                                                                     |
+| `related`, `comparable` | Metrics worth reading alongside; comparison semantics for deltas.                                                                                                                                                                                                             |
+| `category`              | Grouping used by the docs, the capabilities resource and the health score.                                                                                                                                                                                                    |
 
 ## Exports
 
@@ -77,7 +77,10 @@ const byCategory = Object.groupBy(allMetrics(), (m) => m.category);
 **Helpers**
 
 - `allMetrics()`, `getMetric(id)`, `isMetricId(value)`
-- `metricForBuilder(builder)`, `isResourceMetric(metric)`
+- `metricForBuilder(builder)`, and the entry-kind predicates `isResourceMetric(metric)`,
+  `isDerivedMetric(metric)`, `isAggregateMetric(metric)`
+- `validateQuery(query)`, `nativeDimensions(metric)`, `genericDimensions(metric)`,
+  `queryTier(metric, query)` — the query-DSL vocabulary checks (ADR 0051 §3)
 
 **Result envelopes** (ADR 0051 §2)
 

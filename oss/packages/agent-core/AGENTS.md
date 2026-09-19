@@ -259,9 +259,9 @@ Metadata writes (ADR 0051 §5): `writeTools`, `mutatingWriteTools`, the individu
 when a hand-built read-only client has no write transport). Each has an `execute(client, args)`
 rather than a `buildRequest`, because a write is one call rather than a request description.
 
-The catalog is ~69 tools. A small local model cannot hold every schema in its function-calling
-The catalog is ~70 tools. A small local model cannot hold every schema in its function-calling
-prompt — hand a run `coreReadTools` or `filterReadTools([...])` rather than the full catalog.
+The catalog is 77 tools on a plain `query` key. A small local model cannot hold every schema in its
+function-calling prompt — hand a run `coreReadTools` or `filterReadTools([...])` rather than the
+full catalog.
 
 ### Capability-gated tools
 

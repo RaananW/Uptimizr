@@ -125,7 +125,7 @@ The assistant is tuned for that reality:
   resolving _"today"_ against the real current day. The clock is injectable via
   `useAssistant({ now })` for deterministic tests, and the pure `refreshSystemPrompt()` helper
   (`messages, basePrompt, nowMs`) is exported for custom loops.
-- **A focused core tool set.** The full catalog is **69** read tools, generated from the metric
+- **A focused core tool set.** The full catalog is **77** read tools, generated from the metric
   registry ([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md));
   sending them all would overwhelm a 4-bit 7–8B model's function-calling prompt many times over. For
   the **local** backend the assistant exposes a focused **core subset** of the most common

@@ -8,8 +8,10 @@ collector's API. It lets an AI agent ask natural-language questions about your
 The server is a thin wrapper: each analytics tool maps one-to-one to a documented collector query
 endpoint (see
 [integration docs](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md)) and performs
-`GET` requests only. There are **no ingestion tools and no raw per-session event tools**, and
-nothing here can write, alter or delete an analytics event — **events are read-only**.
+`GET` requests only. There is **no ingestion tool**, and nothing here can write, alter or delete an
+analytics event — **events are read-only**. A key holding `query:raw` additionally gets
+`session_narrative`, the compacted account of one session, on a collector running with
+`ENABLE_RAW_SESSION_RETENTION`.
 
 The one exception is gated: when the configured key holds the `annotate` capability the server also
 registers the **project-metadata** tools `annotate`, `define_term` and `save_analysis` (plus
@@ -83,15 +85,14 @@ For **GitHub Copilot CLI**, put the same entry in `~/.copilot/mcp-config.json` w
 ## Tools
 
 The catalog is **generated from the semantic metric registry** in `@uptimizr/metrics` (ADR 0051 §1):
-every aggregation the collector serves on a read endpoint is a tool — **69** of them. Each tool's
+every metric the collector serves on a read endpoint is a tool — **76** of them, one table row
+each, of which a plain `query` key sees 75 (`session_narrative` needs `query:raw`). Each tool's
 description carries the metric's interpretation notes and caveats, and each declares an MCP
 `outputSchema` covering every `format` envelope it can answer with — the rows, the `table`
 envelope around them (the tools' default), or a `summary` digest. Results come back as both
-`content` text and `structuredContent`.
-
-The table is **generated** from the collector's semantic metric registry (ADR 0051) — one row per
-registered read metric. Read `uptimizr://capabilities` for each one's result grain, column units,
-row schema and caveats; the same registry drives the collector's `GET /api/v1/openapi.json`.
+`content` text and `structuredContent`. Read `uptimizr://capabilities` for each tool's result
+grain, column units, row schema and caveats; the same registry drives the collector's
+`GET /api/v1/openapi.json`.
 
 Most tools accept an optional time range (`since` / `until`, epoch ms) and the filters the
 underlying endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `interval`, `type`,
@@ -187,8 +188,9 @@ The server also exposes read-only **resources** for self-discovery — `uptimizr
 (a machine-readable descriptor of event types, the tool catalog, parameter semantics, and
 `metrics`: the collector's whole semantic metric registry, with each metric's result grain, column
 units, row JSON Schema, row limits, interpretation and caveats — ADR 0051) and
-`uptimizr://scenes` (live scene ids) — and curated **prompts** (`weekly_scene_health`,
-`attention_hotspots`, `xr_comfort_review`) that drive the tools above. See the
+`uptimizr://context` (the live project context document), `uptimizr://scenes` (live scene ids) and
+`uptimizr://skills` (the methodology catalog below) — plus one curated **prompt per packaged
+skill**, listed in the table below, that drives the tools above. See the
 [MCP guide](https://uptimizr.com/docs/guides/mcp/) for details.
 
 ## Methodology skills
@@ -255,8 +257,9 @@ the API key the server instance is bound to. The collector-hosted transport pass
 resolved, so a session's surface can only narrow to what its key may do; omitting it (as the stdio
 entry point does) registers the whole read catalog and leaves enforcement to the collector.
 
-The package also exports `readTools`, `CollectorError`, `version`, and the related public types.
-The read-only analytics catalog (`readTools`), the `annotate`-gated `writeTools`, and the collector client are defined in the
+The package also exports `readTools`, `rawTools`, `writeTools`, `CollectorError`, `version`, and the
+related public types. The read-only analytics catalog (`readTools`), the `annotate`-gated
+`writeTools`, and the collector client are defined in the
 framework-agnostic [`@uptimizr/agent-core`](../agent-core/README.md) package and re-exported here,
 so the agent tool surface is defined once and shared across the MCP server, the dashboard assistant,
 and the demo assistant (ADR 0050). Building a non-MCP agent? Depend on `@uptimizr/agent-core`

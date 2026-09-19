@@ -139,7 +139,7 @@ const { messages, send, status, setBackend, backend } = useAssistant({
   apiKey: "utk_…",
   // Optional: pin the read tools this assistant may call. Omit and the hook chooses —
   // the local (WebGPU) backend gets agent-core's focused core subset, a hosted backend
-  // the full ~69-tool catalog. Unknown names are ignored; `[]` falls back to the default.
+  // the full ~77-tool catalog. Unknown names are ignored; `[]` falls back to the default.
   tools: ["perf_summary", "jank_rate", "perf_by_device"],
   // systemPrompt, maxSteps, confirmDownload, cachePolicy, persistBackend, now …
 });

@@ -142,6 +142,7 @@ const CATEGORY_TITLES = {
   xr: "WebXR",
   ar: "WebXR AR placement",
   conversion: "Funnels & conversion",
+  insights: "Insights & anomalies",
 };
 
 /** Every request parameter a metric accepts: path params first, then filters. */
@@ -205,11 +206,7 @@ const BLOCKS = {
       .map((category) => {
         const rows = metrics
           .filter((metric) => metric.category === category)
-          .map((metric) => [
-            `\`${metric.id}\``,
-            `\`${metric.endpoint.path}\``,
-            cell(metric.title),
-          ]);
+          .map((metric) => [`\`${metric.id}\``, `\`${metric.endpoint.path}\``, cell(metric.title)]);
         return `#### ${CATEGORY_TITLES[category] ?? category}\n\n${table(
           ["Tool", "Endpoint", "Returns"],
           rows,
@@ -354,35 +351,166 @@ const TARGETS = [
   },
 ];
 
-/** The two marker dialects: MDX cannot carry HTML comments. */
+/**
+ * The two marker dialects: MDX cannot carry HTML comments.
+ *
+ * Both patterns are global: the generator has to see *every* occurrence of a
+ * marker, not just the first one. Stopping at the first `:end` is what let the
+ * wave-2 integration merge leave a stale tool list sitting behind a stray second
+ * `:end` while `--check` still reported the file as up to date (#370).
+ */
 function markers(file, block) {
   const mdx = file.endsWith(".mdx");
   return mdx
     ? {
-        start: new RegExp(`\\{/\\*\\s*generated:${block}:start[^*]*\\*/\\}`),
-        end: new RegExp(`\\{/\\*\\s*generated:${block}:end\\s*\\*/\\}`),
+        start: new RegExp(`\\{/\\*\\s*generated:${block}:start[^*]*\\*/\\}`, "g"),
+        end: new RegExp(`\\{/\\*\\s*generated:${block}:end\\s*\\*/\\}`, "g"),
       }
     : {
-        start: new RegExp(`<!--\\s*generated:${block}:start[^>]*-->`),
-        end: new RegExp(`<!--\\s*generated:${block}:end\\s*-->`),
+        start: new RegExp(`<!--\\s*generated:${block}:start[^>]*-->`, "g"),
+        end: new RegExp(`<!--\\s*generated:${block}:end\\s*-->`, "g"),
       };
 }
 
-/** Replace the text between one block's markers. */
-function replaceBlock(file, contents, block, rendered) {
-  const { start, end } = markers(file, block);
-  const startMatch = start.exec(contents);
-  const endMatch = end.exec(contents);
-  if (!startMatch || !endMatch) {
-    throw new Error(
-      `${file}: missing the \`generated:${block}\` ${startMatch ? "end" : "start"} marker. ` +
-        `Add the marker pair around the generated section.`,
-    );
+/** Every `generated:<name>:<start|end>` marker in a file, whichever dialect. */
+const ANY_MARKER = /(?:<!--\s*|\{\/\*\s*)generated:([a-z0-9-]+):(start|end)\b/g;
+
+/** 1-based line number of a character offset, so an error says where to look. */
+function lineOf(contents, index) {
+  return contents.slice(0, index).split("\n").length;
+}
+
+/** `line 7` / `lines 7, 251` — how a marker error names the offending places. */
+function linesAt(contents, matches) {
+  const lines = matches.map((match) => lineOf(contents, match.index));
+  return `${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")}`;
+}
+
+function markerError(file, message) {
+  return new Error(
+    `${file}: ${message}\n` +
+      "Each `generated:<block>` section needs exactly one `:start` marker and exactly one `:end` " +
+      "marker after it, and two sections may not overlap.",
+  );
+}
+
+/**
+ * Locate every block a target owns, and refuse anything ambiguous (#370).
+ *
+ * The generator replaces the text *between* two markers, so a file whose markers
+ * do not describe one unambiguous span per block cannot be regenerated
+ * correctly — and, worse, `--check` calls it up to date, because the content it
+ * compares never reaches the stale part. Every such shape fails here instead of
+ * being silently half-rewritten:
+ *
+ * - more than one `:start`, or more than one `:end`, for the same block;
+ * - an `:end` with no `:start`, or a `:start` with no `:end`;
+ * - an `:end` that appears before its own `:start`;
+ * - two blocks whose spans overlap (nested or interleaved markers);
+ * - a marker naming a block this file does not declare, which nothing would
+ *   ever regenerate.
+ */
+function locateBlocks(file, contents, blocks) {
+  const spans = new Map();
+
+  for (const block of blocks) {
+    const { start, end } = markers(file, block);
+    const startMatches = [...contents.matchAll(start)];
+    const endMatches = [...contents.matchAll(end)];
+
+    if (startMatches.length === 0 && endMatches.length === 0) {
+      throw markerError(file, `the \`generated:${block}\` markers are missing entirely.`);
+    }
+    if (startMatches.length === 0) {
+      throw markerError(
+        file,
+        `\`generated:${block}:end\` (${linesAt(contents, endMatches)}) has no matching \`:start\` ` +
+          "marker.",
+      );
+    }
+    if (endMatches.length === 0) {
+      throw markerError(
+        file,
+        `\`generated:${block}:start\` (${linesAt(contents, startMatches)}) has no matching ` +
+          "`:end` marker.",
+      );
+    }
+    if (startMatches.length > 1) {
+      throw markerError(
+        file,
+        `${startMatches.length} \`generated:${block}:start\` markers ` +
+          `(${linesAt(contents, startMatches)}); expected exactly one.`,
+      );
+    }
+    if (endMatches.length > 1) {
+      throw markerError(
+        file,
+        `${endMatches.length} \`generated:${block}:end\` markers ` +
+          `(${linesAt(contents, endMatches)}); expected exactly one. Anything past the first one ` +
+          "is never regenerated, so it goes stale unnoticed.",
+      );
+    }
+
+    const [startMatch] = startMatches;
+    const [endMatch] = endMatches;
+    if (endMatch.index < startMatch.index + startMatch[0].length) {
+      throw markerError(
+        file,
+        `\`generated:${block}:end\` (line ${lineOf(contents, endMatch.index)}) comes before ` +
+          `\`generated:${block}:start\` (line ${lineOf(contents, startMatch.index)}).`,
+      );
+    }
+
+    spans.set(block, {
+      from: startMatch.index + startMatch[0].length,
+      to: endMatch.index,
+      startsAt: startMatch.index,
+      endsAt: endMatch.index + endMatch[0].length,
+    });
   }
-  const from = startMatch.index + startMatch[0].length;
-  const to = endMatch.index;
-  if (to < from) throw new Error(`${file}: \`generated:${block}\` markers are out of order.`);
-  return `${contents.slice(0, from)}\n\n${rendered}\n\n${contents.slice(to)}`;
+
+  for (const match of contents.matchAll(ANY_MARKER)) {
+    if (!blocks.includes(match[1])) {
+      throw markerError(
+        file,
+        `\`generated:${match[1]}:${match[2]}\` (line ${lineOf(contents, match.index)}) names a ` +
+          "block this file does not declare; nothing would ever regenerate it.",
+      );
+    }
+  }
+
+  // With one pair per block, an overlap is the only ambiguity left: nested or
+  // interleaved markers.
+  const ordered = [...spans].sort((a, b) => a[1].startsAt - b[1].startsAt);
+  for (let index = 1; index < ordered.length; index += 1) {
+    const [previousName, previous] = ordered[index - 1];
+    const [name, span] = ordered[index];
+    if (span.startsAt < previous.endsAt) {
+      throw markerError(
+        file,
+        `the \`generated:${previousName}\` and \`generated:${name}\` sections overlap ` +
+          `(lines ${lineOf(contents, previous.startsAt)}-${lineOf(contents, previous.endsAt)} ` +
+          `and ${lineOf(contents, span.startsAt)}-${lineOf(contents, span.endsAt)}).`,
+      );
+    }
+  }
+
+  return spans;
+}
+
+/**
+ * Replace the text between every block's markers, given their validated spans.
+ *
+ * Spans are offsets into the original contents, so the blocks are spliced from
+ * the last one backwards — replacing the first would shift every later offset.
+ */
+function replaceBlocks(contents, spans, rendered) {
+  const descending = [...spans].sort((a, b) => b[1].from - a[1].from);
+  let next = contents;
+  for (const [block, span] of descending) {
+    next = `${next.slice(0, span.from)}\n\n${rendered[block]}\n\n${next.slice(span.to)}`;
+  }
+  return next;
 }
 
 /**
@@ -429,10 +557,8 @@ async function main() {
   for (const target of TARGETS) {
     const absolute = path.resolve(targetRoot, target.file);
     const original = await readFile(absolute, "utf8");
-    let next = original;
-    for (const block of target.blocks) {
-      next = replaceBlock(target.file, next, block, rendered[block]);
-    }
+    const spans = locateBlocks(target.file, original, target.blocks);
+    let next = replaceBlocks(original, spans, rendered);
     // Always resolve Prettier options against the real file in this repo, so
     // `--root` output is formatted identically to the working tree's.
     next = await format(prettier, path.resolve(ROOT, target.file), next);
