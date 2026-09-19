@@ -1,5 +1,17 @@
 # @uptimizr/babylon
 
+## 1.0.3
+
+### Patch Changes
+
+- Updated dependencies [395aa36]
+- Updated dependencies [e1213c8]
+- Updated dependencies [395aa36]
+- Updated dependencies [395aa36]
+- Updated dependencies [395aa36]
+  - @uptimizr/schema@1.2.0
+  - @uptimizr/sdk-core@1.1.1
+
 ## 1.0.2
 
 ### Patch Changes
