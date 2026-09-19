@@ -1,7 +1,7 @@
 {
   "scripted": {
     "passRate": 1,
-    "recordedAt": "2026-09-18T22:40:12.829Z",
+    "recordedAt": "2026-09-19T06:22:20.014Z",
     "tolerance": 0,
     "cases": {
       "ar_placement_effort": true,
@@ -27,6 +27,8 @@
       "interaction_frustration": true,
       "interaction_click_geometry": true,
       "interaction_reach_and_keys": true,
+      "interaction_clicks_by_region": true,
+      "interaction_click_hotspot_landmark": true,
       "navigation_standpoints": true,
       "navigation_one_trajectory": true,
       "navigation_distance_travelled": true,
