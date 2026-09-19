@@ -54,13 +54,15 @@ This package also owns the **vocabulary half** of validating a query-DSL documen
 the registry's questions and returns them as data:
 
 ```ts
-import { validateQuery, nativeDimensions } from "@uptimizr/metrics";
+import { validateQuery, nativeDimensions, genericDimensions } from "@uptimizr/metrics";
 
-const { issues, metric } = validateQuery(query); // [] means it can be run
+const { issues, metric, tier } = validateQuery(query); // [] issues means it can be run
 issues[0]?.code; // "unsupported_filter" | "dimension_not_native" | "limit_too_large" | …
 issues[0]?.accepted; // what *would* have worked, when that is a closed list
+tier; // "delegated" (the metric's own builder) | "generic" (the shared group-by)
 
-nativeDimensions(metric!); // the grain its rows actually carry, not everything it filters by
+nativeDimensions(metric!); // the grain its rows carry — `metric.grainDimensions`
+genericDimensions(metric!); // what it can *also* be grouped by, or [] if it cannot
 ```
 
 ## Rules for agents
@@ -88,9 +90,16 @@ nativeDimensions(metric!); // the grain its rows actually carry, not everything 
   result, not a zero.
 - **`null` is not `0`.** An aggregate over no samples is SQL `NULL` and means "no data".
 - **`dimensions` is not the grain.** `MetricDefinition.dimensions` lists what a metric can be
-  _filtered or keyed_ by; `nativeDimensions(metric)` is what its rows are actually keyed by.
-  `top_meshes` declares `session` and returns one row per mesh — it can be scoped to a session,
-  never broken down by one.
+  _filtered, keyed or regrouped_ by; `grainDimensions` (read it through `nativeDimensions`) is what
+  its rows are actually keyed by. `top_meshes` declares `session` and returns one row per mesh.
+- **`grainDimensions` is declared, not derived.** It used to be read back out of `row.shape`; since
+  #304 it is registry data, and `src/__tests__/registry.test.ts` keeps the old derivation as the
+  gate on the declaration. Add it to every new entry.
+- **`genericGroupBy` is a claim about portability.** Declare it only where the measure is a
+  `count(*)`, a `count(DISTINCT session_id)`, or a `sum`/`avg`/`max` over a **promoted** column —
+  the shapes that render identically on all four engines at any grain. A spatial binning and a
+  percentile do not, and must not have one. Every measure column it names must also be a column of
+  the metric's `row`.
 
 ## Where the SQL lives
 

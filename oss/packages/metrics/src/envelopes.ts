@@ -74,6 +74,14 @@ const confidenceSchema = z.object({
 
 const drillSchema = z.record(z.string(), z.string());
 
+/**
+ * The runnable drill-down query a ranked row can carry (#304): the query that
+ * produced the digest, with one more filter. Loose on purpose — its real shape
+ * is `queryV1Schema` in `@uptimizr/schema`, and restating it here would create
+ * the second definition ADR 0051 §1 exists to prevent.
+ */
+const drillQuerySchema = z.record(z.string(), z.unknown());
+
 const restSchema = z.object({
   rows: z.number().int(),
   value: z.number().nullable(),
@@ -93,6 +101,7 @@ const rankedRowSchema = z.object({
   share: z.number().nullable(),
   shareInterval: shareIntervalSchema.optional(),
   drill: drillSchema.optional(),
+  drillQuery: drillQuerySchema.optional(),
 });
 
 const seriesDigestSchema = z.object({

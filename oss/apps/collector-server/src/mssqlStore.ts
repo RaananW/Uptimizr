@@ -196,6 +196,10 @@ export async function createMssqlStore(): Promise<CollectorStore> {
     // aggregates below.
     runMetric: (projectId, metric, options) =>
       runMssqlQuery<Record<string, unknown>>(msc, compileMetric(metric, projectId, options, d)),
+    describeMetric: (projectId, metric, options) => ({
+      dialect: d.name,
+      spec: compileMetric(metric, projectId, options, d),
+    }),
     listSessions: (projectId, opts = {}) =>
       runMssqlQuery<SessionSummaryRow>(msc, buildListSessions(projectId, opts, d)),
     pointerHeatmap: (projectId, opts = {}) =>

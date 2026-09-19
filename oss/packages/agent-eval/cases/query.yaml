@@ -85,3 +85,87 @@
     # "no interactions", and never as invented mesh names.
     phrases: ["unknown metric", "top_mehses", "capabilities"]
     forbiddenPhrases: ["statue", "door", "floor"]
+
+# --- Stage 2: compare, the generic group-by tier, explain (#304) -------------
+#
+# The three things an agent could not do before and would otherwise do badly in
+# prose — subtract two results by hand, guess a breakdown the endpoint cannot
+# produce, and report an empty result it cannot account for. Every number below
+# comes from a real run against the seeded fixtures.
+
+- id: query_compare_week_over_week
+  category: interaction
+  question: >-
+    Using the query tool, compare mesh attention in the last 40 seconds of the range against the
+    40 before it — what changed, and by how much?
+  expectedTools:
+    - [query]
+  expectedArgs:
+    query:
+      metric: top_meshes
+      range: { since: 1718532020000, until: 1718532060000 }
+      compare: { range: { since: 1718531940000, until: 1718532020000 } }
+      format: summary
+  expectedAnswer:
+    numbers:
+      - { value: 11, label: mesh-referencing events in the later window }
+      - { value: 6, label: mesh-referencing events in the earlier window }
+    # The collector does the arithmetic and the reading; the agent must quote it
+    # rather than recompute it.
+    phrases: ["rose", "statue", "door"]
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: query_group_by_device
+  category: sessions
+  question: >-
+    Using the query tool, break event volume down by device operating system.
+  expectedTools:
+    - [query]
+  expectedArgs:
+    query:
+      metric: event_counts
+      dimensions: ["device.os"]
+      format: full
+  expectedAnswer:
+    # `event_counts` is keyed by event type; this grain exists only because the
+    # generic group-by tier can recompute a portable count anywhere.
+    numbers:
+      - { value: 22, label: events from iOS sessions }
+      - { value: 18, label: events from Android sessions }
+    phrases: ["ios", "android"]
+    forbiddenPhrases: ["no data", "cannot"]
+
+- id: query_explain_warns_small_sample
+  category: interaction
+  question: >-
+    Using the query tool, explain the mesh-attention query before I quote it — how much data is
+    behind it, and is there anything I should know?
+  expectedTools:
+    - [query]
+  expectedArgs:
+    query:
+      metric: top_meshes
+      explain: true
+  expectedAnswer:
+    numbers:
+      - { value: 20, label: events of this metric's channels in the window }
+      - { value: 30, label: the minimum the metric declares }
+    phrases: ["directional", "minimum"]
+    forbiddenPhrases: ["I don't have"]
+
+- id: query_rejected_group_by
+  category: attention
+  question: >-
+    Using the query tool, break the 2D pointer heatmap down by session and tell me exactly what
+    the collector says.
+  expectedTools:
+    - [query]
+  expectedArgs:
+    query:
+      metric: pointer_heatmap
+      dimensions: ["session"]
+  expectedAnswer:
+    # A spatial binning has no other grain to move to. The refusal names why, and
+    # an agent must report it rather than invent a per-session breakdown.
+    phrases: ["pointer_heatmap", "filter"]
+    forbiddenPhrases: ["session 1", "s1:", "here is the breakdown"]

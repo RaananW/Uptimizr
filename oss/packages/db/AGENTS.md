@@ -205,7 +205,7 @@ per-axis early exit; `spatialLabels.test.ts` holds the largest shape under 50 ms
   feature invisible to the dashboard. The generated agent tools apply their own `table` default
   and send it explicitly (`DEFAULT_TOOL_FORMAT` in `@uptimizr/agent-core`).
 
-## Query DSL, delegated tier (ADR 0051 §3)
+## Query DSL (ADR 0051 §3)
 
 `compileQuery(projectId, query, dialect)` turns a validated `queryV1` document (the Zod grammar in
 `@uptimizr/schema`, the registry validation in `@uptimizr/metrics`) into an ordinary `QuerySpec`, by
@@ -229,8 +229,22 @@ runMetric: (projectId, metric, options) =>
 - **Two values must be resolved first**, by whoever has a store: a `filters.region` given as a
   registered region id (→ its bounds) and a spatial `cellSize` derived from the scene's extent. Pass
   them as the `QueryResolution` argument.
-- v1 is **delegated only**: `dimensions` must be the metric's native grain, and `compare`,
-  `segment`, `order`, `explain`, `filters.event` and `filters.device` are rejected upstream.
+- **The generic tier is the second compiler**, not a second _path_: `compileGenericGroupBy`
+  (`query/dsl/generic.ts`) renders `SELECT <dims>, <measures> … GROUP BY <dims>` for a metric that
+  declares `genericGroupBy`, at any grain it declares. Everything variable in that SQL comes from
+  registry data — the event types, the scope predicate, the measures, each dimension's expression —
+  and every caller-supplied value is a bound parameter. `compileMetric` dispatches on
+  `options.tier`, which only `toBuilderOptions` sets, so a store calling `runMetric` with a plain
+  option bag keeps the delegated behaviour it has always had.
+- **Four pure layers sit on top**, none of which runs a query: `compareRows` /
+  `summarizeComparison` (join two runs of the same spec on the dimension key),
+  `twoProportionZ` / `welchT` (is the difference real — pinned to published table values in
+  `querySignificance.test.ts`), `explainQuery` (the plan and its warnings), and `applyOrder`
+  (an honest re-sort of a delegated result, with `ORDER_AFTER_CAP_CAVEAT` when the builder's own
+  cap had already chosen the rows).
+- **`explain` shows the SQL because there is nothing in it to redact.** `explainSpec` lists
+  parameters by name and logical type and never by value; the SQL text carries placeholders only,
+  which is exactly the property a reader uses `explain` to check.
 
 ## Cross-engine parity (ADR 0020)
 

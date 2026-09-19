@@ -66,15 +66,24 @@ export const queryMetricIdSchema = z
   .regex(/^[a-z][a-z0-9_]*$/, "metric must be a lower_snake_case registry metric id");
 
 /**
- * A group-by dimension id, validated structurally: a lower-case name with an
- * optional dotted namespace (`mesh`, `source`, `device.os`). Membership in the
- * metric's declared dimensions is checked by `validateQuery()`.
+ * A group-by dimension id, validated structurally: a name that starts
+ * lower-case, with an optional dotted namespace (`mesh`, `source`,
+ * `cameraMode`, `device.os`). Membership in the metric's declared dimensions is
+ * checked by `validateQuery()`.
+ *
+ * The first segment admits `camelCase` because one registry dimension is spelled
+ * that way — `cameraMode`, whose value is a session's `scene.cameraType`. v1
+ * could not notice: `dimensions` had to be the metric's own grain there, and no
+ * metric is *keyed* by the camera mode. The generic group-by tier and `segment`
+ * (#304) both name dimensions that are otherwise only filters, so the id grammar
+ * has to cover the whole `DimensionId` union rather than the part of it that
+ * happened to be reachable.
  */
 export const queryDimensionIdSchema = z
   .string()
   .min(1)
   .max(32)
-  .regex(/^[a-z][a-z_]*(\.[a-zA-Z][a-zA-Z_]*)?$/, "dimension must be a registry dimension id");
+  .regex(/^[a-z][a-zA-Z_]*(\.[a-zA-Z][a-zA-Z_]*)?$/, "dimension must be a registry dimension id");
 
 /**
  * The world-space region a query is scoped to: either an **ad-hoc box**

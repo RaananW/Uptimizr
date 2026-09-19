@@ -187,6 +187,10 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
     // aggregates below.
     runMetric: (projectId, metric, options) =>
       runClickhouseQuery<Record<string, unknown>>(ch, compileMetric(metric, projectId, options, d)),
+    describeMetric: (projectId, metric, options) => ({
+      dialect: d.name,
+      spec: compileMetric(metric, projectId, options, d),
+    }),
     listSessions: (projectId, opts = {}) =>
       runClickhouseQuery<SessionSummaryRow>(ch, buildListSessions(projectId, opts, d)),
     pointerHeatmap: (projectId, opts = {}) =>

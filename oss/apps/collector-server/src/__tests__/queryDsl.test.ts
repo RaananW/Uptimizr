@@ -233,12 +233,13 @@ describe("the 400s name what would have worked", () => {
     expect(body.error).toContain("top_mehses");
   });
 
-  it("a dimension the metric is not keyed by, listing the ones it is", async () => {
-    const res = await post(query("top_meshes", { dimensions: ["session"] }));
+  it("a dimension the metric is not keyed by and cannot be regrouped onto", async () => {
+    // `pointer_heatmap` bins screen coordinates: its measure *is* the binning,
+    // so there is no generic tier to move it to (#304).
+    const res = await post(query("pointer_heatmap", { dimensions: ["session"] }));
     expect(res.statusCode).toBe(400);
     const body = res.json() as { issues: { code: string; accepted?: string[] }[] };
     expect(body.issues[0]?.code).toBe("dimension_not_native");
-    expect(body.issues[0]?.accepted).toEqual(["mesh"]);
   });
 
   it("a filter the metric does not accept, listing the ones it does", async () => {
@@ -256,22 +257,37 @@ describe("the 400s name what would have worked", () => {
     expect((res.json() as { error: string }).error).toContain("queryV1");
   });
 
-  it("the grammar v1 does not answer yet", async () => {
-    const res = await post(query("top_meshes", { compare: { range: { since: 1, until: 2 } } }));
+  it("an event predicate on a metric with no generic tier", async () => {
+    const res = await post(
+      query("pointer_heatmap", { filters: { event: { type: "mesh_interaction" } } }),
+    );
     expect(res.statusCode).toBe(400);
     const body = res.json() as { error: string; issues: { code: string }[] };
     expect(body.issues[0]?.code).toBe("unsupported_feature");
-    expect(body.error).toContain("not supported yet");
+    expect(body.error).toContain("generic group-by tier");
+  });
+
+  it("an order on a column that is not a measure", async () => {
+    const res = await post(query("top_meshes", { order: { by: "mesh", dir: "asc" } }));
+    expect(res.statusCode).toBe(400);
+    const body = res.json() as { issues: { code: string; accepted?: string[] }[] };
+    expect(body.issues[0]?.code).toBe("unsupported_order");
+    expect(body.issues[0]?.accepted).toContain("count");
   });
 
   it("reports every objection at once, so one round trip is enough", async () => {
     const res = await post(
-      query("top_meshes", { dimensions: ["session"], filters: { scene: "lobby" } }),
+      query("top_meshes", {
+        dimensions: ["device.isMobile"],
+        filters: { scene: "lobby" },
+        order: { by: "mesh", dir: "asc" },
+      }),
     );
     const body = res.json() as { issues: { code: string }[] };
     expect(body.issues.map((issue) => issue.code).sort()).toEqual([
-      "dimension_not_native",
+      "unknown_dimension",
       "unsupported_filter",
+      "unsupported_order",
     ]);
   });
 });

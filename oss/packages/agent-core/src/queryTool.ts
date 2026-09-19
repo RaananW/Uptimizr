@@ -39,11 +39,14 @@ const QUERY_PATH = "api/v1/query";
 /**
  * The agent-facing description.
  *
- * It says four things a model needs and cannot infer from a JSON Schema: where
+ * It says six things a model needs and cannot infer from a JSON Schema: where
  * the metric vocabulary comes from (so it looks an id up rather than inventing
- * one), that `range` is not optional, how to read the default envelope, and what
- * v1 does not do yet — because a model that tries `compare` and is refused has
- * burned a turn, while one told up front asks two queries instead.
+ * one), that `range` is not optional, how to read the default envelope, that
+ * `compare` will do the arithmetic it would otherwise do in prose, that
+ * `explain` exists at all, and that a summary row already carries the query to
+ * drill into it. The last three are the ones a model never discovers on its own:
+ * it will subtract two results by hand, report a zero it cannot account for, and
+ * rebuild a filter it was handed — every time — unless the tool says otherwise.
  */
 function describeQueryTool(): string {
   const known = new Set(allMetrics().map((metric) => metric.id as string));
@@ -64,14 +67,24 @@ function describeQueryTool(): string {
     "bounded digest (top rows, a trend, or merged spatial clusters) with shares and a " +
     "plain-language reading; prefer it for a heatmap or a long leaderboard. `full` returns the " +
     "bare rows.\n\n" +
+    "What changed: set `compare` to another `{ range }` or `{ segment }` and the result comes " +
+    "back already joined on the dimension key — `{ current, previous, delta, deltaPct }` per " +
+    "row, with a significance test where the measure is a count and both windows are big " +
+    "enough. Never run two queries and subtract them yourself.\n\n" +
+    "Can you trust it: set `explain: true` and the response is the plan instead of the rows — " +
+    "which compiler would run, the SQL with its parameters left unbound, how much data the " +
+    "window holds, and every reason the answer might mislead (a capture channel that is " +
+    "switched off, a sample below the metric's own minimum, a result cut off by `limit`). Worth " +
+    "one call before reporting a zero.\n\n" +
+    "Narrowing down: every row of a `summary` carries `drillQuery` — the whole query, narrowed " +
+    "to that row, ready to send straight back. Use it rather than rebuilding the query.\n\n" +
     "Caveats:\n" +
     "- Naming a metric, dimension or filter that does not exist is an error that names what the " +
     "metric does accept — read it rather than guessing again.\n" +
-    "- `dimensions` must be the metric's own grain, or be omitted: each metric is computed at " +
-    "one fixed grain.\n" +
-    "- `compare`, `segment`, `order` and `explain` are part of the grammar but are not answered " +
-    "yet. To compare two windows, run two queries and subtract; to drill in, re-run the same " +
-    "query with one more filter."
+    "- `dimensions` may be any subset a metric declares **when** its measure is a portable count " +
+    "(event counts, mesh and interaction tallies, input actions, camera gestures). A spatial " +
+    "heatmap or a percentile is computed at one fixed grain and refuses anything else by name.\n" +
+    "- `order` takes a measure column, not a label, and only where the result is a ranked list."
   );
 }
 

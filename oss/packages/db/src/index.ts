@@ -173,18 +173,66 @@ export {
 export { coerceRows, numericColumns, numericColumnsOfMetric } from "./query/coerce.js";
 export type { CoerceRowsOptions } from "./query/coerce.js";
 
-// --- Query DSL v1, delegated tier (ADR 0051 §3, design sketch §C.2) ---
-// A validated `queryV1` document → the metric's existing aggregation builder →
-// an ordinary `QuerySpec`. Also published on the browser-safe
-// `@uptimizr/db/query` subpath, alongside the builders it delegates to.
+// --- Query DSL (ADR 0051 §3, design sketch §C.2) ---
+// A validated `queryV1` document → the metric's own aggregation builder
+// (delegated) or the shared group-by builder (generic) → an ordinary
+// `QuerySpec`; plus the pure layers that compare two runs, judge whether the
+// difference is real, render the plan, and re-order a delegated result. Also
+// published on the browser-safe `@uptimizr/db/query` subpath, alongside the
+// builders it delegates to.
 export {
+  DEFAULT_ALPHA,
+  ORDER_AFTER_CAP_CAVEAT,
+  applyOrder,
+  compileGenericGroupBy,
   builderFor,
   cameraTypeForMode,
+  channelRows,
+  compareRows,
+  comparisonKeys,
   compileMetric,
   compileQuery,
+  explainQuery,
+  explainSpec,
+  genericResultColumns,
+  normalCdf,
+  planWarnings,
+  reordersCappedResult,
+  sampleOf,
+  silentChannels,
+  studentTTwoSided,
+  summarizeComparison,
   toBuilderOptions,
+  twoProportionZ,
+  welchT,
+  wilsonScoreInterval,
 } from "./query/dsl/index.js";
-export type { AggregationBuilder, MetricQueryOptions, QueryResolution } from "./query/dsl/index.js";
+export type {
+  AggregationBuilder,
+  ComparisonBasis,
+  ComparisonContext,
+  ComparisonMeta,
+  ComparisonResult,
+  ComparisonRow,
+  ComparisonSide,
+  ExplainParam,
+  ExplainParamType,
+  GenericDeviceFilter,
+  GenericEventPredicate,
+  GenericQueryOptions,
+  MeanSignificance,
+  MetricQueryOptions,
+  MoversSummary,
+  PlanContext,
+  Proportion,
+  ProportionSignificance,
+  QueryPlan,
+  QueryResolution,
+  ResultOrder,
+  Sample,
+  ScoreInterval,
+  Significance,
+} from "./query/dsl/index.js";
 
 // --- Agent-shaped result envelopes (ADR 0051 §2, design sketch §B.1) ---
 // `format=table | summary`: pure, registry-driven summarisation of a metric's
@@ -327,5 +375,5 @@ export {
   numericColumnsForSpec,
 } from "./parity/compare.js";
 export type { ParityRow, ParityCompareOptions } from "./parity/compare.js";
-export { PARITY_CASES } from "./parity/cases.js";
+export { GENERIC_PARITY_CASE_NAMES, PARITY_CASES } from "./parity/cases.js";
 export type { ParityCase } from "./parity/cases.js";

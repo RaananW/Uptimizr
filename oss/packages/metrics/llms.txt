@@ -21,6 +21,8 @@
 - `resultFormatSchema`, `tableEnvelopeSchema(row)`, `summaryEnvelopeSchema`, `tableMetaSchema` — the `format` envelopes as Zod (ADR 0051 §2).
 - `resultEnvelopeSchema(row, full?)` — the union of the three; `structuredEnvelopeSchema(row)` — the merged object form an MCP `outputSchema` needs.
 - Types: `MetricDefinition`, `MetricId`, `MetricEndpoint`, `ColumnSemantics`, `ColumnUnit`, `DimensionId`, `FilterId`, `MetricCategory`, `MetricGrain`.
+- Types: `MetricDefinition`, `MetricId`, `MetricEndpoint`, `ColumnSemantics`, `ColumnUnit`, `DimensionId`, `FilterId`, `MetricCategory`, `MetricGrain`, `GenericGroupBy`, `GenericMeasure`, `QueryTier`.
+- The grain is registry data: `MetricDefinition.grainDimensions` (read it through `nativeDimensions`) is what a row is keyed by, while `dimensions` is everything the metric can be filtered, keyed or regrouped by. A metric that also declares `genericGroupBy` can be recomputed at any grain in `genericDimensions(metric)` by the shared group-by builder in `@uptimizr/db`; `queryTier(metric, query)` says which compiler a query takes.
 
 ## Rules
 

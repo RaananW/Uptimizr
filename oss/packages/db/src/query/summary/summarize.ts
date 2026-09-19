@@ -36,7 +36,14 @@
  * number of tokens as a 5-bin one.
  */
 
-import { getMetric, type MetricDefinition, type MetricId } from "@uptimizr/metrics";
+import {
+  dimensionColumn,
+  genericDimensions,
+  getMetric,
+  type DimensionId,
+  type MetricDefinition,
+  type MetricId,
+} from "@uptimizr/metrics";
 import { clusterCells, type GridCell } from "./cluster.js";
 import {
   axisColumn,
@@ -58,6 +65,7 @@ import type {
   AppliedFilters,
   ClusterSummary,
   DrillHints,
+  DrillQuery,
   RankedRow,
   RankedSummary,
   RecordSummary,
@@ -83,6 +91,23 @@ export type ResultRow = Readonly<Record<string, unknown>>;
  * endpoint would silently ignore is worse than no hint.
  */
 const DRILL_FILTERS = ["scene", "session", "mesh", "source"] as const;
+
+/**
+ * Dimensions a **runnable** drill query can hold fixed, in the order a reader
+ * would narrow by. Wider than {@link DRILL_FILTERS} because `segment` reaches
+ * further than `filters` does: `top_meshes` is a leaderboard *of meshes* whose
+ * builder has never taken a `mesh` filter, so before #304 its own rows were the
+ * one thing it could not be narrowed to. `segment: { mesh }` on the generic tier
+ * is exactly that narrowing.
+ */
+const DRILL_DIMENSIONS: readonly DimensionId[] = [
+  "scene",
+  "session",
+  "mesh",
+  "source",
+  "name",
+  "event_type",
+];
 
 /** Resolve an id or a definition to a definition. */
 function resolve(metric: MetricId | MetricDefinition): MetricDefinition | undefined {
@@ -154,6 +179,60 @@ function caveatsFor(
     );
   }
   return caveats;
+}
+
+/**
+ * The whole query, narrowed to one summarised row (#304).
+ *
+ * The filter *names* were already here; what was missing is the thing a caller
+ * actually needs next, which is the query to run. Reconstructing it is where a
+ * model loses the range it was looking at, the scene it had already scoped to,
+ * or the `format` it was reading — so the summary hands it over complete.
+ *
+ * `explain` is dropped: a drill-down is meant to return the narrower rows, not a
+ * plan for them. Everything else is carried through, `compare` included, so
+ * drilling into a mover keeps comparing.
+ */
+function drillQueryFor(
+  metric: MetricDefinition,
+  ctx: SummaryContext,
+  row: ResultRow,
+  hints: DrillHints | undefined,
+): DrillQuery | undefined {
+  if (ctx.query == null) return undefined;
+  const segment = drillSegmentFor(metric, row, hints);
+  if (hints == null && Object.keys(segment).length === 0) return undefined;
+  const { explain: _explain, ...rest } = ctx.query as Record<string, unknown>;
+  const filters = (rest.filters ?? {}) as Record<string, unknown>;
+  const existing = (rest.segment ?? {}) as Record<string, unknown>;
+  return {
+    ...rest,
+    filters: { ...filters, ...(hints ?? {}) },
+    ...(Object.keys(segment).length > 0 ? { segment: { ...existing, ...segment } } : {}),
+  };
+}
+
+/**
+ * The dimensions a drill query holds fixed with `segment` because the metric has
+ * no filter for them. Only dimensions the generic tier can actually render, so
+ * every drill query the summary hands out is one the collector will answer;
+ * anything already covered by a `filters` hint is left alone.
+ */
+function drillSegmentFor(
+  metric: MetricDefinition,
+  row: ResultRow,
+  hints: DrillHints | undefined,
+): Record<string, string> {
+  const groupable = new Set<string>(genericDimensions(metric));
+  const segment: Record<string, string> = {};
+  for (const dimension of DRILL_DIMENSIONS) {
+    if (!groupable.has(dimension)) continue;
+    if (hints != null && dimension in hints) continue;
+    if (metric.filters.includes(dimension as (typeof DRILL_FILTERS)[number])) continue;
+    const value = row[dimensionColumn(metric, dimension)];
+    if (typeof value === "string" && value.length > 0) segment[dimension] = value;
+  }
+  return segment;
 }
 
 /** Filters that would narrow a subsequent query to this row. */
@@ -276,12 +355,14 @@ function rankedSummary(
     const interval =
       proportional && value != null && total != null ? wilsonInterval(value, total, Z_95) : null;
     const drill = drillFor(metric, row);
+    const drillQuery = drillQueryFor(metric, ctx, row, drill);
     return {
       label: labelCol == null ? "" : String(row[labelCol[0]] ?? ""),
       value,
       share,
       ...(interval != null ? { shareInterval: interval } : {}),
       ...(drill != null ? { drill } : {}),
+      ...(drillQuery != null ? { drillQuery } : {}),
     };
   });
 

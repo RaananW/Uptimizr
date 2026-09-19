@@ -117,6 +117,9 @@ export function createMemoryStore({
     // rows, exactly as the spatial aggregates below already do. Use the DuckDB
     // store (the OSS default) for the DSL.
     runMetric: async () => [],
+    // No SQL is compiled here, so there is no plan to show; `explain` falls back
+    // to the registry-derived warnings (#304).
+    describeMetric: () => null,
     listSessions: async () => {
       const bySession = new Map<string, AnyEvent[]>();
       for (const e of events) {
