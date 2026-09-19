@@ -46,3 +46,8 @@ export type { EventRow, NodeSampleRow, SessionMeta } from "../events.js";
 // DuckDB-Wasm database. Re-exported here so the in-browser store stays a single
 // source of truth with the Node store (no duplicated/drifting schema).
 export { DUCKDB_MIGRATIONS } from "../duckdb/migrations.js";
+
+// The delegated query-DSL compiler (ADR 0051 §3). Pure: it reads the metric
+// registry and renders a `QuerySpec` through the same builders above, so it is
+// browser-safe for the same reason they are.
+export * from "./dsl/index.js";

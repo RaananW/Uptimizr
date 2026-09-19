@@ -8,6 +8,7 @@ import {
   CORE_READ_TOOL_NAMES,
 } from "../tools.js";
 import { registryToTools } from "../registryTools.js";
+import { QUERY_TOOL_NAME, queryTool } from "../queryTool.js";
 
 const byName = (name: string) => {
   const tool = readTools.find((t) => t.name === name);
@@ -16,9 +17,12 @@ const byName = (name: string) => {
 };
 
 describe("read tools catalog", () => {
-  it("is the catalog generated from the metric registry", () => {
-    expect(readTools.map((t) => t.name)).toEqual(registryToTools().map((t) => t.name));
-    expect(readTools.length).toBe(69);
+  it("is the catalog generated from the metric registry, plus the query tool", () => {
+    expect(readTools.map((t) => t.name)).toEqual([
+      ...registryToTools().map((t) => t.name),
+      QUERY_TOOL_NAME,
+    ]);
+    expect(readTools.length).toBe(70);
   });
 
   it("gives every tool an object output schema", () => {
@@ -26,6 +30,12 @@ describe("read tools catalog", () => {
       expect(tool.outputSchema, tool.name).toBeDefined();
       expect(z.toJSONSchema(tool.outputSchema!).type, tool.name).toBe("object");
     }
+    // The DSL tool's shape is chosen by its `format`, so it advertises the
+    // single `result` key (ADR 0051 §3) and supplies its own wrapper.
+    expect(Object.keys(z.toJSONSchema(queryTool.outputSchema!).properties ?? {})).toEqual([
+      "result",
+    ]);
+    expect(queryTool.structuredContent?.([1, 2])).toEqual({ result: [1, 2] });
   });
 
   it("exposes uniquely named tools", () => {

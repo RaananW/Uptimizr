@@ -191,6 +191,34 @@ All three validate against the tool's advertised output schema, so a client that
 reads (`session_meta`, `scene_representation`) are stored resources rather than aggregations, so
 they take no `format` and always answer with their `{ rows }` envelope.
 
+### The `query` tool
+
+One tool is **not** per-metric: `query`, whose input is the
+[query DSL](/docs/api/query/#one-query-endpoint-the-query-dsl). It runs any metric below with any
+filter that metric declares, in one call:
+
+```jsonc
+{
+  "v": 1,
+  "metric": "mesh_sources",
+  "range": { "since": 1757000000000, "until": 1757600000000 },
+  "filters": { "scene": "lobby", "cameraMode": "first-person" },
+  "limit": 20,
+  "format": "summary",
+}
+```
+
+`range` is required (both ends, epoch ms) and `format` defaults to `table` here rather than `full`.
+The grammar is closed — metrics, dimensions and filters are exactly the vocabulary
+`uptimizr://capabilities` lists — and naming something outside it returns an error whose
+`issues[].accepted` says what _would_ have worked, so a wrong guess is a correction rather than an
+empty result. `dimensions` must be the metric's own grain, and `compare`, `segment`, `order`,
+`explain`, `filters.event` and `filters.device` are part of the published grammar but are not
+answered yet.
+
+Reach for the per-metric tools for discovery, and for `query` when a question needs a filter the
+canned tool does not expose.
+
 ### Tool catalog
 
 One tool per registry metric that the collector serves on a read endpoint, grouped by the registry's

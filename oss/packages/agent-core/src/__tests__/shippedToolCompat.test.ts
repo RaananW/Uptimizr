@@ -116,8 +116,10 @@ describe("shipped tool compatibility", () => {
     for (const shipped of Object.keys(frozen)) expect(generated.has(shipped)).toBe(true);
   });
 
-  it("is the catalog the package actually exports", () => {
-    expect(readTools.map((tool) => tool.name)).toEqual([...generated.keys()]);
+  it("is the catalog the package actually exports, plus the query tool", () => {
+    // `generated` is the per-metric catalog; `readTools` appends the one tool
+    // that is not per-metric, the query DSL (ADR 0051 §3).
+    expect(readTools.map((tool) => tool.name)).toEqual([...generated.keys(), "query"]);
   });
 
   for (const [name, expected] of Object.entries(frozen)) {

@@ -49,6 +49,20 @@ resultEnvelopeSchema(row).parse(await response.json());
 structuredEnvelopeSchema(row);
 ```
 
+This package also owns the **vocabulary half** of validating a query-DSL document
+(ADR 0051 §3). `@uptimizr/schema`'s `queryV1Schema` checks the shape; `validateQuery` answers
+the registry's questions and returns them as data:
+
+```ts
+import { validateQuery, nativeDimensions } from "@uptimizr/metrics";
+
+const { issues, metric } = validateQuery(query); // [] means it can be run
+issues[0]?.code; // "unsupported_filter" | "dimension_not_native" | "limit_too_large" | …
+issues[0]?.accepted; // what *would* have worked, when that is a closed list
+
+nativeDimensions(metric!); // the grain its rows actually carry, not everything it filters by
+```
+
 ## Rules for agents
 
 - **Derive, never restate.** Tool catalogs, OpenAPI paths, capability lists and docs tables are
@@ -73,6 +87,10 @@ structuredEnvelopeSchema(row);
   capture-gating conditions — a metric with no enabled source channel returns an honest empty
   result, not a zero.
 - **`null` is not `0`.** An aggregate over no samples is SQL `NULL` and means "no data".
+- **`dimensions` is not the grain.** `MetricDefinition.dimensions` lists what a metric can be
+  _filtered or keyed_ by; `nativeDimensions(metric)` is what its rows are actually keyed by.
+  `top_meshes` declares `session` and returns one row per mesh — it can be scoped to a session,
+  never broken down by one.
 
 ## Where the SQL lives
 

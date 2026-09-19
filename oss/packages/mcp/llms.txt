@@ -32,6 +32,16 @@
 
 <!-- generated:registry-tool-names:end -->
 
+## The `query` tool (the query DSL)
+
+`query` is the one tool that is not per-metric (ADR 0051 §3): its input is the query DSL, so it runs
+any metric above with any filter that metric declares —
+`{ "v": 1, "metric": "mesh_sources", "range": { "since": …, "until": … }, "filters": { "scene": "lobby" }, "format": "summary" }`.
+`range` is required, `format` defaults to `table`, `dimensions` must be the metric's own grain, and
+anything outside the registry's vocabulary is a `400` whose `issues[].accepted` names what would
+have worked. `compare`, `segment`, `order`, `explain`, `filters.event` and `filters.device` parse
+but are not answered yet. Its `structuredContent` is `{ result }`, not `{ rows }`.
+
 ## Result formats (`format`)
 
 Every aggregate tool takes `format` — the envelope its rows arrive in, not a filter (ADR 0051 §2).

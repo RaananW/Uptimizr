@@ -237,6 +237,73 @@ including each column's unit and each metric's caveats.
 
 {/* generated:registry-query-reference:end */}
 
+## One query endpoint (the query DSL)
+
+Every metric above also answers to **one** endpoint. Rather than finding the route that carries the
+flag you need, name the metric, the window and the filters that metric declares, in a single
+validated JSON document.
+
+```bash
+curl -X POST -H "x-api-key: $KEY" -H "content-type: application/json" \
+  -d '{
+        "v": 1,
+        "metric": "mesh_sources",
+        "range": { "since": 1757000000000, "until": 1757600000000 },
+        "filters": { "scene": "lobby", "cameraMode": "first-person" },
+        "limit": 20,
+        "format": "summary"
+      }' \
+  "https://collect.example.com/api/v1/query"
+```
+
+`GET /api/v1/query?q=<url-encoded JSON>` takes the same document in one parameter (8 KiB max), for
+clients that only issue `GET`s. Both need the ordinary `query` capability, and both are audited like
+every other read — the DSL can compute nothing the endpoints above cannot.
+
+| Field        | Required | What it is                                                                                              |
+| ------------ | -------- | -------------------------------------------------------------------------------------------------------- |
+| `v`          | yes      | Grammar version. Always `1`.                                                                            |
+| `metric`     | yes      | A metric id from the tables above.                                                                      |
+| `range`      | yes      | `{ since, until }` in epoch milliseconds. There is no unbounded query.                                  |
+| `filters`    | no       | The filters that metric declares, as JSON — the same names as its querystring parameters.               |
+| `dimensions` | no       | Up to 3 group-by dimensions; in v1, the metric's own grain or omitted.                                  |
+| `limit`      | no       | Row cap, at most 1000 and at most the metric's own limit.                                               |
+| `format`     | no       | `full` / `table` / `summary`. **Defaults to `table`** here, unlike the endpoints above.                 |
+
+The grammar is closed: no SQL, no expression language, every identifier checked against the registry,
+unknown keys rejected, output bounded. `filters.steps`, `filters.variant` and `filters.conversion`
+take real step predicates (not JSON-encoded strings), and `filters.region` takes a registered region
+id or the six-number box as an array.
+
+:::note[What v1 answers]
+A query runs the metric's existing aggregation, so every metric is reachable at exactly the power of
+its own endpoint. `dimensions` must therefore be the metric's grain — the columns its rows already
+carry — or be omitted; a metric can be *filtered* by dimensions it is not *keyed* by, and asking to
+group by one of those returns a `400` naming the grain it does support.
+
+`compare`, `segment`, `order`, `explain`, `filters.event` and `filters.device` are part of the
+published grammar but are answered with `400 … not supported yet`. Compare two windows by running two
+queries; drill in by re-running the same query with one more filter.
+:::
+
+A query naming something the registry does not know returns a `400` listing **every** objection, each
+with a stable `code`, the offending path and — where it is a closed list — the values that would have
+been accepted, so a client can correct itself instead of guessing:
+
+```jsonc
+{
+  "error": "the query cannot be answered: \"top_meshes\" does not accept the filter \"scene\"…",
+  "issues": [
+    {
+      "code": "unsupported_filter",
+      "path": "filters.scene",
+      "message": "\"top_meshes\" does not accept the filter \"scene\". It accepts `session`, `bins`, `limit`.",
+      "accepted": ["session", "bins", "limit"],
+    },
+  ],
+}
+```
+
 ## Scene regions
 
 Named, labelled boxes that give a scene a vocabulary for _where_ — "the

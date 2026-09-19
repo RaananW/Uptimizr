@@ -82,6 +82,8 @@ import {
 } from "../query/aggregations.js";
 import type { Dialect } from "../query/dialect.js";
 import type { QuerySpec } from "../query/types.js";
+import { compileQuery } from "../query/dsl/index.js";
+import { queryV1Schema } from "@uptimizr/schema";
 import type { ParityRow } from "./compare.js";
 import {
   PARITY_DAY,
@@ -993,5 +995,75 @@ export const PARITY_CASES: readonly ParityCase[] = [
     build: (d) => buildLoadBounceFunnel(PID, PARITY_RANGE, d),
     sortKeys: ["band"],
     golden: [],
+  },
+
+  // --- Query DSL v1 (ADR 0051 §3) ----------------------------------------
+  //
+  // The delegated compiler renders a validated `queryV1` document through the
+  // metric's own builder, so in principle it cannot disagree with the cases
+  // above — and `src/__tests__/queryDsl.test.ts` proves that spec-for-spec, on
+  // every dialect. These three cases prove it the other way round, where it
+  // actually matters: the compiled SQL is *executed* on each engine and its rows
+  // are compared against the same engine-independent golden. A filter-mapping
+  // regression that produced valid-but-different SQL would fail here.
+  {
+    name: "dsl:topMeshes",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({ v: 1, metric: "top_meshes", range: PARITY_RANGE }),
+        d,
+      ),
+    sortKeys: ["mesh"],
+    golden: [
+      { mesh: "box", count: 2 },
+      { mesh: "floor", count: 2 },
+      { mesh: "sphere", count: 2 },
+    ],
+  },
+  {
+    // A filtered query: `filters.source` must reach `SourceOptions.source`
+    // through the registry's `FILTER_TARGETS`, not by coincidence.
+    name: "dsl:meshSourcesFiltered",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "mesh_sources",
+          range: PARITY_RANGE,
+          filters: { source: "mouse" },
+        }),
+        d,
+      ),
+    sortKeys: ["mesh", "source"],
+    golden: [
+      { mesh: "box", source: "mouse", count: 1 },
+      { mesh: "floor", source: "mouse", count: 1 },
+      { mesh: "sphere", source: "mouse", count: 1 },
+    ],
+  },
+  {
+    // A funnel through the DSL: the ADR 0038 step predicates travel as real
+    // JSON rather than a re-parsed string, and land on `FunnelOptions.steps`.
+    name: "dsl:funnel",
+    build: (d) =>
+      compileQuery(
+        PID,
+        queryV1Schema.parse({
+          v: 1,
+          metric: "funnel",
+          range: PARITY_RANGE,
+          filters: {
+            steps: [{ type: "camera_sample" }, { type: "pointer_click", mesh: "sphere" }],
+          },
+        }),
+        d,
+      ),
+    sortKeys: ["step"],
+    golden: [
+      { step: 0, sessions: 2 },
+      { step: 1, sessions: 1 },
+    ],
   },
 ];

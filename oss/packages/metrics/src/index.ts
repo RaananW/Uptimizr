@@ -39,6 +39,18 @@ export {
   metricForBuilder,
 } from "./registry.js";
 
+// --- Query DSL validation (ADR 0051 §3) ---
+// The registry half of validating a `queryV1` document: `@uptimizr/schema`
+// checks the shape, this checks the vocabulary.
+export {
+  REQUIRED_FILTERS,
+  nativeDimensions,
+  queryableFilters,
+  requiredFilters,
+  validateQuery,
+} from "./query.js";
+export type { QueryIssue, QueryIssueCode, QueryValidation } from "./query.js";
+
 export type {
   AggregationBuilderName,
   ColumnSemantics,

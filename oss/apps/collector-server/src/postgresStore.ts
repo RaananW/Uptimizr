@@ -67,6 +67,7 @@ import {
   buildGazeHeatmap,
   buildGazeHeatmapStats,
   postgresDialect,
+  compileMetric,
   readDbSettings,
   type CameraDistanceBucketRow,
   type ClickGazeRayRow,
@@ -183,6 +184,12 @@ export async function createPostgresStore(): Promise<CollectorStore> {
     pruneAudit: (cutoffMs) => pgPruneAudit(pgc, cutoffMs),
     projectExists: async (projectId) => (await pgGetProject(pgc, projectId)) !== null,
     insertEvents: (events) => pgInsertEvents(pgc, [...events]),
+    // Query DSL v1 (ADR 0051 §3): any registry metric, compiled onto its own
+    // aggregation builder and run through the same Postgres path — and therefore
+    // the same parity coverage and the same numeric coercion — as the canned
+    // aggregates below.
+    runMetric: (projectId, metric, options) =>
+      runPostgresQuery<Record<string, unknown>>(pgc, compileMetric(metric, projectId, options, d)),
     listSessions: (projectId, opts = {}) =>
       runPostgresQuery<SessionSummaryRow>(pgc, buildListSessions(projectId, opts, d)),
     pointerHeatmap: (projectId, opts = {}) =>

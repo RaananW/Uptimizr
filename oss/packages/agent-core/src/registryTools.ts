@@ -30,7 +30,11 @@
  */
 
 import { z } from "zod";
+// `REQUIRED_FILTERS` lives in the registry package (ADR 0051 §1) so the DSL's
+// validator and this catalog agree on which filters a metric cannot be called
+// without, instead of each carrying its own copy of the same two exceptions.
 import {
+  REQUIRED_FILTERS,
   allMetrics,
   resultFormatSchema,
   structuredEnvelopeSchema,
@@ -269,21 +273,6 @@ const FILTER_FIELDS: Readonly<Record<FilterId, z.ZodType>> = {
         "such as a heatmap or a long leaderboard.",
     )
     .meta({ default: DEFAULT_TOOL_FORMAT }),
-};
-
-/**
- * Filters the collector declares **required** in its querystring schema, by
- * metric id. The registry records requiredness in prose (a `caveats` line) but
- * not as data, so the two exceptions are listed here; everything else is
- * optional. Path parameters are always required and are handled separately.
- *
- * Keep this in step with `oss/apps/collector-server/src/routes/query.ts`
- * (`funnelQueryParams.steps`, `meshUvHeatmapQueryParams.mesh`). Promoting it
- * into the registry itself is tracked as a follow-up.
- */
-const REQUIRED_FILTERS: Readonly<Record<string, readonly FilterId[]>> = {
-  funnel: ["steps"],
-  mesh_uv_heatmap: ["mesh"],
 };
 
 /**

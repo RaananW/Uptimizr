@@ -67,6 +67,7 @@ import {
   buildGazeHeatmap,
   buildGazeHeatmapStats,
   clickhouseDialect,
+  compileMetric,
   readDbSettings,
   type CameraDistanceBucketRow,
   type ClickGazeRayRow,
@@ -180,6 +181,12 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
     pruneAudit: (cutoffMs) => chPruneAudit(ch, cutoffMs),
     projectExists: async (projectId) => (await chGetProject(ch, projectId)) !== null,
     insertEvents: (events) => chInsertEvents(ch, [...events]),
+    // Query DSL v1 (ADR 0051 §3): any registry metric, compiled onto its own
+    // aggregation builder and run through the same ClickHouse path — and therefore
+    // the same parity coverage and the same numeric coercion — as the canned
+    // aggregates below.
+    runMetric: (projectId, metric, options) =>
+      runClickhouseQuery<Record<string, unknown>>(ch, compileMetric(metric, projectId, options, d)),
     listSessions: (projectId, opts = {}) =>
       runClickhouseQuery<SessionSummaryRow>(ch, buildListSessions(projectId, opts, d)),
     pointerHeatmap: (projectId, opts = {}) =>

@@ -1,5 +1,6 @@
 import { EVENT_TYPES, SCHEMA_VERSION, type EventType } from "@uptimizr/schema";
 import { z } from "zod";
+import { queryTool } from "@uptimizr/agent-core";
 import {
   FILTER_TARGETS,
   allMetrics,
@@ -103,6 +104,29 @@ export interface CapabilitiesDescriptor {
   notes: readonly string[];
 }
 
+/**
+ * The query DSL's own top-level fields (ADR 0051 §3), for the parameter
+ * glossary. The per-metric tools' parameters are all registry `FilterId`s and
+ * are described by `FILTER_TARGETS`; the `query` tool's are the grammar's, so
+ * they are described here. `limit` and `format` are deliberately absent: they
+ * are filter ids too, and `FILTER_TARGETS` already defines them.
+ */
+const QUERY_DSL_PARAMS: Readonly<Record<string, string>> = {
+  v: "Grammar version. Always `1`.",
+  metric: "The registry metric to compute — any `id` in `metrics` below.",
+  dimensions:
+    "Group-by dimensions. Must be the metric's own grain, or omitted: each metric is computed " +
+    "at one fixed grain.",
+  filters:
+    "The filters the chosen metric declares, as a JSON object (a metric's `filters` list names " +
+    "them). `since`/`until` live in `range` and `format` is a top-level field.",
+  range: "The time window, `{ since, until }` in epoch milliseconds. Required.",
+  segment: "A named slice to hold fixed. Part of the grammar; not answered yet.",
+  compare: "A second range or segment to compare against. Part of the grammar; not answered yet.",
+  order: "Result ordering. Part of the grammar; not answered yet — each metric has its own order.",
+  explain: "Return the compiled plan instead of the rows. Part of the grammar; not answered yet.",
+};
+
 /** Every request parameter a metric accepts: its path params, then its filters. */
 function paramsOf(metric: MetricDefinition): readonly FilterId[] {
   return [...(metric.endpoint?.pathParams ?? []), ...metric.filters];
@@ -152,12 +176,29 @@ export function buildCapabilities(): CapabilitiesDescriptor {
     params: paramsOf(metric),
   }));
 
+  // The one tool that is not per-metric: the query DSL (ADR 0051 §3). It is
+  // described here too, because this descriptor is what an agent reads to learn
+  // the surface — and the DSL tool's own description sends the agent *back*
+  // here for the metric vocabulary, so leaving it out would close the loop on
+  // nothing.
+  tools.push({
+    name: queryTool.name,
+    title: queryTool.title,
+    description: queryTool.description,
+    params: Object.keys(queryTool.inputSchema),
+  });
+
   const usedParams = new Set<FilterId>();
   for (const metric of served) for (const param of paramsOf(metric)) usedParams.add(param);
 
-  const params: CapabilityParamDescriptor[] = [...usedParams]
-    .sort()
-    .map((name) => ({ name, description: FILTER_TARGETS[name].description }));
+  const params: CapabilityParamDescriptor[] = [
+    ...[...usedParams]
+      .sort()
+      .map((name) => ({ name, description: FILTER_TARGETS[name].description })),
+    ...Object.entries(QUERY_DSL_PARAMS)
+      .filter(([name]) => !usedParams.has(name as FilterId))
+      .map(([name, description]) => ({ name, description })),
+  ];
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -176,6 +217,11 @@ export function buildCapabilities(): CapabilitiesDescriptor {
       "`sourceChannels` names the capture channels (ADR 0012) that feed a metric. If a project " +
         "has that channel disabled or sampled down, the metric is empty or proportional rather " +
         "than exact — say so instead of reporting a zero as a finding.",
+      "`query` (the last tool) runs any metric above through the query DSL (ADR 0051 §3): one " +
+        "request naming the `metric`, a required `range`, the filters that metric declares, a " +
+        "`limit` and a `format`. Prefer it when a question needs a filter the per-metric tool " +
+        "does not expose. Its `compare`, `segment`, `order` and `explain` fields are part of the " +
+        "published grammar but are not answered yet — run two queries and subtract instead.",
       "`tools` lists the registry's served read surface and the request parameters of each " +
         "underlying endpoint. It is exactly the set this server registers, because the tool " +
         "catalog is generated from the same registry (ADR 0051 §1) — the authoritative input " +

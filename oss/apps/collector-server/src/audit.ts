@@ -58,7 +58,9 @@ export function registerAuditHooks(
           // The route pattern (`/api/v1/sessions/:id/events`), not the raw URL:
           // it groups cleanly and cannot carry a querystring credential.
           toolOrPath: request.routeOptions.url ?? new URL(request.url, "http://x").pathname,
-          params: serializeAuditParams(request.query),
+          // A route that carries its request in the body (the query DSL) records
+          // it explicitly; everything else is described by its querystring.
+          params: serializeAuditParams(request.auditParams ?? request.query),
           rowCount: request.auditRowCount,
           durationMs,
           status: reply.statusCode,

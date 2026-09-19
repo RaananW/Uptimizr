@@ -218,8 +218,13 @@ describe("GET /api/v1/openapi.json", () => {
     expect(Object.keys(paths)).not.toContain("/api/v1/collect");
     expect(Object.keys(paths)).not.toContain("/api/v1/sessions/{id}/events");
     expect(Object.keys(paths).filter((path) => path.startsWith("/api/v1/live"))).toEqual([]);
-    for (const methods of Object.values(paths)) {
-      expect(Object.keys(methods).filter((method) => method !== "get")).toEqual([]);
+    // The read surface is `GET` everywhere but one place: the query DSL also
+    // accepts `POST /api/v1/query`, because a query is a JSON document rather
+    // than a querystring (ADR 0051 §3). It is still a read — same `query`
+    // capability, same aggregations, nothing written.
+    for (const [path, methods] of Object.entries(paths)) {
+      const nonGet = Object.keys(methods as object).filter((method) => method !== "get");
+      expect(nonGet, path).toEqual(path === "/api/v1/query" ? ["post"] : []);
     }
   });
 });

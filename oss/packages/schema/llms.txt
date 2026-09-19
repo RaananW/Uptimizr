@@ -16,4 +16,6 @@
 - `collectRequestSchema` — the `/api/v1/collect` batch body.
 - Per-event schemas and inferred types (e.g. `CameraSampleEvent`).
 - Config contracts (deliberately **not** events): `sceneProxySchema` (registry geometry),
-  `sceneRegionSchema` / `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`.
+  `sceneRegionSchema` / `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`,
+  `queryV1Schema` (the analytics query DSL, ADR 0051 §3 — shape only; the metric/filter
+  vocabulary is checked by `validateQuery()` in `@uptimizr/metrics`).

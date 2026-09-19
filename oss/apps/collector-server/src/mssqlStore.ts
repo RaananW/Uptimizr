@@ -67,6 +67,7 @@ import {
   buildGazeHeatmap,
   buildGazeHeatmapStats,
   mssqlDialect,
+  compileMetric,
   readDbSettings,
   type CameraDistanceBucketRow,
   type ClickGazeRayRow,
@@ -189,6 +190,12 @@ export async function createMssqlStore(): Promise<CollectorStore> {
     pruneAudit: (cutoffMs) => msPruneAudit(msc, cutoffMs),
     projectExists: async (projectId) => (await msGetProject(msc, projectId)) !== null,
     insertEvents: (events) => msInsertEvents(msc, [...events]),
+    // Query DSL v1 (ADR 0051 §3): any registry metric, compiled onto its own
+    // aggregation builder and run through the same SQL Server path — and therefore
+    // the same parity coverage and the same numeric coercion — as the canned
+    // aggregates below.
+    runMetric: (projectId, metric, options) =>
+      runMssqlQuery<Record<string, unknown>>(msc, compileMetric(metric, projectId, options, d)),
     listSessions: (projectId, opts = {}) =>
       runMssqlQuery<SessionSummaryRow>(msc, buildListSessions(projectId, opts, d)),
     pointerHeatmap: (projectId, opts = {}) =>

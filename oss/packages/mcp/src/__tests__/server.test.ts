@@ -10,7 +10,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CollectorClient, QueryParams } from "@uptimizr/agent-core";
-import { readTools } from "@uptimizr/agent-core";
+import { QUERY_TOOL_NAME, readTools } from "@uptimizr/agent-core";
 import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createMcpServer } from "../server.js";
@@ -71,8 +71,14 @@ describe("tools/list", () => {
       // union of the three envelopes is advertised in its merged object form.
       expect(tool.outputSchema?.type, tool.name).toBe("object");
       const properties = Object.keys(tool.outputSchema?.properties ?? {});
-      expect(properties, tool.name).toContain("rows");
       expect(tool.description).toContain("Caveats:");
+      if (tool.name === "query") {
+        // The query DSL tool is not a registry metric, and its shape is chosen
+        // by its `format`, so it advertises a single `result` key (ADR 0051 §3).
+        expect(properties, tool.name).toEqual(["result"]);
+        continue;
+      }
+      expect(properties, tool.name).toContain("rows");
       const metric = metricOf(tool.name);
       if (metric.filters.includes("format")) {
         // Every envelope the tool can answer with is described (#350).
@@ -270,6 +276,9 @@ function summaryEnvelope(metric: MetricDefinition): unknown {
 describe("result envelopes", () => {
   it("accepts all three formats for every generated tool", async () => {
     for (const tool of readTools) {
+      // The query DSL tool is not a registry metric and wraps every envelope
+      // in its own `{ result }` key (ADR 0051 §3); it has its own test below.
+      if (tool.name === QUERY_TOOL_NAME) continue;
       const metric = metricOf(tool.name);
       const args = { ...(REQUIRED_ARGS[tool.name] ?? {}) };
       const row = nullRow(metric);
@@ -306,6 +315,19 @@ describe("result envelopes", () => {
       );
     }
   }, 120_000);
+
+  it("wraps every envelope the query DSL tool can answer with in `result`", async () => {
+    const metric = metricOf("top_meshes");
+    const row = nullRow(metric);
+    const query = { v: 1, metric: "top_meshes", range: { since: 1, until: 2 } };
+
+    for (const payload of [[row], tableEnvelope(metric, [row]), summaryEnvelope(metric)]) {
+      respond = () => payload;
+      const result = await client.callTool({ name: QUERY_TOOL_NAME, arguments: query });
+      expect(result.isError, JSON.stringify(payload).slice(0, 40)).toBeFalsy();
+      expect(result.structuredContent).toEqual({ result: payload });
+    }
+  }, 30_000);
 
   it("defaults to the table envelope when the caller omits format (#336)", async () => {
     const metric = metricOf("top_meshes");

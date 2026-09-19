@@ -227,6 +227,11 @@ const PARITY_CASE_METRIC: Readonly<Record<string, MetricId>> = {
   interactionsBySource: "interaction_sources",
   funnel: "funnel",
   loadBounceFunnel: "load_bounce_funnel",
+  // The query DSL (ADR 0051 §3) compiles onto the metric's own builder, so a
+  // DSL case exercises exactly that metric's row schema.
+  "dsl:topMeshes": "top_meshes",
+  "dsl:meshSourcesFiltered": "mesh_sources",
+  "dsl:funnel": "funnel",
 };
 
 /**

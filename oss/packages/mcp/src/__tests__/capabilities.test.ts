@@ -19,15 +19,17 @@ describe("buildCapabilities", () => {
     expect(cap.eventTypes).toContain("session_start");
   });
 
-  it("represents every served registry metric exactly once", () => {
-    expect(cap.tools).toHaveLength(served.length);
+  it("represents every served registry metric exactly once, plus the query tool", () => {
+    // One descriptor per served metric, and one more for the query DSL
+    // (ADR 0051 §3) — the only tool that is not a single metric.
+    expect(cap.tools).toHaveLength(served.length + 1);
     const names = cap.tools.map((t) => t.name).sort();
-    expect(names).toEqual(served.map((metric) => metric.id).sort());
+    expect(names).toEqual([...served.map((metric) => metric.id), "query"].sort());
   });
 
   it("matches the shipped tool catalog exactly (sketch §A.4)", () => {
     // `readTools` is now itself generated from the registry (#296), so the
-    // descriptor and the tools the server registers are the same 69 names —
+    // descriptor and the tools the server registers are the same names —
     // no longer merely a superset.
     expect(cap.tools.map((t) => t.name).sort()).toEqual(readTools.map((t) => t.name).sort());
   });

@@ -69,7 +69,7 @@ describe.skipIf(!available)("postgres parity (vs golden, vs duckdb)", () => {
     if (duck) await duck.close();
   });
 
-  it("covers all 68 aggregations", () => {
+  it("covers all 68 aggregations, plus the query DSL", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
@@ -139,6 +139,11 @@ describe.skipIf(!available)("postgres parity (vs golden, vs duckdb)", () => {
       "interactionsBySource",
       "funnel",
       "loadBounceFunnel",
+      // Compiled through the query DSL rather than called directly (ADR 0051 §3):
+      // the delegated compiler's specs must execute here like any other.
+      "dsl:topMeshes",
+      "dsl:meshSourcesFiltered",
+      "dsl:funnel",
     ]);
   });
 

@@ -10,8 +10,14 @@
  * argument states it in `expectedArgs`, which always wins.
  */
 
+import { EVAL_RANGE } from "./fixtures.js";
+
 /** Per-tool arguments merged into a bare call, keyed by tool name. */
 export const REQUIRED_TOOL_ARGS: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+  // The query DSL tool (ADR 0051 §3) takes the whole request as its arguments,
+  // so "a bare call" has to name a metric and a window. A case that cares —
+  // and every `query` case does — states its own document in `expectedArgs`.
+  query: { v: 1, metric: "top_meshes", range: EVAL_RANGE },
   funnel: {
     steps: JSON.stringify([{ type: "session_start" }, { type: "mesh_interaction" }]),
   },

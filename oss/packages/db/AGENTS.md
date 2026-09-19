@@ -205,6 +205,33 @@ per-axis early exit; `spatialLabels.test.ts` holds the largest shape under 50 ms
   feature invisible to the dashboard. The generated agent tools apply their own `table` default
   and send it explicitly (`DEFAULT_TOOL_FORMAT` in `@uptimizr/agent-core`).
 
+## Query DSL, delegated tier (ADR 0051 §3)
+
+`compileQuery(projectId, query, dialect)` turns a validated `queryV1` document (the Zod grammar in
+`@uptimizr/schema`, the registry validation in `@uptimizr/metrics`) into an ordinary `QuerySpec`, by
+way of the metric's **existing** builder: the registry names the `build*`, `FILTER_TARGETS` names the
+option field each filter drives, and the builder renders what it has always rendered.
+
+```ts
+import { compileMetric, compileQuery, toBuilderOptions } from "@uptimizr/db";
+
+// A store's whole DSL implementation:
+runMetric: (projectId, metric, options) =>
+  runDuckdbQuery(db, compileMetric(metric, projectId, options, duckdbDialect));
+```
+
+- **No second SQL path.** The spec a DSL query compiles to is byte-identical to the one the canned
+  endpoint runs — `src/__tests__/queryDsl.test.ts` asserts that for every aggregation on all four
+  dialects, and `PARITY_CASES` carries `dsl:*` cases that execute compiled specs against the same
+  golden. Everything parity already proves about a builder holds for the DSL.
+- **It does not validate.** By the time a query reaches `compileQuery` it has passed
+  `queryV1Schema` and `validateQuery`. The two `throw`s are guards against a caller skipping that.
+- **Two values must be resolved first**, by whoever has a store: a `filters.region` given as a
+  registered region id (→ its bounds) and a spatial `cellSize` derived from the scene's extent. Pass
+  them as the `QueryResolution` argument.
+- v1 is **delegated only**: `dimensions` must be the metric's native grain, and `compare`,
+  `segment`, `order`, `explain`, `filters.event` and `filters.device` are rejected upstream.
+
 ## Cross-engine parity (ADR 0020)
 
 The dialect-agnostic aggregations (`buildX(projectId, opts, dialect)`) are rendered per engine

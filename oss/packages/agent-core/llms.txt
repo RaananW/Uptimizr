@@ -33,6 +33,16 @@
 
 <!-- generated:registry-tool-names:end -->
 
+## The `query` tool (the query DSL)
+
+`query` is the one tool that is not per-metric (ADR 0051 §3): its input is the query DSL, so it runs
+any metric above with any filter that metric declares —
+`{ "v": 1, "metric": "mesh_sources", "range": { "since": …, "until": … }, "filters": { "scene": "lobby" }, "format": "summary" }`.
+`range` is required, `format` defaults to `table`, and a metric/dimension/filter outside the
+registry's vocabulary returns a `400` whose `issues[].accepted` names what would have worked.
+`compare`, `segment`, `order`, `explain`, `filters.event` and `filters.device` parse but are not
+answered yet. It travels as `GET /api/v1/query?q=<url-encoded JSON>`.
+
 ## Result formats (`format`)
 
 Every aggregate tool declares a `format` argument — the envelope its rows arrive in, not a filter

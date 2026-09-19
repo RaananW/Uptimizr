@@ -35,7 +35,7 @@ describe("duckdb parity (vs golden)", () => {
     await db.close();
   });
 
-  it("covers all 68 aggregations", () => {
+  it("covers all 68 aggregations, plus the query DSL", () => {
     expect(PARITY_CASES.map((c) => c.name)).toEqual([
       "listSessions",
       "pointerHeatmap",
@@ -105,6 +105,10 @@ describe("duckdb parity (vs golden)", () => {
       "interactionsBySource",
       "funnel",
       "loadBounceFunnel",
+      // Compiled through the query DSL rather than called directly (ADR 0051 §3).
+      "dsl:topMeshes",
+      "dsl:meshSourcesFiltered",
+      "dsl:funnel",
     ]);
   });
 

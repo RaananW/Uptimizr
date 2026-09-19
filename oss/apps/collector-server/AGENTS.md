@@ -100,7 +100,38 @@ Ingestion keeps its separate `COLLECTOR_INGEST_RATE_LIMIT_*` budget.
 - The read API: sessions, heatmaps (`pointer`, `camera`, `position`, `world`, `gaze`, `mesh-uv`,
   `click-rays`, `flow`, `perf`, `errors`), mesh/interaction insights, performance and diagnostics,
   scene/path/funnel analytics, scene representations and regions, and the live SSE endpoints.
+- **`POST /api/v1/query`** (and `GET /api/v1/query?q=<url-encoded JSON>`) — **the query DSL**
+  (ADR 0051 §3): one endpoint that runs any registry metric. See below.
 - `GET /health` — liveness probe, unauthenticated.
+
+### The query DSL: `POST /api/v1/query` (ADR 0051 §3)
+
+One endpoint for every metric. Name the `metric`, bound it with a `range`, narrow it with the
+filters that metric declares, cap it, pick the envelope:
+
+```jsonc
+{
+  "v": 1,
+  "metric": "mesh_sources",
+  "range": { "since": 1757000000000, "until": 1757600000000 },
+  "filters": { "scene": "lobby", "cameraMode": "first-person" },
+  "limit": 20,
+  "format": "summary",
+}
+```
+
+`GET /api/v1/query?q=<url-encoded JSON>` takes the same document (8 KiB cap) for GET-only clients.
+Both are reads: same `query` capability, same audit trail, same aggregations.
+
+- The grammar is **closed** — no SQL, no expression language, typed filters, bounded output,
+  unknown keys rejected. `range` is required; `format` defaults to `table` here, not `full`.
+- A metric, dimension or filter outside the registry's vocabulary is a `400` listing **every**
+  objection, each with a stable `code`, the offending `path` and (for a closed list) `accepted`.
+  Read `accepted` instead of guessing again.
+- `dimensions` must be the metric's own grain, or be omitted: each metric is computed at one grain.
+- `compare`, `segment`, `order`, `explain`, `filters.event` and `filters.device` are part of the
+  published grammar but answer `400 … not supported yet`. Compare two windows by running two
+  queries; drill in by re-running the same query with one more filter.
 
 ### Result envelopes: `format=full | table | summary` (ADR 0051 §2)
 

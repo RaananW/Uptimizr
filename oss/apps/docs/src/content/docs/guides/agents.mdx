@@ -9,27 +9,27 @@ Uptimizr treats an **agent as a first-class consumer of the data**, alongside th
 ([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md)).
 That is a concrete claim, not a slogan: every read the collector serves is declared once in a
 semantic registry, and the tool catalog, the OpenAPI document, the capability descriptor and the
-docs tables are all *generated* from it — so an agent sees the whole read surface, with units and
+docs tables are all _generated_ from it — so an agent sees the whole read surface, with units and
 caveats attached, and it cannot drift from what the collector actually computes.
 
 This page is the map. Each section links to the reference for that piece.
 
 <CardGrid>
-	<Card title="Read the catalog" icon="open-book">
-		Start at `uptimizr://capabilities` or `/api/v1/openapi.json` — both list every metric with its
-		grain, units and caveats.
-	</Card>
-	<Card title="Connect" icon="puzzle">
-		Run [`@uptimizr/mcp`](/docs/guides/mcp/) over stdio, or embed the
-		[in-browser assistant](/docs/guides/assistant/).
-	</Card>
-	<Card title="Ask for `format=summary`" icon="seti:json">
-		Bounded digests with shares, caveats and a templated reading — not a thousand raw rows. Tools
-		default to the `table` envelope.
-	</Card>
-	<Card title="Scope the key" icon="approve-check">
-		A labelled `query`-only key, its own rate budget, and every request in the audit log.
-	</Card>
+  <Card title="Read the catalog" icon="open-book">
+    Start at `uptimizr://capabilities` or `/api/v1/openapi.json` — both list every metric with its
+    grain, units and caveats.
+  </Card>
+  <Card title="Connect" icon="puzzle">
+    Run [`@uptimizr/mcp`](/docs/guides/mcp/) over stdio, or embed the [in-browser
+    assistant](/docs/guides/assistant/).
+  </Card>
+  <Card title="Ask for `format=summary`" icon="seti:json">
+    Bounded digests with shares, caveats and a templated reading — not a thousand raw rows. Tools
+    default to the `table` envelope.
+  </Card>
+  <Card title="Scope the key" icon="approve-check">
+    A labelled `query`-only key, its own rate budget, and every request in the audit log.
+  </Card>
 </CardGrid>
 
 ## 1. The semantic metric registry
@@ -38,17 +38,17 @@ This page is the map. Each section links to the reference for that piece.
 holding **71 metric definitions**, 69 of which the collector serves on a read endpoint. Each one
 declares, as data:
 
-| Field                    | What it gives an agent                                                                                                                |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `grain`                  | What **one row is** — a project, a scene, a session, a mesh, a bin, a voxel, a time bucket.                                            |
-| `columns`                | Per-column description and **unit** (`ms`, `fps`, `count`, `ratio`, `world-units`, …), plus which column is the measure and which names the row. |
-| `row`                    | The **JSON Schema** of a result row, so a client with no Zod can validate or shape it.                                                 |
-| `filters` / `dimensions` | The parameters it accepts and the dimensions its rows are keyed by.                                                                    |
-| `limits`                 | `maxRows` and `maxSummaryRows` — nothing can ask for an unbounded payload.                                                             |
-| `interpretation`         | How to read the result: what a high or low value actually means.                                                                       |
-| `caveats`                | Minimum sample size, sampling-rate sensitivity, which capture channel must be on. **Read these before quoting a number.**              |
+| Field                    | What it gives an agent                                                                                                                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `grain`                  | What **one row is** — a project, a scene, a session, a mesh, a bin, a voxel, a time bucket.                                                                                                                     |
+| `columns`                | Per-column description and **unit** (`ms`, `fps`, `count`, `ratio`, `world-units`, …), plus which column is the measure and which names the row.                                                                |
+| `row`                    | The **JSON Schema** of a result row, so a client with no Zod can validate or shape it.                                                                                                                          |
+| `filters` / `dimensions` | The parameters it accepts and the dimensions its rows are keyed by.                                                                                                                                             |
+| `limits`                 | `maxRows` and `maxSummaryRows` — nothing can ask for an unbounded payload.                                                                                                                                      |
+| `interpretation`         | How to read the result: what a high or low value actually means.                                                                                                                                                |
+| `caveats`                | Minimum sample size, sampling-rate sensitivity, which capture channel must be on. **Read these before quoting a number.**                                                                                       |
 | `sourceChannels`         | The capture channels ([ADR 0012](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0012-sampling-and-fidelity.md)) that feed it — if a channel is off, the metric is empty **by design**, not by accident. |
-| `related` / `comparable` | Metrics worth reading alongside it, and which column's change is "the" change.                                                         |
+| `related` / `comparable` | Metrics worth reading alongside it, and which column's change is "the" change.                                                                                                                                  |
 
 Units and caveats are the part that makes an answer trustworthy. "Average FPS is 48" means something
 different when the metric's caveat says the sample is under 30 events, or when its source channel was
@@ -130,10 +130,10 @@ Every aggregate endpoint — and every generated aggregate tool — accepts
 HTTP endpoint defaults to `full` (what the dashboard uses); the generated **tools** default to
 `table`, which they send explicitly.
 
-| `format`  | What comes back                                                                                                                               |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `full`    | The bare rows, unchanged. The HTTP endpoint default (what the dashboard uses).                                                                |
-| `table`   | `{ meta, rows }` — the rows plus the metric, range, applied filters, sample size, row count, a truncation flag and the registry's limits. **The tools' default.** |
+| `format`  | What comes back                                                                                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `full`    | The bare rows, unchanged. The HTTP endpoint default (what the dashboard uses).                                                                                                              |
+| `table`   | `{ meta, rows }` — the rows plus the metric, range, applied filters, sample size, row count, a truncation flag and the registry's limits. **The tools' default.**                           |
 | `summary` | A bounded digest: `ranked` top rows, a `series` trend, merged spatial `clusters` or a single `record`, with shares, a sample size, the metric's caveats and a templated `reading` sentence. |
 
 `summary` is capped at the metric's `maxSummaryRows`, so a 500-bin heatmap costs the same as a 5-bin
@@ -146,7 +146,57 @@ A tool that is asked for no `format` asks the collector for `table`, so a model 
 `meta` context with its rows; `summary` is still the one to ask for when the result could be big,
 and all three validate against the tool's advertised output schema.
 
-## 5. Give answers a vocabulary for *where*
+## 5. One query, any metric — the query DSL
+
+Seventy tools is a lot of surface for a model to hold, and the canned tool for a metric exposes only
+the filters that metric's endpoint happens to take. The **query DSL** collapses that into one call:
+name the `metric`, bound it with a `range`, narrow it with the filters that metric declares, cap it,
+and pick the envelope.
+
+```jsonc
+// POST /api/v1/query   — or the `query` tool, whose input is this document
+{
+  "v": 1,
+  "metric": "mesh_sources",
+  "range": { "since": 1757000000000, "until": 1757600000000 },
+  "filters": { "scene": "lobby", "cameraMode": "first-person" },
+  "limit": 20,
+  "format": "summary",
+}
+```
+
+The grammar is **closed**: no SQL, no expression language, no free-form value. Metrics, dimensions
+and filters are exactly the registry's vocabulary — the one an agent already reads from
+`uptimizr://capabilities` — and a query naming something outside it comes back as a `400` that says
+what _would_ have worked, with the accepted values as data:
+
+```jsonc
+{
+  "code": "unsupported_filter",
+  "path": "filters.scene",
+  "message": "\"top_meshes\" does not accept the filter \"scene\". It accepts `session`, `bins`, `limit`.",
+  "accepted": ["session", "bins", "limit"],
+}
+```
+
+That is the property worth designing for: a wrong guess is a correction, never an empty result the
+agent would report as "no interactions".
+
+The per-metric tools stay — they are excellent for discovery, and a small local model does better
+with a narrow, obvious tool than with a schema it has to compose. Reach for `query` when a question
+needs a filter the canned tool does not expose, or when `format: "table"` (the DSL's default, unlike
+the canned endpoints') is what you want anyway.
+
+:::note[What v1 answers]
+A query runs the metric's _existing_ aggregation, so every metric is reachable at exactly the power
+of its own endpoint. `dimensions` must be the metric's grain, or be omitted. `compare`, `segment`,
+`order`, `explain`, `filters.event` and `filters.device` are part of the published grammar and are
+answered with `400 … not supported yet` — compare two windows by running two queries, and drill in by
+re-running the same query with one more filter. Full reference:
+[query DSL](/docs/api/query/#one-query-endpoint-the-query-dsl).
+:::
+
+## 6. Give answers a vocabulary for _where_
 
 3D analytics answers are spatial, and "the hot cell is at voxel (12, 0, −7)" is not an answer a
 person can act on. **Scene regions** are named, labelled boxes — "the entrance", "the checkout
@@ -170,7 +220,7 @@ is the region **id**, so the obvious follow-up is a single parameter. Nothing re
 `null` plus a caveat naming what is missing, never a guess. See
 [labelled spatial clusters](/docs/api/query/#labelled-spatial-clusters).
 
-## 6. Scope the key, then read the audit log
+## 7. Scope the key, then read the audit log
 
 Give an agent its own key rather than the dashboard's:
 
@@ -183,7 +233,7 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 - A key carries a **capability set** — `query`, `query:raw`, `annotate`, `ingest` — and a key that
   is authenticated but lacks the capability a route needs is refused with `403`.
 - `query` alone is enough for every aggregate read, and for the MCP server. **`query:raw` is
-  deliberately separate**: raw per-session streams (replay, live-follow) need it *and*
+  deliberately separate**: raw per-session streams (replay, live-follow) need it _and_
   `ENABLE_RAW_SESSION_RETENTION` on the collector.
 - `--rate-limit-*` gives the key its own budget, bucketed on the key id, so one busy agent cannot
   spend another's allowance.
@@ -196,11 +246,11 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 
 Full reference: [API keys and capabilities](/docs/api/overview/#api-keys-and-capabilities).
 
-## 7. How the catalog is kept honest
+## 8. How the catalog is kept honest
 
 "AI-first" is a claim until something measures it. The repository carries an **evaluation harness**
 (`oss/packages/agent-eval`, private to the repo — it is an instrument, not a shipped package): a bank
-of **48** real analytics questions, asked of an agent through the *real* collector over a
+of **48** real analytics questions, asked of an agent through the _real_ collector over a
 deterministic fixture set, and scored on **tool selection**, **argument correctness** and **answer
 accuracy**.
 
@@ -216,16 +266,16 @@ CI gates the deterministic run on every change to the catalog.
 The AI-first layer ships in stages; these are the tracked follow-ups, linked so you can see what is
 real today versus planned. Nothing below is available yet.
 
-| Stage | Issue                                                              | What it adds                                                                    |
-| ----- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| 2     | [#303](https://github.com/RaananW/Uptimizr/issues/303)             | A bounded **query DSL** (`/api/v1/query`) and a single composable query tool.   |
-| 2     | [#305](https://github.com/RaananW/Uptimizr/issues/305)             | Insight primitives: baselines and movers.                                       |
-| 2     | [#306](https://github.com/RaananW/Uptimizr/issues/306)             | Insight primitive: anomalies (robust z + CUSUM change-points).                  |
-| 2     | [#307](https://github.com/RaananW/Uptimizr/issues/307)             | Insight primitives: significance and `scene_health`.                            |
-| 2     | [#308](https://github.com/RaananW/Uptimizr/issues/308)             | A project **context** resource and custom-event vocabulary.                     |
-| 3     | [#311](https://github.com/RaananW/Uptimizr/issues/311)             | Conditional subscriptions, an SSE stream and signed webhooks.                   |
-| 3     | [#313](https://github.com/RaananW/Uptimizr/issues/313)             | Collector-hosted MCP over Streamable HTTP.                                      |
-| 3     | [#315](https://github.com/RaananW/Uptimizr/issues/315)             | Declarative **panel specs** and "pin as panel".                                 |
-| 3     | [#316](https://github.com/RaananW/Uptimizr/issues/316)             | Packaged methodology **skills**, exposed as MCP prompts.                         |
+| Stage | Issue                                                  | What it adds                                                                  |
+| ----- | ------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| 2     | [#303](https://github.com/RaananW/Uptimizr/issues/303) | A bounded **query DSL** (`/api/v1/query`) and a single composable query tool. |
+| 2     | [#305](https://github.com/RaananW/Uptimizr/issues/305) | Insight primitives: baselines and movers.                                     |
+| 2     | [#306](https://github.com/RaananW/Uptimizr/issues/306) | Insight primitive: anomalies (robust z + CUSUM change-points).                |
+| 2     | [#307](https://github.com/RaananW/Uptimizr/issues/307) | Insight primitives: significance and `scene_health`.                          |
+| 2     | [#308](https://github.com/RaananW/Uptimizr/issues/308) | A project **context** resource and custom-event vocabulary.                   |
+| 3     | [#311](https://github.com/RaananW/Uptimizr/issues/311) | Conditional subscriptions, an SSE stream and signed webhooks.                 |
+| 3     | [#313](https://github.com/RaananW/Uptimizr/issues/313) | Collector-hosted MCP over Streamable HTTP.                                    |
+| 3     | [#315](https://github.com/RaananW/Uptimizr/issues/315) | Declarative **panel specs** and "pin as panel".                               |
+| 3     | [#316](https://github.com/RaananW/Uptimizr/issues/316) | Packaged methodology **skills**, exposed as MCP prompts.                      |
 
 The epic is [#294](https://github.com/RaananW/Uptimizr/issues/294).

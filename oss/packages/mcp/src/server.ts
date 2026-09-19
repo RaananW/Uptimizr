@@ -1,6 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { z } from "zod";
-import { readTools, type CollectorClient } from "@uptimizr/agent-core";
+import { readTools, type CollectorClient, type ReadTool } from "@uptimizr/agent-core";
 import { registerResources } from "./resources.js";
 import { registerPrompts } from "./prompts.js";
 import { version } from "./version.js";
@@ -58,13 +57,14 @@ function isEnvelope(data: unknown, format: unknown): data is Record<string, unkn
  * SDK's own output validation then reports the offending column by name, which
  * is the honest outcome for a collector that is out of contract.
  */
-function structuredResult(
-  outputSchema: z.ZodType,
-  data: unknown,
-  format: unknown,
-): Record<string, unknown> {
-  const payload = isEnvelope(data, format) ? data : { rows: toRows(data) };
-  const parsed = outputSchema.safeParse(payload);
+function structuredResult(tool: ReadTool, data: unknown, format: unknown): Record<string, unknown> {
+  // A generated per-metric tool returns one metric's rows, so the `format`
+  // envelope above is the default. The `query` tool (ADR 0051 §3) chooses its
+  // own shape — what comes back depends on the `format` that was asked for —
+  // so it supplies the wrapper itself.
+  const payload =
+    tool.structuredContent?.(data) ?? (isEnvelope(data, format) ? data : { rows: toRows(data) });
+  const parsed = tool.outputSchema!.safeParse(payload);
   return parsed.success ? (parsed.data as Record<string, unknown>) : payload;
 }
 
@@ -106,7 +106,7 @@ export function createMcpServer(client: CollectorClient): McpServer {
           if (!tool.outputSchema) return { content: [{ type: "text", text }] };
           return {
             content: [{ type: "text", text }],
-            structuredContent: structuredResult(tool.outputSchema, data, params.format),
+            structuredContent: structuredResult(tool, data, params.format),
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);

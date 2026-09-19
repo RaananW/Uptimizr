@@ -1,0 +1,87 @@
+# The query DSL (ADR 0051 §3): one tool, the whole metric vocabulary.
+#
+# These cases exercise the `query` tool rather than a per-metric one — a
+# breakdown, a filtered slice, a summary envelope, the `table` envelope's `meta`
+# block, and a mistyped metric that must be reported rather than papered over.
+# Every number below is derived from a real run against the seeded fixtures.
+
+- id: query_mesh_breakdown
+  category: interaction
+  question: Using the query tool, which meshes drew the most attention, and how much?
+  expectedTools:
+    - [query]
+  expectedArgs:
+    query:
+      metric: top_meshes
+      limit: 5
+  expectedAnswer:
+    numbers:
+      - { value: 4, label: events on the busiest mesh }
+      - { value: 3, label: events on the runner-up }
+    phrases: ["statue", "door"]
+    forbiddenPhrases: ["no data", "I don't have"]
+
+- id: query_filtered_scene
+  category: interaction
+  question: Using the query tool, which meshes were interacted with in the lobby scene, and with what input?
+  expectedTools:
+    - [query]
+  expectedArgs:
+    query:
+      metric: mesh_sources
+      filters: { scene: lobby }
+      format: full
+  expectedAnswer:
+    numbers:
+      - { value: 3, label: touch interactions on the door in the lobby }
+    phrases: ["door", "touch"]
+    forbiddenPhrases: ["no data", "arena"]
+
+- id: query_perf_digest
+  category: performance
+  question: Using the query tool, give me a summary of rendering performance — I want the digest, not the raw rows.
+  expectedTools:
+    - [query]
+  expectedArgs:
+    query:
+      metric: perf_summary
+      format: summary
+  expectedAnswer:
+    numbers:
+      - { value: 42.2, tolerance: 0.05, label: average FPS }
+      - { value: 24, label: worst sampled FPS }
+    phrases: ["avg fps", "caveats"]
+    forbiddenPhrases: ["I don't have"]
+
+- id: query_table_envelope
+  category: performance
+  question: Using the query tool, how does frame rate compare across scenes, and how much data is behind the answer?
+  expectedTools:
+    - [query]
+  expectedArgs:
+    query:
+      metric: perf_by_scene
+      format: table
+  expectedAnswer:
+    numbers:
+      - { value: 38, label: p50 FPS in the gallery }
+      - { value: 45, label: p50 FPS in the lobby }
+    # `meta` is what makes the table envelope worth defaulting to: the answer
+    # carries the sample size and whether the result was truncated.
+    phrases: ["gallery", "lobby", "samplesize", "truncated"]
+    forbiddenPhrases: ["no data"]
+
+- id: query_unknown_metric
+  category: sessions
+  question: Using the query tool, run the metric "top_mehses" and tell me exactly what the collector says.
+  expectedTools:
+    - [query]
+  expectedArgs:
+    query:
+      metric: top_mehses
+  expectedAnswer:
+    # A mistyped metric must come back as a refusal that names where the
+    # vocabulary lives — never as an empty result the agent would report as
+    # "no interactions", and never as invented mesh names.
+    phrases: ["unknown metric", "top_mehses", "capabilities"]
+    forbiddenPhrases: ["statue", "door", "floor"]

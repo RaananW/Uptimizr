@@ -18,6 +18,7 @@ import { collectRoutes } from "./routes/collect.js";
 import { liveRoutes } from "./routes/live.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
 import { queryRoutes } from "./routes/query.js";
+import { queryDslRoutes } from "./routes/query-dsl.js";
 
 export interface BuildAppDeps {
   store: CollectorStore;
@@ -107,6 +108,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   // rate-limit plugin installs, so registration order here is load-bearing.
   app.decorateRequest("resolvedKey", null);
   app.decorateRequest("auditRowCount", null);
+  app.decorateRequest("auditParams", null);
   app.addHook("onRequest", async (request) => {
     await attachApiKey(request, store);
   });
@@ -141,6 +143,8 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(collectRoutes, { store, config, liveBus });
   await app.register(liveRoutes, { store, config, liveBus });
   await app.register(queryRoutes, { store, config });
+  // The query DSL (ADR 0051 §3): one route that can run any registry metric.
+  await app.register(queryDslRoutes, { store });
   await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API

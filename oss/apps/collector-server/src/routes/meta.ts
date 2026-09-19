@@ -30,7 +30,7 @@
 
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { SCHEMA_VERSION } from "@uptimizr/schema";
+import { SCHEMA_VERSION, queryV1Schema } from "@uptimizr/schema";
 import {
   FILTER_TARGETS,
   allMetrics,
@@ -296,6 +296,74 @@ function operationFor(metric: MetricDefinition, route: RouteSchemaEntry | undefi
   };
 }
 
+/**
+ * The **query DSL** operations (ADR 0051 §3). Unlike the paths above, these are
+ * not generated from a registry entry — one route serves every metric — so the
+ * operation is described here and its request body is the `queryV1` Zod schema
+ * converted to JSON Schema, which is the same schema that validates the request.
+ *
+ * The response is deliberately loose: the row shape is the metric's, and the
+ * document already describes every metric's row under `components.schemas`.
+ */
+function queryDslPath(): Record<string, unknown> {
+  const body = toJsonSchema(queryV1Schema, "input");
+  body.title = "Analytics query (v1)";
+  const description =
+    "Run **any** registry metric in one validated request: pick the `metric`, bound it with a " +
+    "`range`, narrow it with the filters that metric declares, cap it with `limit`, and choose " +
+    "the result envelope with `format` (`table` by default).\n\n" +
+    "The grammar is **closed**: there is no raw SQL and no free-form expression, and the metric, " +
+    "dimension and filter vocabularies are exactly this document's. A metric that does not accept " +
+    "a filter, a dimension it is not keyed by, or a `limit` above its cap is a `400` naming what " +
+    "it does accept.\n\n" +
+    "**v1 is the delegated tier**: a query runs the metric's existing aggregation, so it is " +
+    "reachable at exactly the power of its canned endpoint. `compare`, `segment`, `order`, " +
+    "`explain`, `filters.event` and `filters.device` are part of the published grammar and are " +
+    "answered with `400 … not supported yet` until the generic group-by tier lands.";
+
+  const responses = {
+    "200": {
+      description:
+        "The metric's rows (`format=full`), the rows plus a `meta` envelope (`table`), or a " +
+        "bounded digest (`summary`).",
+      content: { "application/json": { schema: { type: "object" } } },
+    },
+    ...AUTHENTICATED_ERRORS,
+  };
+
+  return {
+    "/api/v1/query": {
+      post: {
+        operationId: "query",
+        summary: "Run an analytics query",
+        description,
+        tags: ["meta"],
+        requestBody: { required: true, content: { "application/json": { schema: body } } },
+        responses,
+      },
+      get: {
+        operationId: "query_get",
+        summary: "Run an analytics query (GET form)",
+        description:
+          "The same query as `POST /api/v1/query`, URL-encoded into a single `q` parameter, for " +
+          "GET-only clients.\n\n" +
+          description,
+        tags: ["meta"],
+        parameters: [
+          {
+            name: "q",
+            in: "query",
+            required: true,
+            description: "The query document, JSON-encoded and URL-encoded (at most 8 KiB).",
+            schema: { type: "string", minLength: 1, maxLength: 8192 },
+          },
+        ],
+        responses,
+      },
+    },
+  };
+}
+
 /** The handful of non-metric routes that are trivial and honest to describe. */
 function staticPaths(): Record<string, unknown> {
   return {
@@ -436,10 +504,10 @@ export function buildOpenApiDocument(
   const metrics = allMetrics();
   const served = metrics.filter((metric) => metric.endpoint != null);
 
-  const paths: Record<string, Record<string, unknown>> = staticPaths() as Record<
-    string,
-    Record<string, unknown>
-  >;
+  const paths: Record<string, Record<string, unknown>> = {
+    ...staticPaths(),
+    ...queryDslPath(),
+  } as Record<string, Record<string, unknown>>;
   for (const metric of served) {
     const path = toOpenApiPath(metric.endpoint!.path);
     paths[path] ??= {};
