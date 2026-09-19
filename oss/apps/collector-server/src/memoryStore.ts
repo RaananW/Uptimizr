@@ -346,7 +346,11 @@ export function createMemoryStore({
         .map(([bucket, v]) => ({
           bucket,
           events: v.events,
-          avg_fps: v.fpsCount > 0 ? v.fpsSum / v.fpsCount : 0,
+          // `null`, not `0`: a bucket can carry traffic and no `frame_perf`
+          // sample at all, and an average over nothing is absent. The SQL
+          // stores report SQL-NULL here and the registry declares the column
+          // `numOrNull` — this store must not be the odd one out.
+          avg_fps: v.fpsCount > 0 ? v.fpsSum / v.fpsCount : null,
         }))
         .sort((a, b) => a.bucket - b.bucket);
     },

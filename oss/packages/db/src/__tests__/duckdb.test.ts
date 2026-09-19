@@ -1270,6 +1270,41 @@ describe("duckdb store", () => {
     expect(byType.pointer_click).toBe(1);
   });
 
+  // A minute with traffic and no `frame_perf` sample: `avg ... FILTER` is
+  // SQL-NULL over an empty set, and the registry declares `avg_fps` nullable
+  // because of it. Reporting `0` would be a claim about perf that no sample
+  // supports; reporting a number the schema then rejects is how the collector
+  // came to 500 the whole event-volume panel.
+  it("reports a null avg_fps for a bucket with no frame_perf samples", async () => {
+    const later = T0 + 5 * 60_000;
+    await insertEvents(db, [
+      ...EVENTS.filter((e) => e.ts <= T0 + 60_000),
+      base("pointer_click", later, { mesh: "box" }),
+      base("pointer_click", later + 1_000, { mesh: "box" }),
+    ]);
+
+    const series = await runDuckdbQuery<{
+      bucket: number;
+      events: number;
+      avg_fps: number | null;
+    }>(
+      db,
+      buildTimeseries(
+        PID,
+        { since: T0 - 60_000, until: later + 60_000, interval: 60 },
+        duckdbDialect,
+      ),
+    );
+
+    const perfLess = series.find((row) => Number(row.bucket) === later);
+    expect(perfLess).toBeDefined();
+    expect(Number(perfLess!.events)).toBe(2);
+    expect(perfLess!.avg_fps).toBeNull();
+
+    const sampled = series.find((row) => Number(row.bucket) === T0);
+    expect(sampled?.avg_fps).not.toBeNull();
+  });
+
   it("returns a replay-complete session timeline (read + stream)", async () => {
     await insertEvents(db, EVENTS);
     const timeline = await getSessionEvents(db, PID, "s1");

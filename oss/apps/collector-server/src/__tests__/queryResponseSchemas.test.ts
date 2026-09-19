@@ -31,6 +31,7 @@ import {
   metricCapability,
   type MetricDefinition,
 } from "@uptimizr/metrics";
+import type { AnyEvent } from "@uptimizr/schema";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { createDuckdbStore } from "../duckdbStore.js";
@@ -237,6 +238,112 @@ describe.each(SCENARIOS)("query response schemas — $label", (scenario) => {
       if (isDerivedMetric(metric)) expectDeclaredColumns(metric, body);
       else expectNothingStripped(metric.id, sink.last, body);
       expectNumbersOnTheWire(metric, body);
+    });
+  }
+});
+
+/**
+ * Regression for the event-volume panel's 500 (#367 fallout): a bucket that
+ * holds traffic but **no** `frame_perf` sample.
+ *
+ * The sweep above seeds every fixture event into a single 60 s bucket, so
+ * `timeseries.avg_fps` was only ever exercised with samples in it. On a real
+ * collector most minutes have events and no perf telemetry, so `avg` is
+ * SQL-NULL there — and the registry declared the column non-nullable, which
+ * made the Zod serialiser reject the row with a 500. The dashboard's
+ * event-volume panel then rendered "Could not load" instead of its bars, and
+ * with it went the annotation markers on the time axis.
+ *
+ * Both stores are checked: the SQL one, whose NULL comes from the engine, and
+ * the in-memory one, which builds the row in JavaScript and used to 0-fill it.
+ */
+describe("timeseries: a bucket with events but no perf samples", () => {
+  const PROJECT_ID = "no-perf-bucket-project";
+  const T0 = Date.UTC(2024, 5, 16, 10, 0, 0);
+  /** Five minutes later — its own 60 s bucket, and nothing perf-ish in it. */
+  const LATER = T0 + 5 * 60_000;
+
+  function ev(type: string, ts: number, extra: Record<string, unknown> = {}): AnyEvent {
+    return {
+      type,
+      projectId: PROJECT_ID,
+      sessionId: "s1",
+      ts,
+      sdkVersion: "0.1.0",
+      sceneId: "lobby",
+      ...extra,
+    } as AnyEvent;
+  }
+
+  const EVENTS: AnyEvent[] = [
+    ev("session_start", T0),
+    ev("frame_perf", T0 + 1_000, { fps: 60, frameMs: 16.7 }),
+    // The bucket that broke it: clicks, no `frame_perf`.
+    ev("pointer_click", LATER, { mesh: "box" }),
+    ev("pointer_click", LATER + 1_000, { mesh: "box" }),
+  ];
+
+  const url = `/api/v1/timeseries?since=${T0 - 60_000}&until=${LATER + 60_000}&interval=60`;
+
+  const stores: readonly { label: string; make: () => Promise<CollectorStore> }[] = [
+    {
+      label: "duckdb store",
+      make: async () => {
+        const store = await createDuckdbStore(":memory:");
+        await store.insertEvents(EVENTS);
+        return store;
+      },
+    },
+    {
+      label: "in-memory store",
+      make: async () => {
+        const store = createMemoryStore({ projectId: PROJECT_ID, apiKey: API_KEY });
+        await store.insertEvents(EVENTS);
+        return store;
+      },
+    },
+  ];
+
+  for (const { label, make } of stores) {
+    it(`serialises the perf-less bucket as null rather than 500ing (${label})`, async () => {
+      const base = await make();
+      const store: CollectorStore = {
+        ...base,
+        resolveApiKey: async (key) =>
+          key === API_KEY
+            ? {
+                projectId: PROJECT_ID,
+                keyId: "no-perf-bucket-key-id",
+                capabilities: ["query"],
+                label: null,
+                rateLimit: null,
+              }
+            : null,
+      };
+      const app = await buildApp({ store, config });
+      try {
+        const response = await app.inject({
+          method: "GET",
+          url,
+          headers: { "x-api-key": API_KEY },
+        });
+        expect(response.statusCode, response.body.slice(0, 500)).toBe(200);
+
+        const rows = response.json() as {
+          bucket: number;
+          events: number;
+          avg_fps: number | null;
+        }[];
+        const withPerf = rows.find((row) => row.bucket === T0);
+        const withoutPerf = rows.find((row) => row.bucket === LATER);
+        expect(withPerf?.avg_fps).toBe(60);
+        // Absent, not zero: nothing in this minute reported an FPS at all.
+        expect(withoutPerf).toBeDefined();
+        expect(withoutPerf!.events).toBe(2);
+        expect(withoutPerf!.avg_fps).toBeNull();
+      } finally {
+        await app.close();
+      }
     });
   }
 });
