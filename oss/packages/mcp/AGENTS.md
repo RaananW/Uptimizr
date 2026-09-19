@@ -97,6 +97,12 @@ Every **aggregate** tool takes a `format` argument choosing the envelope its row
 - Shares appear only where the measure can honestly be summed. A metric in FPS or a ratio reports
   `total: null` and no shares — do not compute a percentage from those rows.
 - Cluster coordinates are **grid indices**: multiply by the effective `cellSize` for world space.
+  When the scene has a registered proxy and named regions, each cluster of a world-space heatmap is
+  also **labelled** — `region` (the smallest containing region), `regions[]` (all of them),
+  `nearestMesh`, and `distance` in world units (`0` when the mesh box contains the hotspot) — and
+  `drill.region` becomes that region **id**, ready to pass straight back as the `region` argument.
+  Say the label, not the coordinate. A `null` means the scene registered nothing that could answer
+  and the `caveats` name which; inventing a landmark instead is a hallucination.
 - `session_meta` and `scene_representation` are single stored records, not aggregations, and take no
   `format`. Raw `/api/v1/sessions/:id/events` has an unrelated `format=json|ndjson`, and this server
   exposes no tool for it.

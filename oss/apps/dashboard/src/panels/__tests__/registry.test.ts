@@ -47,12 +47,15 @@ function loadCtx(opts: {
   voxels?: unknown[];
   scenes?: { scene_id: string }[];
   proxyMeshes?: { name: string }[];
+  /** The selected scene's named regions, read for the panel's hover labels. */
+  regions?: { regionId: string; label: string; bounds: number[] }[];
 }): {
   ctx: PanelDataContext;
   worldHeatmap: ReturnType<typeof vi.fn>;
   worldHeatmapStats: ReturnType<typeof vi.fn>;
   scenes: ReturnType<typeof vi.fn>;
   sceneRepresentation: ReturnType<typeof vi.fn>;
+  sceneRegions: ReturnType<typeof vi.fn>;
 } {
   const worldHeatmap = vi.fn().mockResolvedValue(opts.voxels ?? []);
   const worldHeatmapStats = vi.fn().mockResolvedValue({ cellSize: 0.5, cells: 0, hits: 0 });
@@ -60,13 +63,14 @@ function loadCtx(opts: {
   const sceneRepresentation = vi
     .fn()
     .mockResolvedValue({ proxy: { meshes: opts.proxyMeshes ?? [] } });
+  const sceneRegions = vi.fn().mockResolvedValue(opts.regions ?? []);
   const ctx = {
     surface: "overview",
     params: opts.scene ? { scene: opts.scene } : {},
     settings: { cellSize: 0.5 },
-    api: { worldHeatmap, worldHeatmapStats, scenes, sceneRepresentation },
+    api: { worldHeatmap, worldHeatmapStats, scenes, sceneRepresentation, sceneRegions },
   } as unknown as PanelDataContext;
-  return { ctx, worldHeatmap, worldHeatmapStats, scenes, sceneRepresentation };
+  return { ctx, worldHeatmap, worldHeatmapStats, scenes, sceneRepresentation, sceneRegions };
 }
 
 describe("builtinPanels — world-heatmap panel", () => {
@@ -93,6 +97,18 @@ describe("builtinPanels — world-heatmap panel", () => {
     expect(sceneRepresentation).toHaveBeenCalledWith("scene-a");
     // A selected scene short-circuits the whole-building scene-list lookup.
     expect(scenes).not.toHaveBeenCalled();
+  });
+
+  it("reads the selected scene's regions for the hover labels, and skips them otherwise", async () => {
+    // Regions are keyed per scene (ADR 0051 §2), so they are only meaningful
+    // when one is selected — "All scenes" has no single vocabulary to label with.
+    const selected = loadCtx({ scene: "scene-a", regions: [] });
+    await panel?.load?.(selected.ctx);
+    expect(selected.sceneRegions).toHaveBeenCalledWith("scene-a");
+
+    const allScenes = loadCtx({ scenes: [{ scene_id: "a" }] });
+    await panel?.load?.(allScenes.ctx);
+    expect(allScenes.sceneRegions).not.toHaveBeenCalled();
   });
 
   it("merges every active scene's proxy when none is selected (ADR 0040)", async () => {

@@ -31,6 +31,7 @@ import type {
   ResultSummary,
   SampleSize,
   SeriesSummary,
+  SpatialCluster,
 } from "./types.js";
 
 /** "Sample: 412 sessions over 9,130 events." — omitted when nothing is known. */
@@ -121,6 +122,25 @@ function seriesReading(metric: MetricDefinition, summary: SeriesSummary): string
   );
 }
 
+/**
+ * Where a hotspot is **in the scene's own words** (ADR 0051 §2, sketch §B.2):
+ * "near `checkout_button` in region `counter` ". Returns `""` when the scene
+ * registered nothing that could name it, so the sentence falls back to the grid
+ * coordinate it has always reported. The trailing space is deliberate — the
+ * caller concatenates it straight onto "centred at", and an unlabelled cluster
+ * must produce byte-identical text to before.
+ */
+function placeOf(cluster: SpatialCluster): string {
+  const parts: string[] = [];
+  if (cluster.nearestMesh != null) {
+    // `distance === 0` means the mesh box contains the centroid — "on" rather
+    // than "near", because the hotspot is literally there.
+    parts.push(`${cluster.distance === 0 ? "on" : "near"} \`${cluster.nearestMesh}\``);
+  }
+  if (cluster.region != null) parts.push(`in region \`${cluster.region}\``);
+  return parts.length === 0 ? "" : `${parts.join(" ")}, `;
+}
+
 function clusterReading(metric: MetricDefinition, summary: ClusterSummary): string {
   const cellNoun = grainNoun(metric.grain, summary.occupiedCells);
   if (summary.occupiedCells === 0) return nothingMatched(metric);
@@ -142,8 +162,8 @@ function clusterReading(metric: MetricDefinition, summary: ClusterSummary): stri
     `${metric.title}: ${formatNumber(summary.clusters.length)} ` +
     `hotspot${summary.clusters.length === 1 ? "" : "s"} over ` +
     `${formatNumber(summary.occupiedCells)} occupied ${cellNoun}. The densest spans ` +
-    `${extent} ${cellNoun} centred at (${centroid}) on ${summary.axes.join("/")}, holding ` +
-    `${formatQuantity(densest.weight, weightUnit)}`;
+    `${extent} ${cellNoun} ${placeOf(densest)}centred at (${centroid}) on ` +
+    `${summary.axes.join("/")}, holding ${formatQuantity(densest.weight, weightUnit)}`;
   text += densest.share == null ? "." : ` (${formatShare(densest.share)}).`;
   // Only name the part of `rest` that actually exists — "0 further clusters" is
   // noise in a sentence meant to be read at a glance.

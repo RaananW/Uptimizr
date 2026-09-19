@@ -11,6 +11,8 @@ export { summarizeRows, tableResult } from "./summarize.js";
 export type { ResultRow } from "./summarize.js";
 export { clusterCells } from "./cluster.js";
 export type { ClusterOptions, ClusterResult, GridCell } from "./cluster.js";
+export { isWorldSpatialMetric, labelClusters, labelPoint, worldAxisMap } from "./labels.js";
+export type { LabelOptions, LabelledClusters } from "./labels.js";
 export { wilsonInterval, leastSquaresSlope, trendOf, Z_95 } from "./stats.js";
 export { sampleSizeOf } from "./columns.js";
 export { isAdditiveUnit } from "./format.js";
@@ -34,6 +36,8 @@ export type {
   SeriesSummary,
   ShareInterval,
   SpatialCluster,
+  SpatialLabel,
+  SpatialScene,
   SummaryBase,
   SummaryConfidence,
   SummaryContext,

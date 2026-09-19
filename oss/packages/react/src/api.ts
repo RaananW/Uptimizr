@@ -250,6 +250,20 @@ export interface SceneRepresentation {
   contentHash: string | null;
 }
 
+/**
+ * One declared region of a scene (ADR 0051 §2, sketch §B.2): a labelled
+ * world-space box that names a place, so a hotspot can be described as "the
+ * checkout counter" rather than as a voxel centre. Regions may overlap; a point
+ * belongs to the smallest box that contains it.
+ */
+export interface SceneRegionInfo {
+  sceneId: string;
+  regionId: string;
+  label: string;
+  description: string | null;
+  bounds: Aabb;
+}
+
 /** One bucket of the event-volume time-series (the 4th dimension). */
 export interface TimeseriesBucket {
   /** Start of the bucket as epoch milliseconds. */
@@ -1712,6 +1726,23 @@ export class CollectorApi {
       );
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * A scene's declared regions (ADR 0051 §2), or `[]` when it has none — "this
+   * scene has no regions" is a normal answer, not a 404. Feeds the 3D panels'
+   * hover labels, which name the region a voxel falls in alongside the nearest
+   * proxy mesh.
+   */
+  async sceneRegions(sceneId: string): Promise<SceneRegionInfo[]> {
+    try {
+      return await this.get<SceneRegionInfo[]>(
+        `api/v1/scenes/${encodeURIComponent(sceneId)}/regions`,
+      );
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return [];
       throw err;
     }
   }

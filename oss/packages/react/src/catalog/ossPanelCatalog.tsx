@@ -57,6 +57,7 @@ import type {
   RenderingTechnologyCount,
   ResourcePercentiles,
   SceneProxyMesh,
+  SceneRegionInfo,
   SceneRetentionLink,
   SessionSummary,
   StabilityCounts,
@@ -70,6 +71,7 @@ import type {
   TrackingQualityStat,
 } from "../api";
 import { mergeSceneProxies } from "./lib/sceneProxies";
+import { voxelHoverLabels } from "./lib/spatialLabels";
 
 // --- 2D / HTML / canvas views (Babylon-free — imported eagerly). ------------
 import {
@@ -563,6 +565,22 @@ async function resolveProxyMeshes(ctx: PanelContext): Promise<SceneProxyMesh[]> 
     return rep?.proxy?.meshes ?? [];
   }
   return mergeSceneProxies(ctx.api, ctx.params);
+}
+
+/**
+ * Resolve the selected scene's declared regions (ADR 0051 §2, sketch §B.2) — the
+ * named boxes that let a 3D panel's hover tooltip say *where* a voxel is, not
+ * just which mesh it is near.
+ *
+ * Only a single selected scene has regions to read: they are keyed by scene, and
+ * merging several scenes' vocabularies into one lookup would let a hotspot in the
+ * atrium be labelled with the lobby's counter. "All scenes" therefore gets `[]`
+ * and the tooltip falls back to the mesh name alone.
+ */
+async function resolveSceneRegions(ctx: PanelContext): Promise<SceneRegionInfo[]> {
+  const sceneId = ctx.params.scene;
+  if (!sceneId) return [];
+  return ctx.api.sceneRegions(sceneId).catch(() => []);
 }
 
 // --- Shell-first panels: the overview's opening row of health & volume. --------
@@ -1191,6 +1209,8 @@ export const renderScalePanel = definePanel<RenderScaleTruthData>({
 interface WorldHeatmapData {
   voxels: WorldHeatmapBin[];
   proxyMeshes: SceneProxyMesh[];
+  /** The selected scene's named regions, for the hover labels (ADR 0051 §2). */
+  regions: SceneRegionInfo[];
   /** Scene-wide totals (ADR 0040 §3) behind the truncated voxel list. */
   totals: { cells: number; hits: number };
 }
@@ -1200,6 +1220,11 @@ interface WorldHeatmapData {
  * pointer hits in world space, drawn against the registered scene proxy as a
  * faint backdrop (ADR 0014). Client-only (Babylon loads in the browser). The
  * proxy is resolved alongside the voxels so the backdrop tracks the scene filter.
+ *
+ * Hovering a marker names *where* it is — the nearest proxy mesh and the region
+ * it falls in (ADR 0051 §2, sketch §B.2) — resolved on the client from the proxy
+ * and regions this panel already fetched, so the same vocabulary the summary
+ * endpoint reports is in the tooltip without a second, differently-shaped query.
  */
 export const worldHeatmapPanel = definePanel<WorldHeatmapData, typeof WORLD_HEATMAP_SETTINGS>({
   id: "world-heatmap-3d",
@@ -1210,12 +1235,13 @@ export const worldHeatmapPanel = definePanel<WorldHeatmapData, typeof WORLD_HEAT
   clientOnly: true,
   settings: WORLD_HEATMAP_SETTINGS,
   load: async (ctx) => {
-    const [voxels, proxyMeshes, stats] = await Promise.all([
+    const [voxels, proxyMeshes, regions, stats] = await Promise.all([
       ctx.api.worldHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
       resolveProxyMeshes(ctx),
+      resolveSceneRegions(ctx),
       ctx.api.worldHeatmapStats({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
     ]);
-    return { voxels, proxyMeshes, totals: { cells: stats.cells, hits: stats.hits } };
+    return { voxels, proxyMeshes, regions, totals: { cells: stats.cells, hits: stats.hits } };
   },
   render: ({ data, ctx }) => (
     <Lazy3D>
@@ -1223,6 +1249,12 @@ export const worldHeatmapPanel = definePanel<WorldHeatmapData, typeof WORLD_HEAT
         voxels={data.voxels}
         cellSize={ctx.settings.cellSize}
         proxyMeshes={data.proxyMeshes}
+        voxelLabels={voxelHoverLabels(
+          data.voxels,
+          ctx.settings.cellSize,
+          data.regions,
+          data.proxyMeshes,
+        )}
         totals={data.totals}
       />
     </Lazy3D>
@@ -1233,18 +1265,21 @@ export const worldHeatmapPanel = definePanel<WorldHeatmapData, typeof WORLD_HEAT
 interface PerfHeatmapData {
   voxels: PerfHeatmapVoxel[];
   proxyMeshes: SceneProxyMesh[];
+  regions: SceneRegionInfo[];
 }
 
 /** Error heatmap data: positioned-error voxels + the scene-proxy backdrop. */
 interface ErrorHeatmapData {
   voxels: WorldHeatmapBin[];
   proxyMeshes: SceneProxyMesh[];
+  regions: SceneRegionInfo[];
 }
 
 /** Boundary-touch heatmap data: guardian-approach voxels + the scene-proxy backdrop. */
 interface BoundaryHeatmapData {
   voxels: WorldHeatmapBin[];
   proxyMeshes: SceneProxyMesh[];
+  regions: SceneRegionInfo[];
 }
 
 /**
@@ -1267,11 +1302,12 @@ export const perfHeatmapPanel = definePanel<PerfHeatmapData, typeof PERF_HEATMAP
   clientOnly: true,
   settings: PERF_HEATMAP_SETTINGS,
   load: async (ctx) => {
-    const [voxels, proxyMeshes] = await Promise.all([
+    const [voxels, proxyMeshes, regions] = await Promise.all([
       ctx.api.perfHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
       resolveProxyMeshes(ctx),
+      resolveSceneRegions(ctx),
     ]);
-    return { voxels, proxyMeshes };
+    return { voxels, proxyMeshes, regions };
   },
   render: ({ data, ctx }) => {
     // Re-express FPS as a "slowness" heat: slowest cell → hottest/biggest, and
@@ -1283,11 +1319,20 @@ export const perfHeatmapPanel = definePanel<PerfHeatmapData, typeof PERF_HEATMAP
       vz: v.vz,
       count: maxAvgFps + 1 - v.avgFps,
     }));
-    const voxelLabels = data.voxels.map(
+    // The honest per-cell numbers, then where the cell is (ADR 0051 §2) when the
+    // scene's proxy/regions can say — "42 fps avg · … · near stairs in atrium".
+    const perfLabels = data.voxels.map(
       (v) =>
         `${Math.round(v.avgFps)} fps avg · ${Math.round(v.minFps)} fps min · ${v.samples} sample${
           v.samples === 1 ? "" : "s"
         }`,
+    );
+    const voxelLabels = voxelHoverLabels(
+      heatVoxels,
+      ctx.settings.cellSize,
+      data.regions,
+      data.proxyMeshes,
+      perfLabels,
     );
     return (
       <Lazy3D>
@@ -1324,11 +1369,12 @@ export const errorHeatmapPanel = definePanel<ErrorHeatmapData, typeof ERROR_HEAT
   clientOnly: true,
   settings: ERROR_HEATMAP_SETTINGS,
   load: async (ctx) => {
-    const [voxels, proxyMeshes] = await Promise.all([
+    const [voxels, proxyMeshes, regions] = await Promise.all([
       ctx.api.errorHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
       resolveProxyMeshes(ctx),
+      resolveSceneRegions(ctx),
     ]);
-    return { voxels, proxyMeshes };
+    return { voxels, proxyMeshes, regions };
   },
   render: ({ data, ctx }) => (
     <Lazy3D>
@@ -1336,6 +1382,12 @@ export const errorHeatmapPanel = definePanel<ErrorHeatmapData, typeof ERROR_HEAT
         voxels={data.voxels}
         cellSize={ctx.settings.cellSize}
         proxyMeshes={data.proxyMeshes}
+        voxelLabels={voxelHoverLabels(
+          data.voxels,
+          ctx.settings.cellSize,
+          data.regions,
+          data.proxyMeshes,
+        )}
         legendTitle="Error density"
         legendLow="fewer errors"
         legendHigh="most errors"
@@ -1367,11 +1419,12 @@ export const boundaryHeatmapPanel = definePanel<
   clientOnly: true,
   settings: BOUNDARY_HEATMAP_SETTINGS,
   load: async (ctx) => {
-    const [voxels, proxyMeshes] = await Promise.all([
+    const [voxels, proxyMeshes, regions] = await Promise.all([
       ctx.api.boundaryHeatmap({ ...scoped(ctx), cellSize: ctx.settings.cellSize }),
       resolveProxyMeshes(ctx),
+      resolveSceneRegions(ctx),
     ]);
-    return { voxels, proxyMeshes };
+    return { voxels, proxyMeshes, regions };
   },
   render: ({ data, ctx }) => (
     <Lazy3D>
@@ -1379,6 +1432,12 @@ export const boundaryHeatmapPanel = definePanel<
         voxels={data.voxels}
         cellSize={ctx.settings.cellSize}
         proxyMeshes={data.proxyMeshes}
+        voxelLabels={voxelHoverLabels(
+          data.voxels,
+          ctx.settings.cellSize,
+          data.regions,
+          data.proxyMeshes,
+        )}
         legendTitle="Boundary contact density"
         legendLow="rare"
         legendHigh="most contact"
@@ -1817,6 +1876,7 @@ export const viewDirectionPanel = definePanel<DirectionBin[]>({
 interface GazeHeatmapData {
   voxels: WorldHeatmapBin[];
   proxyMeshes: SceneProxyMesh[];
+  regions: SceneRegionInfo[];
 }
 
 /**
@@ -1833,11 +1893,12 @@ export const gazeHeatmapPanel = definePanel<GazeHeatmapData, typeof WORLD_HEATMA
   clientOnly: true,
   settings: WORLD_HEATMAP_SETTINGS,
   load: async (ctx) => {
-    const [voxels, proxyMeshes] = await Promise.all([
+    const [voxels, proxyMeshes, regions] = await Promise.all([
       ctx.api.gazeHeatmap({ ...ctx.params, source: undefined, cellSize: ctx.settings.cellSize }),
       resolveProxyMeshes(ctx),
+      resolveSceneRegions(ctx),
     ]);
-    return { voxels, proxyMeshes };
+    return { voxels, proxyMeshes, regions };
   },
   render: ({ data, ctx }) => (
     <Lazy3D>
@@ -1845,6 +1906,12 @@ export const gazeHeatmapPanel = definePanel<GazeHeatmapData, typeof WORLD_HEATMA
         voxels={data?.voxels ?? []}
         cellSize={ctx.settings.cellSize}
         proxyMeshes={data?.proxyMeshes ?? []}
+        voxelLabels={voxelHoverLabels(
+          data?.voxels ?? [],
+          ctx.settings.cellSize,
+          data?.regions ?? [],
+          data?.proxyMeshes ?? [],
+        )}
         legendTitle="Gaze density"
         legendLow="few looks"
         legendHigh="most looks"
