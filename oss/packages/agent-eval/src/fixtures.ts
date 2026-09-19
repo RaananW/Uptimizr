@@ -370,16 +370,27 @@ export const EVAL_SCENE_PROXY: SceneProxy = {
 export const EVAL_SCENE_PROXY_LABEL = "Lobby";
 
 /**
- * Named regions for `lobby` (ADR 0051 §2, sketch §B.2) — the vocabulary that
- * lets a spatial answer say *where*, not just at which voxel index.
+ * Named regions of the `lobby` scene (ADR 0051 §2, design sketch §B.2) — the
+ * vocabulary that lets a spatial answer say *where*, not just at which voxel
+ * index, and that a `region=` filter resolves against.
  *
- * Two boxes, deliberately overlapping: `entrance` covers the near half of the
- * scene and `display_plinth` the small volume around the `box` mesh inside it.
- * Overlap is the interesting case — membership is every containing region and
- * the **smallest** is what a summary reports — so the bank can ask a question
- * whose right answer depends on that rule.
+ * Four boxes, deliberately nested and deliberately unguessable: they exist only
+ * in the project context, which is the point. `front-of-house` contains the
+ * lobby's world-space click hits, so a region-scoped question has a non-empty
+ * answer; `entrance` covers the near half of the scene and `display_plinth` the
+ * small volume around the `box` mesh inside it — membership is *every*
+ * containing region and the **smallest** is what a summary reports, so the bank
+ * can ask a question whose right answer depends on that rule. `back-corner` is
+ * empty on purpose, so a question about it must be answered "nothing happened
+ * there" rather than by widening the box.
  */
 export const EVAL_SCENE_REGIONS: readonly SceneRegion[] = [
+  {
+    id: "front-of-house",
+    label: "Front of house",
+    bounds: [-1, -1, -1, 6, 6, 6],
+    description: "The open area visitors arrive into.",
+  },
   {
     id: "entrance",
     label: "Entrance",
@@ -391,5 +402,10 @@ export const EVAL_SCENE_REGIONS: readonly SceneRegion[] = [
     label: "Display plinth",
     bounds: [-0.5, 0, -0.5, 2, 2, 2],
     description: "The plinth the display box sits on.",
+  },
+  {
+    id: "back-corner",
+    label: "Back corner",
+    bounds: [90, 90, 90, 100, 100, 100],
   },
 ];

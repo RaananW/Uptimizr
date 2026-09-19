@@ -18,6 +18,16 @@ const requiredSceneArg = z
   .string()
   .describe("The scene id to analyse (see the uptimizr://scenes resource).");
 
+/**
+ * The first instruction in every template (ADR 0051 §5): orient on the project
+ * before asking anything about it. Without it an agent guesses scene ids and
+ * custom-event names, and reports a disabled capture channel's zero as a finding.
+ */
+const READ_CONTEXT_FIRST =
+  "Read the `uptimizr://context` resource first: it gives the real scene ids, region ids and " +
+  "custom-event names for this project, and tells you which metrics are empty because their " +
+  "capture channel is off.\n\n";
+
 const forScene = (scene: string | undefined): string =>
   scene ? `scene "${scene}"` : "the project (all scenes)";
 
@@ -40,6 +50,7 @@ export function registerPrompts(server: McpServer): void {
             type: "text",
             text:
               `Give me a weekly health report for ${forScene(scene)} covering the last 7 days.\n\n` +
+              READ_CONTEXT_FIRST +
               "Use these read-only tools and summarise the findings:\n" +
               "- `event_counts` for the per-event-type mix" +
               (scene ? ` (scene="${scene}")` : "") +
@@ -73,6 +84,7 @@ export function registerPrompts(server: McpServer): void {
             type: "text",
             text:
               `Where does attention concentrate in scene "${scene}"?\n\n` +
+              READ_CONTEXT_FIRST +
               'Use these read-only tools (all scoped with scene="' +
               scene +
               '") and synthesise the result:\n' +
@@ -105,6 +117,7 @@ export function registerPrompts(server: McpServer): void {
             type: "text",
             text:
               `Review XR/immersive comfort and drop-off for ${forScene(scene)}.\n\n` +
+              READ_CONTEXT_FIRST +
               "Use these read-only tools" +
               (scene ? ` (scene="${scene}")` : "") +
               " and correlate the signals:\n" +

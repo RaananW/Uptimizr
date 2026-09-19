@@ -110,3 +110,19 @@
       - { value: 7, label: events behind the digest }
     phrases: ["clusters", "1 hotspot over 3 occupied voxels"]
     forbiddenPhrases: ["no data"]
+# Context-dependent (ADR 0051 §5): `front-of-house` is a registered scene region
+# (design sketch §B.2). Its id is not derivable from the events — it is in the
+# project context, and an agent that has not read the context cannot scope to it.
+- id: attention_named_region
+  category: attention
+  question: How much click activity lands inside the `front-of-house` region of the lobby?
+  context:
+    scene: lobby
+  expectedTools:
+    - [world_heatmap]
+  expectedArgs:
+    world_heatmap:
+      scene: lobby
+      region: front-of-house
+  expectedAnswer:
+    forbiddenPhrases: ["no data", "I don't have"]

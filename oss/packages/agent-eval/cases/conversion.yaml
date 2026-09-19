@@ -47,3 +47,19 @@
       - { value: 1, label: sessions per variant }
     phrases: ["variant_view", "purchase"]
     forbiddenPhrases: ["no data"]
+
+# Context-dependent (ADR 0051 §5): the variant predicate has to name a custom
+# event this project actually emits. `variant_view` is discoverable only from the
+# project context / the custom-event vocabulary — a model without it guesses.
+- id: conversion_named_variant
+  category: conversion
+  question: How did the `variant_view` content variant perform, and did it lead to a purchase?
+  expectedTools:
+    - [variant_leaderboard]
+  expectedArgs:
+    variant_leaderboard:
+      variant: '{"type":"custom","name":"variant_view"}'
+      conversion: '{"type":"custom","name":"purchase"}'
+  expectedAnswer:
+    phrases: ["variant_view"]
+    forbiddenPhrases: ["no data", "I don't have"]

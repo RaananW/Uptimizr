@@ -90,3 +90,32 @@ describe("refreshSystemPrompt", () => {
     expect(history).toEqual(snapshot);
   });
 });
+
+describe("composeSystemPrompt — project context block (ADR 0051 §5)", () => {
+  const NOW = Date.UTC(2026, 0, 15, 12, 0, 0);
+
+  it("appends the block last, after the current-time line", () => {
+    const out = composeSystemPrompt("BASE", NOW, "Project context:\n- lobby");
+    expect(out.indexOf("BASE")).toBeLessThan(out.indexOf("Current time:"));
+    expect(out.indexOf("Current time:")).toBeLessThan(out.indexOf("Project context:"));
+    expect(out).toContain("- lobby");
+  });
+
+  it("is byte-identical to the context-free prompt when there is no context", () => {
+    const bare = composeSystemPrompt("BASE", NOW);
+    expect(composeSystemPrompt("BASE", NOW, "")).toBe(bare);
+    expect(composeSystemPrompt("BASE", NOW, "   \n  ")).toBe(bare);
+  });
+
+  it("carries the block through refreshSystemPrompt's single system message", () => {
+    const refreshed = refreshSystemPrompt(
+      [{ role: "user", content: "hi" }],
+      "BASE",
+      NOW,
+      "Project context:\n- lobby",
+    );
+    expect(refreshed.filter((m) => m.role === "system")).toHaveLength(1);
+    expect(refreshed[0]!.content).toContain("- lobby");
+    expect(refreshed[1]).toEqual({ role: "user", content: "hi" });
+  });
+});

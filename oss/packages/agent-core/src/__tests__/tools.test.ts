@@ -28,7 +28,7 @@ describe("read tools catalog", () => {
       ...registryToTools(queryMetrics).map((t) => t.name),
       QUERY_TOOL_NAME,
     ]);
-    expect(readTools.length).toBe(70);
+    expect(readTools.length).toBe(71);
   });
 
   it("splits the query:raw tools out into their own catalog", () => {

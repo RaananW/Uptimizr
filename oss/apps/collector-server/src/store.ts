@@ -38,6 +38,8 @@ import type {
   MeshTrendPointRow,
   MetricQueryOptions,
   InputActionCountRow,
+  CustomEventVocabularyOptions,
+  CustomEventVocabularyRow,
   PositionBinRow,
   PerfHeatmapVoxelRow,
   RageClickRow,
@@ -97,12 +99,22 @@ import type {
 } from "@uptimizr/db";
 import type { MetricId } from "@uptimizr/metrics";
 
+/** The storage engines a collector can be wired to (`COLLECTOR_STORE`). */
+export type StoreEngine = "duckdb" | "postgres" | "mssql" | "clickhouse" | "memory";
+
 /**
  * The data-access surface the routes depend on. Abstracting it behind an
  * interface keeps handlers thin and lets tests inject a fake store without a
  * live ClickHouse/Postgres (the framework and the DB stay swappable — ADR 0005).
  */
 export interface CollectorStore {
+  /**
+   * Which storage engine is behind this store. Descriptive only — no handler
+   * branches on it — but the project context document reports it (ADR 0051 §5)
+   * so an agent knows whether it is reading a single-file DuckDB collector or a
+   * scale-tier engine before it reasons about freshness or volume.
+   */
+  readonly engine: StoreEngine;
   /**
    * Resolve a plaintext API key to its project id, key id, capability set and
    * optional per-key rate limit, or `null` if invalid/revoked. The capability
@@ -723,6 +735,18 @@ export interface CollectorStore {
     projectId: string,
     opts?: RangeOptions & SceneOptions & SourceOptions & SessionOptions & { limit?: number },
   ): Promise<InputActionCountRow[]>;
+  /**
+   * Discovered custom-event vocabulary (ADR 0051 §5): the developer-defined
+   * `custom` event names the project emits, with their counts, distinct sessions
+   * and the union of `props` keys observed on a bounded sample of each name's
+   * most recent payloads. The store folds the sampled payloads into prop types
+   * itself — the raw payload is an implementation detail and never leaves this
+   * layer.
+   */
+  customEventVocabulary(
+    projectId: string,
+    opts?: CustomEventVocabularyOptions,
+  ): Promise<CustomEventVocabularyRow[]>;
   /** Distinct scenes (+counts, last-seen) for the project; time-range aware (ADR 0010). */
   scenes(projectId: string, opts?: RangeOptions & { limit?: number }): Promise<SceneRow[]>;
   /** Event-volume time-series bucketed by interval (the 4th dimension). */

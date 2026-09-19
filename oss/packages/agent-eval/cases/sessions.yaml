@@ -23,7 +23,7 @@
   expectedAnswer:
     numbers:
       - { value: 27, label: events in gallery }
-      - { value: 9, label: events in arena }
+      - { value: 11, label: events in arena }
     phrases: ["gallery", "lobby", "arena"]
     forbiddenPhrases: ["no data"]
 
@@ -46,7 +46,7 @@
     - [timeseries]
   expectedAnswer:
     numbers:
-      - { value: 59, label: events in the bucket }
+      - { value: 63, label: events in the bucket }
       - { value: 42.2, tolerance: 0.05, label: average FPS }
     forbiddenPhrases: ["no data"]
 

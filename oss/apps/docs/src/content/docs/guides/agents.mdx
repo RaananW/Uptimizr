@@ -60,10 +60,21 @@ in `@uptimizr/agent-core`, the OpenAPI document, the `uptimizr://capabilities` r
 [query reference](/docs/api/query/) on this site, and the packaged `AGENTS.md` / `llms.txt` tool
 lists. A repo script (`pnpm gen:docs`) renders them and a CI check fails if any drifted.
 
-## 2. Discovery: capabilities and OpenAPI
+## 2. Discovery: context, capabilities and OpenAPI
 
-Two entry points describe the surface. Point an agent at one of them **first**, so it can plan a
-query instead of guessing parameter names.
+Three entry points, and the order matters. The first describes **this project**; the other two
+describe the API.
+
+- **`uptimizr://context`** / **`GET /api/v1/context`** — the [project context
+  document](/docs/api/context/). Read it **first**, before anything else: it carries the project's
+  real scene ids and named region ids, the custom events the application emits with the props they
+  carry, the top meshes and bound input actions, how fresh the data is, whether raw retention is on,
+  and which metrics will return empty because every capture channel that feeds them is off. It is
+  bounded (well under 16 KB) and cached per project, so it is cheap to re-read. Without it an agent
+  guesses a scene id, filters on a custom-event name that does not exist, and reports a disabled
+  channel's zero as a finding.
+
+The other two describe the surface rather than the project:
 
 - **`uptimizr://capabilities`** — an MCP resource served by `@uptimizr/mcp` from the package itself,
   with no collector call. It carries the schema version, the canonical event types, the tool catalog,
@@ -83,8 +94,8 @@ it, or hand the document to any agent framework:
 npx openapi-typescript https://collect.example.com/api/v1/openapi.json -o collector.d.ts
 ```
 
-A third, live one fills in real values: the `uptimizr://scenes` resource (and `GET /api/v1/scenes`)
-lists the scene ids with recent activity — the valid values for the `scene` parameter.
+`uptimizr://scenes` (and `GET /api/v1/scenes`) is a narrower view of what the context document
+already carries: just the scene ids with recent activity. Reach for it when that is all you need.
 
 ## 3. Ways to connect
 

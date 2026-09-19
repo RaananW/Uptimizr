@@ -179,6 +179,7 @@ describe("POST /mcp — protocol surface", () => {
     const { resources } = await client.listResources();
     expect(resources.map((resource) => resource.uri).sort()).toEqual([
       "uptimizr://capabilities",
+      "uptimizr://context",
       "uptimizr://scenes",
     ]);
   });

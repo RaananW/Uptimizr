@@ -32,6 +32,11 @@ export * from "./mssqlDialect.js";
 // Every `build*` aggregation (renders a QuerySpec for a given Dialect).
 export * from "./aggregations.js";
 
+// The custom-event vocabulary fold (ADR 0051 §5): the pure half of
+// `buildCustomEventVocabulary`, which turns the sampled payloads into prop keys
+// and coarse types. No I/O, no dialect — browser-safe like the builders.
+export * from "./customEventVocabulary.js";
+
 // Engine-neutral event → row mapping (isomorphic; imports only @uptimizr/schema).
 export {
   toEventRow,

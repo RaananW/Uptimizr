@@ -12,10 +12,12 @@ import type { CollectorConfig } from "./config.js";
 import type { CollectorStore } from "./store.js";
 import { createLiveBus, type LiveBus } from "./liveBus.js";
 import { attachApiKey, normalizeMcpBearer } from "./auth.js";
+import { storeProjectMetadata, type ProjectMetadataProvider } from "./projectMetadata.js";
 import { registerAuditHooks, startAuditRetention } from "./audit.js";
 import { buildDashboardCsp } from "./csp.js";
 import { isInternalDispatch, newInternalDispatchToken } from "./internalDispatch.js";
 import { collectRoutes } from "./routes/collect.js";
+import { contextRoutes } from "./routes/context.js";
 import { liveRoutes } from "./routes/live.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
@@ -34,6 +36,13 @@ export interface BuildAppDeps {
   liveBus?: LiveBus;
   /** Pass `true` (or Fastify logger options) to enable request logging. */
   logger?: boolean;
+  /**
+   * Source of the glossary and recent annotations the project context document
+   * reports (ADR 0051 §5). Defaults to reading them from `store` through the
+   * metadata write path of #310 — see `projectMetadata.ts`. Injectable so a
+   * test can supply its own without a store.
+   */
+  projectMetadata?: ProjectMetadataProvider;
 }
 
 /**
@@ -183,6 +192,14 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   // Session narrative (#314): its own plugin so it does not inherit the query
   // plugin's `format` hook, which knows only the three shared envelopes.
   await app.register(narrativeRoutes, { store, config });
+  // The project context document (#308). Its glossary and recent annotations
+  // come from the metadata write path (#310) through the narrow provider seam,
+  // which now has a real default reading the store.
+  await app.register(contextRoutes, {
+    store,
+    config,
+    metadata: deps.projectMetadata ?? storeProjectMetadata(store),
+  });
   await app.register(metaRoutes, { routeSchemas });
 
   // All-in-one: serve a pre-built static dashboard from `dashboardDir`. The API

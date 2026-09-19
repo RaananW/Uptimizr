@@ -138,6 +138,11 @@ export {
   buildMeshInteractionKinds,
   buildReachability,
   buildTopInputActions,
+  buildCustomEventVocabulary,
+  CUSTOM_EVENT_VOCABULARY_LIMIT,
+  CUSTOM_EVENT_VOCABULARY_MAX_LIMIT,
+  CUSTOM_EVENT_VOCABULARY_SAMPLE_ROWS,
+  CUSTOM_EVENT_VOCABULARY_MAX_SAMPLE_ROWS,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -186,6 +191,15 @@ export {
   buildLoadBounceFunnel,
   buildVariantLeaderboard,
 } from "./query/aggregations.js";
+// --- Custom-event vocabulary fold (ADR 0051 §5, design sketch §E.1) ---
+// The pure half of the vocabulary aggregation: prop-key discovery over the
+// sampled payloads, kept out of SQL because key enumeration over an open JSON
+// object has no portable spelling across the four supported engines.
+export {
+  foldCustomEventVocabulary,
+  CUSTOM_EVENT_VOCABULARY_MAX_PROPS,
+} from "./query/customEventVocabulary.js";
+export type { FoldCustomEventVocabularyOptions } from "./query/customEventVocabulary.js";
 // --- Numeric coercion at the store edge (ADR 0051 §2) ---
 // Applied by every store's query runner so the collector always emits numbers.
 // Lives on the root barrel rather than the browser-safe `/query` subpath because
@@ -293,6 +307,10 @@ export type {
   MeshSourceCountRow,
   MeshTrendPointRow,
   InputActionCountRow,
+  CustomEventVocabularyOptions,
+  CustomEventVocabularyRow,
+  CustomEventVocabularySampleRow,
+  CustomPropType,
   DeadClickRow,
   RageClickRow,
   HoverDwellRow,
@@ -401,6 +419,7 @@ export {
   PARITY_EVENTS,
 } from "./parity/fixtures.js";
 export {
+  ENGINE_FORMATTED_COLUMNS,
   PARITY_ABS_TOLERANCE,
   PARITY_REL_TOLERANCE,
   diffParity,

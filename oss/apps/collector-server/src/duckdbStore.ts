@@ -4,6 +4,7 @@ import {
   buildCameraDistance,
   buildCameraPositionHeatmap,
   buildClickGazeRay,
+  buildCustomEventVocabulary,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -62,6 +63,7 @@ import {
   buildTopMeshesBySource,
   buildTopMeshesTrend,
   buildTopInputActions,
+  foldCustomEventVocabulary,
   buildWorldHeatmap,
   buildWorldHeatmapStats,
   buildGazeHeatmap,
@@ -127,6 +129,7 @@ import {
   type ReachabilityBinRow,
   type MeshSourceCountRow,
   type MeshTrendPointRow,
+  type CustomEventVocabularySampleRow,
   type InputActionCountRow,
   type NavigationStatsRow,
   type BacktrackRatioRow,
@@ -178,6 +181,7 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
   await migrateDuckdb(db);
 
   return {
+    engine: "duckdb",
     resolveApiKey: (key) => duckdbResolveApiKey(db, key),
     recordAudit: (entry) => duckdbRecordAudit(db, entry),
     listAudit: (projectId, opts) => duckdbListAudit(db, projectId, opts),
@@ -393,6 +397,16 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
       ),
     topInputActions: (projectId, opts = {}) =>
       runDuckdbQuery<InputActionCountRow>(db, buildTopInputActions(projectId, opts, duckdbDialect)),
+    // Discovered custom-event vocabulary (ADR 0051 §5): the SQL counts and
+    // samples, the pure fold turns the sampled payloads into prop types. The
+    // raw payload stops here and never reaches a route.
+    customEventVocabulary: async (projectId, opts = {}) =>
+      foldCustomEventVocabulary(
+        await runDuckdbQuery<CustomEventVocabularySampleRow>(
+          db,
+          buildCustomEventVocabulary(projectId, opts, duckdbDialect),
+        ),
+      ),
     scenes: (projectId, opts = {}) =>
       runDuckdbQuery<SceneRow>(db, buildDistinctScenes(projectId, opts, duckdbDialect)),
     timeseries: (projectId, opts = {}) =>

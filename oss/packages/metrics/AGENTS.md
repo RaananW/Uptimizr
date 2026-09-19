@@ -100,6 +100,12 @@ genericDimensions(metric!); // what it can *also* be grouped by, or [] if it can
   the shapes that render identically on all four engines at any grain. A spatial binning and a
   percentile do not, and must not have one. Every measure column it names must also be a column of
   the metric's `row`.
+- **`sourceChannels` is load-bearing.** The collector's project context document
+  (`GET /api/v1/context`, ADR 0051 §5) reports a metric under `metrics.disabledByCapture` when
+  **every** channel it declares produced no events over the window, which is how an agent learns to
+  say "that channel is off" instead of reporting the zero as a finding. An empty `sourceChannels`
+  means a derived rollup and is never reported as disabled — so declare the channels a metric
+  really reads, no more and no fewer.
 
 ## Where the SQL lives
 

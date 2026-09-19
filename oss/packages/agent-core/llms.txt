@@ -22,15 +22,15 @@
 `position_heatmap`, `session_trajectory`, `aggregate_paths`, `scene_coverage`, `camera_distance`,
 `click_rays`, `flow_links`, `top_meshes`, `mesh_sources`, `mesh_trend`, `mesh_dwell`,
 `mesh_blind_spots`, `mesh_interaction_kinds`, `mesh_reachability`, `dead_clicks`, `rage_clicks`,
-`hover_dwell`, `interaction_sources`, `top_input_actions`, `camera_gestures`, `navigation_stats`,
-`backtrack_ratio`, `perf_summary`, `render_scale_truth`, `perf_distribution`, `fps_histogram`,
-`frame_time_percentiles`, `jank_rate`, `perf_churn`, `perf_by_device`, `perf_by_scene`,
-`perf_heatmap`, `compile_stalls`, `resource_summary`, `resource_percentiles`, `stability_counts`,
-`graphics_diagnostics`, `error_heatmap`, `rendering_technology`, `capability_changes`,
-`xr_rotation`, `xr_sources`, `xr_abandonment`, `xr_locomotion`, `xr_tracking_quality`,
-`boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
-`ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
-`scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
+`hover_dwell`, `interaction_sources`, `top_input_actions`, `custom_event_vocabulary`,
+`camera_gestures`, `navigation_stats`, `backtrack_ratio`, `perf_summary`, `render_scale_truth`,
+`perf_distribution`, `fps_histogram`, `frame_time_percentiles`, `jank_rate`, `perf_churn`,
+`perf_by_device`, `perf_by_scene`, `perf_heatmap`, `compile_stalls`, `resource_summary`,
+`resource_percentiles`, `stability_counts`, `graphics_diagnostics`, `error_heatmap`,
+`rendering_technology`, `capability_changes`, `xr_rotation`, `xr_sources`, `xr_abandonment`,
+`xr_locomotion`, `xr_tracking_quality`, `boundary_heatmap`, `boundary_heatmap_stats`,
+`xr_boundary_contacts`, `ar_placement_time_to_place`, `ar_placement_attempts`,
+`ar_placement_surfaces`, `funnel`, `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
 
 Only on a key holding `query:raw`, and only when the collector runs with
 `ENABLE_RAW_SESSION_RETENTION` (ADR 0003):
@@ -82,6 +82,8 @@ not aggregations, and declare no `format`.
   `save_analysis` plus `list_annotations`, `list_glossary`, `list_analyses` (ADR 0051 §5). A
   separate export from `readTools` on purpose, so an integration's read-only stance stays
   inspectable. They need an `annotate` key, write metadata only, and cannot touch an event.
+  `@uptimizr/metrics` metric registry: 70 tools, each with an input schema, an output schema and the
+  metric's interpretation notes and caveats in its description (ADR 0051).
 - `coreReadTools` / `selectReadTools(kind)` / `filterReadTools(names)` — narrowed views of the
   catalog for models that cannot carry every tool schema.
 - `registryToTools(metrics?)` — generate the catalog from metric-registry definitions.
@@ -89,6 +91,13 @@ not aggregations, and declare no `format`.
   `post`/`put`/`delete` used only by the metadata write tools.
 - `runAgent(options)` — the headless tool-calling loop (LLM ↔ tools ↔ collector).
 - `toToolSchemas(tools?)` — convert catalog tools to JSON-Schema tool descriptors for an LLM.
+- `renderContextForPrompt(context, nowMs?)` — render the collector's project context document
+  (`GET /api/v1/context`, ADR 0051 §5) as a compact system-prompt block: the project's real scene
+  ids, named region ids, custom-event names with their prop keys and coarse types, top meshes, input
+  actions, data freshness, retention flags and the metrics that are empty because their capture
+  channel is off. Pure, ~1.5 k characters at most, tolerant of a partial document, and `""` when
+  there is nothing to say — so an older collector degrades instead of failing. Read the context
+  first and inject this before the first question.
 - `LlmProvider` — the pluggable, user-controlled LLM backend interface (no bundled model or key).
 
 ## Capability-gated tools (ADR 0051 §7)

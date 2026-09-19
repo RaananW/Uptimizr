@@ -28,10 +28,10 @@ import { CollectorError, type CollectorClient, type QueryParams } from "@uptimiz
 import {
   EVAL_EVENTS,
   EVAL_PROJECT_ID,
+  EVAL_SCENES,
   EVAL_SCENE_PROXY,
   EVAL_SCENE_PROXY_LABEL,
   EVAL_SCENE_REGIONS,
-  EVAL_SCENES,
 } from "./fixtures.js";
 
 /**
@@ -185,8 +185,11 @@ export async function startHarness(options: StartHarnessOptions = {}): Promise<E
   };
   await store.insertEvents(EVAL_EVENTS);
   await store.putSceneProxy(EVAL_PROJECT_ID, EVAL_SCENE_PROXY, EVAL_SCENE_PROXY_LABEL);
-  // Named regions (ADR 0051 §2) so spatial answers can be graded on the words a
-  // developer uses for places, not only on voxel coordinates.
+  // Named scene regions (ADR 0051 §2): the spatial vocabulary a `region=` filter
+  // resolves against, and the words a spatial answer is graded on rather than
+  // voxel coordinates. An agent can only use a region id it was told about, so
+  // this is what makes the region-scoped questions in the bank answerable from
+  // the project context rather than by guessing a box.
   await store.putSceneRegions(EVAL_PROJECT_ID, EVAL_SCENES.lobby, EVAL_SCENE_REGIONS);
 
   const app = await buildApp({ store, config: EVAL_CONFIG });

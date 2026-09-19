@@ -70,4 +70,15 @@ describe("registerPrompts", () => {
       expect(text).toContain(tool);
     }
   });
+
+  it("tells every template to read the project context first (ADR 0051 §5)", () => {
+    for (const [name, prompt] of prompts) {
+      const text = textOf(prompt.cb, { scene: "lobby" });
+      expect(text, name).toContain("uptimizr://context");
+      // …and before it names any tool, so the agent orients before it asks.
+      const firstTool = text.indexOf("Use these read-only tools");
+      expect(firstTool, name).toBeGreaterThan(-1);
+      expect(text.indexOf("uptimizr://context"), name).toBeLessThan(firstTool);
+    }
+  });
 });

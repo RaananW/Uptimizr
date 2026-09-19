@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CollectorClient } from "@uptimizr/agent-core";
-import { registerResources, CAPABILITIES_URI, SCENES_URI } from "../resources.js";
+import { registerResources, CAPABILITIES_URI, CONTEXT_URI, SCENES_URI } from "../resources.js";
 
 type ReadCb = (
   uri: URL,
@@ -19,11 +19,31 @@ function collect(client: CollectorClient) {
 }
 
 describe("registerResources", () => {
-  it("registers the capabilities and scenes resources", () => {
+  it("registers the capabilities, context and scenes resources", () => {
     const client = { get: vi.fn() } as unknown as CollectorClient;
     const resources = collect(client);
     expect(resources.get("capabilities")?.uri).toBe(CAPABILITIES_URI);
+    expect(resources.get("context")?.uri).toBe(CONTEXT_URI);
     expect(resources.get("scenes")?.uri).toBe(SCENES_URI);
+  });
+
+  it("tells the agent, in the capabilities notes, to read the context first", async () => {
+    const resources = collect({ get: vi.fn() } as unknown as CollectorClient);
+    const result = await resources.get("capabilities")!.cb(new URL(CAPABILITIES_URI));
+    const parsed = JSON.parse(result.contents[0]!.text) as { notes: string[] };
+    expect(parsed.notes[0]).toContain("uptimizr://context");
+    expect(parsed.notes[0]).toContain("FIRST");
+  });
+
+  it("serves the live project context via the read-only collector client", async () => {
+    const document = { project: { id: "p1", store: "duckdb" }, scenes: [{ id: "lobby" }] };
+    const get = vi.fn().mockResolvedValue(document);
+    const resources = collect({ get } as unknown as CollectorClient);
+    const context = resources.get("context")!;
+    const result = await context.cb(new URL(CONTEXT_URI));
+    expect(get).toHaveBeenCalledWith("api/v1/context", {});
+    expect(context.config.mimeType).toBe("application/json");
+    expect(JSON.parse(result.contents[0]!.text)).toEqual(document);
   });
 
   it("serves the capabilities descriptor as JSON without touching the collector", async () => {

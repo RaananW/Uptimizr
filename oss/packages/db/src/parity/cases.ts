@@ -28,6 +28,7 @@ import {
   buildMeshInteractionKinds,
   buildReachability,
   buildTopInputActions,
+  buildCustomEventVocabulary,
   buildDeadClicks,
   buildRageClicks,
   buildHoverDwell,
@@ -115,8 +116,8 @@ const DELEGATED_PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["session_id"],
     ignoreColumns: ["started_at", "ended_at"],
     golden: [
-      { session_id: "s1", visitor_id: "", events: 10 },
-      { session_id: "s2", visitor_id: "", events: 9 },
+      { session_id: "s1", visitor_id: "", events: 12 },
+      { session_id: "s2", visitor_id: "", events: 11 },
     ],
   },
   {
@@ -476,6 +477,30 @@ const DELEGATED_PARITY_CASES: readonly ParityCase[] = [
     golden: [],
   },
   {
+    // Custom-event vocabulary (ADR 0051 §5, design sketch §E.1). Three
+    // `add_to_cart` events (s1 + s2) and one `level_complete` (s1), so the
+    // totals are (3, 2 sessions) and (1, 1 session). The aggregation emits the
+    // totals once per sampled payload, so `add_to_cart` repeats three times and
+    // `level_complete` once — four rows in all, ranked by count.
+    //
+    // `sample_payload` is the raw event JSON as each engine stores it (Postgres
+    // normalises it through `jsonb`), so it is engine-dependent by construction
+    // and excluded from the comparison — exactly like the engine-formatted
+    // timestamps above. What must agree across engines is the counting and the
+    // sampling *shape*, which is what the golden pins. The fold from payloads to
+    // prop types is pure TypeScript and is unit-tested separately.
+    name: "customEventVocabulary",
+    build: (d) => buildCustomEventVocabulary(PID, PARITY_RANGE, d),
+    sortKeys: ["name", "count"],
+    ignoreColumns: ["sample_payload"],
+    golden: [
+      { name: "add_to_cart", count: 3, sessions: 2 },
+      { name: "add_to_cart", count: 3, sessions: 2 },
+      { name: "add_to_cart", count: 3, sessions: 2 },
+      { name: "level_complete", count: 1, sessions: 1 },
+    ],
+  },
+  {
     name: "perfSummary",
     build: (d) => buildPerfSummary(PID, PARITY_RANGE, d),
     sortKeys: ["samples"],
@@ -792,6 +817,7 @@ const DELEGATED_PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["event_type"],
     golden: [
       { day: PARITY_DAY, event_type: "camera_sample", events: 3 },
+      { day: PARITY_DAY, event_type: "custom", events: 4 },
       { day: PARITY_DAY, event_type: "frame_perf", events: 3 },
       { day: PARITY_DAY, event_type: "graphics_diagnostic", events: 1 },
       { day: PARITY_DAY, event_type: "mesh_visibility", events: 2 },
@@ -808,15 +834,15 @@ const DELEGATED_PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["scene_id"],
     ignoreColumns: ["last_seen"],
     golden: [
-      { scene_id: "arena", events: 9 },
-      { scene_id: "lobby", events: 10 },
+      { scene_id: "arena", events: 11 },
+      { scene_id: "lobby", events: 12 },
     ],
   },
   {
     name: "timeseries",
     build: (d) => buildTimeseries(PID, { ...PARITY_RANGE, interval: 60 }, d),
     sortKeys: ["bucket"],
-    golden: [{ bucket: PARITY_T0, events: 19, avg_fps: 45 }],
+    golden: [{ bucket: PARITY_T0, events: 23, avg_fps: 45 }],
   },
   {
     name: "eventTypeCounts",
@@ -824,6 +850,7 @@ const DELEGATED_PARITY_CASES: readonly ParityCase[] = [
     sortKeys: ["event_type"],
     golden: [
       { event_type: "camera_sample", count: 3 },
+      { event_type: "custom", count: 4 },
       { event_type: "frame_perf", count: 3 },
       { event_type: "graphics_diagnostic", count: 1 },
       { event_type: "mesh_visibility", count: 2 },
@@ -1153,6 +1180,8 @@ const GENERIC_PARITY_CASES: readonly ParityCase[] = [
     golden: [
       { event_type: "camera_sample", scene_id: "arena", count: 1 },
       { event_type: "camera_sample", scene_id: "lobby", count: 2 },
+      { event_type: "custom", scene_id: "arena", count: 2 },
+      { event_type: "custom", scene_id: "lobby", count: 2 },
       { event_type: "frame_perf", scene_id: "arena", count: 1 },
       { event_type: "frame_perf", scene_id: "lobby", count: 2 },
       { event_type: "graphics_diagnostic", scene_id: "arena", count: 1 },
@@ -1185,8 +1214,8 @@ const GENERIC_PARITY_CASES: readonly ParityCase[] = [
       ),
     sortKeys: ["engine"],
     golden: [
-      { engine: "webgl2", count: 9 },
-      { engine: "webgpu", count: 10 },
+      { engine: "webgl2", count: 11 },
+      { engine: "webgpu", count: 12 },
     ],
   },
   {

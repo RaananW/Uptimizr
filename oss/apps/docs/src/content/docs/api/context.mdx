@@ -1,0 +1,132 @@
+---
+title: Project context
+description: GET /api/v1/context — the one read that tells an agent what your project's scenes, regions, custom events and capture channels actually are.
+---
+
+An agent that has never seen your project knows the _shape_ of this API — every metric, every
+parameter, every row schema, from the [metric registry](/docs/api/query/). It knows nothing about
+_your_ project: what the scenes are called, which regions have names, which capture channels are on,
+what your application calls its own events, whether raw retention is enabled, or how fresh the data
+is.
+
+`GET /api/v1/context` answers all of it in one read. It takes a `query`-capable `x-api-key`, it is
+bounded (well under 16 KB for a typical project), and the collector caches it per project for about
+30 seconds.
+
+```bash
+curl -H "x-api-key: $KEY" "https://collect.example.com/api/v1/context"
+```
+
+## The document
+
+```jsonc
+{
+  "project": {
+    "id": "…",
+    "store": "duckdb", // the COLLECTOR_STORE engine behind this collector
+    "schemaVersion": "1.0", // event wire format
+    "collectorVersion": "2.1.0",
+  },
+  "dataQuality": {
+    "lastEventAt": 1757600000000, // epoch ms, or null for an empty project
+    "sessions24h": 91,
+    "events24h": 18023,
+    "retention": { "rawSessions": false },
+  },
+  "capture": {
+    "channels": {
+      "camera_sample": { "seen": true, "events28d": 41203 },
+      "mesh_visibility": { "seen": false },
+    },
+  },
+  "scenes": [
+    {
+      "id": "lobby",
+      "label": "Main Lobby",
+      "regions": [{ "id": "counter", "label": "Checkout counter" }],
+      "proxy": true,
+      "events28d": 12043,
+    },
+  ],
+  "vocabulary": {
+    "customEvents": [
+      {
+        "name": "add_to_cart",
+        "count28d": 311,
+        "sessions28d": 180,
+        "props": { "sku": "string", "qty": "number" },
+      },
+    ],
+    "meshes": { "count": 63, "top": ["checkout_button", "door_left"] },
+    "inputActions": ["jump", "sprint"],
+  },
+  "definitions": { "funnels": [], "segments": [], "glossary": [] },
+  "annotations": { "recent": [] },
+  "metrics": {
+    "available": ["top_meshes", "…"],
+    "disabledByCapture": ["mesh_dwell"],
+  },
+  "window": { "since": 1755008000000, "until": 1757600000000 },
+  "generatedAt": 1757600000000,
+}
+```
+
+## How to read it
+
+| Field                             | What to do with it                                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scenes[].id`                     | The exact value for the `scene=` filter. Never infer one.                                                                                           |
+| `scenes[].regions[].id`           | The exact value for the `region=` filter — a named place instead of a hand-drawn box.                                                               |
+| `vocabulary.customEvents[].name`  | The exact name for a funnel step or a variant predicate.                                                                                            |
+| `vocabulary.customEvents[].props` | Observed prop keys with a coarse type. Prop **values** are never reported.                                                                          |
+| `capture.channels`                | One entry per canonical event type, so an absence is never ambiguous.                                                                               |
+| `metrics.disabledByCapture`       | These metrics return empty because every capture channel that feeds them is off. Say the channel is off — do not report the zero as a finding.       |
+| `dataQuality.retention`           | `rawSessions: false` means session timelines and replay are unavailable **by design** (privacy, opt-in), not broken.                                |
+| `dataQuality.lastEventAt`         | How stale the answer you are about to give is. `null` means the project has recorded nothing.                                                        |
+
+Everything in the document is aggregate and project-scoped — nothing a `query` key could not already
+read through the query API.
+
+## Bounds
+
+The document is capped so it always fits in a model's context window: at most 40 scenes (20 regions
+each), 25 custom events (40 prop keys each), 10 top meshes, 25 input actions, 10 annotations and 50
+glossary entries. `definitions.funnels` / `definitions.segments` and `annotations.recent` are present
+and empty until the metadata store holds any. The 28-day figures are computed over `window`.
+
+## Custom-event vocabulary
+
+The `vocabulary.customEvents` block is also a metric in its own right, so it is a generated agent
+tool (`custom_event_vocabulary`) and takes the usual `since` / `until` / `scene` / `limit` /
+[`format`](/docs/api/query/) parameters:
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/vocabulary/custom-events?since=$SINCE&limit=50"
+```
+
+```json
+[
+  {
+    "name": "add_to_cart",
+    "count": 311,
+    "sessions": 180,
+    "props": { "sku": "string", "qty": "number" }
+  }
+]
+```
+
+`count` and `sessions` are exact over the range. `props` is discovered from the **20 most recent
+events per name**, so treat it as a vocabulary hint rather than a schema: a key that stopped being
+emitted long ago will be absent, and a rarely-sent optional key can be missed. A key seen with more
+than one JSON kind is reported as `"mixed"`; `"null"` means every sampled value was null.
+
+## Clients
+
+- **MCP** — the same document is the `uptimizr://context` resource. Every curated prompt tells the
+  agent to read it first.
+- **The in-browser assistant** — `useAssistant` fetches it when the collector connection is
+  established and injects a compact rendering into the system prompt. A collector too old to serve
+  the endpoint is not an error: the assistant simply runs without it.
+- **Anything else** — `renderContextForPrompt()` in `@uptimizr/agent-core` turns the document into
+  the same short prompt block, if you are building your own loop.

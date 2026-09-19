@@ -35,15 +35,15 @@ methods exist for the metadata write tools alone, and the collector gates those 
 `position_heatmap`, `session_trajectory`, `aggregate_paths`, `scene_coverage`, `camera_distance`,
 `click_rays`, `flow_links`, `top_meshes`, `mesh_sources`, `mesh_trend`, `mesh_dwell`,
 `mesh_blind_spots`, `mesh_interaction_kinds`, `mesh_reachability`, `dead_clicks`, `rage_clicks`,
-`hover_dwell`, `interaction_sources`, `top_input_actions`, `camera_gestures`, `navigation_stats`,
-`backtrack_ratio`, `perf_summary`, `render_scale_truth`, `perf_distribution`, `fps_histogram`,
-`frame_time_percentiles`, `jank_rate`, `perf_churn`, `perf_by_device`, `perf_by_scene`,
-`perf_heatmap`, `compile_stalls`, `resource_summary`, `resource_percentiles`, `stability_counts`,
-`graphics_diagnostics`, `error_heatmap`, `rendering_technology`, `capability_changes`,
-`xr_rotation`, `xr_sources`, `xr_abandonment`, `xr_locomotion`, `xr_tracking_quality`,
-`boundary_heatmap`, `boundary_heatmap_stats`, `xr_boundary_contacts`,
-`ar_placement_time_to_place`, `ar_placement_attempts`, `ar_placement_surfaces`, `funnel`,
-`scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
+`hover_dwell`, `interaction_sources`, `top_input_actions`, `custom_event_vocabulary`,
+`camera_gestures`, `navigation_stats`, `backtrack_ratio`, `perf_summary`, `render_scale_truth`,
+`perf_distribution`, `fps_histogram`, `frame_time_percentiles`, `jank_rate`, `perf_churn`,
+`perf_by_device`, `perf_by_scene`, `perf_heatmap`, `compile_stalls`, `resource_summary`,
+`resource_percentiles`, `stability_counts`, `graphics_diagnostics`, `error_heatmap`,
+`rendering_technology`, `capability_changes`, `xr_rotation`, `xr_sources`, `xr_abandonment`,
+`xr_locomotion`, `xr_tracking_quality`, `boundary_heatmap`, `boundary_heatmap_stats`,
+`xr_boundary_contacts`, `ar_placement_time_to_place`, `ar_placement_attempts`,
+`ar_placement_surfaces`, `funnel`, `scene_retention`, `load_bounce_funnel`, `variant_leaderboard`
 
 Only on a key holding `query:raw`, and only when the collector runs with
 `ENABLE_RAW_SESSION_RETENTION` (ADR 0003):
@@ -124,6 +124,20 @@ A tool's `outputSchema` describes all three envelopes, so whichever one comes ba
   bounded — its `meta` costs a fixed ~200 characters and the rows are still all of them — so pass
   `format: "summary"` when the result could be large.
 
+## Project context (ADR 0051 §5)
+
+Read `GET /api/v1/context` **before** the first question and put a rendering of it in the system
+prompt. It is the only read that describes the project rather than the API: the real scene ids and
+named region ids, the custom events the application emits with their `props` keys and coarse types,
+top meshes, bound input actions, data freshness, retention flags, and `metrics.disabledByCapture` —
+metrics that return empty because their capture channel is off, not because nothing happened.
+
+`renderContextForPrompt(document)` turns it into a compact block (~1.5 k characters, capped and
+truncated on a line boundary) that a 1–3 B local model can carry alongside the tool schemas. It is
+pure, tolerant of a partial or unfamiliar document, and returns `""` when there is nothing to say —
+so a collector too old to serve the endpoint degrades to the prompt you had before rather than
+failing. Append it unconditionally.
+
 ## Rules for agents
 
 - **Events are read-only; privacy-preserving throughout.** Never add an ingestion tool, an
@@ -153,8 +167,8 @@ A tool's `outputSchema` describes all three envelopes, so whichever one comes ba
 
 `readTools`, `rawTools`, `coreReadTools`, `selectReadTools(kind)`, `filterReadTools(names)`,
 `registryToTools(metrics?)`, `createCollectorClient(config)`, `toToolSchemas(tools?)`,
-`runAgent(options)`, plus the `LlmProvider` / `AgentMessage` / `AgentToolCall` /
-`ProviderResponse` types.
+`runAgent(options)`, `renderContextForPrompt(context, nowMs?)`, plus the `LlmProvider` /
+`AgentMessage` / `AgentToolCall` / `ProviderResponse` / `PromptContextDocument` types.
 
 Metadata writes (ADR 0051 §5): `writeTools`, `mutatingWriteTools`, the individual
 `annotateTool` / `defineTermTool` / `saveAnalysisTool` / `listAnnotationsTool` /
@@ -163,6 +177,7 @@ when a hand-built read-only client has no write transport). Each has an `execute
 rather than a `buildRequest`, because a write is one call rather than a request description.
 
 The catalog is ~69 tools. A small local model cannot hold every schema in its function-calling
+The catalog is ~70 tools. A small local model cannot hold every schema in its function-calling
 prompt — hand a run `coreReadTools` or `filterReadTools([...])` rather than the full catalog.
 
 ### Capability-gated tools

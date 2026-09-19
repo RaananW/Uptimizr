@@ -961,3 +961,47 @@ export interface VariantLeaderboardRow {
   conversions: number;
   avg_dwell_ms: number;
 }
+
+/**
+ * One sampled `custom` event row behind the custom-event vocabulary
+ * (ADR 0051 §5, design sketch §E.1). The aggregation emits the per-name totals
+ * repeated across up to `sampleRows` of that name's **most recent** payloads;
+ * {@link CustomEventVocabularyRow} is what a caller actually consumes, folded
+ * from these rows by `foldCustomEventVocabulary`.
+ *
+ * `sample_payload` is the raw event `payload` JSON **as the engine stores it**
+ * (DuckDB/ClickHouse/SQL Server hand back the text, the Postgres driver hands back
+ * an already-parsed `jsonb` object), so it is deliberately engine-dependent and
+ * never leaves the store
+ * layer — the fold reads prop keys and value kinds out of it and discards it.
+ */
+export interface CustomEventVocabularySampleRow {
+  name: string;
+  count: number;
+  sessions: number;
+  sample_payload: unknown;
+}
+
+/** Coarse JSON kind observed for a custom-event prop key. */
+export type CustomPropType = "string" | "number" | "boolean" | "null" | "mixed";
+
+/**
+ * One discovered custom-event name: how often it fired, over how many distinct
+ * sessions, and the union of prop keys observed on the sampled payloads with a
+ * coarse type per key. `mixed` means the same key arrived with more than one
+ * JSON kind across the sample.
+ */
+export interface CustomEventVocabularyRow {
+  name: string;
+  count: number;
+  sessions: number;
+  props: Record<string, CustomPropType>;
+}
+
+/** Options for the custom-event vocabulary aggregation. */
+export interface CustomEventVocabularyOptions extends RangeOptions, SceneOptions {
+  /** Max distinct custom-event names returned (ranked by count). */
+  limit?: number;
+  /** Most-recent payloads sampled per name for prop discovery. */
+  sampleRows?: number;
+}

@@ -37,6 +37,10 @@ export {
   WriteNotSupportedError,
   type WriteTool,
 } from "./writeTools.js";
+// --- Project context (ADR 0051 §5, design sketch §E.1) ---
+// The compact system-prompt rendering of the collector context document.
+export { renderContextForPrompt, CONTEXT_PROMPT_MAX_CHARS } from "./context.js";
+export type { PromptContextDocument } from "./context.js";
 export type {
   AgentMessage,
   AgentToolCall,

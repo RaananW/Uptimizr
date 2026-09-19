@@ -9,6 +9,7 @@ import {
   buildCameraPositionHeatmap,
   buildCapabilityChanges,
   buildClickGazeRay,
+  buildCustomEventVocabulary,
   buildCompileStalls,
   buildArPlacementTimeToPlace,
   buildArPlacementAttempts,
@@ -68,7 +69,9 @@ import {
   buildXrSourceUsage,
   defaultCellSizeForBounds,
   duckdbDialect,
+  foldCustomEventVocabulary,
   nodeSampleRowToEvent,
+  type CustomEventVocabularySampleRow,
   type FunnelStepInput,
   type QuerySpec,
   type SpatialStatsRow,
@@ -318,6 +321,10 @@ export const DEMO_SPECIAL_GET_ROUTES = [
   "/api/v1/scenes/:sceneId/regions",
   "/api/v1/funnel",
   "/api/v1/variant-leaderboard",
+  // Custom-event vocabulary (ADR 0051 §5): the SQL samples raw payloads and a
+  // pure fold turns them into prop types, so it cannot go through the synchronous
+  // builder table, whose rows are returned verbatim.
+  "/api/v1/vocabulary/custom-events",
   // Large-scene spatial routes (ADR 0040): handled out-of-band because they need
   // an async, bounds-driven `cellSize` (from the scene registry / region box) that
   // the synchronous {@link READ_ROUTES} builder table can't resolve, and the two
@@ -731,6 +738,17 @@ export async function handleRequest(db: WasmDb, req: DemoRequest): Promise<DemoR
         buildVariantLeaderboard(pid, { ...readOpts(sp), variant, conversion }, duckdbDialect),
       );
       return ok(rows);
+    }
+
+    // Discovered custom-event vocabulary (ADR 0051 §5), mirroring the collector's
+    // `GET /api/v1/vocabulary/custom-events`: the query counts events and samples
+    // each name's most recent payloads, and `foldCustomEventVocabulary` derives the
+    // `props` keys and coarse types from them. The raw payload never leaves here.
+    if (path === "/api/v1/vocabulary/custom-events") {
+      const rows = await db.all<CustomEventVocabularySampleRow>(
+        buildCustomEventVocabulary(pid, readOpts(sp), duckdbDialect),
+      );
+      return ok(foldCustomEventVocabulary(rows));
     }
 
     const route = READ_ROUTES[path];

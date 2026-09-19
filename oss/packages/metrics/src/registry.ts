@@ -68,6 +68,7 @@ export const AGGREGATION_BUILDER_NAMES = [
   "buildCapabilityChanges",
   "buildClickGazeRay",
   "buildCompileStalls",
+  "buildCustomEventVocabulary",
   "buildDeadClicks",
   "buildDistinctScenes",
   "buildErrorHeatmap",
@@ -831,6 +832,7 @@ export type MetricId =
   | "interaction_sources"
   | "top_input_actions"
   | "camera_gestures"
+  | "custom_event_vocabulary"
   // --- navigation ---
   | "navigation_stats"
   | "backtrack_ratio"
@@ -2735,6 +2737,63 @@ export const METRIC_REGISTRY = {
     sourceChannels: ["input_action"],
     related: ["interaction_sources", "camera_gestures"],
     comparable: { primary: "count", direction: "neutral", minSample: 30 },
+    category: "interaction",
+  },
+  custom_event_vocabulary: {
+    id: "custom_event_vocabulary",
+    title: "Discovered custom-event vocabulary",
+    description:
+      "Which developer-defined `custom` event names the project actually emits, how often, over " +
+      "how many distinct sessions, and the union of `props` keys observed on each name with a " +
+      "coarse type per key (ADR 0051 §5). One row per custom-event name. This is how an agent " +
+      "learns that `add_to_cart` exists and carries `sku` and `qty` — nothing else in the read " +
+      "surface enumerates an application's own event vocabulary.",
+    builder: "buildCustomEventVocabulary",
+    endpoint: { method: "GET", path: "/api/v1/vocabulary/custom-events" },
+    grain: "row",
+    dimensions: ["name", "scene"],
+    // One row per custom-event name; `scene` is a filter, never a key.
+    grainDimensions: ["name"],
+    filters: ["since", "until", "scene", "limit", "format"],
+    row: z.object({
+      name: text,
+      count: int,
+      sessions: int,
+      props: z.record(z.string(), z.enum(["string", "number", "boolean", "null", "mixed"])),
+    }),
+    columns: {
+      name: {
+        description: "Developer-chosen custom-event name, e.g. `add_to_cart`.",
+        unit: "label",
+        label: true,
+      },
+      count: { description: "Times the event fired over the range.", unit: "count", measure: true },
+      sessions: { description: "Distinct sessions that emitted it.", unit: "sessions" },
+      props: {
+        description:
+          "Observed `props` keys mapped to a coarse JSON type (`string` / `number` / `boolean` / " +
+          "`null` / `mixed`). `mixed` means the key arrived with more than one kind; `null` means " +
+          "every sampled value was null.",
+        unit: "label",
+      },
+    },
+    limits: { maxRows: 200, maxSummaryRows: 20 },
+    interpretation:
+      "A discovery read, not a KPI: use it to find the real event names and prop keys before " +
+      "filtering or funnelling on them. `count` and `sessions` are exact over the range; `props` " +
+      "is a sample.",
+    caveats: [
+      "`props` is discovered from the 20 most recent events per name, not from the whole range: a " +
+        "key that stopped being emitted long ago will be absent, and a rarely-sent optional key " +
+        "may be missed. Treat it as a vocabulary hint, never as a schema.",
+      "Only prop key names and value kinds are reported — never a prop value (ADR 0003).",
+      "Names are ranked by `count` and capped by `limit`, so a long tail of rare custom events may " +
+        "be truncated.",
+      "An empty result means the project emits no `custom` events over the range, not that custom " +
+        "events are unsupported.",
+    ],
+    sourceChannels: ["custom"],
+    related: ["variant_leaderboard", "funnel", "event_counts"],
     category: "interaction",
   },
   camera_gestures: {

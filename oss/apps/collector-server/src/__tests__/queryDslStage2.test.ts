@@ -127,8 +127,8 @@ describe("the generic group-by tier", () => {
     // The fixtures carry no UA-derived `os`, so the attribute is absent from
     // the payload and groups as null — which is the honest answer, not a
     // missing row and not a fabricated "unknown".
-    expect(rows.get("webgpu")).toMatchObject({ count: 10, os: null });
-    expect(rows.get("webgl2")).toMatchObject({ count: 9, os: null });
+    expect(rows.get("webgpu")).toMatchObject({ count: 12, os: null });
+    expect(rows.get("webgl2")).toMatchObject({ count: 11, os: null });
   });
 
   it("filters by a device attribute, which no canned builder takes", async () => {
@@ -157,7 +157,7 @@ describe("the generic group-by tier", () => {
       format: "full",
     });
     const rows = res.json() as Record<string, unknown>[];
-    expect(rows).toEqual([{ session_id: "s1", count: 10 }]);
+    expect(rows).toEqual([{ session_id: "s1", count: 12 }]);
   });
 
   it("orders by a measure in SQL, so the row cap keeps the rows that were asked for", async () => {

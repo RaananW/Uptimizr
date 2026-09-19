@@ -105,4 +105,17 @@
     numbers:
       - { value: 0, label: distance to the nearest mesh (the box contains it) }
     phrases: ["plinth", "nearestMesh"]
+# Context-dependent (ADR 0051 §5): the agent cannot answer this by guessing —
+# the event names and prop keys exist only in THIS project's data, and the
+# project context document (uptimizr://context) is where it learns them.
+- id: interaction_custom_event_vocabulary
+  category: interaction
+  question: Which custom events does this application emit, how often, and what properties do they
+    carry?
+  expectedTools:
+    - [custom_event_vocabulary]
+  expectedAnswer:
+    numbers:
+      - { value: 3, label: add_to_cart events }
+    phrases: ["add_to_cart", "variant_view", "sku"]
     forbiddenPhrases: ["no data", "I don't have"]

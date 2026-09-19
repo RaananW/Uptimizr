@@ -27,6 +27,7 @@ import {
   buildEventTypeCounts,
   buildListSessions,
   createDuckdbClient,
+  ENGINE_FORMATTED_COLUMNS,
   diffParity,
   duckdbDialect,
   duckdbInsertEvents,
@@ -389,6 +390,11 @@ describe.skipIf(!available)("postgres store", () => {
       "mesh_visibility",
       "mesh_visibility",
       "xr_boundary_proximity",
+      // The two `custom` events the shared parity fixtures carry for the
+      // custom-event vocabulary (ADR 0051 §5) — both on s1, after the boundary
+      // sample, so they close the timeline.
+      "custom",
+      "custom",
     ]);
     const nodes = timeline.filter(
       (e): e is Extract<AnyEvent, { type: "node_transform" }> => e.type === "node_transform",
@@ -627,7 +633,9 @@ describe.skipIf(!available)("postgres store", () => {
           );
           const first = duckRows[0] ?? {};
           const ignoreColumns = Object.keys(first).filter(
-            (k) => typeof first[k] === "string" && TEMPORAL.test(first[k] as string),
+            (k) =>
+              ENGINE_FORMATTED_COLUMNS.has(k) ||
+              (typeof first[k] === "string" && TEMPORAL.test(first[k] as string)),
           );
           const sortKeys = Object.keys(first).filter((k) => !ignoreColumns.includes(k));
           const errors = diffParity(pgRows, duckRows, { sortKeys, ignoreColumns });

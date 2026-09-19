@@ -222,4 +222,29 @@ export const PARITY_EVENTS: AnyEvent[] = [
     position: [4.6, 0.3, 1.8],
     durationMs: 300,
   }),
+  // custom (ADR 0051 §5): the discovered custom-event vocabulary. Three
+  // `add_to_cart` events across both sessions and one `level_complete`, with
+  // deliberately uneven props — `gift` appears on only one payload and `sku`
+  // arrives once as an explicit null, so the fold proves the union of keys and
+  // that an optional null does not turn a known kind into `mixed`.
+  ev("custom", PARITY_T0 + 19_000, {
+    name: "add_to_cart",
+    props: { sku: "box-1", qty: 2 },
+  }),
+  ev("custom", PARITY_T0 + 20_000, {
+    sessionId: "s2",
+    sceneId: "arena",
+    name: "add_to_cart",
+    props: { sku: "box-2", qty: 1, gift: true },
+  }),
+  ev("custom", PARITY_T0 + 21_000, {
+    sessionId: "s2",
+    sceneId: "arena",
+    name: "add_to_cart",
+    props: { sku: null, qty: 3 },
+  }),
+  ev("custom", PARITY_T0 + 22_000, {
+    name: "level_complete",
+    props: { level: 3 },
+  }),
 ];

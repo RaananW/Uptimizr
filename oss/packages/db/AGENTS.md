@@ -111,6 +111,26 @@ Its own **package**, not a subpath here, because this one depends on the ~37 MB
 **only** `zod` plus a type-only `@uptimizr/schema` declaration, performs no I/O and holds no store
 or dialect reference.
 
+### Custom-event vocabulary (ADR 0051 §5)
+
+`buildCustomEventVocabulary` is the one aggregation whose SQL output is **not** what the API serves.
+Key _enumeration_ over an open JSON object is the single JSON operation the four supported engines
+have no portable spelling for (`json_keys` / `JSONExtractKeys` / `jsonb_object_keys` / `OPENJSON`),
+and `Dialect.jsonText` cannot express it — it reads a value at a _known_ path. So the query does what
+SQL is good at (counts and distinct sessions per `custom` event name, plus that name's most recent
+`payload` documents, bounded by `CUSTOM_EVENT_VOCABULARY_SAMPLE_ROWS` = 20 per name), and
+`foldCustomEventVocabulary(rows)` — pure, unit-tested, no dialect — turns the sampled payloads into
+one row per name with the union of prop keys and a coarse type each.
+
+- Every store calls the fold in its `customEventVocabulary` method. The **raw payload never leaves
+  the store layer**: the collector serves the folded rows, and only key names and value kinds, never
+  a prop value (ADR 0003).
+- The registry `row` for `custom_event_vocabulary` therefore describes the **folded** row; the parity
+  case compares the counts and the sampling shape and excludes `sample_payload`, which is engine
+  formatted (Postgres normalises it through `jsonb`).
+- Do not add a `jsonKeys` member to `Dialect` to "fix" this without a good reason: four dialects would
+  have to agree on key ordering, type coercion and NULL handling for a discovery read.
+
 ### Numeric coercion at the store edge (ADR 0051 §2)
 
 Numeric columns are strict `z.number()` — the schema describes the API, not the wire. Every
