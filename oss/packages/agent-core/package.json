@@ -69,7 +69,7 @@
   "dependencies": {
     "@uptimizr/metrics": "workspace:*",
     "@uptimizr/schema": "workspace:*",
-    "zod": "^4.5.4"
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "@mlc-ai/web-llm": "^0.2.0"
@@ -80,9 +80,9 @@
     }
   },
   "devDependencies": {
-    "@mlc-ai/web-llm": "^0.2.84",
+    "@mlc-ai/web-llm": "^0.2.85",
     "esbuild": "^0.28.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.1"
   },
   "engines": {
     "node": ">=22"

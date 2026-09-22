@@ -17,6 +17,9 @@ jobs:
   checks:
     name: Format, audit, license
     runs-on: ubuntu-latest
+    # Cap every job well above its normal run time (the slowest, E2E, takes ~9 min)
+    # so a hung process fails the job in minutes instead of GitHub's 6 h default.
+    timeout-minutes: 20
     # These checks don't need the build graph (Turbo's lint/typecheck/test all
     # `dependsOn: ["^build"]`, but format/audit/license-check don't), so they run
     # as a fast, fail-first job alongside the heavier build job.
@@ -56,6 +59,9 @@ jobs:
   build:
     name: Lint, typecheck, build, test
     runs-on: ubuntu-latest
+    # Cap every job well above its normal run time (the slowest, E2E, takes ~9 min)
+    # so a hung process fails the job in minutes instead of GitHub's 6 h default.
+    timeout-minutes: 20
     # Lint, typecheck, and test all `dependsOn: ["^build"]`, so keeping them in a
     # single job lets Turbo build the dependency graph once and reuse its cache
     # across all four tasks. Splitting them would rebuild the graph per runner.
@@ -110,6 +116,9 @@ jobs:
   store-parity-postgres:
     name: Store parity (Postgres)
     runs-on: ubuntu-latest
+    # Cap every job well above its normal run time (the slowest, E2E, takes ~9 min)
+    # so a hung process fails the job in minutes instead of GitHub's 6 h default.
+    timeout-minutes: 20
     # Opt-in cross-engine parity for the optional Postgres store (#84). The suites
     # in @uptimizr/db-postgres skip when no server is reachable, which keeps the
     # default `build` job Docker-free; here a postgres:16 service container is
@@ -164,6 +173,9 @@ jobs:
   store-parity-mssql:
     name: Store parity (MSSQL)
     runs-on: ubuntu-latest
+    # Cap every job well above its normal run time (the slowest, E2E, takes ~9 min)
+    # so a hung process fails the job in minutes instead of GitHub's 6 h default.
+    timeout-minutes: 20
     # Opt-in cross-engine parity for the optional SQL Server store (#85). The
     # suites in @uptimizr/db-mssql skip when no server is reachable, which keeps
     # the default `build` job Docker-free; here a SQL Server 2022 service
@@ -218,6 +230,9 @@ jobs:
   store-parity-clickhouse:
     name: Store parity (ClickHouse)
     runs-on: ubuntu-latest
+    # Cap every job well above its normal run time (the slowest, E2E, takes ~9 min)
+    # so a hung process fails the job in minutes instead of GitHub's 6 h default.
+    timeout-minutes: 20
     # Opt-in cross-engine parity for the optional ClickHouse store. The suite in
     # @uptimizr/db-clickhouse skips when no server is reachable, which keeps the
     # default `build` job Docker-free; here a ClickHouse service container (the
@@ -275,6 +290,9 @@ jobs:
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
+    # Cap every job well above its normal run time (the slowest, E2E, takes ~9 min)
+    # so a hung process fails the job in minutes instead of GitHub's 6 h default.
+    timeout-minutes: 20
     # Drives the real browser → SDK → collector (DuckDB) → dashboard/replay round
     # trip. Hermetic: the Playwright webServers boot the collector, playground, and
     # dashboard with inline env, so no Docker or repo `.env` is required.
@@ -325,6 +343,9 @@ jobs:
   godot-export-e2e:
     name: Godot export E2E (Playwright)
     runs-on: ubuntu-latest
+    # Cap every job well above its normal run time (the slowest, E2E, takes ~9 min)
+    # so a hung process fails the job in minutes instead of GitHub's 6 h default.
+    timeout-minutes: 20
     # Proves the @uptimizr/godot engine-side shim actually runs (#252): fetches the
     # pinned Godot headless editor + the nothreads Web template (range-fetched out of
     # the 1.2 GB templates bundle, ~85 MB total), exports examples/godot-web-export
@@ -397,6 +418,9 @@ jobs:
   changeset:
     name: Changeset present
     runs-on: ubuntu-latest
+    # Cap every job well above its normal run time (the slowest, E2E, takes ~9 min)
+    # so a hung process fails the job in minutes instead of GitHub's 6 h default.
+    timeout-minutes: 20
     # Every PR must declare its release impact with a changeset. Contributors run
     # `pnpm changeset` (or `pnpm changeset --empty` for changes that need no
     # release note). Skipped for the bot's Version Packages PR, which has no
@@ -430,6 +454,9 @@ jobs:
   scrub-gate:
     name: Scrub gate
     runs-on: ubuntu-latest
+    # Cap every job well above its normal run time (the slowest, E2E, takes ~9 min)
+    # so a hung process fails the job in minutes instead of GitHub's 6 h default.
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -440,6 +467,9 @@ jobs:
   secret-scan:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
+    # Cap every job well above its normal run time (the slowest, E2E, takes ~9 min)
+    # so a hung process fails the job in minutes instead of GitHub's 6 h default.
+    timeout-minutes: 20
     steps:
       - name: Checkout (full history)
         uses: actions/checkout@v7
