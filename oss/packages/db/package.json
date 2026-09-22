@@ -66,14 +66,14 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@duckdb/node-api": "^1.5.5-r.4",
+    "@duckdb/node-api": "^1.5.5-r.5",
     "@uptimizr/metrics": "workspace:*",
     "@uptimizr/schema": "workspace:*",
-    "zod": "^4.5.4"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/node": "^26.4.1",
-    "tsx": "^4.23.13",
-    "vitest": "^4.1.11"
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.1"
   }
 }
