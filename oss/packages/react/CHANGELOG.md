@@ -1,5 +1,293 @@
 # @uptimizr/react
 
+## 1.3.0
+
+### Minor Changes
+
+- f5fc7b6: Declarative panel specs and "Pin as panel" (ADR 0051 §7)
+
+  An agent's answer used to disappear when the chat closed. A **panel spec** keeps
+  it: a title, the query that produced it, how to draw the result, and the one-line
+  reading that made it worth keeping. The dashboard loads a project's specs on
+  mount and renders them alongside its built-in panels.
+
+  **A panel is data, never code.** ADR 0041 can load a remote panel _module_ at
+  runtime, and is explicit about the cost: such a module runs with the dashboard's
+  full privileges, which is why it is off by default and guarded by an origin
+  allowlist. A panel written by a language model would be exactly that. So a spec
+  is a closed document — a metric id, a chart name, some column names — and
+  `specPanel()` draws it with the panel components `@uptimizr/react` already
+  ships. There is nothing to import and nothing to evaluate; ADR 0041's trust
+  decision is not widened.
+
+  - **`@uptimizr/schema`** — `panelSpecV1Schema` and friends. The spec's `query`
+    is a `queryV1` document whose `range` may additionally be the literal
+    `"inherit"`, meaning "whatever the dashboard's filter bar currently says". It
+    is built by overriding one key of `queryV1Schema` rather than restating the
+    grammar, so a filter added to the DSL reaches panel specs in the same commit.
+  - **`@uptimizr/metrics`** — `validatePanelSpec()` answers the question that
+    decides whether a panel will draw anything: does this chart suit the metric's
+    grain, and do these encoding columns exist in its result. A `line` over a
+    ranking is not a crash — it renders _something_, which somebody reads as a
+    trend a week later — so it is refused at pin time with the validator's issue
+    codes, naming the charts that would have worked. The compatibility table is
+    `PANEL_CHART_RULES`, published in the docs and pinned by a test. Plus a pure
+    `suggestChart()`, which never proposes a spec the collector would refuse.
+  - **`@uptimizr/db`** and the three optional engines — a `panel_specs` table on
+    all four stores. Listed **oldest first**, because these are positions in a
+    grid rather than a feed, and a spec can be updated in place, keeping its id
+    and its original authorship. Bounded at 50 per project: every spec is a query
+    the dashboard runs on every load.
+  - **`@uptimizr/collector-server`** — `GET`/`POST /api/v1/panels` and
+    `PUT`/`DELETE /api/v1/panels/:id`. Writes need `annotate`, reads need `query`,
+    every write is audited, and a rejected spec answers `400 { error, issues }` —
+    the same body a rejected query gets. OpenAPI under a new `panels` tag.
+  - **`@uptimizr/react`** — `specPanel(spec)` returns an ordinary ADR 0036
+    `PanelDefinition` (id `spec:<id>`, the note as its subtitle) whose `load`
+    resolves `"inherit"` from the host's active window on every render.
+    `loadSpecPanels(api)` mirrors ADR 0041's loader: a spec that cannot be drawn
+    is reported and skipped, so one bad row never empties a dashboard. The
+    `CollectorApi` gains `query()`, `panels()`, `pinPanel()`, `updatePanel()` and
+    `unpinPanel()`.
+  - **The dashboard** marks each spec panel "Pinned by agents" and offers an unpin
+    control to a key that holds `annotate`. ADR 0039's per-panel hide and settings
+    work on a spec panel by id, unchanged.
+  - **The assistant and MCP** — a "Pin as panel" action on any answer that came
+    from a `query` tool call, and the `pin_panel`, `list_panels` and `unpin_panel`
+    tools, gated on `annotate` like the rest of the metadata catalog.
+
+  Migrations are forward-only and idempotent: DuckDB `0048`–`0049`, Postgres
+  `0020`, SQL Server `0022`–`0023`, ClickHouse `0017`.
+
+- 395aa36: Add the **metadata write path** — annotations, a project glossary and saved analyses — so people
+  and agents can leave something behind instead of re-deriving it every session. Events stay
+  read-only; these are the only rows a request can write besides ingestion, and every write needs a
+  key holding the `annotate` capability and is recorded in the agent audit log (ADR 0051 §5/§9).
+
+  - `@uptimizr/schema`: `annotationSchema` (`targetKind: project|scene|mesh|region|metric|window`,
+    optional `targetId`, `since`/`until`, bounded `text`), `glossaryEntrySchema`,
+    `savedAnalysisSchema` and `metadataAuthorKindSchema` — config/metadata shapes, deliberately
+    outside the event union — plus the per-field and per-project bounds in `LIMITS`.
+  - `@uptimizr/db` and the optional Postgres / SQL Server / ClickHouse stores: `annotations`,
+    `glossary` and `saved_analyses` tables (forward-only, idempotent migrations) with
+    `createAnnotation` / `listAnnotations` / `deleteAnnotation`, `putGlossaryEntry` / `listGlossary` /
+    `deleteGlossaryEntry` and `createSavedAnalysis` / `listSavedAnalyses` / `deleteSavedAnalysis`.
+    Each store enforces the per-project caps (500 annotations, 200 glossary terms, 200 analyses) at
+    write time and throws `MetadataLimitError` when a project is full.
+  - `@uptimizr/collector-server`: `GET`/`POST`/`DELETE /api/v1/annotations[/:id]`,
+    `GET /api/v1/glossary` with `PUT`/`DELETE /api/v1/glossary/:term`, and
+    `GET`/`POST`/`DELETE /api/v1/analyses[/:id]`. Writes require `annotate`, reads `query`; payloads
+    are Zod-bounded at the edge and a full project answers `409`. Stored rows record whether a person
+    or an agent wrote them, decided from the calling client rather than the payload. The served
+    OpenAPI document describes the whole group.
+  - `@uptimizr/agent-core` and `@uptimizr/mcp`: a new `writeTools` catalog (`annotate`, `define_term`,
+    `save_analysis`, plus `list_annotations`, `list_glossary`, `list_analyses`), kept a **separate
+    export** from the read-only `readTools` so an integration's read-only stance stays inspectable.
+    The MCP server calls `GET /api/v1/whoami` at start-up and registers them only when the key holds
+    `annotate`; the collector client gains `post`/`put`/`delete` used by these tools alone.
+  - `@uptimizr/react`: `CollectorApi.whoami` / `.annotations` / `.createAnnotation` / `.glossary` /
+    `.defineTerm` / `.analyses` / `.saveAnalysis`, the assistant actions "Annotate this" and "Save
+    this analysis" (shown only for an `annotate` key), `annotationTargetFor(filters)`, and annotation
+    markers on the event-volume time axis.
+  - `@uptimizr/dashboard`: the assistant drawer passes the active filters through, so an
+    "Annotate this" note is pinned to the scene or window the user is looking at.
+
+- 395aa36: Insight primitives: `significance` and `scene_health` (ADR 0051 §4)
+
+  Two more registry metrics under `/api/v1/insights/`, completing the Stage 2 set:
+
+  - **`insight_significance`** (`GET /api/v1/insights/significance`) — is that
+    difference real? Compares one comparable metric across two windows and reports
+    `{ a, b, effect, ci95, p, test, effectUnit, significant, powerNote }`, with the
+    test **chosen from what the measure is**: a two-proportion z with Wilson intervals
+    and a Newcombe hybrid-score interval on the difference when the metric's headline
+    column declares a `rateOf` denominator, an exact Poisson rate test (conditional
+    binomial) for a bare count, and Welch's t over the per-bucket values for a level or
+    a summed quantity. Welch counts **buckets**, not events, because samples inside one
+    day are not independent. `powerNote` states the smallest difference these sample
+    sizes could have detected at 80% power, so "no effect" stays distinguishable from
+    "not enough data".
+  - **`insight_scene_health`** (`GET /api/v1/insights/scene-health`) — which scene is in
+    trouble, and why? One 0-100 score per scene over six weighted factors — perf
+    stability (p05 FPS), jank rate, error rate, dead-click rate, exploration coverage
+    and XR abandonment — each normalised against the **project's own baseline over the
+    preceding equal window**, so 50 is the project norm rather than a pass mark. Every
+    factor reports the metric id behind it, its raw value, the baseline it was compared
+    with and the weight it carried, so the score can always be taken apart. Weights are
+    declared in the registry entry (and so appear in `capabilities`) and are overridable
+    per request with `weights`.
+
+  Both are ordinary registry entries, so they arrive as agent and MCP tools, in the
+  generated OpenAPI document and in the capabilities resource automatically, and they
+  accept `format=table | summary`. Every statistic — p-values, confidence intervals and
+  the health score alike — is computed in **pure TypeScript** over the same portable
+  per-bucket query, so no two storage engines can disagree about one.
+
+  `@uptimizr/db` additionally exports the statistics themselves (`twoProportionTest`,
+  `welchTest`, `poissonRateTest`, `newcombeDifferenceInterval`, `wilsonBounds`,
+  `studentTwoSidedP`, `binomialCdf`, `normalCdf`) so a caller that needs one of these
+  tests outside the insight endpoints does not have to reimplement it.
+
+  `@uptimizr/react` gains a **Scene health score** tile in the OSS panel catalog
+  (`sceneHealthScorePanel` / `SceneHealthScoreView`) and `CollectorApi.sceneHealth()`.
+  Each factor bar names the metric behind it, so the tile routes rather than dead-ends.
+  The existing `scene-health` panel (raw event counts for the selected window) is
+  unchanged.
+
+  The `weekly_scene_health` MCP prompt now leads with `insight_scene_health`, then
+  `insight_movers`, and tells the agent to confirm any single change with
+  `insight_significance` before reporting it.
+
+  `insight_significance` compares two **time windows** in v1. A segment-versus-segment
+  contrast (variant A vs variant B) needs the bucket series split by a promoted
+  dimension and returns `400` naming the window parameters rather than answering the
+  wrong comparison.
+
+- 785761d: Spatial labelling on `format=summary`: world-space heatmap hotspots now carry `region` (the smallest
+  containing scene region), `regions[]`, `nearestMesh` and `distance`, the `reading` names the place,
+  and `drill.region` becomes the region id. The 3D panels show the same labels on hover.
+- 395aa36: Conditional subscriptions, an SSE stream and signed webhooks (ADR 0051 §6). A subscription names a
+  registry metric, a window and a predicate — `threshold`, `anomaly`, `movers`, `new_value` or
+  `presence` — and the collector evaluates it in-process on a bounded scheduler, records each firing
+  in a per-subscription log and delivers it over SSE and/or an HMAC-signed webhook. Webhook egress is
+  disabled until `COLLECTOR_WEBHOOK_ALLOWED_HOSTS` names the hosts the collector may reach, and a
+  webhook secret is write-only. Adds `/api/v1/subscriptions*`, a read-only dashboard panel, a
+  `list_subscriptions` agent tool and `uptimizr subscriptions list|add|remove|test`.
+- 395aa36: Project context resource, custom-event vocabulary and assistant prompt injection (ADR 0051 §5).
+
+  `GET /api/v1/context` (and the MCP `uptimizr://context` resource) describes the project an agent is
+  looking at in one bounded, briefly-cached read: scenes with their labels and named regions, the
+  discovered custom-event vocabulary with observed prop keys and coarse types, top meshes and bound
+  input actions, capture channels seen, data freshness and retention flags, the store engine and
+  versions, and the metrics that will return empty because every capture channel feeding them is off.
+
+  A new `custom_event_vocabulary` metric (`GET /api/v1/vocabulary/custom-events`) serves the vocabulary
+  on its own and becomes a generated agent tool. The in-browser assistant fetches the context and
+  injects a compact rendering (`renderContextForPrompt` in `@uptimizr/agent-core`) into its system
+  prompt, degrading silently against a collector too old to serve it.
+
+### Patch Changes
+
+- 395aa36: `uptimizr agent report` — headless, scheduled analytics reports (ADR 0051 §6).
+
+  A new collector CLI subcommand runs the headless `runAgent` loop **once**, in the operator's own
+  process, over the generated read-only tool catalog against the collector's query API, and writes a
+  Markdown report to a file, stdout or a signed webhook:
+
+  ```bash
+  uptimizr agent report --skill weekly_scene_health --scene lobby --window 7d \
+    --out report.md --json report.json --webhook https://hooks.example.com/uptimizr
+  ```
+
+  The collector gains no in-process LLM loop and scheduling stays the operator's (cron, a systemd
+  timer, a GitHub Action). Provider configuration is read from the environment only and never
+  persisted, and the provider key never reaches a log, a report or an error message. The system
+  prompt carries the rendered `GET /api/v1/context` document, and every report ends with a **Method**
+  section listing each tool call and its arguments, so an unattended, model-written document stays
+  auditable. `--dry-run` prints the exact prompt without calling a provider, and
+  `UPTIMIZR_AGENT_PROVIDER=scripted` exercises the whole path with no model, no key and no egress.
+
+  `@uptimizr/agent-core` gains the pieces both clients now share: `AGENT_SKILLS` (the curated
+  investigations, previously inlined in `@uptimizr/mcp`'s prompt templates, which now register from
+  them), the `ANALYTICS_AGENT_GUIDELINES` / `renderCurrentTimeLine` system-prompt fragments the
+  browser assistant already used, and an optional `ProviderResponse.usage` that the hosted adapters
+  fill from the provider's own token accounting. No prompt text changes for any existing consumer.
+
+- 0c7507d: Agent tools accept the `table` and `summary` result envelopes, and default to `table`.
+
+  A generated tool's `outputSchema` was the registry row array, so a call with `format=summary` or
+  `format=table` — the envelopes the guides tell agents to prefer — came back as a result the MCP SDK
+  rejected with `-32602 Output validation error`, on stdio and over `/mcp` alike. The schema now
+  describes all three envelopes, and `@uptimizr/mcp` returns the one that was asked for as
+  `structuredContent` (`full` keeps its `{ rows }` wrapping) instead of stripping it to rows.
+
+  **Behaviour change:** a tool called without `format` now asks the collector for `table` — the same
+  rows plus the `meta` block (metric, range, applied filters, sample size, row count, truncation flag,
+  limits) — where it used to ask for nothing and get bare rows. `full` is still available and
+  unchanged, and the collector's own default is still `full`, so an HTTP client such as the dashboard
+  is unaffected: the default lives in the tool and travels as an explicit `format=table`. A consumer
+  that reads a tool's `structuredContent` as an array must either ask for `format: "full"` or read
+  `.rows`. The argument stays optional, so no call becomes invalid.
+
+  The Zod envelope schemas now live in `@uptimizr/metrics` (`resultEnvelopeSchema`,
+  `tableEnvelopeSchema`, `summaryEnvelopeSchema`, `structuredEnvelopeSchema`, `resultFormatSchema`),
+  which is what lets the browser-safe agent packages describe them without depending on
+  `@uptimizr/db`. `@uptimizr/db/summary` re-exports them under its existing names, so that package's
+  public API is unchanged; the summariser that builds an envelope has not moved.
+
+  `@uptimizr/react`'s assistant inherits the new default: its tool calls now carry `format=table`, so
+  the model sees the `meta` context with its rows.
+
+- e1213c8: Packaged agent docs: repair the contradictory fragments the wave-2 integration merge left behind.
+  Every duplicated paragraph or bullet now appears once, with the statement that is actually true of
+  this release: five insight primitives rather than three or four, one `Types:` line in
+  `@uptimizr/metrics`' `llms.txt` instead of three, one `query:raw` paragraph in `@uptimizr/mcp`'s
+  guide instead of two that disagreed about whether `session_narrative` exists, and the packaged
+  skill names spelled as they ship (`xr_comfort_audit`, plus `conversion_investigation` and
+  `performance_regression_triage`). Tool and metric counts are recomputed from the registry — 78
+  metrics, 76 served on a read endpoint, 77 tools on a plain `query` key — and the "read-only"
+  claims now say what they mean: events are read-only, metadata writes need `annotate`, and
+  `session_narrative` needs `query:raw`.
+- 07d4f60: Packaged methodology skills (ADR 0051 §7)
+
+  A prompt that names tools still leaves the method to the model. A **skill** carries the
+  method: an Agent Skills file — `skills/<name>/SKILL.md` — whose frontmatter declares the
+  tools it relies on, the key capabilities it needs and the arguments it takes, and whose
+  body is the investigation written out as numbered steps.
+
+  Five ship, in both the `@uptimizr/agent-core` and `@uptimizr/mcp` tarballs:
+
+  - **`weekly_scene_health`** — the recurring health check: score first, then what moved,
+    whether the new level is outside baseline, whether the change is real, and the date the
+    anomaly scan puts on it.
+  - **`attention_hotspots`** — where attention concentrates in a scene, and the cold half:
+    dwell without interaction, and the meshes nobody ever notices.
+  - **`conversion_investigation`** _(new)_ — where a funnel loses people and why: the bounce
+    before the first step, the worst transition, and the interaction failure (dead clicks,
+    rage clicks, an unreachable target) that usually _is_ the drop-off.
+  - **`performance_regression_triage`** _(new)_ — confirm, date, locate, then name the
+    mechanism: jank versus a uniform slowdown, compile stalls, memory pressure, a
+    render-scale change or a shift in the rendering-technology mix.
+  - **`xr_comfort_audit`** — rapid rotation, locomotion style and early exits, with tracking
+    loss and guardian contacts ruled out first.
+
+  The files are the source of truth. `scripts/gen-agent-skills.mjs` compiles them into
+  `skills.generated.ts`, so `AGENT_SKILLS` is derived from them and `@uptimizr/agent-core`
+  stays browser-safe (nothing reads them from disk at runtime). `pnpm gen:skills:check` is
+  the CI gate that fails a hand-edited generated file.
+
+  Every surface reads the same text: `@uptimizr/mcp` registers one prompt template per skill
+  and adds a **`uptimizr://skills`** resource listing the catalog, `uptimizr agent report
+--skill` runs one headlessly (and now fills the skill's `range` from `--window`), and the
+  `@uptimizr/react` assistant offers the argument-free ones as starter prompts.
+
+  `getAgentSkill(name)` accepts either spelling — `xr_comfort_audit` or `xr-comfort-audit` —
+  and `AgentSkill` gains `id` and `capabilities`. The XR skill was widened from comfort
+  signals to a full audit and renamed `xr_comfort_review` → `xr_comfort_audit`; the old name
+  still resolves, so saved prompt references and cron lines keep working.
+
+- 4f16fd5: Session preview and whole-building backdrop no longer collapse unnamed proxy meshes into one box. Meshes registered with an empty name (e.g. an unnamed three.js `Mesh`) were de-duplicated by name, so only the first unnamed wall/pedestal of a scene was drawn; unnamed meshes now key on their path + AABB instead.
+- Updated dependencies [395aa36]
+- Updated dependencies [f5fc7b6]
+- Updated dependencies [375cb7c]
+- Updated dependencies [395aa36]
+- Updated dependencies [395aa36]
+- Updated dependencies [0c7507d]
+- Updated dependencies [395aa36]
+- Updated dependencies [395aa36]
+- Updated dependencies [e1213c8]
+- Updated dependencies [07d4f60]
+- Updated dependencies [395aa36]
+- Updated dependencies [395aa36]
+- Updated dependencies [395aa36]
+- Updated dependencies [395aa36]
+- Updated dependencies [969c899]
+- Updated dependencies [395aa36]
+  - @uptimizr/metrics@0.2.0
+  - @uptimizr/agent-core@1.2.0
+  - @uptimizr/schema@1.2.0
+  - @uptimizr/replay@1.0.3
+
 ## 1.2.1
 
 ### Patch Changes

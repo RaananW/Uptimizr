@@ -1,5 +1,20 @@
 # @uptimizr/replay
 
+## 1.0.3
+
+### Patch Changes
+
+- 375cb7c: Refresh runtime dependencies across the workspace: Zod 4.6.5 (every package that validates at a boundary), Fastify 5.12.5 and `@fastify/static` 10.1.4 (collector-server), `@duckdb/node-api` 1.5.5-r.5 (db), `mssql` 12.7.2 (db-mssql), and Next.js 16.3.5, Babylon.js 9.27.1 and WebLLM 0.2.85 (dashboard). No API or behaviour changes; `pnpm audit` stays clean.
+- Updated dependencies [f5fc7b6]
+- Updated dependencies [375cb7c]
+- Updated dependencies [395aa36]
+- Updated dependencies [e1213c8]
+- Updated dependencies [395aa36]
+- Updated dependencies [395aa36]
+- Updated dependencies [395aa36]
+  - @uptimizr/schema@1.2.0
+  - @uptimizr/sdk-core@1.1.1
+
 ## 1.0.2
 
 ### Patch Changes
