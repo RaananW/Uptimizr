@@ -30,7 +30,9 @@ describe("clickhouseDialect", () => {
   it("renders quantile / norm / conditional aggregates", () => {
     expect(d.quantile("fps", 0.5)).toBe("quantile(0.5)(fps)");
     expect(d.vectorNorm("direction")).toBe("L2Norm(direction)");
-    expect(d.avgIf("dist", "active")).toBe("avgIf(dist, active)");
+    // `-OrNull`: an average over no matching row is absent, not `0` — the same
+    // answer the `FILTER` / `CASE` forms give on the other three engines.
+    expect(d.avgIf("dist", "active")).toBe("avgIfOrNull(dist, active)");
     expect(d.anyValue("scene_id")).toBe("any(scene_id)");
   });
 

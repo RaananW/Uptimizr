@@ -655,7 +655,13 @@ export interface TimeseriesBucketRow {
   /** Start of the bucket as epoch milliseconds. */
   bucket: number;
   events: number;
-  avg_fps: number;
+  /**
+   * Mean FPS of the bucket's `frame_perf` samples, or `null` when it had none.
+   * A bucket can hold plenty of traffic and no perf telemetry at all, and an
+   * average over no samples is absent — never `0` (see `numOrNull` in the
+   * metric registry).
+   */
+  avg_fps: number | null;
 }
 
 export interface EventTypeCountRow {

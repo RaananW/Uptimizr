@@ -272,9 +272,9 @@ call rather than a request description. `pin_panel` and `unpin_panel` mutate; `l
 not, and `mutatingWriteTools` is the filtered view. `unpin_panel` is the only tool here that uses
 `CollectorClient.delete`.
 
-The catalog is ~69 tools. A small local model cannot hold every schema in its function-calling
-The catalog is ~70 tools. A small local model cannot hold every schema in its function-calling
-prompt — hand a run `coreReadTools` or `filterReadTools([...])` rather than the full catalog.
+The catalog is 77 tools on a plain `query` key. A small local model cannot hold every schema in its
+function-calling prompt — hand a run `coreReadTools` or `filterReadTools([...])` rather than the
+full catalog.
 
 ### Capability-gated tools
 

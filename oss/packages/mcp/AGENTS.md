@@ -48,12 +48,6 @@ so a tool that would always answer `403` is never advertised. `annotate` (metada
 `--rate-limit-window-ms` budget: the collector's agent audit log records activity per key id, which
 is what makes an agent's reads reviewable.
 
-**`query:raw` is deliberately not needed.** Every analytics tool here is an aggregate read; the
-server exposes no raw per-session, replay or live-follow tool, so granting its key `query:raw` widens
-the blast radius for nothing. `ingest` is likewise never used. Prefer a dedicated, labelled key with
-its own `--rate-limit-max` / `--rate-limit-window-ms` budget: the collector's agent audit log records
-activity per key id, which is what makes an agent's activity reviewable.
-
 ## Transports
 
 `createMcpServer()` is transport-agnostic, and two transports serve the identical catalog,
@@ -96,10 +90,12 @@ Only on a key holding `query:raw`, and only when the collector runs with
 
 <!-- generated:registry-tool-names:end -->
 
-**70 tools, generated** from the `@uptimizr/metrics` semantic metric registry (ADR 0051 §1) — one per
-metric the collector serves on a read endpoint. Names are the registry ids; the full table lives in
-[README.md](./README.md), and `uptimizr://capabilities` enumerates them at runtime with each tool's
-grain, column units and caveats.
+**75 tools, generated** from the `@uptimizr/metrics` semantic metric registry (ADR 0051 §1) — one
+per metric a plain `query` key may read, plus `session_narrative` above for a `query:raw` key. With
+the `query` DSL tool and `list_subscriptions` below, a `query` key sees **77** tools in all. Names
+are the registry ids; the full table lives in [README.md](./README.md), and
+`uptimizr://capabilities` enumerates them at runtime with each tool's grain, column units and
+caveats.
 
 Orientation: `list_sessions`, `list_scenes`, `session_meta`, `scene_representation`, `timeseries`,
 `event_counts`. Attention: the `*_heatmap` family, `mesh_dwell`, `mesh_blind_spots`, `hover_dwell`.
@@ -320,14 +316,11 @@ with recommendations. Read one before improvising: `skills/weekly-scene-health/S
 
 ## Programmatic API
 
-`readMcpConfig()`, `createMcpServer(client, options?)` (`options.capabilities` carries the bound
-key's capability set from the hosted transport; omit it for stdio), and the shared building blocks
-re-exported from
 `readMcpConfig()`, `createMcpServer(client, options?)` (`options.capabilities` is the key’s
-capability set from `/api/v1/whoami`; it gates the `query:raw` tools),
+capability set from `/api/v1/whoami`; it gates the `query:raw` and `annotate` tools),
 `buildCapabilities(options?)`, and the shared building blocks re-exported from
 [`@uptimizr/agent-core`](https://www.npmjs.com/package/@uptimizr/agent-core):
-`createCollectorClient(config)`, `readTools` and `rawTools`.
+`createCollectorClient(config)`, `readTools`, `rawTools` and `writeTools`.
 
 ## More
 

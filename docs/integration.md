@@ -1400,15 +1400,17 @@ full walkthrough of each store.
 > contract drives MCP and any in-browser or headless agent without duplication (ADR 0050). That
 > catalog is **generated** from the semantic metric registry in
 > [`@uptimizr/metrics`](../oss/packages/metrics/README.md) (ADR 0051 §1): every read endpoint with a registry
-> entry is a tool (69 today), each carrying the metric's interpretation notes and caveats and an
-> output schema covering every `format` envelope it can answer with (rows, `table`, `summary`).
+> entry is a tool (76 today, of which 75 need only a `query` key), each carrying the metric's
+> interpretation notes and caveats and an output schema covering every `format` envelope it can
+> answer with (rows, `table`, `summary`).
 > Adding an endpoint without a registry entry fails the build, so the
 > agent surface cannot fall behind this table.
 >
 > Beyond tools, the MCP server exposes capability-discovery **resources** —
 > `uptimizr://capabilities` (a machine-readable descriptor of event types, the tool catalog, and
-> parameter semantics) and `uptimizr://scenes` (the live scene ids) — plus curated **prompts**
-> (`weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`) that drive the existing tools.
+> parameter semantics), `uptimizr://context` (the live project context document),
+> `uptimizr://scenes` (the live scene ids) and `uptimizr://skills` (the packaged methodology
+> catalog) — plus one curated **prompt per packaged skill** that drives the existing tools.
 > The collector can also **host that same server itself** over MCP's Streamable HTTP transport (see
 > below), so a remote agent connects with a URL and a key. See the
 > [MCP guide](https://uptimizr.com/docs/guides/mcp/) for the full resource/prompt/tool reference.
@@ -2490,16 +2492,16 @@ uptimizr agent report --skill weekly_scene_health --scene lobby --window 7d \
   --out report.md --json report.json --webhook https://hooks.example.com/uptimizr
 ```
 
-| Flag                | Meaning                                                                                                                                                         |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--skill <name>`    | The investigation to run (required): `weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`. `--list-skills` prints them with the metrics each reads. |
-| `--scene <id>`      | Scope the report to one scene (required by `attention_hotspots`).                                                                                               |
-| `--window <NdNhNw>` | Window counting back from now (`24h`, `7d` default, `2w`), or `--since`/`--until` in epoch ms.                                                                  |
-| `--out <file\|->`   | Markdown destination; default `-` (stdout).                                                                                                                     |
-| `--json <file\|->`  | Structured report: every tool call with arguments, duration and outcome, plus token usage when the provider reports it.                                         |
-| `--webhook <url>`   | `POST {markdown, report}` to an `http(s)` URL.                                                                                                                  |
-| `--max-steps <n>`   | Cap on provider turns (default `8`).                                                                                                                            |
-| `--dry-run`         | Print the exact prompt and tool list; call no provider.                                                                                                         |
+| Flag                | Meaning                                                                                                                                                                                                                     |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--skill <name>`    | The investigation to run (required): `attention_hotspots`, `conversion_investigation`, `performance_regression_triage`, `weekly_scene_health`, `xr_comfort_audit`. `--list-skills` prints them with the metrics each reads. |
+| `--scene <id>`      | Scope the report to one scene (required by `attention_hotspots`).                                                                                                                                                           |
+| `--window <NdNhNw>` | Window counting back from now (`24h`, `7d` default, `2w`), or `--since`/`--until` in epoch ms.                                                                                                                              |
+| `--out <file\|->`   | Markdown destination; default `-` (stdout).                                                                                                                                                                                 |
+| `--json <file\|->`  | Structured report: every tool call with arguments, duration and outcome, plus token usage when the provider reports it.                                                                                                     |
+| `--webhook <url>`   | `POST {markdown, report}` to an `http(s)` URL.                                                                                                                                                                              |
+| `--max-steps <n>`   | Cap on provider turns (default `8`).                                                                                                                                                                                        |
+| `--dry-run`         | Print the exact prompt and tool list; call no provider.                                                                                                                                                                     |
 
 Configuration is read from the environment only and never persisted:
 `UPTIMIZR_COLLECTOR_URL`, `UPTIMIZR_API_KEY`, `UPTIMIZR_AGENT_PROVIDER`

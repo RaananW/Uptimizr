@@ -98,9 +98,10 @@ npx -p @uptimizr/collector-server uptimizr agent report \
 ```
 
 - `--list-skills` prints the investigations this release ships
-  (`weekly_scene_health`, `attention_hotspots`, `xr_comfort_review`) and the
-  metrics each one reads — the same curated methodologies `@uptimizr/mcp` offers
-  as prompts.
+  (`attention_hotspots`, `conversion_investigation`,
+  `performance_regression_triage`, `weekly_scene_health`, `xr_comfort_audit`) and
+  the metrics each one reads — the same packaged methodologies `@uptimizr/mcp`
+  offers as prompts.
 - `--dry-run` prints the exact prompt and tool list and calls no provider;
   `UPTIMIZR_AGENT_PROVIDER=scripted` runs the whole path with no model, no key
   and no egress (useful in CI — it produces data, not analysis).

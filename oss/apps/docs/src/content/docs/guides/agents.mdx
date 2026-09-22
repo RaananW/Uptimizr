@@ -36,7 +36,7 @@ This page is the map. Each section links to the reference for that piece.
 ## 1. The semantic metric registry
 
 `@uptimizr/metrics` is a dependency-light package (`zod` + `@uptimizr/schema`, no database driver)
-holding **71 metric definitions**, 69 of which the collector serves on a read endpoint. Each one
+holding **78 metric definitions**, 76 of which the collector serves on a read endpoint. Each one
 declares, as data:
 
 | Field                    | What it gives an agent                                                                                                                                                                                          |
@@ -101,7 +101,8 @@ already carries: just the scene ids with recent activity. Reach for it when that
 
 ### MCP server — `@uptimizr/mcp`
 
-A read-only MCP server over your collector's query API, run over **stdio**:
+An MCP server over your collector's query API — read-only unless its key says otherwise — run
+over **stdio**:
 
 ```bash
 UPTIMIZR_COLLECTOR_URL="https://collect.example.com" \
@@ -111,10 +112,11 @@ npx @uptimizr/mcp
 
 Every registry metric with an endpoint becomes a typed, `GET`-only tool carrying that metric's
 interpretation and caveats in its description and an MCP `outputSchema` covering every envelope it
-can answer with — its rows, the `table` envelope around them, a `summary` digest. There are no
-ingestion, mutation or raw-event tools. It also ships three curated prompts —
-`weekly_scene_health`, `attention_hotspots`, `xr_comfort_review` — that sequence the tools for a
-common investigation. See the [MCP guide](/docs/guides/mcp/).
+can answer with — its rows, the `table` envelope around them, a `summary` digest. There is no
+ingestion tool and nothing that can alter an event; a `query:raw` key additionally gets
+`session_narrative` (§10) and an `annotate` key the metadata write tools (§8). It also registers a
+prompt per [packaged skill](#9-packaged-methodology-skills), each sequencing the tools for a common
+investigation. See the [MCP guide](/docs/guides/mcp/).
 
 ### Hosted MCP — `/mcp` on your collector
 
@@ -187,8 +189,8 @@ and all three validate against the tool's advertised output schema.
 
 ## 5. One query, any metric — the query DSL
 
-Seventy tools is a lot of surface for a model to hold, and the canned tool for a metric exposes only
-the filters that metric's endpoint happens to take. The **query DSL** collapses that into one call:
+Seventy-seven tools is a lot of surface for a model to hold, and the canned tool for a metric
+exposes only the filters that metric's endpoint happens to take. The **query DSL** collapses that into one call:
 name the `metric`, bound it with a `range`, narrow it with the filters that metric declares, cap it,
 and pick the envelope.
 
@@ -261,10 +263,10 @@ reference: [query DSL](/docs/api/query/#one-query-endpoint-the-query-dsl).
 
 ## 6. Let the collector do the comparing
 
-Four questions come up on every investigation, and a model that answers them by pulling raw rows and
+Five questions come up on every investigation, and a model that answers them by pulling raw rows and
 doing arithmetic will answer them differently each time: **"is this number normal here?"**,
-**"what changed?"**, **"is that change real?"** and **"which scene should I look at first?"** All four
-are metrics of their own.
+**"what changed?"**, **"when did it go wrong?"**, **"is that change real?"** and **"which scene
+should I look at first?"** All five are metrics of their own.
 
 | Tool               | Answers                                                                                                   |
 | ------------------ | ---------------------------------------------------------------------------------------------------------- |
@@ -301,9 +303,6 @@ has one place to start; `null` means the metric has no column that could honestl
 that `anomalies` reports `z` in standard deviations while `movers` reports the same ratio unscaled,
 so do not compare the two columns directly.
 
-Statistics are computed in pure TypeScript over portable day/hour buckets, so the same data gives the
-same baseline on DuckDB, ClickHouse, Postgres and SQL Server. Full parameters and the excluded-metric
-rules: [insights](/docs/api/query/#insights--baselines-movers-and-anomalies).
 ### Say whether a change is real, and which scene to open first
 
 `insight_movers` says *how unusual* a change is; `insight_significance` says whether it could be
@@ -331,7 +330,7 @@ everything is equally bad reads 50 everywhere. A factor with `score: null` was n
 Statistics are computed in pure TypeScript over portable day/hour buckets, so the same data gives the
 same baseline, the same p-value and the same score on DuckDB, ClickHouse, Postgres and SQL Server.
 Full parameters and the excluded-metric rules:
-[insights](/docs/api/query/#insights--baselines-movers-significance-and-health).
+[insights](/docs/api/query/#insights--baselines-movers-anomalies-significance-and-health).
 
 ## 7. Give answers a vocabulary for *where*
 

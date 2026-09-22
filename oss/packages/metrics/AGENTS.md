@@ -109,15 +109,11 @@ genericDimensions(metric!); // what it can *also* be grouped by, or [] if it can
 
 ## Derived metrics (ADR 0051 §4)
 
-Most entries name a `build*` aggregation. Three do not, and are not store resources either: the
-insight primitives `insight_baseline`, `insight_movers` and `insight_anomalies` are computed in
-pure TypeScript _over other metrics' data_ (`@uptimizr/db`'s `src/insights/`). They carry
-`derived: "insight"`, and there are three kinds of entry rather than two:
-Most entries name a `build*` aggregation. Four do not, and are not store resources either: the
-insight primitives `insight_baseline`, `insight_movers`, `insight_significance` and
-`insight_scene_health` are computed in pure TypeScript _over other metrics' data_
-(`@uptimizr/db`'s `src/insights/`). They carry `derived: "insight"`, and there are three kinds of
-entry rather than two:
+Most entries name a `build*` aggregation. Five do not, and are not store resources either: the
+insight primitives `insight_baseline`, `insight_movers`, `insight_anomalies`,
+`insight_significance` and `insight_scene_health` are computed in pure TypeScript _over other
+metrics' data_ (`@uptimizr/db`'s `src/insights/`). They carry `derived: "insight"`, and there are
+three kinds of entry rather than two:
 
 | Predicate           | Entry                                                          |
 | ------------------- | -------------------------------------------------------------- |

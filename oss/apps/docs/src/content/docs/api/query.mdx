@@ -237,7 +237,7 @@ including each column's unit and each metric's caveats.
 | `GET` | `/api/v1/load-bounce` | `load_bounce_funnel` | bucket | `since`, `until`, `scene`, `bands`, `format` | Sessions bucketed by their initial load time, with how many bounced in each band (#152) — a bounce being a session that produced no interaction at or after its first asset load. One row per band. Turns 'slow loads cost you customers' into a number. |
 | `GET` | `/api/v1/variant-leaderboard` | `variant_leaderboard` | row | `since`, `until`, `scene`, `cameraMode`, `variant`, `conversion`, `limit`, `format` | For a product configurator (#150): per variant — a custom event grouped by its name — how often it was viewed, over how many sessions, how many of those converted, and the mean dwell before the visitor switched or converted. One row per variant, ranked by views. |
 
-## insights
+## Insights & anomalies
 
 | Method | Path | Metric | One row is | Parameters | Purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -378,26 +378,13 @@ been accepted, so a client can correct itself instead of guessing:
 }
 ```
 
-## Insights — baselines and movers
-## Insights — baselines, movers and anomalies
+## Insights — baselines, movers, anomalies, significance and health
 
-Three of the metrics above are not measurements but **readings about the other
+Five of the metrics above are not measurements but **readings about the other
 metrics**: `insight_baseline` answers "is this number normal here?",
-`insight_movers` answers "what changed?" and `insight_anomalies` answers "*when*
-did it go wrong, and what inside it did?". All three are ordinary registry
-metrics, so they take the same parameters, the same `format` envelopes and the
-same API key as everything else on this page.
-| `GET` | `/api/v1/insights/significance` | `insight_significance` | project | `metric`, `scene`, `bucket`, `since`, `until`, `refSince`, `refUntil`, `format` | Is that difference real? Compares one comparable metric across two windows and reports the effect, its 95% confidence interval and a two-sided p-value, with the test chosen from what the measure *is*: a two-proportion z with Wilson intervals for a declared rate, Welch's t over the per-bucket values for a level, an exact Poisson rate test for a bare count. One row per request, and a `powerNote` saying what these sample sizes could and could not have detected. |
-| `GET` | `/api/v1/insights/scene-health` | `insight_scene_health` | scene | `scene`, `window`, `since`, `until`, `bucket`, `limit`, `weights`, `format` | Which scene is in trouble, and why. Scores each scene 0-100 over six weighted factors — perf stability, jank, errors, dead clicks, exploration coverage and XR abandonment — each normalised against the project's own baseline over the preceding equal window. One row per scene, least healthy first, and every factor carries the metric id, the raw value, the baseline it was compared with and the weight it contributed, so the score can always be taken apart. |
-
-{/* generated:registry-query-reference:end */}
-
-## Insights — baselines, movers, significance and health
-
-Four of the metrics above are not measurements but **readings about the other
-metrics**: `insight_baseline` answers "is this number normal here?",
-`insight_movers` "what changed?", `insight_significance` "is that change real?"
-and `insight_scene_health` "which scene should I look at first?". All four are
+`insight_movers` "what changed?", `insight_anomalies` "*when* did it go wrong,
+and what inside it did?", `insight_significance` "is that change real?" and
+`insight_scene_health` "which scene should I look at first?". All five are
 ordinary registry metrics, so they take the same parameters, the same `format`
 envelopes and the same API key as everything else on this page.
 

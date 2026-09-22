@@ -1399,7 +1399,7 @@ export const METRIC_REGISTRY = {
     dimensions: ["scene", "event_type"],
     grainDimensions: [],
     filters: ["since", "until", "interval", "scene", "type", "format"],
-    row: z.object({ bucket: int, events: int, avg_fps: num }),
+    row: z.object({ bucket: int, events: int, avg_fps: numOrNull }),
     columns: {
       bucket: {
         description: "Bucket start as epoch milliseconds.",
@@ -1410,14 +1410,16 @@ export const METRIC_REGISTRY = {
       events: { description: "Events in the bucket.", unit: "count", measure: true },
       avg_fps: {
         description:
-          "Mean FPS of the `frame_perf` samples in the bucket; `0` when there were none.",
+          "Mean FPS of the `frame_perf` samples in the bucket; `null` when the bucket had " +
+          "none — an average over no samples is absent, never zero.",
         unit: "fps",
       },
     },
     limits: { maxRows: 1000, maxSummaryRows: 8 },
     interpretation:
-      "Read it as a trend, not a level. A bucket with no `frame_perf` samples reports `avg_fps` 0, " +
-      "so treat a zero as 'no perf data', never as a stall.",
+      "Read it as a trend, not a level. A bucket with no `frame_perf` samples reports `avg_fps` " +
+      "`null` — traffic the engine never sampled perf for, not a stall. A `0` means the samples " +
+      "really did average zero.",
     caveats: [
       "Buckets are fixed width; a range shorter than one `interval` collapses to a single bucket.",
       "Volume scales with the capture fidelity dial (ADR 0012) — a rise can be a sampling change rather than traffic.",

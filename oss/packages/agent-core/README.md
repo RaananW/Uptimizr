@@ -96,7 +96,8 @@ Only on a key holding `query:raw`, and only when the collector runs with
 
 `readTools` is **generated** from the semantic metric registry in `@uptimizr/metrics`
 ([ADR 0051](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md) §1):
-one tool per metric the collector serves on a read endpoint — **69** today, covering sessions and
+one tool per metric the collector serves on a read endpoint — **75** on a plain `query` key today,
+plus `session_narrative` behind `query:raw` — covering sessions and
 scenes, pointer/world/gaze/camera heatmaps, mesh attention and blind spots, dead and rage clicks,
 navigation and desire lines, performance (FPS distribution, jank, compile stalls, per-device and
 per-scene), errors and stability, XR/AR comfort and placement, and conversion (funnel, scene
