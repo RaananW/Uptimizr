@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/metrics",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The Uptimizr semantic metric registry — one machine-readable definition per analytics metric (row schema, units, filters, endpoint, limits, interpretation). Dependency-free and browser-safe.",
   "keywords": [
     "uptimizr",
