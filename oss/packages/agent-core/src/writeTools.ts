@@ -3,9 +3,10 @@ import { LIMITS } from "@uptimizr/schema";
 import type { CollectorClient } from "./client.js";
 
 /**
- * The **metadata write tools** (#310, ADR 0051 §5): `annotate`, `define_term`
- * and `save_analysis`, plus the three reads that make them usable
- * (`list_annotations`, `list_glossary`, `list_analyses`).
+ * The **metadata write tools** (#310, ADR 0051 §5; #315, §7): `annotate`,
+ * `define_term`, `save_analysis`, `pin_panel` and `unpin_panel`, plus the four
+ * reads that make them usable (`list_annotations`, `list_glossary`,
+ * `list_analyses`, `list_panels`).
  *
  * They are a deliberately separate export from `readTools`, not an addition to
  * it, for one reason: ADR 0017's read-only stance must stay **inspectable**. A
@@ -221,9 +222,112 @@ export const listAnalysesTool: WriteTool = {
     client.get("/api/v1/analyses", { limit: args.limit as number | undefined }),
 };
 
+// --- Declarative panel specs (#315, ADR 0051 §7 / sketch §G.3) -------------
+//
+// The most durable thing an agent can leave behind: not a note *about* an
+// answer, but the question itself, on the dashboard, re-asked every time
+// somebody opens it. And still metadata — the spec is a closed document (a
+// metric id, a chart name, some column names) that the dashboard renders with
+// panels it already ships. No module is loaded and nothing is evaluated, so
+// pinning a panel does not widen the dashboard's trust boundary (ADR 0041).
+
+export const pinPanelTool: WriteTool = {
+  name: "pin_panel",
+  title: "Pin an answer to the dashboard as a panel",
+  description:
+    "Keep a question on the project's dashboard, where it will be re-asked and redrawn every " +
+    "time somebody opens it. Pass the same `query` document you ran with the `query` tool, but " +
+    'with `range` set to "inherit" so the panel follows the dashboard\'s own time filter instead ' +
+    "of freezing the window you happened to ask in. Pick a `chart` the metric's grain can " +
+    "actually support — `line`/`area` need a time-bucketed metric, `heatmap2d` a binned one, " +
+    "`world3d` a voxelised one, `stat` a single-record one, `bar` a ranking, `table` anything — " +
+    "or the collector refuses the spec and names the charts that would have worked. Put your " +
+    "one-line reading in `note`: it becomes the panel's subtitle, and it is the part a person " +
+    "reads a week later. Use this when an answer is worth watching, not for a one-off lookup.",
+  inputSchema: {
+    title: z
+      .string()
+      .min(1)
+      .max(LIMITS.maxPanelSpecTitleLength)
+      .describe("What the panel is called in the grid, e.g. 'Meshes people actually touch'."),
+    query: z
+      .record(z.string(), z.unknown())
+      .describe(
+        'A `queryV1` document — the same shape the `query` tool takes — with `range` set to "inherit", or to an explicit `{since, until}` to pin one period.',
+      ),
+    chart: z
+      .enum(["stat", "table", "bar", "line", "area", "heatmap2d", "world3d"])
+      .describe("How to draw the result. Must suit the metric's grain."),
+    encoding: z
+      .object({
+        x: z.string().max(LIMITS.maxPanelEncodingColumnLength).optional(),
+        y: z.string().max(LIMITS.maxPanelEncodingColumnLength).optional(),
+        series: z.string().max(LIMITS.maxPanelEncodingColumnLength).optional(),
+      })
+      .optional()
+      .describe(
+        "Which result column feeds which channel. Omit to use the metric's own label/axis and measure columns.",
+      ),
+    span: z
+      .union([z.literal(1), z.literal(2)])
+      .optional()
+      .describe("Grid width: 1 (half) or 2 (full). Defaults to 1."),
+    note: z
+      .string()
+      .max(LIMITS.maxPanelSpecNoteLength)
+      .optional()
+      .describe("Your one-line reading of the result. Shown as the panel's subtitle."),
+  },
+  mutates: true,
+  execute: async (client, args) =>
+    requirePost(client)(
+      "/api/v1/panels",
+      compact({
+        v: 1,
+        title: args.title,
+        query: args.query,
+        chart: args.chart,
+        encoding: args.encoding,
+        span: args.span,
+        note: args.note,
+      }),
+    ),
+};
+
+export const listPanelsTool: WriteTool = {
+  name: "list_panels",
+  title: "Read the project's pinned panels",
+  description:
+    "The panels already pinned to this project's dashboard, oldest first — what somebody decided " +
+    "was worth watching. Read it before pinning, so you extend the dashboard instead of " +
+    "duplicating a panel that is already there, and to learn which questions this team treats as " +
+    "important. Each row carries the spec's `id`, which is what `unpin_panel` takes.",
+  inputSchema: { limit: z.number().int().positive().max(500).optional() },
+  mutates: false,
+  execute: async (client, args) =>
+    client.get("/api/v1/panels", { limit: args.limit as number | undefined }),
+};
+
+export const unpinPanelTool: WriteTool = {
+  name: "unpin_panel",
+  title: "Remove a pinned panel",
+  description:
+    "Remove one panel from the project's dashboard by its `id` (from `list_panels`). This " +
+    "removes it for **everyone** on the project rather than just the current viewer, so unpin a " +
+    "panel that has stopped being useful — never one you have not read first.",
+  inputSchema: {
+    id: z.string().min(1).max(128).describe("The panel spec's id, as `list_panels` reports it."),
+  },
+  mutates: true,
+  execute: async (client, args) => {
+    if (!client.delete) throw new WriteNotSupportedError("delete");
+    return client.delete(`/api/v1/panels/${encodeURIComponent(String(args.id))}`);
+  },
+};
+
 /**
  * The metadata tool catalog. Registered **only** when the calling key holds the
- * `annotate` capability — including the three read tools, which are listed here
+ * `annotate` capability — including the read tools, which are listed here
  * rather than in `readTools` so the whole metadata surface appears and
  * disappears as one coherent feature.
  */
@@ -231,10 +335,13 @@ export const writeTools: readonly WriteTool[] = [
   annotateTool,
   defineTermTool,
   saveAnalysisTool,
+  pinPanelTool,
+  unpinPanelTool,
   listAnnotationsTool,
   listGlossaryTool,
   listAnalysesTool,
+  listPanelsTool,
 ];
 
-/** The three tools that actually change stored state. */
+/** The tools that actually change stored state. */
 export const mutatingWriteTools: readonly WriteTool[] = writeTools.filter((tool) => tool.mutates);

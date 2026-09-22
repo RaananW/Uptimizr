@@ -174,6 +174,10 @@ import {
   createSavedAnalysis as pgCreateSavedAnalysis,
   listSavedAnalyses as pgListSavedAnalyses,
   deleteSavedAnalysis as pgDeleteSavedAnalysis,
+  createPanelSpec as pgCreatePanelSpec,
+  listPanelSpecs as pgListPanelSpecs,
+  updatePanelSpec as pgUpdatePanelSpec,
+  deletePanelSpec as pgDeletePanelSpec,
   type PostgresClient,
 } from "@uptimizr/db-postgres";
 import type { CollectorStore } from "./store.js";
@@ -424,6 +428,10 @@ export async function createPostgresStore(): Promise<CollectorStore> {
     createSavedAnalysis: (projectId, input) => pgCreateSavedAnalysis(pgc, projectId, input),
     listSavedAnalyses: (projectId, opts) => pgListSavedAnalyses(pgc, projectId, opts),
     deleteSavedAnalysis: (projectId, id) => pgDeleteSavedAnalysis(pgc, projectId, id),
+    createPanelSpec: (projectId, input) => pgCreatePanelSpec(pgc, projectId, input),
+    listPanelSpecs: (projectId, opts) => pgListPanelSpecs(pgc, projectId, opts),
+    updatePanelSpec: (projectId, id, input) => pgUpdatePanelSpec(pgc, projectId, id, input),
+    deletePanelSpec: (projectId, id) => pgDeletePanelSpec(pgc, projectId, id),
     listSubscriptions: (projectId) => pgListSubscriptions(pgc, projectId),
     listEnabledSubscriptions: (limit) => pgListEnabledSubscriptions(pgc, limit),
     getSubscription: (projectId, id) => pgGetSubscription(pgc, projectId, id),

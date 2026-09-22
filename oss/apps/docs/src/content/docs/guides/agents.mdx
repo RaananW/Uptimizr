@@ -387,6 +387,46 @@ Stored rows record whether a person or an agent wrote them — the collector dec
 calling client, never from the payload. Full reference:
 [Metadata endpoints](/docs/api/metadata/).
 
+### Leave the question, not just the answer
+
+A note explains something once. A **panel** keeps asking.
+
+| Tool          | What it does                                                  |
+| ------------- | ------------------------------------------------------------- |
+| `pin_panel`   | Puts a query, a chart and a reading on the project dashboard. |
+| `list_panels` | What is already pinned — read it before adding another.       |
+| `unpin_panel` | Removes one, for the whole project.                           |
+
+```json
+{
+  "v": 1,
+  "title": "Meshes people actually touch",
+  "query": { "v": 1, "metric": "top_meshes", "range": "inherit", "limit": 10 },
+  "chart": "bar",
+  "note": "The crate outsells everything else three to one."
+}
+```
+
+`range: "inherit"` is the part that matters: the pinned panel follows the dashboard's own time
+filter, so it keeps answering against whatever window a person is looking at rather than the one
+the agent happened to ask in.
+
+**A panel is data, not code.** Uptimizr can load remote panel _modules_ at runtime (ADR 0041), and
+those run with the dashboard's full privileges — which is why they are off by default and guarded
+by an origin allowlist. A panel written by a model would be exactly that, so agent-authored panels
+do not work that way. A spec is a closed document — a metric id, a chart name, some column names —
+and the dashboard draws it with the panel components it already ships. Nothing is imported and
+nothing is evaluated.
+
+The collector checks the chart against the metric's grain before storing it, and refuses a
+combination that would draw something misleading — a `line` over a ranking has no axis to walk
+along — naming the charts that would have worked. The table is in
+[Custom dashboard panels](/docs/guides/custom-panels/#declarative-spec-panels).
+
+In the in-browser assistant this is the **"Pin as panel"** button under any answer that came from a
+`query` call: the chart is chosen from the metric's grain, the range becomes `"inherit"`, and the
+answer becomes the panel's subtitle.
+
 ## 9. Packaged methodology skills
 
 A prompt that names tools still leaves the method to the model. A **skill** carries the method: an
@@ -508,11 +548,8 @@ The full vocabulary, the signature scheme and the retry policy are in
 
 ## What's next
 
-The AI-first layer ships in stages. Everything on this page is available today; these are the
-tracked follow-ups that are not yet.
-
-| Stage | Issue                                                  | What it adds                                    |
-| ----- | ------------------------------------------------------ | ----------------------------------------------- |
-| 3     | [#315](https://github.com/RaananW/Uptimizr/issues/315) | Declarative **panel specs** and "pin as panel". |
+The AI-first layer shipped in stages, and everything on this page is available today — the last
+of them being the packaged methodology skills above and the declarative panel specs behind
+["Pin as panel"](/docs/guides/custom-panels/#declarative-spec-panels).
 
 The epic is [#294](https://github.com/RaananW/Uptimizr/issues/294).

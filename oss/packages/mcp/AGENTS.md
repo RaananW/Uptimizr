@@ -11,9 +11,9 @@ collector read endpoint; the server is a thin wrapper that holds no business log
 ADR 0017).
 
 **Events are read-only.** Nothing here can write, alter or delete an analytics event, and there is
-no ingestion tool. The one writable surface is **project metadata** — annotations, the glossary and
-saved analyses — and it is gated: those tools are registered only when the configured key holds the
-`annotate` capability (ADR 0051 §5/§9). See "Metadata tools" below.
+no ingestion tool. The one writable surface is **project metadata** — annotations, the glossary,
+saved analyses and pinned dashboard panels — and it is gated: those tools are registered only when
+the configured key holds the `annotate` capability (ADR 0051 §5/§7/§9). See "Metadata tools" below.
 
 It connects **only to the collector's HTTP API** (never to the database directly), so the collector
 remains the single gateway that enforces auth, per-project scoping, and privacy.
@@ -31,9 +31,10 @@ UPTIMIZR_COLLECTOR_URL="https://collect.example.com" UPTIMIZR_API_KEY="utk_…" 
 `GET /api/v1/whoami` reports what a key holds — the server calls it once at start-up for exactly
 this reason — and an authenticated key missing a capability is refused with `403`, not `401`.
 
-Add **`annotate`** only if you want the agent to leave notes, definitions and saved analyses behind
-(`--capabilities query,annotate`). Without it the server starts read-only and never offers those
-tools; with it, every write is bounded at the collector's edge and recorded in the audit log.
+Add **`annotate`** only if you want the agent to leave notes, definitions, saved analyses and
+pinned dashboard panels behind (`--capabilities query,annotate`). Without it the server starts
+read-only and never offers those tools; with it, every write is bounded at the collector's edge and
+recorded in the audit log.
 **`query:raw` is optional, and off by default.** Every tool in the default catalog is an aggregate
 read: there is no raw per-session, replay or live-follow tool, so a plain `query` key is all most
 deployments should grant. A key that _does_ hold `query:raw` additionally gets the
@@ -203,11 +204,22 @@ yields a read-only server. They write project metadata and nothing else — no e
 | `list_annotations` | Read the notes already left. Call it **before** explaining a spike someone may already have explained.     |
 | `list_glossary`    | Read the project's vocabulary before interpreting mesh names, scene ids or custom events.                  |
 | `list_analyses`    | Read questions this project has asked before, and what they concluded.                                     |
+| `pin_panel`        | Keep a question on the project's dashboard (`title`, `query`, `chart`, `encoding?`, `span?`, `note?`).     |
+| `unpin_panel`      | Remove one pinned panel by its `id`. It goes for **everyone** on the project, not just you.                |
+| `list_panels`      | Read the panels already pinned, oldest first. Call it **before** pinning, so you extend the grid.          |
 
 Bounds are enforced by the collector: `text` ≤ 2 000 characters, `meaning` ≤ 500, `title` ≤ 120,
-`conclusion` ≤ 4 000, and per project at most 500 annotations, 200 terms and 200 analyses (a write
-past a cap answers `409`). Stored rows record that an **agent** wrote them; the collector decides
-that from the calling client, never from the payload.
+`conclusion` ≤ 4 000, a panel `note` ≤ 500, and per project at most 500 annotations, 200 terms,
+200 analyses and 50 pinned panels (a write past a cap answers `409`). Stored rows record that an
+**agent** wrote them; the collector decides that from the calling client, never from the payload.
+
+`pin_panel` stores a **spec**, not code: a metric id, a chart name and some column names, which the
+dashboard draws with panel components it already ships. Pass the same `query` document the `query`
+tool takes, with `range` set to `"inherit"` so the panel follows the dashboard's own time filter
+instead of freezing the window you asked in, and a `chart` the metric's grain supports —
+`line`/`area` need a time-bucketed metric, `heatmap2d` a binned one, `world3d` a voxelised one,
+`stat` a single-record one, `bar` a ranking, `table` anything. A spec that does not fit is a `400`
+naming the charts that would have worked.
 
 Use them at the end of an investigation, not for scratch state: a note that says what was concluded
 and why is worth keeping, a note per query is noise.

@@ -32,6 +32,7 @@ import { PanelHost } from "@/panels/PanelHost";
 import { Panel } from "@/components/Panel";
 import { builtinPanels } from "@/panels/registry";
 import { useRemotePanels } from "@/panels/useRemotePanels";
+import { useSpecPanels } from "@/panels/useSpecPanels";
 import { RemotePanelErrors } from "@/panels/RemotePanelErrors";
 import { AssistantDrawer } from "@/components/AssistantDrawer";
 import { GlobalFilters } from "@/components/GlobalFilters";
@@ -518,15 +519,26 @@ export default function Page() {
   // default dashboard is unchanged. Load/merge failures are collected and shown
   // in a banner without breaking the grid.
   const remotePanels = useRemotePanels();
+  // Declarative panel specs (#315, ADR 0051 §7): what an agent pinned when an
+  // answer was worth keeping. Unlike a remote panel these are **data** rendered
+  // with panels this dashboard already ships — nothing is imported and nothing
+  // is evaluated — so they need no opt-in and no origin allowlist.
+  const specPanels = useSpecPanels(status === "idle" ? null : panelApi);
   const merged = useMemo(
-    () => mergePanels(builtinPanels, remotePanels.panels),
-    [remotePanels.panels],
+    // Built-ins win an id collision (ADR 0041's rule); the `spec:` prefix means
+    // a pinned panel could not shadow one even if it tried.
+    () => mergePanels(builtinPanels, [...remotePanels.panels, ...specPanels.panels]),
+    [remotePanels.panels, specPanels.panels],
   );
   const allPanels: PanelDefinition<unknown>[] = merged.panels;
   const panelLoadErrors: RemotePanelError[] = useMemo(
-    () => [...remotePanels.errors, ...merged.errors],
-    [remotePanels.errors, merged.errors],
+    () => [...remotePanels.errors, ...specPanels.errors, ...merged.errors],
+    [remotePanels.errors, specPanels.errors, merged.errors],
   );
+  // The unpin control is offered only to a key that can actually unpin. The
+  // collector refuses the delete either way — this is courtesy, not the boundary.
+  const unpinSpecPanel = specPanels.unpin;
+  const onUnpin = useCallback((specId: string) => void unpinSpecPanel(specId), [unpinSpecPanel]);
 
   // Surface the live-follow replay only when the open session is currently live
   // (present in the presence roster), so historical sessions aren't cluttered
@@ -725,7 +737,12 @@ export default function Page() {
             </div>
           ) : null}
           <div className="lg:col-span-2">
-            <AssistantDrawer collectorUrl={baseUrl} apiKey={apiKey} filters={filters} />
+            <AssistantDrawer
+              collectorUrl={baseUrl}
+              apiKey={apiKey}
+              filters={filters}
+              onPinned={specPanels.reload}
+            />
           </div>
           <div className="lg:col-span-2">
             <Panel
@@ -748,6 +765,7 @@ export default function Page() {
             surface="overview"
             revision={liveRevision}
             exclude={["live-presence"]}
+            onUnpin={specPanels.canPin ? onUnpin : undefined}
           />
         </div>
       )}

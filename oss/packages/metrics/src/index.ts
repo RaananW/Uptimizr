@@ -61,6 +61,29 @@ export {
 } from "./query.js";
 export type { QueryIssue, QueryIssueCode, QueryTier, QueryValidation } from "./query.js";
 
+// --- Declarative panel specs (ADR 0051 §7 / sketch §G.3) -------------------
+// The registry half of validating a `panelSpecV1`: its query through
+// `validateQuery`, then the two questions only the registry can answer — does
+// this chart suit the metric's grain, and do these encoding columns exist.
+export {
+  PANEL_CHART_RULES,
+  axisColumn,
+  chartSuitsMetric,
+  chartsForMetric,
+  defaultEncoding,
+  labelColumn,
+  measureColumn,
+  resultColumns,
+  suggestChart,
+  validatePanelSpec,
+} from "./panelSpec.js";
+export type {
+  PanelChartRule,
+  PanelSpecIssue,
+  PanelSpecIssueCode,
+  PanelSpecValidation,
+} from "./panelSpec.js";
+
 export type {
   AggregationBuilderName,
   ColumnSemantics,

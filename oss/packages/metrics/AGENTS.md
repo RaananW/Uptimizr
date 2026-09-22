@@ -132,6 +132,59 @@ everything else gets Welch's t — so `columns[...].rateOf` is load-bearing, not
 `capabilities` and in the generated tool catalog; they are a judgement, published so it can be
 argued with and overridden per request.
 
+## Panel specs (ADR 0051 §7)
+
+The same split, one level up. `@uptimizr/schema`'s `panelSpecV1Schema` says a spec is well formed;
+`validatePanelSpec(spec)` says whether it will draw anything. It runs `validateQuery` over the
+spec's query (prefixing each issue's `path` with `query.`) and adds the two checks only the registry
+can make — does the chart suit the metric's grain, and does the `encoding` name columns the metric
+actually returns:
+
+```ts
+import {
+  validatePanelSpec,
+  suggestChart,
+  defaultEncoding,
+  chartsForMetric,
+} from "@uptimizr/metrics";
+
+const { issues, metric, tier } = validatePanelSpec(spec); // [] issues means it can be pinned
+issues[0]?.code; // the DSL's codes, plus "chart_grain_mismatch" | "unknown_encoding_column"
+issues[0]?.accepted; // the charts that would have worked, or the metric's real result columns
+
+suggestChart(metric, query); // what to pre-fill; always satisfies `chartSuitsMetric`
+defaultEncoding(metric, chart); // the metric's axis/label on `x`, its measure on `y`
+```
+
+`PANEL_CHART_RULES` is the compatibility table as data — the validator, `suggestChart` and the
+published table all read it, so they cannot drift:
+
+| Chart           | Requires                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------- |
+| `table`         | nothing — any metric's rows can be listed                                                                      |
+| `stat`          | a single-record result (a `project`-grain metric with no grain dimensions)                                     |
+| `bar`           | a label column, a measure column, and a ranked or bucketed grain (`mesh`, `scene`, `session`, `row`, `bucket`) |
+| `line` / `area` | an ordered axis column — in practice a `bucket`-grain metric                                                   |
+| `heatmap2d`     | a `bin` grain (the metric already bins its input into a grid)                                                  |
+| `world3d`       | a `voxel` grain (the metric already bins its input into world-space cells)                                     |
+
+`chartSuitsMetric(chart, metric)` is the predicate behind one row; `chartsForMetric(metric)` lists
+every chart that fits. `axisColumn` / `labelColumn` / `measureColumn` read the column semantics the
+rules depend on, and `resultColumns(metric, query)` is what an encoding is checked against — the
+metric's declared `row` on the delegated tier, but the grouped dimensions plus the declared measures
+on the generic tier, because a regrouped `top_meshes` has no `mesh` column.
+
+**Rules for agents:**
+
+- **A pinned panel is read much later than it is written**, which is why the chart is checked at all.
+  A `line` over `top_meshes` does not fail — it draws something a reader takes for a trend. Pin time
+  is the moment somebody is paying attention, so that is where the refusal belongs.
+- **Widen the table with a `PanelChartRule`, never a special case.** A rule's `requires` string is
+  what the collector's `400` quotes; `src/__tests__/panelSpec.test.ts` pins the whole chart × metric
+  matrix and the rendered table.
+- A rule may read only the **grain and the column semantics**, like everything else here. If a metric
+  charts badly, fix its `label` / `axis` / `measure` declarations.
+
 ## Where the SQL lives
 
 The `build*` aggregation each entry names is in [`@uptimizr/db`](../db)'s

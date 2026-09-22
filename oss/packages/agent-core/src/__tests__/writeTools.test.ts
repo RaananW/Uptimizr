@@ -47,19 +47,24 @@ describe("the catalog", () => {
     for (const tool of writeTools) expect(readNames.has(tool.name)).toBe(false);
   });
 
-  it("names the three writers and the three readers", () => {
+  it("names the five writers and the four readers", () => {
     expect(writeTools.map((tool) => tool.name)).toEqual([
       "annotate",
       "define_term",
       "save_analysis",
+      "pin_panel",
+      "unpin_panel",
       "list_annotations",
       "list_glossary",
       "list_analyses",
+      "list_panels",
     ]);
     expect(mutatingWriteTools.map((tool) => tool.name)).toEqual([
       "annotate",
       "define_term",
       "save_analysis",
+      "pin_panel",
+      "unpin_panel",
     ]);
   });
 
@@ -105,7 +110,32 @@ describe("what each tool sends", () => {
     expect(calls[0]!.path).toBe("/api/v1/glossary/a%20b%2Fc");
   });
 
-  it("uses GET for the three metadata reads", async () => {
+  it("encodes a panel spec id into the unpin path", async () => {
+    const { client, calls } = recorder();
+    await writeTools.find((t) => t.name === "unpin_panel")!.execute(client, { id: "a b/c" });
+    expect(calls[0]!.method).toBe("DELETE");
+    expect(calls[0]!.path).toBe("/api/v1/panels/a%20b%2Fc");
+  });
+
+  it("stamps the grammar version onto a pinned panel so the caller need not", async () => {
+    const { client, calls } = recorder();
+    await writeTools
+      .find((t) => t.name === "pin_panel")!
+      .execute(client, {
+        title: "Top meshes",
+        chart: "bar",
+        query: { v: 1, metric: "top_meshes", range: "inherit" },
+      });
+    expect(calls[0]!.path).toBe("/api/v1/panels");
+    expect(calls[0]!.body).toEqual({
+      v: 1,
+      title: "Top meshes",
+      chart: "bar",
+      query: { v: 1, metric: "top_meshes", range: "inherit" },
+    });
+  });
+
+  it("uses GET for the metadata reads", async () => {
     const { client, calls } = recorder();
     for (const tool of writeTools.filter((t) => !t.mutates)) {
       await tool.execute(client, {});

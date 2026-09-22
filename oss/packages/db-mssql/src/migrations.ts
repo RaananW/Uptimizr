@@ -499,6 +499,40 @@ export const MSSQL_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
         ON dbo.subscription_events (subscription_id, at DESC);
     `,
   },
+  // Declarative panel specs (#315, ADR 0051 §7 / sketch §G.3). A fourth
+  // metadata table: what an agent left behind when an answer was worth keeping.
+  // The spec is a closed document validated at the request boundary and never
+  // queried *into*, so it lives in one `nvarchar(max)` column like a
+  // subscription's config.
+  {
+    id: "0022_panel_specs",
+    sql: /* sql */ `
+      IF OBJECT_ID(N'dbo.panel_specs', N'U') IS NULL
+      CREATE TABLE dbo.panel_specs (
+        id            ${KEY} NOT NULL,
+        project_id    ${KEY} NOT NULL,
+        spec          nvarchar(max) NOT NULL,
+        author_kind   ${KEY} NOT NULL DEFAULT N'user',
+        author_key_id ${KEY} NULL,
+        created_at    datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+        updated_at    datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+        PRIMARY KEY NONCLUSTERED (id)
+      );
+    `,
+  },
+  // Ascending, unlike the other metadata indexes: these rows are grid positions
+  // rather than a feed, and are listed oldest-first so pinning a new panel does
+  // not shuffle the ones already there.
+  {
+    id: "0023_panel_specs_idx",
+    sql: /* sql */ `
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                      WHERE name = N'panel_specs_project_created_idx'
+                        AND object_id = OBJECT_ID(N'dbo.panel_specs'))
+      CREATE INDEX panel_specs_project_created_idx
+        ON dbo.panel_specs (project_id, created_at);
+    `,
+  },
 ];
 
 /**

@@ -380,6 +380,30 @@ export const POSTGRES_MIGRATIONS: ReadonlyArray<{ id: string; sql: string }> = [
         ON subscription_events (subscription_id, at DESC);
     `,
   },
+  // Declarative panel specs (#315, ADR 0051 §7 / sketch §G.3). A fourth
+  // metadata table: what an agent left behind when an answer was worth keeping.
+  // The spec is a closed document validated at the request boundary and never
+  // queried *into*, so it lives in one JSON column like a subscription's config.
+  //
+  // The index ascends, unlike the other metadata tables': these rows are grid
+  // positions rather than a feed, and are listed oldest-first so pinning a new
+  // panel does not shuffle the ones already there.
+  {
+    id: "0020_panel_specs",
+    sql: /* sql */ `
+      CREATE TABLE IF NOT EXISTS panel_specs (
+        id            text PRIMARY KEY,
+        project_id    text NOT NULL,
+        spec          text NOT NULL,
+        author_kind   text NOT NULL DEFAULT 'user',
+        author_key_id text,
+        created_at    timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+        updated_at    timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc')
+      );
+      CREATE INDEX IF NOT EXISTS panel_specs_project_created_idx
+        ON panel_specs (project_id, created_at);
+    `,
+  },
 ];
 
 /**

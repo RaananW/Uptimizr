@@ -48,13 +48,28 @@ delivery[], enabled }` — with a closed predicate union (`threshold`, `anomaly`
 `new_value`, `presence`). `parseDurationMs` / `formatDurationMs` convert its `"5m"`-style
 literals.
 
+`panelSpecV1Schema` (ADR 0051 §7) is a declarative dashboard panel: `{ v, title, query, chart,
+encoding?, span, note? }`. Its `query` is `panelSpecQuerySchema` — `queryV1Schema` with
+`format` / `explain` omitted and `range` additionally allowed to be the literal
+`PANEL_RANGE_INHERIT` (`"inherit"`, meaning "follow the dashboard's filter bar"), which
+`resolvePanelSpecRange(range, active)` turns into a real `{ since, until }`. `panelChartKindSchema`
+is the closed chart list (`stat`, `table`, `bar`, `line`, `area`, `heatmap2d`, `world3d`) and
+`panelEncodingSchema` says which result **column** feeds `x` / `y` / `series` — column names, never
+expressions. The bounds are `LIMITS.maxPanelSpecTitleLength` (120),
+`maxPanelSpecNoteLength` (500), `maxPanelEncodingColumnLength` (64)
+and `maxProjectPanelSpecs` (50). The document needs no serialized-length cap of its own: unlike
+a saved analysis’ opaque `query`, every leaf of a spec is bounded here or by `queryV1`. A spec is stored as **data** and drawn with panel components
+`@uptimizr/react` already ships: nothing is imported and nothing is evaluated, so ADR 0041's
+remote-panel trust decision is untouched.
+
 ## Rules for agents
 
 - **Events live once.** Import types/schemas from here; do not re-declare event shapes.
 - Some shapes here are **config / metadata, not events** — `sceneProxySchema`, `sceneRegionSchema` /
   `sceneRegionsSchema` (named scene regions), `funnelConfigSchema`, `queryV1Schema` (the analytics
   query DSL, ADR 0051 §3) and the project-metadata contracts `annotationSchema` /
-  `glossaryEntrySchema` / `savedAnalysisSchema` (ADR 0051 §5). They are authored out-of-band and are
+  `glossaryEntrySchema` / `savedAnalysisSchema` (ADR 0051 §5) / `panelSpecV1Schema` (ADR 0051 §7).
+  They are authored out-of-band and are
   deliberately absent from `anyEventSchema`; never add them to the union. Events stay read-only —
   metadata is written through the collector's `annotate`-gated endpoints, never through the ingest
   path (ADR 0051 §9).
@@ -62,6 +77,9 @@ literals.
   whether that metric accepts a given dimension or filter, is `validateQuery()` in
   `@uptimizr/metrics` — the vocabulary lives in the registry, and this package is the registry's
   dependency rather than the other way round. Both run, in that order, at the collector edge.
+- `panelSpecV1Schema` makes the **same split**. It answers "is this a well-formed spec?"; whether
+  the chart suits the metric's grain and whether the `encoding` names columns the metric returns is
+  `validatePanelSpec()` in `@uptimizr/metrics`.
 - Keep events **replay-complete**: ordered, timestamped, `sessionId`-keyed.
 - Clients never set `visitorId` (privacy model — ADR 0003).
 - To add an event type, use `defineEvent` and register it in `src/events/index.ts`; see the

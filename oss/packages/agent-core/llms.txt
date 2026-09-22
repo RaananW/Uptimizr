@@ -144,9 +144,17 @@ The same files back `@uptimizr/mcp`'s prompt templates and `uptimizr agent repor
   input schema, an output schema covering all three `format` envelopes, and the metric's
   interpretation notes and caveats in its description (ADR 0051).
 - `writeTools` / `mutatingWriteTools` — the project-metadata tools `annotate`, `define_term`,
-  `save_analysis` plus `list_annotations`, `list_glossary`, `list_analyses` (ADR 0051 §5). A
+  `save_analysis` (ADR 0051 §5), `pin_panel` and `unpin_panel` (ADR 0051 §7), plus the reads
+  `list_annotations`, `list_glossary`, `list_analyses`, `list_panels`. Exported individually too
+  (`annotateTool`, `defineTermTool`, `saveAnalysisTool`, `pinPanelTool`, `unpinPanelTool`,
+  `listAnnotationsTool`, `listGlossaryTool`, `listAnalysesTool`, `listPanelsTool`). A
   separate export from `readTools` on purpose, so an integration's read-only stance stays
   inspectable. They need an `annotate` key, write metadata only, and cannot touch an event.
+  `pin_panel` stores a panel **spec** — a metric id, a chart name, some column names — that the
+  dashboard renders with panels it already ships, so nothing is loaded and nothing is evaluated;
+  send the `query` document with `range: "inherit"` and a chart the metric's grain supports, or the
+  collector refuses it and names the charts that would have worked. `unpin_panel` removes a panel
+  for everyone on the project and is the one tool here that uses `CollectorClient.delete`.
 - `coreReadTools` / `selectReadTools(kind)` / `filterReadTools(names)` — narrowed views of the
   catalog for models that cannot carry every tool schema.
 - `registryToTools(metrics?)` — generate the catalog from metric-registry definitions.

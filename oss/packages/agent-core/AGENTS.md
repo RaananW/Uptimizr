@@ -12,9 +12,11 @@ demo assistant never drift apart. It owns:
 - the **read-only analytics catalog** (`readTools`) — one entry per documented collector query
   endpoint, **generated** from the `@uptimizr/metrics` semantic metric registry (ADR 0051 §1), so
   coverage of the collector's read surface cannot drift;
-- the **project-metadata catalog** (`writeTools`) — `annotate`, `define_term`, `save_analysis` and
-  their three read siblings (ADR 0051 §5). Deliberately a **separate export**, never folded into
-  `readTools`, so an integration's read-only stance stays inspectable at a glance;
+- the **project-metadata catalog** (`writeTools`) — `annotate`, `define_term`, `save_analysis`
+  (ADR 0051 §5), `pin_panel` and `unpin_panel` (ADR 0051 §7), plus the four reads that make them
+  usable (`list_annotations`, `list_glossary`, `list_analyses`, `list_panels`). Deliberately a
+  **separate export**, never folded into `readTools`, so an integration's read-only stance stays
+  inspectable at a glance;
 - a headless **LLM provider-adapter interface** (`LlmProvider`) — messages + tool schemas in, tool
   calls or final text out;
 - the headless **tool-calling loop** (`runAgent`) — LLM ↔ tools ↔ collector.
@@ -203,9 +205,17 @@ role and the output format legitimately differ.
   hand-written catalog entry here — and no aggregation/business logic (that lives in the collector,
   ADR 0005).
 - **Writes stay in `writeTools`, and stay metadata.** The only writable surface is project metadata
-  (annotations, glossary, saved analyses), each call needs an `annotate` key, each is bounded at the
-  collector's edge and audited there. Never add a write tool to `readTools`, and never add one that
-  reaches a non-metadata endpoint.
+  (annotations, glossary, saved analyses, pinned panels), each call needs an `annotate` key, each is
+  bounded at the collector's edge and audited there. Never add a write tool to `readTools`, and
+  never add one that reaches a non-metadata endpoint.
+- **A pinned panel is metadata too.** `pin_panel` stores a **spec** — a metric id, a chart name,
+  some column names — that the dashboard renders with panels it already ships; no module is loaded
+  and nothing is evaluated, so pinning does not widen the dashboard's trust boundary (ADR 0041).
+  Send the same `query` document the `query` tool takes, with `range: "inherit"` so the panel
+  follows the dashboard's own time filter, and a `chart` the metric's grain supports — the collector
+  refuses the rest and names the charts that would have worked. Read `list_panels` before pinning,
+  so you extend the dashboard rather than duplicate it; `unpin_panel` removes a panel for
+  **everyone** on the project, so never unpin one you have not read.
 - **Browser-safe.** No Node dependencies, no `types: ["node"]`. At runtime this package uses `zod`
   plus the pure, data-only `@uptimizr/metrics` package — **never** `@uptimizr/db`, which owns the
   DuckDB store and its ~37 MB native binding. `src/__tests__/browserSafety.test.ts` bundles the
@@ -253,11 +263,14 @@ role and the output format legitimately differ.
 `renderCurrentTimeLine(nowMs)`, plus the `LlmProvider` / `AgentMessage` / `AgentToolCall` /
 `ProviderResponse` / `ProviderUsage` / `AgentSkill` / `PromptContextDocument` types.
 
-Metadata writes (ADR 0051 §5): `writeTools`, `mutatingWriteTools`, the individual
-`annotateTool` / `defineTermTool` / `saveAnalysisTool` / `listAnnotationsTool` /
-`listGlossaryTool` / `listAnalysesTool`, the `WriteTool` type and `WriteNotSupportedError` (thrown
-when a hand-built read-only client has no write transport). Each has an `execute(client, args)`
-rather than a `buildRequest`, because a write is one call rather than a request description.
+Metadata writes (ADR 0051 §5/§7): `writeTools`, `mutatingWriteTools`, the individual
+`annotateTool` / `defineTermTool` / `saveAnalysisTool` / `pinPanelTool` / `unpinPanelTool` /
+`listAnnotationsTool` / `listGlossaryTool` / `listAnalysesTool` / `listPanelsTool`, the `WriteTool`
+type and `WriteNotSupportedError` (thrown when a hand-built read-only client has no write
+transport). Each has an `execute(client, args)` rather than a `buildRequest`, because a write is one
+call rather than a request description. `pin_panel` and `unpin_panel` mutate; `list_panels` does
+not, and `mutatingWriteTools` is the filtered view. `unpin_panel` is the only tool here that uses
+`CollectorClient.delete`.
 
 The catalog is 77 tools on a plain `query` key. A small local model cannot hold every schema in its
 function-calling prompt — hand a run `coreReadTools` or `filterReadTools([...])` rather than the

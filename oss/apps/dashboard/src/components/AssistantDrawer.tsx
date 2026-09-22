@@ -37,13 +37,18 @@ interface AssistantDrawerProps {
    * shown — so a note lands where the user was actually looking.
    */
   filters: FilterState;
+  /**
+   * Called after the assistant pins an answer as a panel (#315), so the grid
+   * can pick the new panel up without a reload.
+   */
+  onPinned?: () => void;
 }
 
 /**
  * A collapsible panel that mounts `<AssistantPanel>` on first open, wired to the
  * active project's collector connection.
  */
-export function AssistantDrawer({ collectorUrl, apiKey, filters }: AssistantDrawerProps) {
+export function AssistantDrawer({ collectorUrl, apiKey, filters, onPinned }: AssistantDrawerProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -76,6 +81,7 @@ export function AssistantDrawer({ collectorUrl, apiKey, filters }: AssistantDraw
             collectorUrl={collectorUrl}
             apiKey={apiKey}
             annotationTarget={annotationTargetFor(filters)}
+            onPinned={onPinned}
           />
         </div>
       ) : null}

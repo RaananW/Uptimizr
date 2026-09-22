@@ -23,6 +23,7 @@ import type {
   ApiKeyCapability,
   BucketEventLike,
   GlossaryEntryRecord,
+  PanelSpecRecord,
   SavedAnalysisRecord,
   SceneRegionRecord,
   SubscriptionEventRecord,
@@ -85,6 +86,12 @@ export function createMemoryStore({
   const annotations: AnnotationRecord[] = [];
   const glossary = new Map<string, GlossaryEntryRecord>();
   const analyses: SavedAnalysisRecord[] = [];
+  /**
+   * Pinned panels (#315). An array rather than a `Map` because insertion order
+   * *is* the listing order here — the persistent stores order these oldest-first
+   * so a pinned panel keeps its place in the grid.
+   */
+  const panelSpecs: PanelSpecRecord[] = [];
   /**
    * Conditional subscriptions (#311). Kept in insertion order — the persistent
    * stores order by `created_at, id`, and a `Map` preserves exactly that.
@@ -721,6 +728,49 @@ export function createMemoryStore({
       analyses.splice(index, 1);
       return true;
     },
+    // --- Declarative panel specs (#315, ADR 0051 §7) ---------------------
+    createPanelSpec: async (_projectId, input) => {
+      if (panelSpecs.length >= METADATA_LIMITS.panelSpecs) {
+        throw new MetadataLimitError("panelSpecs", METADATA_LIMITS.panelSpecs);
+      }
+      const now = new Date();
+      const record: PanelSpecRecord = {
+        id: randomUUID(),
+        projectId,
+        spec: input.spec,
+        authorKind: input.authorKind,
+        authorKeyId: input.authorKeyId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      panelSpecs.push(record);
+      return record;
+    },
+    // Oldest first, which is insertion order — a pinned panel keeps its place.
+    listPanelSpecs: async (_projectId, opts = {}) =>
+      panelSpecs.slice(
+        0,
+        clampMetadataLimit(opts.limit, METADATA_LIMITS.panelSpecs, METADATA_LIMITS.panelSpecs),
+      ),
+    updatePanelSpec: async (_projectId, id, input) => {
+      const index = panelSpecs.findIndex((row) => row.id === id);
+      if (index < 0) return null;
+      // The row keeps its id, its position and its original authorship — an
+      // edit is not a new pin.
+      const updated: PanelSpecRecord = {
+        ...panelSpecs[index]!,
+        spec: input.spec,
+        updatedAt: new Date(),
+      };
+      panelSpecs[index] = updated;
+      return updated;
+    },
+    deletePanelSpec: async (_projectId, id) => {
+      const index = panelSpecs.findIndex((row) => row.id === id);
+      if (index < 0) return false;
+      panelSpecs.splice(index, 1);
+      return true;
+    },
     // --- Conditional subscriptions (#311, ADR 0051 §6) -------------------
     listSubscriptions: async () => [...subscriptions.values()],
     listEnabledSubscriptions: async (limit) =>
@@ -804,6 +854,7 @@ export function createMemoryStore({
       annotations.length = 0;
       glossary.clear();
       analyses.length = 0;
+      panelSpecs.length = 0;
       subscriptions.clear();
       secrets.clear();
       firings.clear();

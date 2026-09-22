@@ -282,6 +282,34 @@ parsing, in constant time.
 
 `POST …/test` is a dry run by default and answers with _why_ it did or did not fire.
 
+## Pinned panels (ADR 0051 §7)
+
+Declarative panels an agent leaves on the project's dashboard. A spec is a title, a query, a chart
+name, an optional encoding, a span and a one-line note — **data**, which the dashboard draws with
+panel components `@uptimizr/react` already ships. No module is loaded and nothing is evaluated, so
+ADR 0041's remote-panel trust decision is not widened.
+
+- `GET /api/v1/panels` (`limit`) — the project's pinned panels, **oldest first**: these are grid
+  positions, not a feed. Needs `query`.
+- `POST /api/v1/panels` → `201` · `PUT /api/v1/panels/:id` · `DELETE /api/v1/panels/:id` → `204` —
+  need **`annotate`**, and are audited like every other metadata write. `PUT` is a full replacement
+  (half a spec is not a panel); the row keeps its id, its place in the grid and its original
+  authorship. An unknown id — or one belonging to another project, which is deliberately
+  indistinguishable — is `404`.
+- **Validated twice**, for two different questions: `panelSpecV1Schema` (`@uptimizr/schema`) for the
+  shape, then `validatePanelSpec` (`@uptimizr/metrics`) for the vocabulary — does the metric exist
+  and accept these filters, does the chart suit its grain, do the encoding columns exist in its
+  result. A failure is `400 { error, issues }`, the same body `POST /api/v1/query` answers with, so
+  a client fixes the spec from the response instead of guessing. The second check runs at **pin**
+  time because a pinned panel is read weeks later: a line chart with no axis to walk along does not
+  fail, it draws something a reader takes for a trend.
+- `409` when the project already holds `LIMITS.maxProjectPanelSpecs` (50) panels.
+- `query.range` may be the literal `"inherit"`, which the dashboard resolves against its filter bar
+  on every load, or an explicit `{ since, until }` to pin one period.
+- OpenAPI operation ids `list_panels`, `pin_panel`, `update_panel` and `unpin_panel`, under a
+  `panels` tag. `CollectorStore` gains `createPanelSpec` / `listPanelSpecs` / `updatePanelSpec` /
+  `deletePanelSpec`, implemented by all five stores.
+
 ## Other configuration
 
 - Server / browser access: `COLLECTOR_HOST` (`0.0.0.0`), `COLLECTOR_PORT` (`4318`),

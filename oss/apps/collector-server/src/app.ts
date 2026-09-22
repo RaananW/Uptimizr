@@ -23,6 +23,7 @@ import { liveRoutes } from "./routes/live.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { collectRouteSchemas, metaRoutes } from "./routes/meta.js";
 import { metadataRoutes } from "./routes/metadata.js";
+import { panelRoutes } from "./routes/panels.js";
 import { narrativeRoutes } from "./routes/narrative.js";
 import { queryRoutes } from "./routes/query.js";
 import { queryDslRoutes } from "./routes/query-dsl.js";
@@ -198,6 +199,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   // exactly what it is — aggregate and read-only — and so the `annotate`-gated
   // surface is one file to inspect.
   await app.register(metadataRoutes, { store });
+  // Declarative panel specs (#315) — the same `annotate`-gated surface, kept
+  // in its own plugin so what the dashboard can be asked to *render* is one
+  // file to inspect.
+  await app.register(panelRoutes, { store });
   // Collector-hosted MCP over Streamable HTTP (ADR 0051 §7). Opt-in: without
   // `COLLECTOR_MCP_HTTP` the route does not exist.
   if (config.mcpHttpEnabled && internalDispatchToken != null) {

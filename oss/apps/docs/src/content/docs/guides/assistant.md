@@ -378,10 +378,10 @@ the panel asks you to **choose a backend** — local WebLLM (zero egress) or you
 before anything loads; the choice is remembered, and you can change it — or switch between local and
 hosted — at any time via **Change backend**.
 
-### Keeping an answer: "Annotate this" and "Save this analysis"
+### Keeping an answer: "Annotate this", "Save this analysis" and "Pin as panel"
 
-An answer you have to re-derive next week is half an answer. Under every reply the panel offers two
-actions:
+An answer you have to re-derive next week is half an answer. Under every reply the panel offers
+these actions:
 
 - **Annotate this** stores the answer as a project note, pinned to whatever the dashboard is
   currently filtered to — the scene you are looking at, or the time window you are showing. The note
@@ -389,8 +389,17 @@ actions:
   person to look at that spike reads the explanation instead of re-deriving it.
 - **Save this analysis** stores the turn as a titled record: a title (pre-filled with the question
   you asked), the collector reads the model actually made, and the answer as the conclusion.
+- **Pin as panel** keeps the _question_ rather than the answer: it puts the query the model ran on
+  the dashboard as a panel, re-asked and redrawn every time somebody opens it. The chart is chosen
+  from the metric's grain, the answer becomes the panel's subtitle, and the time range becomes
+  `inherit` — so the panel follows the dashboard's own filter bar instead of freezing the window you
+  happened to ask in. It is offered only on an answer that came from a `query` tool call, because
+  that document is what the panel re-runs; a turn answered from a canned endpoint has nothing to
+  pin. The panel is stored as **data, not code** — a metric id, a chart name and some column names,
+  drawn with the components the dashboard already ships. See
+  [Custom dashboard panels](/docs/guides/custom-panels/#declarative-spec-panels).
 
-Both actions are shown **only** when the connected key holds the `annotate` capability — the panel
+All three are shown **only** when the connected key holds the `annotate` capability — the panel
 asks `GET /api/v1/whoami` once and hides them otherwise, rather than offering a button that would be
 refused. A key minted by `uptimizr init` / `uptimizr new-project` carries it; a read-only key
 (`uptimizr new-key`'s default) does not.

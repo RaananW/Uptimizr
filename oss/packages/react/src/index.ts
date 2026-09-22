@@ -77,6 +77,23 @@ export type {
   FetchManifestOptions,
   ModuleImporter,
 } from "./panels/remote";
+// Declarative panel specs (#315, ADR 0051 §7). An agent-authored panel is
+// DATA — a query, a chart name, some column names — rendered with the panels
+// this package already ships. Nothing is imported and nothing is evaluated, so
+// ADR 0041's trust decision is untouched.
+export {
+  SPEC_PANEL_ID_PREFIX,
+  isSpecPanelId,
+  loadSpecPanels,
+  resolveEncoding,
+  specIdFromPanelId,
+  specPanel,
+  specPanelId,
+  specQuery,
+} from "./panels/spec";
+export type { LoadSpecPanelsResult, SpecPanelData } from "./panels/spec";
+export { SpecChart } from "./catalog/views/SpecChart";
+export type { SpecChartProps, SpecRow } from "./catalog/views/SpecChart";
 export { usePanelData } from "./panels/usePanelData";
 export { PanelCard, PanelMessage } from "./panels/PanelCard";
 export {

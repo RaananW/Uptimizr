@@ -13,7 +13,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { AnyEvent, SceneProxy } from "@uptimizr/schema";
+import type { AnyEvent, PanelSpecV1, SceneProxy } from "@uptimizr/schema";
 // The aggregation module specifically, not the package barrel: the barrel also
 // re-exports pure helpers whose names begin with `build` but which emit no
 // `QuerySpec` (`buildSessionNarrative`, ADR 0051 §7), and this sweep is about
@@ -63,6 +63,12 @@ import {
   listSavedAnalyses,
   putGlossaryEntry,
 } from "../projectMetadata.js";
+import {
+  createPanelSpec,
+  deletePanelSpec,
+  listPanelSpecs,
+  updatePanelSpec,
+} from "../panelSpecs.js";
 import { runPostgresQuery } from "../queries.js";
 import { postgresReachable } from "./probe.js";
 
@@ -193,6 +199,7 @@ describe.skipIf(!available)("postgres store", () => {
       "events_daily",
       "glossary",
       "node_samples",
+      "panel_specs",
       "perf_daily",
       "projects",
       "saved_analyses",
@@ -557,6 +564,50 @@ describe.skipIf(!available)("postgres store", () => {
     expect(await deleteSavedAnalysis(pg, PID, analysis.id)).toBe(true);
     expect(await deleteSavedAnalysis(pg, PID, openEnded.id)).toBe(true);
     expect(await listSavedAnalyses(pg, PID)).toEqual([]);
+  });
+
+  it("round-trips the panel-spec table, oldest first and updatable in place (#315)", async () => {
+    const author = { authorKind: "user", authorKeyId: "key_1" } as const;
+    const agentAuthor = { authorKind: "agent", authorKeyId: "key_2" } as const;
+    const spec = (title: string, span: 1 | 2 = 1) =>
+      ({
+        v: 1,
+        title,
+        chart: "bar",
+        span,
+        query: { v: 1, metric: "top_meshes", range: "inherit", limit: 10 },
+      }) as PanelSpecV1;
+
+    const first = await createPanelSpec(pg, PID, { ...agentAuthor, spec: spec("First") });
+    expect(first).toMatchObject({ projectId: PID, authorKind: "agent", authorKeyId: "key_2" });
+    expect(first.spec.query.range).toBe("inherit");
+    const second = await createPanelSpec(pg, PID, { ...author, spec: spec("Second") });
+
+    // Oldest first: a pinned panel keeps its place when another is added.
+    expect((await listPanelSpecs(pg, PID)).map((row) => row.spec.title)).toEqual([
+      "First",
+      "Second",
+    ]);
+    expect(await listPanelSpecs(pg, OTHER_PID)).toEqual([]);
+
+    // An edit keeps the id, the place and the original author.
+    const updated = await updatePanelSpec(pg, PID, first.id, { spec: spec("First, wider", 2) });
+    expect(updated).toMatchObject({ id: first.id, authorKind: "agent", authorKeyId: "key_2" });
+    expect(updated?.spec.span).toBe(2);
+    expect(updated?.createdAt.getTime()).toBe(first.createdAt.getTime());
+    expect((await listPanelSpecs(pg, PID)).map((row) => row.spec.title)).toEqual([
+      "First, wider",
+      "Second",
+    ]);
+
+    // Another project's row is invisible, unreadable and unremovable.
+    expect(await updatePanelSpec(pg, OTHER_PID, first.id, { spec: spec("Hijacked") })).toBeNull();
+    expect(await deletePanelSpec(pg, OTHER_PID, first.id)).toBe(false);
+
+    expect(await deletePanelSpec(pg, PID, first.id)).toBe(true);
+    expect(await deletePanelSpec(pg, PID, first.id)).toBe(false);
+    expect(await deletePanelSpec(pg, PID, second.id)).toBe(true);
+    expect(await listPanelSpecs(pg, PID)).toEqual([]);
   });
 
   describe("every aggregation matches DuckDB on the extended fixtures", () => {

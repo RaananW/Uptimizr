@@ -109,6 +109,39 @@ import type { PanelDefinition, PanelContext } from "@uptimizr/react";
   **same** `PanelDefinition` interface. `PANEL_CONTRACT_VERSION` bumps only on a breaking contract
   change — check compatibility, never assume it.
 
+### Pinned panel specs (ADR 0051 §7)
+
+A `panelSpecV1` is a panel an agent pinned to the project: a title, a query, a chart name, an
+optional encoding, a span and a one-line note. It is **data**, not a module — `specPanel(row)` reads
+it and picks a component this package already ships, so there is nothing to `import()` and nothing
+to evaluate, and ADR 0041's remote-panel trust decision is not widened.
+
+```tsx
+import { loadSpecPanels, mergePanels, ossPanelCatalog } from "@uptimizr/react";
+
+const { panels, errors, rows } = await loadSpecPanels(api);
+```
+
+- `specPanel(row)` returns an ordinary ADR 0036 `PanelDefinition` with id `spec:<id>`
+  (`SPEC_PANEL_ID_PREFIX`, `specPanelId`, `isSpecPanelId`, `specIdFromPanelId`), the spec's `note`
+  as its subtitle and the spec's `span`. It validates against the metric registry inside `load` and
+  renders the validator's message inline rather than throwing, because a spec can go stale after it
+  was pinned — a metric renamed, a filter withdrawn.
+- **`range: "inherit"` is resolved from `ctx.params` on every load**, so a pinned panel follows the
+  filter bar like every built-in. A spec may instead pin an explicit `{ since, until }`.
+  `specQuery(spec, active)` is that resolution, and asks for `format: "full"`.
+- `loadSpecPanels(api)` mirrors ADR 0041's `loadRemotePanels` down to the `RemotePanelError` shape:
+  `{ panels, errors, rows }`, one bad spec reported and skipped, nothing thrown. A collector that
+  cannot be reached is one `manifest-fetch` error and an empty list.
+- `resolveEncoding(spec)` fills every channel the spec left open from the metric's declared
+  label/axis/measure columns — the same defaults the assistant's pre-fill uses. `SpecChart` is the
+  renderer (`SpecChartProps`, `SpecRow`).
+- `CollectorApi` gains `query(queryV1)` — the GET form of `/api/v1/query`, defaulting `format` to
+  `full` — plus `panels()`, `pinPanel(spec)`, `updatePanel(id, spec)` and `unpinPanel(id)`, with the
+  `PanelSpecRow` type. Reading needs `query`; the three writes need `annotate`.
+- `@uptimizr/metrics` is a **direct dependency** of this package for the chart/grain rules. It is
+  pure data with no native binding, so the core entry stays browser-safe.
+
 ### The in-browser assistant (ADR 0050)
 
 `@uptimizr/react/assistant` ships a drop-in `<AssistantPanel>` and a headless `useAssistant()`
@@ -123,6 +156,13 @@ holds the `annotate` capability — the hook asks `GET /api/v1/whoami` once and 
 `annotate(text, target?)` and `saveAnalysis(title, conclusion)`. Pass
 `<AssistantPanel annotationTarget={annotationTargetFor(filters)} />` so a note inherits what the view
 is filtered to.
+
+A third action, "Pin as panel" (ADR 0051 §7), keeps the question itself rather than the answer.
+`useAssistant()` exposes `pinnableQuery` — the query behind the last answer, or `null` — and
+`pinPanel(title, note?)`, which builds a spec with `panelSpecForQuery(query, title, note?)` and
+posts it. `panelSpecForQuery` is exported separately, and is pure, so a host can preview what would
+be pinned. `<AssistantPanel onPinned={…} />` fires after a successful pin, for a host that reloads
+its grid.
 
 ```tsx
 import { AssistantPanel } from "@uptimizr/react/assistant";

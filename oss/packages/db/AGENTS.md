@@ -12,7 +12,8 @@ The OSS storage contracts plus the single-file **DuckDB** store (ADR 0020):
   stay replay-complete) plus `projects` / `api_keys` (stored only as SHA-256 hashes, each key
   carrying a capability set, an optional label and an optional per-key rate limit) and the
   `agent_audit` trail, the scene registry (`scene_representations`, `scene_regions`) and the
-  project-metadata tables `annotations` / `glossary` / `saved_analyses` (ADR 0051 §5).
+  project-metadata tables `annotations` / `glossary` / `saved_analyses` (ADR 0051 §5) and
+  `panel_specs` (ADR 0051 §7).
 - **Engine-neutral contracts** — the dialect-agnostic query layer (`buildX` + `Dialect`), the
   neutral event-row mapper (`toEventRow`, `formatUtcTimestamp`), and the metadata types
   (`Project`, `ApiKeyRecord`, `SceneRepresentation*`). An optional, separately-licensed
@@ -78,11 +79,24 @@ every tool (collector + CLIs) shares one canonical file regardless of cwd.
   `toApiKeyColumns()` so ordering, validation and the per-key rate-limit columns stay consistent
   across all four engines. `query:raw` is only ever honoured by a collector running with
   `ENABLE_RAW_SESSION_RETENTION` (ADR 0003).
-- **Metadata tables are writable; the events table is not.** `annotations`, `glossary` and
-  `saved_analyses` are the only rows a request can write besides events (ADR 0051 §5/§9). Their
-  accessors enforce the per-project caps in `METADATA_LIMITS` at write time and throw
-  `MetadataLimitError` when a project is full — the collector turns that into a `409`. Never add a
-  path that updates or deletes an event row.
+- **Metadata tables are writable; the events table is not.** `annotations`, `glossary`,
+  `saved_analyses` and `panel_specs` are the only rows a request can write besides events
+  (ADR 0051 §5/§7/§9). Their accessors enforce the per-project caps in `METADATA_LIMITS` at write
+  time and throw `MetadataLimitError` when a project is full — the collector turns that into a
+  `409`. Never add a path that updates or deletes an event row.
+- **`panel_specs` is the one metadata table with an in-place update** (ADR 0051 §7). A spec is one
+  closed JSON document — a metric id, a chart name, some column names — that no read path queries
+  into, stored beside only what the store must filter (`project_id`), order (`created_at`) and
+  address (`id`). `duckdbCreatePanelSpec` / `duckdbListPanelSpecs` / `duckdbUpdatePanelSpec` /
+  `duckdbDeletePanelSpec` are the accessors; `parsePanelSpec` maps the JSON column back and returns
+  `null` for a row that is not an object, which the listing drops rather than failing the whole
+  grid on. Two things differ from the other three tables and must stay that way: the listing is
+  **oldest first**, because these are grid positions rather than a feed and a new pin must not
+  reshuffle somebody's dashboard, and an update keeps the row's id **and its original
+  `authorKind` / `authorKeyId`** — who pinned a panel is a fact about when it appeared, and an edit
+  does not change it. Migrations: DuckDB `0048_panel_specs` + `0049_panel_specs_idx`, Postgres
+  `0020_panel_specs`, SQL Server `0022_panel_specs` + `0023_panel_specs_idx`, ClickHouse
+  `0017_panel_specs`.
 - **The audit log records key ids, never keys.** `agent_audit` rows carry `key_id`; serialize
   parameters with `serializeAuditParams()` (drops credential-shaped keys, bounds the document)
   before they reach a store, and clamp the endpoint with `clampAuditTool()`.

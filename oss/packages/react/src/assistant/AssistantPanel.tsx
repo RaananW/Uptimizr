@@ -41,6 +41,12 @@ export interface AssistantPanelProps extends UseAssistantOptions {
    * the whole project.
    */
   annotationTarget?: AssistantAnnotationTarget;
+  /**
+   * Called after "Pin as panel" stores a spec (#315), so a host that renders the
+   * pinned panels can refresh its grid without waiting for a reload. Optional:
+   * an embed with no panel grid simply omits it.
+   */
+  onPinned?: () => void;
 }
 
 /** Display-only view of a chat turn (system + tool turns are hidden). */
@@ -175,6 +181,7 @@ export function AssistantPanel({
   placeholder = "Ask about your 3D analytics…",
   className,
   annotationTarget,
+  onPinned,
   ...options
 }: AssistantPanelProps) {
   // A consent dialog drives WebLLM's download gate unless the caller supplied one.
@@ -213,6 +220,8 @@ export function AssistantPanel({
     canAnnotate,
     annotate,
     saveAnalysis,
+    pinnableQuery,
+    pinPanel,
   } = assistant;
 
   const [draft, setDraft] = useState("");
@@ -245,7 +254,10 @@ export function AssistantPanel({
   const [savingIndex, setSavingIndex] = useState<number | null>(null);
   const [saveTitle, setSaveTitle] = useState("");
   /** The in-flight metadata write, so the buttons cannot be double-fired. */
-  const [pendingAction, setPendingAction] = useState<"annotate" | "save" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"annotate" | "save" | "pin" | null>(null);
+  /** Which answer's "pin as panel" form is open, or `null` (#315). */
+  const [pinningIndex, setPinningIndex] = useState<number | null>(null);
+  const [pinTitle, setPinTitle] = useState("");
   /** One line of feedback under the actions: what happened, or what failed. */
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
@@ -284,6 +296,34 @@ export function AssistantPanel({
       }
     },
     [saveAnalysis, saveTitle],
+  );
+
+  /**
+   * "Pin as panel" (#315): keep the question, not a screenshot of the answer.
+   *
+   * The answer text becomes the panel's note — it is the agent's reading, which
+   * is the part a person still wants a week later — and the query is pinned
+   * with `range: "inherit"`, so the panel follows the dashboard's filter bar
+   * instead of freezing the window the question happened to be asked in.
+   */
+  const onPinPanel = useCallback(
+    async (note: string) => {
+      setPendingAction("pin");
+      setActionMessage(null);
+      try {
+        await pinPanel(pinTitle.trim(), note);
+        setPinningIndex(null);
+        setActionMessage("Pinned to the dashboard.");
+        onPinned?.();
+      } catch (err) {
+        setActionMessage(
+          err instanceof Error ? `Could not pin: ${err.message}` : "Could not pin the panel.",
+        );
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [pinPanel, pinTitle, onPinned],
   );
 
   // Autoscroll the conversation to the newest message/indicator whenever the
@@ -459,7 +499,64 @@ export function AssistantPanel({
                       >
                         Save this analysis
                       </button>
+                      {/* "Pin as panel" (#315) is offered only when the answer
+                          actually came from a `query` call: that document is
+                          what the panel re-runs, and a panel pinned from a
+                          reconstructed question would be a different question.
+                          It is DATA, not code — see `panelSpec.ts`. */}
+                      {pinnableQuery != null && (
+                        <button
+                          type="button"
+                          data-action="pin-panel"
+                          disabled={pendingAction !== null}
+                          onClick={() => {
+                            setPinningIndex(i);
+                            setPinTitle(defaultAnalysisTitle(display, i));
+                          }}
+                          className="rounded-full border border-edge px-2 py-0.5 text-fg-muted hover:bg-ink/40 disabled:opacity-50"
+                        >
+                          Pin as panel
+                        </button>
+                      )}
                     </div>
+                  )}
+                  {pinningIndex === i && (
+                    <form
+                      data-role="pin-panel-form"
+                      className="mt-1 flex flex-wrap items-center gap-2 text-xs"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        // The answer becomes the panel's note: it is the
+                        // agent's reading, and the part a person still wants a
+                        // week later.
+                        void onPinPanel(m.content);
+                      }}
+                    >
+                      <label className="sr-only" htmlFor="uptimizr-panel-title">
+                        Panel title
+                      </label>
+                      <input
+                        id="uptimizr-panel-title"
+                        value={pinTitle}
+                        onChange={(e) => setPinTitle(e.target.value)}
+                        placeholder="Title for this panel"
+                        className="min-w-[12rem] flex-1 rounded border border-edge bg-transparent px-2 py-1 text-fg"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!pinTitle.trim() || pendingAction !== null}
+                        className="rounded-full border border-edge px-2 py-0.5 text-fg-muted hover:bg-ink/40 disabled:opacity-50"
+                      >
+                        Pin
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPinningIndex(null)}
+                        className="rounded-full border border-edge px-2 py-0.5 text-fg-muted hover:bg-ink/40"
+                      >
+                        Cancel
+                      </button>
+                    </form>
                   )}
                   {savingIndex === i && (
                     <form

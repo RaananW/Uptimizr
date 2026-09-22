@@ -14,6 +14,7 @@ import type {
   AnnotationTargetKind,
   GlossaryEntry,
   MetadataAuthorKind,
+  PanelSpecV1,
   SavedAnalysis,
   SavedAnalysisQuery,
   SceneProxy,
@@ -575,6 +576,7 @@ export const METADATA_LIMITS = {
   annotations: LIMITS.maxProjectAnnotations,
   glossary: LIMITS.maxProjectGlossaryEntries,
   savedAnalyses: LIMITS.maxProjectSavedAnalyses,
+  panelSpecs: LIMITS.maxProjectPanelSpecs,
 } as const;
 
 /** Which metadata table a {@link MetadataLimitError} is about. */
@@ -618,5 +620,71 @@ export function parseSavedAnalysisQuery(json: string): SavedAnalysisQuery {
       : {};
   } catch {
     return {};
+  }
+}
+
+// --- Declarative panel specs (ADR 0051 §7 / sketch §G.3) -------------------
+
+/**
+ * One stored panel spec: what the dashboard draws, who pinned it, and when.
+ *
+ * The spec itself lives in a single JSON `spec` column, for the same reason a
+ * subscription's declaration does: it is a closed document validated at the
+ * request boundary (`panelSpecV1Schema` for the shape, `validatePanelSpec` for
+ * the vocabulary) and never queried *into*. The columns beside it are exactly
+ * what the store must filter (`project_id`), order (`created_at`) and address
+ * (`id`) — nothing about the chart or the query is promoted, because no read
+ * path asks a database about it.
+ */
+export interface PanelSpecRecord extends MetadataAuthor {
+  id: string;
+  projectId: string;
+  /** The stored spec, parsed back from its JSON column. */
+  spec: PanelSpecV1;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** What a caller supplies to pin a panel; the store fills id and timestamps. */
+export interface CreatePanelSpecInput extends MetadataAuthor {
+  spec: PanelSpecV1;
+}
+
+/**
+ * What a caller supplies to replace a pinned panel's spec.
+ *
+ * Authorship is deliberately **not** part of an update: the row keeps the
+ * `authorKind` / `authorKeyId` it was created with. Who pinned a panel is a
+ * fact about when it appeared on somebody's dashboard, and an edit does not
+ * change that — mirroring how the annotation rows keep their original author
+ * across an edit of the note.
+ */
+export interface UpdatePanelSpecInput {
+  spec: PanelSpecV1;
+}
+
+/**
+ * Parse a stored `spec` JSON column back into a document.
+ *
+ * Returns `null` rather than a partial object when the text is not a JSON
+ * object at all: unlike a saved analysis' opaque `query` — which degrades to
+ * `{}` because it is stored but never interpreted — a panel spec is *rendered*,
+ * so a row that cannot be one is better skipped than drawn. The listing drops
+ * it and the rest of the grid is unaffected, which is the same posture
+ * `loadSpecPanels` takes in `@uptimizr/react`.
+ *
+ * The result is typed as the wire shape but **not** re-validated here: a store
+ * is not the boundary, and re-running Zod on every row of every listing would
+ * pay the validation cost on the read path for a document the write path
+ * already checked. The renderer validates what it is about to draw.
+ */
+export function parsePanelSpec(json: string): PanelSpecV1 | null {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed != null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as PanelSpecV1)
+      : null;
+  } catch {
+    return null;
   }
 }

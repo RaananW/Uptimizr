@@ -34,6 +34,8 @@ import {
   type InitProgress,
   type WebLlmCachePolicy,
 } from "@uptimizr/agent-core/providers";
+import { panelSpecV1Schema, type PanelSpecV1Input, type QueryV1 } from "@uptimizr/schema";
+import { defaultEncoding, getMetric, suggestChart } from "@uptimizr/metrics";
 import { CollectorApi } from "../api";
 import { useOptionalUptimizr } from "../provider";
 import { DEFAULT_SYSTEM_PROMPT, refreshSystemPrompt } from "./prompt";
@@ -233,6 +235,95 @@ export interface UseAssistantResult {
   annotate: (text: string, target?: AssistantAnnotationTarget) => Promise<void>;
   /** Store the last turn as a saved analysis. Needs an `annotate` key. */
   saveAnalysis: (title: string, conclusion: string) => Promise<void>;
+  /**
+   * The `queryV1` document behind the last answer, when it came from a `query`
+   * tool call — what "Pin as panel" would pin (#315). `null` when the turn
+   * answered from a canned endpoint instead, in which case there is no document
+   * to re-run and the action is not offered.
+   */
+  pinnableQuery: QueryV1 | null;
+  /**
+   * Pin the last answer's query to the project's dashboard as a panel (#315).
+   * Needs an `annotate` key. Rejects when the turn had no `query` call, because
+   * a panel pinned from a reconstructed question would be a different question.
+   */
+  pinPanel: (title: string, note?: string) => Promise<void>;
+}
+
+/**
+ * The path the DSL `query` tool reads through (`@uptimizr/agent-core`'s
+ * `queryTool`). Matched rather than imported as a constant because
+ * `lastReads` records the path the tool asked for, and this is that string.
+ */
+const QUERY_READ_PATH = "api/v1/query";
+
+/**
+ * The last `queryV1` document the model actually ran, or `null` when the turn
+ * used no DSL query.
+ *
+ * This is what makes "Pin as panel" honest: the panel asks *the question the
+ * answer came from*, not a question reconstructed from the prose. A turn that
+ * answered from a canned endpoint instead has nothing to pin — the DSL is the
+ * only read whose request is a document a panel can re-run — and the action is
+ * simply not offered.
+ *
+ * The **last** query rather than the first: a model that drilled down ran the
+ * general query before the specific one, and it is the specific one the answer
+ * is about.
+ */
+function pinnableQueryFrom(reads: readonly AssistantRead[]): QueryV1 | null {
+  for (let i = reads.length - 1; i >= 0; i--) {
+    const read = reads[i]!;
+    if (read.path !== QUERY_READ_PATH) continue;
+    const raw = read.params.q;
+    if (typeof raw !== "string") continue;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed != null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as QueryV1;
+      }
+    } catch {
+      // A query the tool built is always valid JSON; anything else is not a
+      // query worth pinning, so fall through and keep looking.
+    }
+  }
+  return null;
+}
+
+/**
+ * Build the spec for "Pin as panel" from a query the model ran.
+ *
+ * Every choice here is derived, not invented: the chart from the metric's grain
+ * (`suggestChart`, which never proposes something the collector would refuse),
+ * the encoding from the metric's own label/axis/measure columns, and the range
+ * replaced by `"inherit"` so the pinned panel follows the dashboard's filter bar
+ * rather than freezing the window the question happened to be asked in.
+ *
+ * Exported so the same derivation can be tested without a live model.
+ */
+export function panelSpecForQuery(
+  query: QueryV1,
+  title: string,
+  note?: string,
+): PanelSpecV1Input | null {
+  const metric = getMetric(query.metric);
+  if (metric == null) return null;
+  const chart = suggestChart(metric, query);
+  // `format` and `explain` are the DSL's response knobs, not part of a spec.
+  const { format: _format, explain: _explain, range: _range, ...rest } = query;
+  const candidate: PanelSpecV1Input = {
+    v: 1,
+    title: title.trim().slice(0, 120),
+    chart,
+    encoding: defaultEncoding(metric, chart),
+    span: chart === "world3d" ? 2 : 1,
+    query: { ...rest, range: "inherit" },
+    ...(note != null && note.trim().length > 0 ? { note: note.trim().slice(0, 500) } : {}),
+  };
+  // Parse before sending: the pre-fill is derived from registry data, so a spec
+  // that does not satisfy its own contract is a bug here, not a bad request to
+  // discover at the collector.
+  return panelSpecV1Schema.safeParse(candidate).success ? candidate : null;
 }
 
 /** True when a provider exposes a GPU-releasing `unload()` (WebLLM does). */
@@ -673,6 +764,31 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     [api, lastReads],
   );
 
+  /**
+   * "Pin as panel": keep the last answer's *question* on the dashboard (#315).
+   *
+   * The spec is built from the query the model actually ran, with its window
+   * replaced by `"inherit"`, so the pinned panel keeps asking the same question
+   * of whatever range the dashboard is showing — which is the whole reason an
+   * answer is worth pinning rather than screenshotting.
+   */
+  const pinnableQuery = useMemo(() => pinnableQueryFrom(lastReads), [lastReads]);
+
+  const pinPanel = useCallback(
+    async (title: string, note?: string): Promise<void> => {
+      if (!api) throw new Error("No collector connection.");
+      if (!pinnableQuery) {
+        throw new Error("This answer did not come from a query, so there is nothing to pin.");
+      }
+      const spec = panelSpecForQuery(pinnableQuery, title, note);
+      if (!spec) {
+        throw new Error(`No panel can be built for the metric "${pinnableQuery.metric}".`);
+      }
+      await api.pinPanel(spec);
+    },
+    [api, pinnableQuery],
+  );
+
   const cancel = useCallback(() => {
     abortRef.current?.abort();
   }, []);
@@ -714,5 +830,7 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
     lastReads,
     annotate,
     saveAnalysis,
+    pinnableQuery,
+    pinPanel,
   };
 }
