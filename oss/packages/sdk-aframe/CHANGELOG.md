@@ -1,5 +1,14 @@
 # @uptimizr/aframe
 
+## 1.0.5
+
+### Patch Changes
+
+- Updated dependencies [1c645d6]
+  - @uptimizr/schema@1.2.1
+  - @uptimizr/sdk-core@1.1.2
+  - @uptimizr/three@1.0.5
+
 ## 1.0.4
 
 ### Patch Changes

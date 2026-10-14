@@ -1,5 +1,13 @@
 # @uptimizr/web-export
 
+## 0.2.5
+
+### Patch Changes
+
+- Updated dependencies [1c645d6]
+  - @uptimizr/schema@1.2.1
+  - @uptimizr/sdk-core@1.1.2
+
 ## 0.2.4
 
 ### Patch Changes
