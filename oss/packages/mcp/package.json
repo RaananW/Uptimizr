@@ -58,16 +58,16 @@
     "clean": "rimraf -g dist skills *.tsbuildinfo"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@uptimizr/agent-core": "workspace:*",
     "@uptimizr/metrics": "workspace:*",
     "@uptimizr/schema": "workspace:*",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.5",
     "tsx": "^4.23.15",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.4"
   },
   "engines": {
     "node": ">=22"

@@ -50,24 +50,24 @@
     "clean": "rimraf .next out"
   },
   "dependencies": {
-    "@babylonjs/core": "^9.27.1",
-    "@babylonjs/loaders": "^9.27.1",
-    "@mlc-ai/web-llm": "^0.2.85",
+    "@babylonjs/core": "^9.30.0",
+    "@babylonjs/loaders": "^9.30.0",
+    "@mlc-ai/web-llm": "^0.2.86",
     "@uptimizr/heatmap": "workspace:*",
     "@uptimizr/react": "workspace:*",
     "@uptimizr/replay": "workspace:*",
-    "next": "^16.3.5",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "next": "^16.4.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/node": "^26.6.2",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.7",
-    "postcss": "^8.5.28",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "postcss": "^8.5.30",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.4"
   }
 }

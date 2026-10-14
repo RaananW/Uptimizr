@@ -14,6 +14,17 @@ allowBuilds:
   esbuild: true
   sharp: true
 
+# Advisories `pnpm audit` skips. Only for an advisory with NO patched release, on a path
+# that cannot see untrusted input; never lower `--audit-level` instead. REVIEW at each
+# dependency refresh and delete the entry once a fix ships (`npm view <pkg> version`).
+#   - GHSA-vfj7-8cjw-p6xm (braces <=3.0.3, stack-exhaustion DoS on deeply nested
+#     patterns; first_patched_version: null as of 2026-10-14). Only path:
+#     @uptimizr/docs > starlight-llms-txt > micromatch > braces — a build-time step of
+#     the private docs site that expands our own config globs, never user input.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-vfj7-8cjw-p6xm
+
 minimumReleaseAgeExclude:
   - "@babylonjs/core@9.13.0"
   - "@babylonjs/lite@1.2.0"

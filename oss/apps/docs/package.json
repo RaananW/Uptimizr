@@ -14,10 +14,10 @@
     "clean": "rimraf dist .astro node_modules/.vite"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.42.2",
+    "@astrojs/starlight": "^0.42.6",
     "@vercel/analytics": "^2.0.1",
-    "astro": "^7.3.3",
-    "sharp": "^0.35.4",
+    "astro": "^7.3.8",
+    "sharp": "^0.35.5",
     "starlight-llms-txt": "^0.12.0"
   },
   "devDependencies": {
