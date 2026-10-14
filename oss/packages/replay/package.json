@@ -88,14 +88,14 @@
   "dependencies": {
     "@uptimizr/schema": "workspace:*",
     "@uptimizr/sdk-core": "workspace:*",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@babylonjs/core": "^9.27.1",
-    "@babylonjs/lite": "^1.30.0",
+    "@babylonjs/core": "^9.30.0",
+    "@babylonjs/lite": "^1.34.0",
     "esbuild": "^0.28.2",
-    "playcanvas": "2.22.2",
-    "three": "^0.186.0",
-    "vitest": "^5.0.1"
+    "playcanvas": "2.23.2",
+    "three": "^0.186.1",
+    "vitest": "^5.0.4"
   }
 }
