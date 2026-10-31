@@ -53,8 +53,8 @@
     "@uptimizr/schema": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   }
 }

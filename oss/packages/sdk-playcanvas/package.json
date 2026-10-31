@@ -61,7 +61,7 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
-    "playcanvas": "2.23.2",
-    "vitest": "^5.0.4"
+    "playcanvas": "2.23.3",
+    "vitest": "^5.0.5"
   }
 }
