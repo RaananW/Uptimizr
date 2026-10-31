@@ -16,6 +16,9 @@ const lite = vi.hoisted(() => {
     })),
     addToScene: vi.fn(),
     removeFromScene: vi.fn(),
+    setMeshVisible: vi.fn((node: Record<string, unknown>, v: boolean) => {
+      node.visible = v;
+    }),
     setThinInstances: vi.fn(),
     setThinInstanceColors: vi.fn(),
     setThinInstanceCount: vi.fn(),
@@ -29,6 +32,7 @@ vi.mock("@babylonjs/lite", () => ({
   createStandardMaterial: lite.createStandardMaterial,
   addToScene: lite.addToScene,
   removeFromScene: lite.removeFromScene,
+  setMeshVisible: lite.setMeshVisible,
   setThinInstances: lite.setThinInstances,
   setThinInstanceColors: lite.setThinInstanceColors,
   setThinInstanceCount: lite.setThinInstanceCount,

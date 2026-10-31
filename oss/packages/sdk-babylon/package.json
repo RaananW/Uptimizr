@@ -62,8 +62,8 @@
     "@uptimizr/sdk-core": "workspace:*"
   },
   "devDependencies": {
-    "@babylonjs/core": "^9.30.0",
+    "@babylonjs/core": "^9.33.1",
     "esbuild": "^0.28.2",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   }
 }

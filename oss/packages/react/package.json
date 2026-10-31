@@ -82,14 +82,14 @@
     "@uptimizr/schema": "workspace:*"
   },
   "devDependencies": {
-    "@babylonjs/core": "^9.30.0",
-    "@babylonjs/loaders": "^9.30.0",
+    "@babylonjs/core": "^9.33.1",
+    "@babylonjs/loaders": "^9.33.1",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "happy-dom": "^21.0.1",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "vitest": "^5.0.4"
+    "happy-dom": "^21.0.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "vitest": "^5.0.5"
   }
 }

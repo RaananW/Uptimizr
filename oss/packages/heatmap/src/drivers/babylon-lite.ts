@@ -18,6 +18,7 @@ import {
   flushThinInstances,
   onBeforeRender,
   removeFromScene,
+  setMeshVisible,
   setThinInstanceColors,
   setThinInstanceCount,
   setThinInstances,
@@ -182,14 +183,14 @@ export function createBabylonLiteHeatmapDriver(
     setThinInstances(box, matrices, n);
     setThinInstanceColors(box, colors);
     flushThinInstances(box);
-    box.visible = true;
+    setMeshVisible(box, true);
     built = true;
   };
 
   const clear = (): void => {
     setThinInstanceCount(box, 0);
     flushThinInstances(box);
-    box.visible = false;
+    setMeshVisible(box, false);
     built = false;
     baseMatrices = null;
     liveMatrices = null;
@@ -197,7 +198,7 @@ export function createBabylonLiteHeatmapDriver(
   };
 
   const setVisible = (visible: boolean): void => {
-    box.visible = visible && built;
+    setMeshVisible(box, visible && built);
   };
 
   const dispose = (): void => {
