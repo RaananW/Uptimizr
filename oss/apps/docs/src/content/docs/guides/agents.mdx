@@ -33,6 +33,15 @@ This page is the map. Each section links to the reference for that piece.
   </Card>
 </CardGrid>
 
+### These docs, for an agent
+
+This site follows the [`llms.txt`](https://llmstxt.org) convention, so a coding agent can read the
+docs without crawling the HTML. [`/docs/llms.txt`](/docs/llms.txt) is the index; it links
+[`llms-small.txt`](/docs/llms-small.txt) (getting started, concepts and the core guides),
+[`llms-full.txt`](/docs/llms-full.txt) (every page) and one file per topic under
+`/docs/_llms-txt/` — `sdk-and-connectors`, `capturing-and-using-data`, `ai-and-agents`, `http-api`
+and `deploy-and-self-host` — so a task can load just the section it needs.
+
 ## 1. The semantic metric registry
 
 `@uptimizr/metrics` is a dependency-light package (`zod` + `@uptimizr/schema`, no database driver)

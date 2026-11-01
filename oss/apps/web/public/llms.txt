@@ -10,14 +10,20 @@ This is the marketing site. The documentation, and the machine-readable versions
 
 ## Documentation
 
-- [Docs index for LLMs](https://uptimizr.com/docs/llms.txt): the entry point — links to the
-  abridged and complete documentation sets.
-- [Abridged documentation](https://uptimizr.com/docs/llms-small.txt): the whole docs site with
-  non-essential content removed.
-- [Complete documentation](https://uptimizr.com/docs/llms-full.txt): every docs page, inlined.
-- [Docs site](https://uptimizr.com/docs/): the human-readable version.
-- [Building agents on Uptimizr](https://uptimizr.com/docs/guides/agents/): the AI-first layer end to
-  end — metric registry, discovery, MCP, result formats, scoped keys, evaluation.
+- [Docs index for LLMs](https://www.uptimizr.com/docs/llms.txt): the entry point — links to the
+  abridged, complete and per-topic documentation sets.
+- [Abridged documentation](https://www.uptimizr.com/docs/llms-small.txt): getting started,
+  concepts and the core guides, without the per-engine and long reference pages.
+- [Complete documentation](https://www.uptimizr.com/docs/llms-full.txt): every docs page, inlined.
+- Per-topic sets, each one section of the docs inlined:
+  [SDK and connectors](https://www.uptimizr.com/docs/_llms-txt/sdk-and-connectors.txt),
+  [Capturing and using data](https://www.uptimizr.com/docs/_llms-txt/capturing-and-using-data.txt),
+  [AI and agents](https://www.uptimizr.com/docs/_llms-txt/ai-and-agents.txt),
+  [HTTP API](https://www.uptimizr.com/docs/_llms-txt/http-api.txt),
+  [Deploy and self-host](https://www.uptimizr.com/docs/_llms-txt/deploy-and-self-host.txt).
+- [Docs site](https://www.uptimizr.com/docs/): the human-readable version.
+- [Building agents on Uptimizr](https://www.uptimizr.com/docs/guides/agents/): the AI-first layer
+  end to end — metric registry, discovery, MCP, result formats, scoped keys, evaluation.
 
 ## Querying an Uptimizr deployment
 

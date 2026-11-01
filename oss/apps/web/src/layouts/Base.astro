@@ -12,7 +12,7 @@ const {
   description = "Open-source, privacy-first analytics for 3D scenes. View-direction & click heatmaps, mesh interactions, performance, and session replay — self-hosted, multi-engine.",
 } = Astro.props;
 
-const site = Astro.site ?? new URL("https://uptimizr.com");
+const site = Astro.site ?? new URL("https://www.uptimizr.com");
 const canonical = new URL(Astro.url.pathname, site).href;
 const ogImage = new URL("/og.png", site).href;
 
@@ -40,6 +40,7 @@ const jsonLd = {
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
+    <link rel="sitemap" href="/sitemap-index.xml" />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Uptimizr" />
