@@ -5,7 +5,7 @@ import starlightLlmsTxt from "starlight-llms-txt";
 
 // https://astro.build/config
 export default defineConfig({
-  site: "https://uptimizr.com",
+  site: "https://www.uptimizr.com",
   base: "/docs",
   integrations: [
     starlight({
@@ -43,6 +43,57 @@ export default defineConfig({
               url: "https://demo.uptimizr.com",
               description: "Playground + dashboard running entirely in the browser.",
             },
+          ],
+          // Topic-scoped subsets (served at /docs/_llms-txt/<slug>.txt) so an agent can load
+          // just the part of the docs its task needs instead of the ~500 KB complete set.
+          customSets: [
+            {
+              label: "SDK and connectors",
+              description: "installing the SDK and every 3D engine connector",
+              paths: ["connectors/**"],
+            },
+            {
+              label: "Capturing and using data",
+              description:
+                "configuration, mesh tracking, custom events, sessions, performance, replay, overlays and dashboard panels",
+              paths: [
+                "guides/configuration",
+                "guides/mesh-tracking",
+                "guides/events",
+                "guides/multi-scene",
+                "guides/sessions",
+                "guides/performance",
+                "guides/replay",
+                "guides/overlays",
+                "guides/custom-panels",
+              ],
+            },
+            {
+              label: "AI and agents",
+              description: "the agent layer: metric registry, MCP server and in-browser assistant",
+              paths: ["guides/agents", "guides/mcp", "guides/assistant"],
+            },
+            {
+              label: "HTTP API",
+              description: "ingestion, query, metadata and project-context endpoints, and auth",
+              paths: ["api/**"],
+            },
+            {
+              label: "Deploy and self-host",
+              description: "running the collector and dashboard, privacy and configuration",
+              paths: ["deploy/**"],
+            },
+          ],
+          // Keep llms-small.txt genuinely small: the getting-started path, concepts, the
+          // connector overview and the core guides. The per-engine pages, the generated query
+          // table and the long reference pages stay in llms-full.txt and the sets above.
+          exclude: [
+            "contributing",
+            "connectors/!(overview)",
+            "guides/assistant",
+            "guides/custom-panels",
+            "api/query",
+            "deploy/dashboard",
           ],
         }),
       ],
