@@ -1,5 +1,12 @@
 # @uptimizr/react
 
+## 1.3.2
+
+### Patch Changes
+
+- Updated dependencies [4a1d9c3]
+  - @uptimizr/heatmap@1.0.2
+
 ## 1.3.1
 
 ### Patch Changes
