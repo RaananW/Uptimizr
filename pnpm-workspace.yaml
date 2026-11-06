@@ -29,6 +29,18 @@ minimumReleaseAgeExclude:
   - "@babylonjs/core@9.13.0"
   - "@babylonjs/lite@1.2.0"
 
+# Declares a dependency upstream left out. REVIEW at each dependency refresh and delete the
+# entry once `npm view @astrojs/astro2tsx dependencies` lists @emnapi/runtime.
+#   - @astrojs/astro2tsx runs as WASM and pins @emnapi/core 1.11.3, but leaves the matching
+#     @emnapi/runtime peer of @napi-rs/wasm-runtime undeclared. Since rolldown 1.3.0 (Vite 8.3.6)
+#     the 2.0 beta is in the tree, pnpm satisfies the peer with it, and core 1.x with runtime 2.x
+#     breaks `astro check` ("this.bridge.setLastError is not a function"). Keep this version
+#     equal to the core astro2tsx pins.
+packageExtensions:
+  "@astrojs/astro2tsx@0.1.3":
+    dependencies:
+      "@emnapi/runtime": 1.11.3
+
 # Transitive-dependency overrides (`overrides:`) live here when a dependency lags
 # behind a security advisory that only an override can force. None are needed at the
 # moment (last reviewed 2026-09-06, after 1.0.0: every previous entry — yaml, postcss,
