@@ -16,9 +16,9 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@babylonjs/core": "^9.33.1",
-    "@babylonjs/lite": "^1.37.2",
-    "@babylonjs/loaders": "^9.33.1",
+    "@babylonjs/core": "^9.34.0",
+    "@babylonjs/lite": "^1.38.1",
+    "@babylonjs/loaders": "^9.34.0",
     "@react-three/fiber": "9.8.2",
     "@uptimizr/aframe": "workspace:*",
     "@uptimizr/babylon": "workspace:*",
@@ -38,15 +38,15 @@
     "three": "^0.187.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.1",
+    "@playwright/test": "^1.65.0",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.187.0",
     "@uptimizr/db": "workspace:*",
-    "@vitejs/plugin-react": "^6.1.2",
+    "@vitejs/plugin-react": "^6.2.1",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5"
+    "vite": "^8.3.6"
   }
 }

@@ -49,10 +49,10 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@fastify/cors": "^11.3.1",
+    "@fastify/cors": "^11.4.1",
     "@fastify/helmet": "^13.2.0",
-    "@fastify/rate-limit": "^11.2.1",
-    "@fastify/static": "^10.1.8",
+    "@fastify/rate-limit": "^11.2.2",
+    "@fastify/static": "^10.1.10",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@uptimizr/agent-core": "workspace:*",
     "@uptimizr/db": "workspace:*",
@@ -62,7 +62,7 @@
     "@uptimizr/mcp": "workspace:*",
     "@uptimizr/metrics": "workspace:*",
     "@uptimizr/schema": "workspace:*",
-    "fastify": "^5.12.7",
+    "fastify": "^5.12.8",
     "fastify-type-provider-zod": "^7.0.0",
     "zod": "^4.6.7"
   },
@@ -70,6 +70,6 @@
     "@seriousme/openapi-schema-validator": "^2.11.0",
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }
