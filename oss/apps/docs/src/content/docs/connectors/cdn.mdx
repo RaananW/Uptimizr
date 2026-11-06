@@ -9,7 +9,8 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 You don't have to use npm. Every connector also ships a **standalone global (IIFE) bundle** you can
 drop onto a page with a single `<script>` tag — ideal for the Babylon Playground, CodePen, a CMS, or
 any page where you can't run a bundler. The bundle exposes a `window.Uptimizr` global and **never
-bundles the engine** (your page already provides Babylon/three/PlayCanvas).
+bundles the engine**: it uses the copy your page already runs, which three.js and Babylon Lite pages
+must expose as a global (see [How the bundle finds your engine](#how-the-bundle-finds-your-engine)).
 
 :::tip
 Working in an online editor? See [Playgrounds & online editors](/docs/connectors/playgrounds/) for
@@ -50,6 +51,27 @@ The standalone bundle is just a static file, so serve it however you like:
   and point the `<script>` at it. The collector does not serve it. The local playground does, at
   `/uptimizr-babylon.global.js`.
 
+## How the bundle finds your engine
+
+The bundle stays engine-free, so it looks your engine up on a global the first time it needs it:
+
+| Bundle       | Engine global                    | Who sets it                                                           |
+| ------------ | -------------------------------- | --------------------------------------------------------------------- |
+| Babylon.js   | none, it reads the `scene` you pass | nothing to do                                                         |
+| three.js     | `window.THREE`                   | **you**: three.js has no global build, so set it from a module script |
+| A-Frame      | `window.THREE` or `AFRAME.THREE` | `aframe.min.js`                                                       |
+| PlayCanvas   | `window.pc`                      | the classic PlayCanvas script, or you if you import the module        |
+| Babylon Lite | `window.BabylonLite`             | **you**: Lite is ESM-only, so set it from a module script             |
+
+**Load order doesn't matter** for that lookup. Loading the bundle never touches the engine, so it can
+come before or after the engine script, and the global only has to exist by the time you call
+`trackScene`. The exception is A-Frame: load its bundle **after** `aframe.min.js`, because the bundle
+registers the `uptimizr` component as it loads.
+
+Set the global from the same three.js or Babylon Lite module your scene imports. If it's missing,
+`trackScene` throws an error that says what to set, before any session starts. The bundle itself
+still loads, so you can set the global and call `trackScene` again.
+
 ## Usage
 
 Inject the script through the DOM (this also sidesteps any TypeScript/`import` rewriting on the host
@@ -72,10 +94,32 @@ page), then call `trackScene` once the engine scene exists:
   </script>
   ```
   </TabItem>
+  <TabItem label="Babylon Lite">
+  ```html
+  <script src="https://cdn.jsdelivr.net/npm/@uptimizr/babylon-lite/dist/uptimizr-babylon-lite.global.js"></script>
+  <script type="module">
+    import * as BabylonLite from "https://cdn.jsdelivr.net/npm/@babylonjs/lite/dist/index.js";
+    // Lite is ESM-only, so hand the bundle your copy of the module.
+    window.BabylonLite = BabylonLite;
+
+    // ...create engine, scene and camera...
+    // Lite has no active camera, so pass camera + canvas explicitly.
+    Uptimizr.trackScene(scene, camera, canvas, {
+      projectId: "your-project-id",
+      endpoint: "https://collect.example.com",
+    });
+  </script>
+  ```
+  </TabItem>
   <TabItem label="three.js">
   ```html
   <script src="https://cdn.jsdelivr.net/npm/@uptimizr/three/dist/uptimizr-three.global.js"></script>
-  <script>
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three/build/three.module.js";
+    // three has no global build, so hand the bundle your copy of the module.
+    window.THREE = THREE;
+
+    // ...create scene, camera, renderer...
     // three has no active camera, so pass camera + renderer explicitly.
     Uptimizr.trackScene(scene, camera, renderer, {
       projectId: "your-project-id",
@@ -86,8 +130,10 @@ page), then call `trackScene` once the engine scene exists:
   </TabItem>
   <TabItem label="PlayCanvas">
   ```html
+  <script src="https://code.playcanvas.com/playcanvas-stable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@uptimizr/playcanvas/dist/uptimizr-playcanvas.global.js"></script>
   <script>
+    // ...create app + a camera entity...
     Uptimizr.trackScene(app, cameraEntity, {
       projectId: "your-project-id",
       endpoint: "https://collect.example.com",

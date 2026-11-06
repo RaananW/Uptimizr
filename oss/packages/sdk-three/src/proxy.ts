@@ -115,14 +115,17 @@ function aabbVolume(box: Aabb): number {
 
 /**
  * Default world-AABB reader: three's `Box3.setFromObject` walks the mesh's
- * geometry under its world matrix. A single box instance is reused across calls.
+ * geometry under its world matrix. A single box instance is reused across calls,
+ * created on first use: the global bundle must not touch the engine at load, when
+ * `window.THREE` may not be set yet.
  */
-const sharedBox = new Box3();
+let sharedBox: Box3 | undefined;
 function defaultBoundsOf(mesh: unknown): Aabb | undefined {
-  sharedBox.makeEmpty();
-  sharedBox.setFromObject(mesh as Object3D);
-  if (sharedBox.isEmpty()) return undefined;
-  const { min, max } = sharedBox;
+  const box = (sharedBox ??= new Box3());
+  box.makeEmpty();
+  box.setFromObject(mesh as Object3D);
+  if (box.isEmpty()) return undefined;
+  const { min, max } = box;
   return [min.x, min.y, min.z, max.x, max.y, max.z];
 }
 

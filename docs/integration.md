@@ -96,6 +96,20 @@ document.head.appendChild(s);
 > `pnpm playground` prints this snippet pre-filled with a local project id and a
 > tunnel/localhost endpoint. See [run-local-stack](../.github/skills/run-local-stack/SKILL.md).
 
+The other connectors ship the same kind of bundle, and none of them include the engine. They look it
+up on a global when first used, so script order doesn't matter (except that the A-Frame bundle must
+load after `aframe.min.js`). The global must exist by the time you call `trackScene`, which otherwise
+throws an error saying what to set:
+
+| Bundle                            | Engine global                    | Set by                                           |
+| --------------------------------- | -------------------------------- | ------------------------------------------------ |
+| `uptimizr-three.global.js`        | `window.THREE`                   | you: `import * as THREE`, `window.THREE = THREE` |
+| `uptimizr-aframe.global.js`       | `window.THREE` or `AFRAME.THREE` | `aframe.min.js`                                  |
+| `uptimizr-playcanvas.global.js`   | `window.pc`                      | the classic PlayCanvas script                    |
+| `uptimizr-babylon-lite.global.js` | `window.BabylonLite`             | you: `import * as BabylonLite`, then assign it   |
+
+See [Install via CDN](../oss/apps/docs/src/content/docs/connectors/cdn.mdx) for the full recipes.
+
 ### Web-export engines (Unity / Godot / Unreal)
 
 Engines that compile to **WebAssembly** and render into a `<canvas>` (Unity WebGL,
