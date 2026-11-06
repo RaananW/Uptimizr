@@ -151,7 +151,7 @@ y-up, unit scale 1**), then records the native frame in `connector.coordinateSys
 ## Privacy
 
 No client-side persistent IDs and no PII by default (ADR 0003). The JS-only tier
-records pointer positions, FPS and JS errors (see [Options](#options)); the bridge records
+records pointer positions, FPS and, if you opt in, JS errors (see [Options](#options)); the bridge records
 poses and developer-assigned **named** objects. Stopping the client tears down every
 listener, timer, and animation-frame callback.
 

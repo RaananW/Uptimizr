@@ -95,7 +95,7 @@ coordinate math. The session records Godot's native frame in
 ## Capture
 
 JS-only tier: pointer move/click → screen heatmaps, FPS / long frames → performance,
-JS errors (on by default; see [web-export options](/docs/connectors/web-export/#options)).
+JS errors (opt-in; see [web-export options](/docs/connectors/web-export/#options)).
 Bridged tier: camera pose → view-direction heatmap, world-space picks →
 object engagement, scene proxy, and replay.
 
