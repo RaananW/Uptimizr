@@ -418,6 +418,7 @@ export { DUCKDB_MIGRATIONS, migrateDuckdb } from "./duckdb/migrations.js";
 export { runDuckdbQuery } from "./duckdb/queries.js";
 export {
   insertEvents as duckdbInsertEvents,
+  pruneEvents as duckdbPruneEvents,
   getSessionEvents as duckdbGetSessionEvents,
   streamSessionEvents as duckdbStreamSessionEvents,
   getSessionMeta as duckdbGetSessionMeta,

@@ -125,7 +125,7 @@ describe("useAssistant — project context", () => {
     expect(system).toContain("add_to_cart");
     expect(system).toContain("sku: string");
     expect(system).toContain("mesh_dwell");
-    expect(system).toContain("Raw per-session retention is OFF");
+    expect(system).toContain("Raw session access is OFF");
     // The original prompt is still there, ahead of the context block.
     expect(system).toContain("epoch milliseconds:");
     expect(system.indexOf("Current time:")).toBeLessThan(system.indexOf("main-hall"));

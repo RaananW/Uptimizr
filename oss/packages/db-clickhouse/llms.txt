@@ -24,7 +24,7 @@
 - Client: `createClickhouseClient(settings)`, types `ClickhouseClient` / `ClickhouseRow`.
 - Migrations: `CLICKHOUSE_MIGRATIONS`, `migrateClickhouse(client)` — forward-only, idempotent (ADR 0007).
 - Queries: `runClickhouseQuery(client, spec)` — executes a rendered `QuerySpec` and coerces numeric columns at the driver edge (ADR 0051 §2).
-- Events: `insertEvents`, `getSessionEvents`, `streamSessionEvents`, `getSessionMeta`.
+- Events: `insertEvents`, `getSessionEvents`, `streamSessionEvents`, `getSessionMeta`, `pruneEvents` (the `EVENT_RETENTION_DAYS` delete, over `events` and `node_samples`).
 - Metadata: `createProject`, `getProject`, `createApiKey`, `resolveApiKey`, `hashApiKey`, `apiKeyPrefix`, `generateApiKey` (keys stored only as SHA-256 hashes).
 - Audit: `recordAudit`, `listAudit`, `pruneAudit` (key ids, never keys).
 - Scene registry: `upsertSceneProxy`, `getSceneRepresentation`, `listSceneRepresentations`, `putSceneRegions`, `getSceneRegions`, `listSceneRegions`.

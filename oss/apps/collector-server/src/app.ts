@@ -14,6 +14,7 @@ import { createLiveBus, type LiveBus } from "./liveBus.js";
 import { attachApiKey, normalizeMcpBearer } from "./auth.js";
 import { storeProjectMetadata, type ProjectMetadataProvider } from "./projectMetadata.js";
 import { registerAuditHooks, startAuditRetention } from "./audit.js";
+import { startEventRetention } from "./eventRetention.js";
 import { buildDashboardCsp } from "./csp.js";
 import { isInternalDispatch, newInternalDispatchToken } from "./internalDispatch.js";
 import { collectRoutes } from "./routes/collect.js";
@@ -177,6 +178,8 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   registerAuditHooks(app, store, config, internalDispatchToken);
   const stopAuditRetention = startAuditRetention(app, store, config);
   app.addHook("onClose", async () => stopAuditRetention());
+  const stopEventRetention = startEventRetention(app, store, config);
+  app.addHook("onClose", async () => stopEventRetention());
 
   // Record every route's Zod schemas as they are registered, so the generated
   // OpenAPI document describes each parameter with the *same* schema that

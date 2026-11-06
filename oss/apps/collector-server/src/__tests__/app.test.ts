@@ -26,6 +26,7 @@ const config: CollectorConfig = {
   bodyLimit: 1_048_576,
   cspMode: "strict",
   auditRetentionDays: 30,
+  eventRetentionDays: 0,
   auditDashboardRequests: false,
   mcpHttpEnabled: false,
   mcpMaxSessions: 50,

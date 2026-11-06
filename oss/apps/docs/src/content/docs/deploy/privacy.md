@@ -1,6 +1,6 @@
 ---
 title: Privacy & configuration
-description: Uptimizr's privacy model and the configuration that controls raw session access, CORS, and opt-in capture.
+description: Uptimizr's privacy model and the configuration that controls raw session access, event retention, CORS, and opt-in capture.
 lastUpdated: 2026-11-06
 ---
 
@@ -40,7 +40,8 @@ per-session follow `/api/v1/live/sessions/:id` return `403`. The raw events rema
 are readable by anyone with access to the database file or server. The aggregate endpoints never
 expose raw events.
 
-The collector has no automatic event deletion: stored events stay until you remove them yourself.
+Stored events stay until something removes them, and by default nothing does. See
+[Event retention](#event-retention) to bound them.
 
 The flag is only **half** the gate. Reading a raw per-session stream — the replay timeline
 `/api/v1/sessions/:id/events`, the compacted `/api/v1/sessions/:id/narrative` and the live
@@ -81,6 +82,64 @@ It **never** carries:
 If your app attaches personal data to a custom-event property or to an error message, that is the
 one place it could reach a narrative — error messages are truncated but not filtered, which is the
 same trade-off as the raw stream and the dashboard's error panels.
+
+## Event retention
+
+Events are kept indefinitely by default. To bound how long they live, set a window in days:
+
+```bash
+EVENT_RETENTION_DAYS=90
+```
+
+The collector then deletes events older than that at startup and every six hours. `0`, the default,
+disables the sweep, so upgrading a collector never deletes anything.
+
+:::caution[Purging also deletes those days' aggregates]
+Aggregates are computed from the stored events at query time; there is no separate rollup to fall
+back on. A deleted day disappears from every dashboard, heatmap, funnel and metric, and it cannot be
+recovered. Keep the window longer than the longest comparison you rely on, such as an insight
+baseline or a subscription's window.
+:::
+
+- **What goes:** every raw event, in every project, including `node_transform` samples. It applies
+  whatever `ENABLE_RAW_SESSION_RETENTION` is set to. The window is per collector, not per project.
+- **What stays:** projects, API keys, scene representations and regions, annotations, the glossary,
+  saved analyses, panels and subscriptions. The agent audit log has its own window, below.
+- **Age is the event's `ts`,** which the client sets. An event stamped in the future by a wrong clock
+  stays until that date has passed. The cutoff is a moment, not a calendar day, so the oldest day left
+  in your aggregates is usually partial.
+- **Sessions can straddle the cutoff.** The older part goes first. Once a session's `session_start` is
+  gone, `GET /api/v1/sessions/:id/meta` answers `404` while its newer events remain, until they age out
+  too.
+- **A failed sweep is not fatal.** It is logged and the next sweep retries. A sweep logs its cutoff,
+  never event content.
+- **A sweep scans the event tables.** On DuckDB, reads and ingest wait while it runs, because it also
+  rebuilds the indexes on those tables: about 0.7 s for about a million surviving rows in testing.
+
+### Deleted is not the same as gone from disk
+
+A deleted event can no longer be read through the collector, but each engine reclaims the space in
+its own way.
+
+On **DuckDB** the file does **not shrink**. In a 300,000-row test with 80% of rows deleted, the file
+stayed at about 50 MB after a checkpoint and a restart, and later inserts reused the freed space.
+Deleted bytes can also remain in the file: they were still found in it in some test runs and not in
+others, so assume they are there. To shrink the file and drop those bytes, stop the collector and
+copy the database with a DuckDB CLI of the same version line as the collector:
+
+```sql
+ATTACH 'uptimizr.duckdb' AS src (READ_ONLY);
+ATTACH 'compacted.duckdb' AS dst;
+COPY FROM DATABASE src TO dst;
+```
+
+Then replace `uptimizr.duckdb` with `compacted.duckdb` and delete the old file. In the same test the
+copy came to about 15 MB at 100,000 live rows, with no trace of the deleted rows.
+
+**Postgres** frees space for reuse through autovacuum, and `VACUUM FULL` returns it to the operating
+system. **SQL Server** clears deleted rows with its background ghost cleanup; shrinking a file is a
+separate step. **ClickHouse** hides deleted rows at once and removes them from disk when their parts
+next merge.
 
 ## Agent activity is audited
 

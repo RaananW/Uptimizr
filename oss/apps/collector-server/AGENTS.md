@@ -114,7 +114,8 @@ A key carries a **set of capabilities**, not a single role. `new-key` defaults t
 The raw endpoints are gated **twice**: the collector must run with `ENABLE_RAW_SESSION_RETENTION`
 **and** the key must hold `query:raw` — otherwise `403`. The flag alone is not enough, and it gates
 reading only: events are always written to the store, including each event's full payload, because
-aggregates are computed from them at query time, and no automatic event deletion exists.
+aggregates are computed from them at query time. They stay until `EVENT_RETENTION_DAYS` removes
+them, if it is set (ADR 0052).
 
 `--rate-limit-max` / `--rate-limit-window-ms` give a key its own request budget, bucketed on the
 **key id** rather than the client IP; keys without one fall back to `COLLECTOR_RATE_LIMIT_*`.
@@ -325,6 +326,9 @@ ADR 0041's remote-panel trust decision is not widened.
 - Subscriptions: `COLLECTOR_SUBSCRIPTIONS` (default on; `0` keeps the API and runs no timers),
   `COLLECTOR_SUBSCRIPTIONS_MAX_CONCURRENT` (default `4`),
   **`COLLECTOR_WEBHOOK_ALLOWED_HOSTS`** (empty = no webhook egress at all).
+- Event retention: **`EVENT_RETENTION_DAYS`** (default `0` = keep forever). When positive, a sweep
+  at startup and every six hours deletes older events, including `node_transform` samples, and so
+  those days' aggregates (ADR 0052). A DuckDB file does not shrink until it is compacted.
 - Agent audit: **`AUDIT_RETENTION_DAYS`** (default `30`; `0` = keep forever),
   `AUDIT_DASHBOARD_REQUESTS` (default off — requests carrying `x-uptimizr-client: dashboard` are
   skipped as a volume filter, **not** a security boundary).

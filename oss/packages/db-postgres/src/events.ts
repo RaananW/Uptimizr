@@ -293,3 +293,20 @@ export async function getSessionMeta(
     user: event?.user,
   };
 }
+
+/**
+ * Delete stored events older than `cutoffMs` (epoch ms): the
+ * `EVENT_RETENTION_DAYS` sweep (ADR 0052). A `node_transform` event lives in
+ * `node_samples` rather than `events` (ADR 0027), so both tables are pruned;
+ * leaving either behind would keep raw per-session data past the window.
+ *
+ * Compares `ts`, the column every aggregate filters on, so aggregates lose
+ * exactly the purged rows. Idempotent, so the collector can run it on a timer; a
+ * partial failure is finished by the next sweep.
+ */
+export async function pruneEvents(client: PostgresClient, cutoffMs: number): Promise<void> {
+  const cutoff = Math.trunc(cutoffMs);
+  const before = `ts < to_timestamp($1::double precision / 1000) AT TIME ZONE 'utc'`;
+  await client.query(`DELETE FROM events WHERE ${before}`, [cutoff]);
+  await client.query(`DELETE FROM node_samples WHERE ${before}`, [cutoff]);
+}

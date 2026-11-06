@@ -8,6 +8,7 @@ import {
   type SessionMeta,
 } from "@uptimizr/db";
 import { anyEventSchema, type AnyEvent, type NodeTransformEvent } from "@uptimizr/schema";
+import { epochToDatetime } from "./audit.js";
 import type { MssqlClient, MssqlExecutor } from "./client.js";
 
 export type { SessionMeta };
@@ -313,4 +314,21 @@ export async function getSessionMeta(
     scene: event?.scene,
     user: event?.user,
   };
+}
+
+/**
+ * Delete stored events older than `cutoffMs` (epoch ms): the
+ * `EVENT_RETENTION_DAYS` sweep (ADR 0052). A `node_transform` event lives in
+ * `node_samples` rather than `events` (ADR 0027), so both tables are pruned;
+ * leaving either behind would keep raw per-session data past the window.
+ *
+ * Compares `ts`, the column every aggregate filters on, so aggregates lose
+ * exactly the purged rows. Idempotent, so the collector can run it on a timer; a
+ * partial failure is finished by the next sweep.
+ */
+export async function pruneEvents(client: MssqlClient, cutoffMs: number): Promise<void> {
+  const cutoff = Math.trunc(cutoffMs);
+  const before = `ts < ${epochToDatetime("@p1")}`;
+  await client.query(`DELETE FROM dbo.events WHERE ${before}`, [cutoff]);
+  await client.query(`DELETE FROM dbo.node_samples WHERE ${before}`, [cutoff]);
 }

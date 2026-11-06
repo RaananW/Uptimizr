@@ -581,7 +581,13 @@ requires an API key holding the `query:raw`
 Despite its name, the flag gates access, not storage. The collector always writes
 every event to the store, including each event's full payload, because aggregates are
 computed from those rows at query time. With the flag off, raw streams cannot be read
-through the API but remain in the store, and there is no automatic event deletion.
+through the API but remain in the store.
+
+Events are kept indefinitely by default. Setting `EVENT_RETENTION_DAYS` to a positive
+number deletes older events, including `node_transform` samples, at startup and every
+six hours (ADR 0052). Aggregates are computed from those rows, so a purge also removes
+those days from every aggregate, permanently. It does not shrink a DuckDB file; see
+[Event retention](https://www.uptimizr.com/docs/deploy/privacy/#event-retention).
 
 ---
 

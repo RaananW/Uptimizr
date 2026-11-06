@@ -26,7 +26,13 @@ export { MSSQL_MIGRATIONS, migrateMssql } from "./migrations.js";
 
 export { runMssqlQuery } from "./queries.js";
 
-export { insertEvents, getSessionEvents, streamSessionEvents, getSessionMeta } from "./events.js";
+export {
+  insertEvents,
+  getSessionEvents,
+  streamSessionEvents,
+  getSessionMeta,
+  pruneEvents,
+} from "./events.js";
 export type { SessionMeta } from "./events.js";
 
 export {

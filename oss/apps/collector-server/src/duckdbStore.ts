@@ -88,6 +88,7 @@ import {
   duckdbGetSessionMeta,
   duckdbGetProject,
   duckdbInsertEvents,
+  duckdbPruneEvents,
   duckdbListAnnotations,
   duckdbListGlossary,
   duckdbListSavedAnalyses,
@@ -204,6 +205,7 @@ export async function createDuckdbStore(path?: string): Promise<CollectorStore> 
     pruneAudit: (cutoffMs) => duckdbPruneAudit(db, cutoffMs),
     projectExists: async (projectId) => (await duckdbGetProject(db, projectId)) !== null,
     insertEvents: (events) => duckdbInsertEvents(db, [...events]),
+    pruneEvents: (cutoffMs) => duckdbPruneEvents(db, cutoffMs),
     // Query DSL v1 (ADR 0051 §3): any registry metric, compiled onto its own
     // aggregation builder and run through the same DuckDB path — and therefore
     // the same parity coverage and the same numeric coercion — as the canned

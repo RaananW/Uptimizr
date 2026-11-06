@@ -408,8 +408,7 @@ Environment-driven (see [`.env.example`](../../../.env.example)):
   storage: events are always written to the store, including each event's full
   payload, because aggregates are computed from them at query time. With it off,
   raw streams cannot be read through the API but remain in the store, readable
-  by anyone with access to the database file or server. No automatic event
-  deletion exists.
+  by anyone with access to the database file or server.
 - Subscriptions: `COLLECTOR_SUBSCRIPTIONS` (default on), `COLLECTOR_SUBSCRIPTIONS_MAX_CONCURRENT`
   (default `4`), `COLLECTOR_WEBHOOK_ALLOWED_HOSTS` (empty = no webhook egress).
 - Rate limits: `COLLECTOR_RATE_LIMIT_MAX`, `COLLECTOR_RATE_LIMIT_WINDOW_MS`,
@@ -417,6 +416,12 @@ Environment-driven (see [`.env.example`](../../../.env.example)):
   (a key's own budget overrides the first pair).
 - Hosted MCP: `COLLECTOR_MCP_HTTP` (off by default), `COLLECTOR_MCP_MAX_SESSIONS`
   (default `50`), `COLLECTOR_MCP_SESSION_TTL_MS` (default `1800000`).
+- Event retention: `EVENT_RETENTION_DAYS` (default `0` = keep forever; a non-numeric value stops
+  the collector at startup). When positive, events
+  older than that many days, including `node_transform` samples, are deleted at startup and every
+  six hours. Aggregates are computed from those rows, so this also removes those days from every
+  aggregate, permanently. It does not shrink a DuckDB file until that is compacted
+  ([details](https://www.uptimizr.com/docs/deploy/privacy/#event-retention)).
 - Agent audit: `AUDIT_RETENTION_DAYS` (default `30`, `0` = keep forever),
   `AUDIT_DASHBOARD_REQUESTS` (default off).
 - All-in-one dashboard: `COLLECTOR_DASHBOARD_DIR` (optional; see

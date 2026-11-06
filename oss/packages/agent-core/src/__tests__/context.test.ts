@@ -80,7 +80,7 @@ describe("renderContextForPrompt", () => {
   it("states freshness and that raw retention is off", () => {
     expect(rendered).toContain("30 min ago");
     expect(rendered).toContain("91 sessions in the last 24 h");
-    expect(rendered).toContain("Raw per-session retention is OFF");
+    expect(rendered).toContain("Raw session access is OFF");
   });
 
   it("stays small enough for a local model's prompt budget", () => {
