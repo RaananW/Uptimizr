@@ -167,7 +167,8 @@ export interface PositionBinRow {
 
 /** One ordered point of a session's walked path (ADR 0026). */
 export interface TrajectoryPointRow {
-  ts: string;
+  /** Sample time as epoch milliseconds. */
+  ts: number;
   x: number;
   y: number;
   z: number;
@@ -180,7 +181,8 @@ export interface TrajectoryPointRow {
  */
 export interface AggregateTrajectoryPointRow {
   session_id: string;
-  ts: string;
+  /** Sample time as epoch milliseconds. */
+  ts: number;
   gx: number;
   gz: number;
 }

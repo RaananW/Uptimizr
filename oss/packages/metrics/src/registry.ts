@@ -1902,8 +1902,7 @@ export const METRIC_REGISTRY = {
     row: z.object({ ts: int, x: num, y: num, z: num }),
     columns: {
       ts: {
-        description:
-          "Sample time as epoch milliseconds (the query projects `epochMs(ts)`, so this is a number even though `TrajectoryPointRow.ts` is declared `string` in `types.ts`).",
+        description: "Sample time as epoch milliseconds.",
         unit: "epoch-ms",
         label: true,
       },
@@ -1941,8 +1940,7 @@ export const METRIC_REGISTRY = {
     columns: {
       session_id: { description: "Session the point belongs to.", unit: "id", label: true },
       ts: {
-        description:
-          "Sample time as epoch milliseconds; order points by it per session. (The query projects `epochMs(ts)`, so this is a number even though `AggregateTrajectoryPointRow.ts` is declared `string` in `types.ts`.)",
+        description: "Sample time as epoch milliseconds; order points by it per session.",
         unit: "epoch-ms",
       },
       gx: { description: "Ground cell X index.", unit: "index" },
