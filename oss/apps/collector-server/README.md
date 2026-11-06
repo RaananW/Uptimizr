@@ -416,7 +416,8 @@ Environment-driven (see [`.env.example`](../../../.env.example)):
   (a key's own budget overrides the first pair).
 - Hosted MCP: `COLLECTOR_MCP_HTTP` (off by default), `COLLECTOR_MCP_MAX_SESSIONS`
   (default `50`), `COLLECTOR_MCP_SESSION_TTL_MS` (default `1800000`).
-- Event retention: `EVENT_RETENTION_DAYS` (default `0` = keep forever). When positive, events
+- Event retention: `EVENT_RETENTION_DAYS` (default `0` = keep forever; a non-numeric value stops
+  the collector at startup). When positive, events
   older than that many days, including `node_transform` samples, are deleted at startup and every
   six hours. Aggregates are computed from those rows, so this also removes those days from every
   aggregate, permanently. It does not shrink a DuckDB file until that is compacted

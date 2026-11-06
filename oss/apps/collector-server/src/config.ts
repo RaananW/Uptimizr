@@ -173,6 +173,21 @@ function parseTrustProxy(value: string | undefined): boolean | string {
   return trimmed;
 }
 
+/**
+ * Parse `EVENT_RETENTION_DAYS`. A value that is not a number stops the collector
+ * rather than reading as `0`: an operator who set it believes old events are being
+ * deleted, so a typo such as `30d` must not silently keep them forever.
+ */
+function parseEventRetentionDays(value: string | undefined): number {
+  const trimmed = value?.trim();
+  if (!trimmed) return 0;
+  const days = Number(trimmed);
+  if (!Number.isFinite(days) || days < 0) {
+    throw new Error(`EVENT_RETENTION_DAYS must be a number of days, 0 or more (got "${trimmed}").`);
+  }
+  return days;
+}
+
 export function loadConfig(env: Env = process.env): CollectorConfig {
   const visitorHashSecret = env.VISITOR_HASH_SECRET;
   if (!visitorHashSecret) {
@@ -204,7 +219,7 @@ export function loadConfig(env: Env = process.env): CollectorConfig {
     bodyLimit: Number(env.COLLECTOR_BODY_LIMIT ?? 1_048_576),
     cspMode: env.COLLECTOR_CSP === "off" ? "off" : "strict",
     auditRetentionDays: Math.max(0, Number(env.AUDIT_RETENTION_DAYS ?? 30) || 0),
-    eventRetentionDays: Math.max(0, Number(env.EVENT_RETENTION_DAYS ?? 0) || 0),
+    eventRetentionDays: parseEventRetentionDays(env.EVENT_RETENTION_DAYS),
     auditDashboardRequests: bool(env.AUDIT_DASHBOARD_REQUESTS),
     mcpHttpEnabled: bool(env.COLLECTOR_MCP_HTTP),
     mcpMaxSessions: positive(env.COLLECTOR_MCP_MAX_SESSIONS, 50),

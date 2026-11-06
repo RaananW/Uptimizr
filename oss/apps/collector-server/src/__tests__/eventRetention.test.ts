@@ -35,9 +35,9 @@ describe("loadConfig: EVENT_RETENTION_DAYS", () => {
     expect(loadConfig({ ...env, EVENT_RETENTION_DAYS: "90" }).eventRetentionDays).toBe(90);
   });
 
-  it("treats a negative or unparseable value as disabled", () => {
-    expect(loadConfig({ ...env, EVENT_RETENTION_DAYS: "-5" }).eventRetentionDays).toBe(0);
-    expect(loadConfig({ ...env, EVENT_RETENTION_DAYS: "abc" }).eventRetentionDays).toBe(0);
+  it("refuses a negative or unparseable value rather than keeping events forever", () => {
+    expect(() => loadConfig({ ...env, EVENT_RETENTION_DAYS: "-5" })).toThrow();
+    expect(() => loadConfig({ ...env, EVENT_RETENTION_DAYS: "abc" })).toThrow();
   });
 });
 
