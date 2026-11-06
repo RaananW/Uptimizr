@@ -58,7 +58,7 @@ npm install @uptimizr/web-export
 
 | Tier        | Engine code?        | Captures                                                                     |
 | ----------- | ------------------- | ---------------------------------------------------------------------------- |
-| **JS-only** | none                | pointer move/click heatmaps, FPS / long frames, JS errors                    |
+| **JS-only** | none                | pointer move/click heatmaps, FPS / long frames, opt-in JS errors             |
 | **Bridged** | a thin copy-in shim | camera pose → view-direction heatmap, world-space picks, scene proxy, replay |
 
 The JS-only tier is live the moment you call `trackWebExport`. The bridged tier

@@ -1,5 +1,5 @@
 import { UptimizrClient } from "@uptimizr/sdk-core";
-import type { StartMeta, Transport } from "@uptimizr/sdk-core";
+import type { BeforeSendHook, StartMeta, Transport } from "@uptimizr/sdk-core";
 import type { SceneProxy, SessionUser } from "@uptimizr/schema";
 import type { NativeFrame } from "./types.js";
 import type { CanvasView, JsOnlyCaptureOptions } from "./jsOnly.js";
@@ -42,6 +42,8 @@ export interface TrackWebExportOptions {
   disabled?: boolean;
   /** Emit debug logs to the console. */
   debug?: boolean;
+  /** Inspect, redact or drop each event before it is queued. */
+  beforeSend?: BeforeSendHook;
   /** Caller-supplied, anonymized user context. Opt-in; never PII (ADR 0003). */
   user?: SessionUser;
   /** Page metadata / URL overrides for `session_start`. */
@@ -66,8 +68,8 @@ export interface WebExportSession {
  * connector provenance (ADR 0018). Per-engine packages wrap this with their native
  * frame baked in (`trackUnity` / `trackGodot` / `trackUnreal`).
  *
- * The JS-only tier captures immediately (pointer heatmaps + perf + errors) with no
- * engine code; wire the engine-side shim to the returned `bridge` (or its `window`
+ * The JS-only tier captures immediately (pointer heatmaps + perf) with no engine
+ * code, plus JS errors when `capture.errors` opts in (ADR 0013); wire the engine-side shim to the returned `bridge` (or its `window`
  * global) to add camera pose, world-space picks, and replay.
  */
 export function trackWebExport(options: TrackWebExportOptions): WebExportSession {
@@ -78,6 +80,7 @@ export function trackWebExport(options: TrackWebExportOptions): WebExportSession
     transport: options.transport,
     disabled: options.disabled,
     debug: options.debug,
+    beforeSend: options.beforeSend,
   });
 
   let bridge: EngineBridge | undefined;

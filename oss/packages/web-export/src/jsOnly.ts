@@ -1,6 +1,9 @@
 import type { CollectorContext } from "@uptimizr/sdk-core";
 import { percentileAsc } from "@uptimizr/sdk-core";
 
+/** Max `runtime_error` events emitted per session (ADR 0013 storm control). */
+const MAX_ERRORS_PER_SESSION = 50;
+
 /**
  * Minimal structural view of the engine's render `<canvas>` — the only DOM handle
  * the JS-only tier needs. Kept dependency-free so a web export can pass any
@@ -29,7 +32,10 @@ export interface JsOnlyCaptureOptions {
   buttons?: boolean;
   /** rAF FPS / `frame_perf`. Default `true`. */
   perf?: boolean;
-  /** `window` error + unhandledrejection → `runtime_error`. Default `true`. */
+  /**
+   * `window` error + unhandledrejection → `runtime_error`. Default `false`: error
+   * text can carry PII (ADR 0013). When enabled, redact with `beforeSend`.
+   */
   errors?: boolean;
 }
 
@@ -75,7 +81,7 @@ export function startJsOnlyCapture(options: JsOnlyOptions): () => void {
     clicks: capture.clicks ?? true,
     buttons: capture.buttons ?? false,
     perf: capture.perf ?? true,
-    errors: capture.errors ?? true,
+    errors: capture.errors ?? false,
   };
   const pointerThrottleMs = options.pointerMoveThrottleMs ?? 250;
   const perfWindowMs = options.perfWindowMs ?? 2000;
@@ -191,6 +197,18 @@ export function startJsOnlyCapture(options: JsOnlyOptions): () => void {
 
   // --- Error capture (window error + unhandledrejection → runtime_error) ---
   if (want.errors && typeof addEventListener === "function") {
+    // ADR 0013 storm control, matching `UptimizrClient`: drop consecutive identical
+    // errors and stop at the per-session cap, so one firing every frame cannot flood.
+    let errorCount = 0;
+    let lastErrorKey: string | undefined;
+    const admit = (message: string, stack: unknown): boolean => {
+      if (errorCount >= MAX_ERRORS_PER_SESSION) return false;
+      const key = `${message}\u0000${typeof stack === "string" ? stack : ""}`;
+      if (key === lastErrorKey) return false;
+      lastErrorKey = key;
+      errorCount += 1;
+      return true;
+    };
     const onError = (raw: unknown) => {
       const e = raw as {
         message?: unknown;
@@ -200,6 +218,7 @@ export function startJsOnlyCapture(options: JsOnlyOptions): () => void {
         error?: { stack?: unknown };
       };
       const message = typeof e.message === "string" ? e.message : "error";
+      if (!admit(message, e.error?.stack)) return;
       ctx.emit({
         type: "runtime_error",
         kind: "error",
@@ -219,6 +238,7 @@ export function startJsOnlyCapture(options: JsOnlyOptions): () => void {
           : typeof reason === "string"
             ? reason
             : "unhandledrejection";
+      if (!admit(String(message), reason instanceof Error ? reason.stack : undefined)) return;
       ctx.emit({
         type: "runtime_error",
         kind: "unhandledrejection",
