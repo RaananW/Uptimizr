@@ -24,9 +24,12 @@ but not that they orbited the product twice and never found the engraving on the
 | Where do they go?                         | Camera position, paths and scene changes | [Multi-scene experiences](/docs/guides/multi-scene/)                         |
 | Does it run well on their device?         | FPS, frame time and long frames          | [Real-user performance](/docs/guides/performance/)                           |
 | What happened in this particular session? | An ordered stream of scene events        | [Session replay](/docs/guides/replay/)                                       |
+| Can I just ask a question?                | An AI agent reading those same metrics   | [Ask an AI agent](/docs/learn/ai-agent-3d-analytics/)                        |
 
 ## Guides by goal
 
+- [Ask an AI agent about your 3D analytics](/docs/learn/ai-agent-3d-analytics/): connect Claude or
+  another MCP client and ask questions in plain English.
 - [Track which objects users click in three.js](/docs/learn/track-object-clicks-threejs/): build it
   with a raycaster, or use a connector.
 - [Why Google Analytics can't see inside a 3D scene](/docs/learn/google-analytics-3d-scenes/): what
