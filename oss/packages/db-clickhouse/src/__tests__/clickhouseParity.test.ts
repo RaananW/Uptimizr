@@ -110,6 +110,7 @@ describe.skipIf(!available)("clickhouse parity (vs golden)", () => {
       "flowHeatmap",
       "flowHeatmapByStandpoint",
       "topMeshes",
+      "topMeshesCapped",
       "meshDwell",
       "meshBlindSpots",
       "topMeshesBySource",

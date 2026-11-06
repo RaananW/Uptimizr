@@ -88,6 +88,7 @@ describe.skipIf(!available)("postgres parity (vs golden, vs duckdb)", () => {
       "flowHeatmap",
       "flowHeatmapByStandpoint",
       "topMeshes",
+      "topMeshesCapped",
       "meshDwell",
       "meshBlindSpots",
       "topMeshesBySource",
