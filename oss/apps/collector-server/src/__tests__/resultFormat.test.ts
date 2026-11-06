@@ -60,7 +60,7 @@ const API_KEY = "result-format-key";
  * hook and the retention sweep runs on a timer, so either could resolve after
  * the handler did and overwrite the value the assertions are about to read.
  */
-const OFF_REQUEST_PATH = new Set(["recordAudit", "pruneAudit"]);
+const OFF_REQUEST_PATH = new Set(["recordAudit", "pruneAudit", "pruneEvents"]);
 
 /**
  * SHA-256 of each endpoint's canonicalised response body over the parity

@@ -57,6 +57,13 @@ export interface CollectorConfig {
    */
   auditRetentionDays: number;
   /**
+   * How long stored events are kept, in days (ADR 0052). A periodic, idempotent
+   * delete drops anything older, which also removes those days from every
+   * aggregate. `0` (the default) disables the sweep and keeps events
+   * indefinitely, so upgrading a collector never deletes data.
+   */
+  eventRetentionDays: number;
+  /**
    * Also audit the dashboard's own requests. Off by default: the dashboard
    * identifies itself with `x-uptimizr-client: dashboard` and its panel queries
    * would otherwise drown the log the feature exists to make readable. Turn it
@@ -197,6 +204,7 @@ export function loadConfig(env: Env = process.env): CollectorConfig {
     bodyLimit: Number(env.COLLECTOR_BODY_LIMIT ?? 1_048_576),
     cspMode: env.COLLECTOR_CSP === "off" ? "off" : "strict",
     auditRetentionDays: Math.max(0, Number(env.AUDIT_RETENTION_DAYS ?? 30) || 0),
+    eventRetentionDays: Math.max(0, Number(env.EVENT_RETENTION_DAYS ?? 0) || 0),
     auditDashboardRequests: bool(env.AUDIT_DASHBOARD_REQUESTS),
     mcpHttpEnabled: bool(env.COLLECTOR_MCP_HTTP),
     mcpMaxSessions: positive(env.COLLECTOR_MCP_MAX_SESSIONS, 50),

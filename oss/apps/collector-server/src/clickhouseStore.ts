@@ -141,6 +141,7 @@ import {
   migrateClickhouse,
   runClickhouseQuery,
   insertEvents as chInsertEvents,
+  pruneEvents as chPruneEvents,
   getSessionEvents as chGetSessionEvents,
   streamSessionEvents as chStreamSessionEvents,
   getSessionMeta as chGetSessionMeta,
@@ -210,6 +211,7 @@ export async function createClickhouseStore(): Promise<CollectorStore> {
     pruneAudit: (cutoffMs) => chPruneAudit(ch, cutoffMs),
     projectExists: async (projectId) => (await chGetProject(ch, projectId)) !== null,
     insertEvents: (events) => chInsertEvents(ch, [...events]),
+    pruneEvents: (cutoffMs) => chPruneEvents(ch, cutoffMs),
     // Query DSL v1 (ADR 0051 §3): any registry metric, compiled onto its own
     // aggregation builder and run through the same ClickHouse path — and therefore
     // the same parity coverage and the same numeric coercion — as the canned

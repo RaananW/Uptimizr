@@ -44,6 +44,7 @@ const baseConfig: CollectorConfig = {
   bodyLimit: 1_048_576,
   cspMode: "off",
   auditRetentionDays: 30,
+  eventRetentionDays: 0,
   auditDashboardRequests: false,
 };
 

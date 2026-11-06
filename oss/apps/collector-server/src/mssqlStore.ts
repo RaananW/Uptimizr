@@ -143,6 +143,7 @@ import {
   resolveMssqlConfig,
   runMssqlQuery,
   insertEvents as msInsertEvents,
+  pruneEvents as msPruneEvents,
   getSessionEvents as msGetSessionEvents,
   streamSessionEvents as msStreamSessionEvents,
   getSessionMeta as msGetSessionMeta,
@@ -219,6 +220,7 @@ export async function createMssqlStore(): Promise<CollectorStore> {
     pruneAudit: (cutoffMs) => msPruneAudit(msc, cutoffMs),
     projectExists: async (projectId) => (await msGetProject(msc, projectId)) !== null,
     insertEvents: (events) => msInsertEvents(msc, [...events]),
+    pruneEvents: (cutoffMs) => msPruneEvents(msc, cutoffMs),
     // Query DSL v1 (ADR 0051 §3): any registry metric, compiled onto its own
     // aggregation builder and run through the same SQL Server path — and therefore
     // the same parity coverage and the same numeric coercion — as the canned

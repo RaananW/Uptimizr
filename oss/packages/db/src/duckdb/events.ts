@@ -2,6 +2,7 @@ import { DOUBLE, LIST, timestampValue, type DuckDBConnection } from "@duckdb/nod
 import { anyEventSchema, type AnyEvent, type NodeTransformEvent } from "@uptimizr/schema";
 import { toEventRow, toNodeSampleRow, nodeSampleRowToEvent } from "../events.js";
 import type { DuckdbClient } from "./client.js";
+import { DUCKDB_MIGRATIONS } from "./migrations.js";
 import type { SessionMeta } from "../events.js";
 
 export type { SessionMeta };
@@ -278,4 +279,55 @@ export async function getSessionMeta(
     scene: event?.scene,
     user: event?.user,
   };
+}
+
+/**
+ * The indexes on the two event tables, by the shipped migration that creates
+ * each, so {@link pruneEvents} restores exactly what the schema declares.
+ */
+const EVENT_INDEXES: ReadonlyArray<{ name: string; migration: string }> = [
+  { name: "events_project_type_ts_idx", migration: "0002_events_idx" },
+  { name: "node_samples_session_node_ts_idx", migration: "0019_node_samples_idx" },
+  { name: "node_samples_session_node_child_ts_idx", migration: "0026_node_samples_child_idx" },
+];
+
+function indexMigrationSql(id: string): string {
+  const migration = DUCKDB_MIGRATIONS.find((m) => m.id === id);
+  if (!migration) throw new Error(`unknown DuckDB migration: ${id}`);
+  return migration.sql;
+}
+
+/**
+ * Delete stored events older than `cutoffMs` (epoch ms): the
+ * `EVENT_RETENTION_DAYS` sweep (ADR 0052). A `node_transform` event lives in
+ * `node_samples` rather than `events` (ADR 0027), so both tables are pruned;
+ * leaving either behind would keep raw per-session data past the window.
+ *
+ * Compares `ts`, the column every aggregate filters on, so aggregates lose
+ * exactly the purged rows. Idempotent, so the collector can run it on a timer; a
+ * partial failure is finished by the next sweep.
+ *
+ * **The indexes are dropped around the delete, on purpose.** After an unclean
+ * exit, a process that replays the WAL and closes without an explicit
+ * `CHECKPOINT` leaves those rows missing from the ART index. The collector's boot
+ * always checkpoints (`migrateDuckdb`), but a DuckDB CLI session or any other tool
+ * opening the file does not. A `DELETE` reaching such a row then raises a FATAL
+ * error that invalidates the whole database instance (DuckDB 1.5.6), and the
+ * sweep runs at every boot, so the collector would die on every later start.
+ * Dropping first avoids the index maintenance, and rebuilding repairs the index.
+ * They must be separate statements: the drop does not protect a `DELETE` in the
+ * same transaction. If the process dies in between, the index migrations restore
+ * the indexes on the next boot.
+ */
+export async function pruneEvents(client: DuckdbClient, cutoffMs: number): Promise<void> {
+  const params = { cutoff: Math.trunc(cutoffMs) * 1000 };
+  await client.exclusive(async (con: DuckDBConnection) => {
+    for (const { name } of EVENT_INDEXES) await con.run(`DROP INDEX IF EXISTS ${name}`);
+    try {
+      await con.run(`DELETE FROM events WHERE ts < make_timestamp($cutoff)`, params);
+      await con.run(`DELETE FROM node_samples WHERE ts < make_timestamp($cutoff)`, params);
+    } finally {
+      for (const { migration } of EVENT_INDEXES) await con.run(indexMigrationSql(migration));
+    }
+  });
 }

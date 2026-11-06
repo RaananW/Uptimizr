@@ -18,7 +18,13 @@ export { POSTGRES_MIGRATIONS, migratePostgres } from "./migrations.js";
 
 export { runPostgresQuery } from "./queries.js";
 
-export { insertEvents, getSessionEvents, streamSessionEvents, getSessionMeta } from "./events.js";
+export {
+  insertEvents,
+  getSessionEvents,
+  streamSessionEvents,
+  getSessionMeta,
+  pruneEvents,
+} from "./events.js";
 export type { SessionMeta } from "./events.js";
 
 export {

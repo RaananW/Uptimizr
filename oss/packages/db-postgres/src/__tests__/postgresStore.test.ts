@@ -43,7 +43,13 @@ import {
 } from "@uptimizr/db";
 import { createPostgresClient, type PostgresClient } from "../client.js";
 import { migratePostgres } from "../migrations.js";
-import { getSessionEvents, getSessionMeta, insertEvents, streamSessionEvents } from "../events.js";
+import {
+  getSessionEvents,
+  getSessionMeta,
+  insertEvents,
+  pruneEvents,
+  streamSessionEvents,
+} from "../events.js";
 import { createApiKey, createProject, getProject, resolveApiKey } from "../projects.js";
 import { listAudit, pruneAudit, recordAudit } from "../audit.js";
 import {
@@ -321,6 +327,30 @@ describe.skipIf(!available)("postgres store", () => {
     // Idempotent: a second sweep over the same cutoff changes nothing.
     await pruneAudit(pg, base + 120_000);
     expect(await listAudit(pg, project.id)).toHaveLength(1);
+  });
+
+  it("prunes wide events and node samples before the cutoff, idempotently", async () => {
+    const project = await createProject(pg, "Demo");
+    const cutoff = T0 + 60_000;
+    const node = { nodeId: "door", position: [1, 2, 3], rotation: [0, 0, 0, 1] };
+    await insertEvents(pg, [
+      ev("frame_perf", cutoff - 86_400_000, { fps: 30 }),
+      ev("frame_perf", cutoff - 1, { fps: 31 }),
+      ev("frame_perf", cutoff, { fps: 32 }),
+      ev("node_transform", cutoff - 1, node),
+      ev("node_transform", cutoff + 1, node),
+    ]);
+
+    await pruneEvents(pg, cutoff);
+    await pruneEvents(pg, cutoff);
+
+    const left = await getSessionEvents(pg, PID, "s1");
+    expect(left.map((e) => [e.type, e.ts])).toEqual([
+      ["frame_perf", cutoff],
+      ["node_transform", cutoff + 1],
+    ]);
+    // Metadata is not swept.
+    expect(await getProject(pg, project.id)).not.toBeNull();
   });
 
   it("ingests events and lists sessions", async () => {
