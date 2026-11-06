@@ -1,5 +1,16 @@
 # @uptimizr/babylon
 
+## 1.0.5
+
+### Patch Changes
+
+- 0a45b4c: Point package homepages and packaged docs at the canonical `www.uptimizr.com` host, so links no longer pass through a redirect. `@uptimizr/mcp` also gains the `mcpName` the official MCP Registry needs to verify the package.
+- Updated dependencies [e3368b7]
+- Updated dependencies [ebc3fd6]
+- Updated dependencies [0a45b4c]
+  - @uptimizr/sdk-core@1.1.3
+  - @uptimizr/schema@1.2.2
+
 ## 1.0.4
 
 ### Patch Changes

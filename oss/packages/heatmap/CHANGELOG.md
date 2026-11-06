@@ -1,5 +1,11 @@
 # @uptimizr/heatmap
 
+## 1.0.3
+
+### Patch Changes
+
+- 0a45b4c: Point package homepages and packaged docs at the canonical `www.uptimizr.com` host, so links no longer pass through a redirect. `@uptimizr/mcp` also gains the `mcpName` the official MCP Registry needs to verify the package.
+
 ## 1.0.2
 
 ### Patch Changes

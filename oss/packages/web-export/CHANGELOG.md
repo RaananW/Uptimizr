@@ -1,5 +1,20 @@
 # @uptimizr/web-export
 
+## 0.3.0
+
+### Minor Changes
+
+- 6bf2cc8: `runtime_error` capture on web exports is now off by default, as ADR 0013 requires, because error text can carry PII. Opt in with `capture: { errors: true }`. Capture now de-duplicates consecutive identical errors and stops at 50 per session, and `trackWebExport`, `trackUnity`, `trackGodot` and `trackUnreal` accept `beforeSend` for redaction.
+
+### Patch Changes
+
+- 0a45b4c: Point package homepages and packaged docs at the canonical `www.uptimizr.com` host, so links no longer pass through a redirect. `@uptimizr/mcp` also gains the `mcpName` the official MCP Registry needs to verify the package.
+- Updated dependencies [e3368b7]
+- Updated dependencies [ebc3fd6]
+- Updated dependencies [0a45b4c]
+  - @uptimizr/sdk-core@1.1.3
+  - @uptimizr/schema@1.2.2
+
 ## 0.2.5
 
 ### Patch Changes

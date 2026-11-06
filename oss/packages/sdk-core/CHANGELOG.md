@@ -1,5 +1,15 @@
 # @uptimizr/sdk-core
 
+## 1.1.3
+
+### Patch Changes
+
+- e3368b7: Report the real package version: the MCP server's `initialize` identity and the `sdkVersion` stamped on every event were both frozen at `0.1.0`. `@uptimizr/mcp` now reads its `package.json` at load time, and `SDK_VERSION` is generated from `package.json` as part of `pnpm version:packages`.
+- 0a45b4c: Point package homepages and packaged docs at the canonical `www.uptimizr.com` host, so links no longer pass through a redirect. `@uptimizr/mcp` also gains the `mcpName` the official MCP Registry needs to verify the package.
+- Updated dependencies [ebc3fd6]
+- Updated dependencies [0a45b4c]
+  - @uptimizr/schema@1.2.2
+
 ## 1.1.2
 
 ### Patch Changes

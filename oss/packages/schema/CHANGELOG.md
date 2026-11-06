@@ -1,5 +1,12 @@
 # @uptimizr/schema
 
+## 1.2.2
+
+### Patch Changes
+
+- ebc3fd6: Correct the packaged documentation against the code, including that `ENABLE_RAW_SESSION_RETENTION` gates access to raw per-session streams, not their storage.
+- 0a45b4c: Point package homepages and packaged docs at the canonical `www.uptimizr.com` host, so links no longer pass through a redirect. `@uptimizr/mcp` also gains the `mcpName` the official MCP Registry needs to verify the package.
+
 ## 1.2.1
 
 ### Patch Changes

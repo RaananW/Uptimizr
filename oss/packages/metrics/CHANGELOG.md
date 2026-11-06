@@ -1,5 +1,16 @@
 # @uptimizr/metrics
 
+## 0.2.2
+
+### Patch Changes
+
+- 02354c1: Rank `format=summary` by what the measure means: `insight_movers` and `insight_anomalies` by magnitude, so the biggest drops no longer sort below flat metrics, and `insight_scene_health` worst-first. Below-sample movers rank after every real one, and the `reading` sentence follows the order.
+- 7224c83: Type `TrajectoryPointRow.ts` and `AggregateTrajectoryPointRow.ts` as `number`: the queries have always returned epoch milliseconds, on every engine.
+- 0a45b4c: Point package homepages and packaged docs at the canonical `www.uptimizr.com` host, so links no longer pass through a redirect. `@uptimizr/mcp` also gains the `mcpName` the official MCP Registry needs to verify the package.
+- Updated dependencies [ebc3fd6]
+- Updated dependencies [0a45b4c]
+  - @uptimizr/schema@1.2.2
+
 ## 0.2.1
 
 ### Patch Changes

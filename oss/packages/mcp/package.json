@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/mcp",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "mcpName": "io.github.RaananW/uptimizr",
   "description": "Model Context Protocol (MCP) server over an Uptimizr collector's query API — let an agent ask questions of your own 3D analytics, on your own infrastructure. Read-only by default; keys holding annotate also unlock project-metadata write tools, and events can never be changed.",
   "keywords": [

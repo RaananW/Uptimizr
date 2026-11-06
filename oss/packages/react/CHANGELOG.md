@@ -1,5 +1,21 @@
 # @uptimizr/react
 
+## 1.3.3
+
+### Patch Changes
+
+- 0a45b4c: Point package homepages and packaged docs at the canonical `www.uptimizr.com` host, so links no longer pass through a redirect. `@uptimizr/mcp` also gains the `mcpName` the official MCP Registry needs to verify the package.
+- Updated dependencies [ebc3fd6]
+- Updated dependencies [eb54cd6]
+- Updated dependencies [02354c1]
+- Updated dependencies [7224c83]
+- Updated dependencies [0a45b4c]
+  - @uptimizr/replay@1.0.5
+  - @uptimizr/schema@1.2.2
+  - @uptimizr/agent-core@1.2.2
+  - @uptimizr/metrics@0.2.2
+  - @uptimizr/heatmap@1.0.3
+
 ## 1.3.2
 
 ### Patch Changes
