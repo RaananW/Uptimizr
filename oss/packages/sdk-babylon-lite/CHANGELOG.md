@@ -1,5 +1,17 @@
 # @uptimizr/babylon-lite
 
+## 1.0.6
+
+### Patch Changes
+
+- ba022da: Fix the script-tag bundles, which threw `Dynamic require of "three" is not supported` at load and never defined their global. They now look the engine up on its global when first used, and `trackScene` throws a clear error if it is missing. The bundles still never include the engine. Pages with no bundler that use ES modules should use the existing ESM bundles with an import map, which needs no global. None of this affects npm and bundler users.
+- 0a45b4c: Point package homepages and packaged docs at the canonical `www.uptimizr.com` host, so links no longer pass through a redirect. `@uptimizr/mcp` also gains the `mcpName` the official MCP Registry needs to verify the package.
+- Updated dependencies [e3368b7]
+- Updated dependencies [ebc3fd6]
+- Updated dependencies [0a45b4c]
+  - @uptimizr/sdk-core@1.1.3
+  - @uptimizr/schema@1.2.2
+
 ## 1.0.5
 
 ### Patch Changes

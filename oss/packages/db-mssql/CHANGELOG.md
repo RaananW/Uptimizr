@@ -1,5 +1,26 @@
 # @uptimizr/db-mssql
 
+## 2.2.0
+
+### Minor Changes
+
+- eb54cd6: Add `EVENT_RETENTION_DAYS`, an optional window after which the collector deletes stored events, including `node_transform` samples. It defaults to `0` (keep forever), so upgrading deletes nothing. Aggregates are computed from those rows at query time, so a purge also removes those days from every aggregate, permanently, and a DuckDB file does not shrink until it is compacted. Store contracts gain `pruneEvents(cutoffMs)`. The assistant's project context now says raw session access is off rather than that raw retention is off, and the `@uptimizr/mcp` description no longer claims the server is read-only for every key. See ADR 0052.
+
+### Patch Changes
+
+- 007cc82: Refresh runtime dependencies: Fastify 5.12.8, `@fastify/cors` 11.4.1, `@fastify/rate-limit` 11.2.2 and `@fastify/static` 10.1.10 (collector-server), Next.js 16.4.5 and Babylon.js 9.34.0 (dashboard), `@duckdb/node-api` 1.5.6-r.2 (db), `@clickhouse/client` 1.25.0 (db-clickhouse) and `mssql` 12.7.14 (db-mssql).
+- ebc3fd6: Correct the packaged documentation against the code, including that `ENABLE_RAW_SESSION_RETENTION` gates access to raw per-session streams, not their storage.
+- 0a45b4c: Point package homepages and packaged docs at the canonical `www.uptimizr.com` host, so links no longer pass through a redirect. `@uptimizr/mcp` also gains the `mcpName` the official MCP Registry needs to verify the package.
+- Updated dependencies [007cc82]
+- Updated dependencies [ebc3fd6]
+- Updated dependencies [eb54cd6]
+- Updated dependencies [02354c1]
+- Updated dependencies [a537ec4]
+- Updated dependencies [7224c83]
+- Updated dependencies [0a45b4c]
+  - @uptimizr/db@2.2.0
+  - @uptimizr/schema@1.2.2
+
 ## 2.1.2
 
 ### Patch Changes

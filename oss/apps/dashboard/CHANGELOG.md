@@ -1,5 +1,18 @@
 # @uptimizr/dashboard
 
+## 1.2.3
+
+### Patch Changes
+
+- 007cc82: Refresh runtime dependencies: Fastify 5.12.8, `@fastify/cors` 11.4.1, `@fastify/rate-limit` 11.2.2 and `@fastify/static` 10.1.10 (collector-server), Next.js 16.4.5 and Babylon.js 9.34.0 (dashboard), `@duckdb/node-api` 1.5.6-r.2 (db), `@clickhouse/client` 1.25.0 (db-clickhouse) and `mssql` 12.7.14 (db-mssql).
+- ebc3fd6: Correct the packaged documentation against the code, including that `ENABLE_RAW_SESSION_RETENTION` gates access to raw per-session streams, not their storage.
+- 0a45b4c: Point package homepages and packaged docs at the canonical `www.uptimizr.com` host, so links no longer pass through a redirect. `@uptimizr/mcp` also gains the `mcpName` the official MCP Registry needs to verify the package.
+- Updated dependencies [ebc3fd6]
+- Updated dependencies [0a45b4c]
+  - @uptimizr/replay@1.0.5
+  - @uptimizr/heatmap@1.0.3
+  - @uptimizr/react@1.3.3
+
 ## 1.2.2
 
 ### Patch Changes
