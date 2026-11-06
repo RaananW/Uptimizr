@@ -5,7 +5,7 @@
  * JS scene to read. This connector is **two-part**:
  *
  * - a **JS-only tier** (this package, no engine code) — pointer heatmaps, rAF FPS,
- *   and error capture straight from the canvas DOM; and
+ *   and opt-in error capture straight from the canvas DOM; and
  * - a **bridged tier** — a thin engine-side shim (a GDScript or C# autoload using
  *   `JavaScriptBridge`, see `bridge/`) pushes camera pose / picks / perf over the
  *   versioned {@link EngineBridge} for view-direction heatmaps, world-space gaze,

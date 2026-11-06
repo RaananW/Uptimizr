@@ -2285,6 +2285,25 @@ describe("scene registry routes", () => {
     await app.close();
   });
 
+  it("allows the PATCH method in the CORS preflight (subscription updates from the browser)", async () => {
+    const app = await buildApp({
+      store: makeStore(),
+      config: { ...config, corsOrigins: ["http://localhost:5173"] },
+    });
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/api/v1/subscriptions/sub_1",
+      headers: {
+        origin: "http://localhost:5173",
+        "access-control-request-method": "PATCH",
+        "access-control-request-headers": "x-api-key,content-type",
+      },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(String(res.headers["access-control-allow-methods"])).toContain("PATCH");
+    await app.close();
+  });
+
   it("allows credentials in the ingestion CORS preflight (sendBeacon sends credentialed)", async () => {
     // The SDK ingests via `navigator.sendBeacon`, which always runs in
     // credentials mode `include`. The `application/json` body forces a preflight,

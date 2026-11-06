@@ -82,10 +82,9 @@ the browser.
 To limit noisy loops, consecutive identical `message`+`stack` errors are de-duplicated and capture is
 capped at 50 events per session.
 
-Web exports are the exception: the JS-only tier of `@uptimizr/web-export` (and so Unity, Godot and
-Unreal) captures `runtime_error` **by default**, independently of `captureErrors` and without the
-de-duplication or the cap. Turn it off with `capture: { errors: false }`; see
-[web-export options](/docs/connectors/web-export/#options).
+Web exports use their own switch: in `@uptimizr/web-export` (and so Unity, Godot and Unreal), opt in
+with `capture: { errors: true }` rather than `captureErrors`. The default, the de-duplication and
+the cap are the same; see [web-export options](/docs/connectors/web-export/#options).
 
 ## Session context (`meta`, `sceneDescription`, `user`)
 

@@ -120,8 +120,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     // breaks the browser preflight for scene-proxy registration
     // (PUT /api/v1/scenes/:id/representation). DELETE is needed for the metadata
     // write path (#310: removing an annotation, a term, a saved analysis) and for
-    // ending an MCP session over `/mcp` (#313). List the verbs the HTTP API uses.
-    methods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
+    // ending an MCP session over `/mcp` (#313). PATCH updates a subscription
+    // (PATCH /api/v1/subscriptions/:id). List the verbs the HTTP API uses.
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
     // Streamable HTTP returns the session id in a response header the client has
     // to echo back; a browser cannot read it unless it is explicitly exposed.
     ...(config.mcpHttpEnabled ? { exposedHeaders: ["Mcp-Session-Id"] } : {}),

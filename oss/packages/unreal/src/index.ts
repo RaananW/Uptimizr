@@ -12,7 +12,7 @@
  * This connector is **two-part**:
  *
  * - a **JS-only tier** (this package, no engine code) — pointer heatmaps, rAF FPS,
- *   and error capture straight from the canvas DOM; and
+ *   and opt-in error capture straight from the canvas DOM; and
  * - a **bridged tier** — a thin engine-side shim (an Emscripten `EM_JS` / `cwrap`
  *   shim from the C++ web target, see `bridge/`) pushes camera pose / picks / perf
  *   over the versioned {@link EngineBridge}.
