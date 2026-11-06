@@ -250,8 +250,9 @@ deployment** with `ENABLE_RAW_SESSION_RETENTION` and, since ADR 0051 §7, additi
 `query:raw` key capability. That flag gates access, not storage: events are always written to the
 store, including each event's full payload, because aggregates are computed from them at query
 time. With the flag off, raw streams cannot be read through the API but remain in the store,
-readable by anyone with access to the database file or server, and no automatic event deletion
-exists. Captured errors are redacted
+readable by anyone with access to the database file or server. Events are kept indefinitely
+unless `EVENT_RETENTION_DAYS` is set, which deletes older events and with them those days'
+aggregates ([ADR 0052](../adr/0052-bounded-event-retention.md)). Captured errors are redacted
 ([ADR 0013](../adr/0013-error-capture-privacy.md)) and AR/XR events carry only coarse buckets, never
 room geometry.
 

@@ -317,6 +317,7 @@ them with comments):
 | `LIVE_PRESENCE_INTERVAL_MS`                        | Interval between presence snapshots / SSE heartbeats (default `2000`).                          |
 | `COLLECTOR_RATE_LIMIT_MAX` / `_WINDOW_MS`          | Default request budget per client (`600` per `60000` ms). A key's own budget overrides it.      |
 | `COLLECTOR_INGEST_RATE_LIMIT_MAX` / `_WINDOW_MS`   | Request budget for `POST /api/v1/collect` (`300` per `60000` ms).                               |
+| `EVENT_RETENTION_DAYS`                             | Delete events older than this many days (default `0`: keep forever). Also removes those days from every aggregate, and does not shrink a DuckDB file ([details](/docs/deploy/privacy/#event-retention)). |
 | `AUDIT_RETENTION_DAYS`                             | How long agent-audit rows are kept (default `30`; `0` keeps them forever).                      |
 | `AUDIT_DASHBOARD_REQUESTS`                         | Also audit the dashboard's own requests (default off — see below).                              |
 | `COLLECTOR_MCP_HTTP`                               | Serve MCP over Streamable HTTP at `/mcp` (default **off** — see below).                         |

@@ -60,7 +60,11 @@ A few intentional design decisions are relevant when assessing reports:
 - **These gates control API access, not storage.** Events are always written to the store, including
   each event's full payload, because aggregates are computed from them at query time. With the flag
   off, raw streams cannot be read through the API but remain in the store, readable by anyone with
-  access to the database file or server. There is no automatic event deletion.
+  access to the database file or server.
+- **Event retention is opt-in.** Events are kept indefinitely unless `EVENT_RETENTION_DAYS` is set,
+  which deletes older events and, because aggregates are computed from them, those days' aggregates.
+  A delete hides data from the collector, not necessarily from the disk: a DuckDB file does not
+  shrink and can still hold deleted bytes until it is compacted (ADR 0052).
 - **Per-key rate limits.** A key may carry its own request budget, bucketed on the **key id** rather
   than the client IP, falling back to the collector's `COLLECTOR_RATE_LIMIT_*` defaults. Keyless
   ingestion keeps its separate `COLLECTOR_INGEST_RATE_LIMIT_*` budget.

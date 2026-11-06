@@ -24,7 +24,8 @@ ingestion/query collector, the dashboard, and an embedded DuckDB store.
    (ordered, timestamped, keyed by `sessionId`).
 3. **Privacy first.** No client-side persistent IDs, no PII by default. The visitor ID is a
    server-side daily-rotating hash. Reading raw per-session streams through the API is opt-in;
-   events themselves are always stored. (ADR 0003)
+   events themselves are always stored, until `EVENT_RETENTION_DAYS` removes them if it is set.
+   (ADR 0003, ADR 0052)
 4. **TypeScript strict, validate at boundaries.** Validate external input with Zod at the edge.
 5. **Keep backends thin.** Business logic lives in framework-agnostic packages so the API layer
    (Fastify now; possibly Hono at the edge later) stays replaceable. (ADR 0005)

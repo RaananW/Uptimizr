@@ -14,7 +14,7 @@
 
 ## Key exports
 
-- DuckDB store: `createDuckdbClient`, `migrateDuckdb`, `duckdbInsertEvents`, `duckdbGetSessionEvents`, `duckdbCreateApiKey`, `duckdbResolveApiKey`, `duckdbRecordAudit`/`duckdbListAudit`/`duckdbPruneAudit`, `runDuckdbQuery`.
+- DuckDB store: `createDuckdbClient`, `migrateDuckdb`, `duckdbInsertEvents`, `duckdbGetSessionEvents`, `duckdbPruneEvents`, `duckdbCreateApiKey`, `duckdbResolveApiKey`, `duckdbRecordAudit`/`duckdbListAudit`/`duckdbPruneAudit`, `runDuckdbQuery`.
 - Query layer: `buildX(projectId, opts, dialect)` builders, `duckdbDialect`, `Dialect`/`QuerySpec` types.
 - Metric registry: moved to its own dependency-free package, [`@uptimizr/metrics`](../metrics) (ADR 0051 §1) — `METRIC_REGISTRY`, `getMetric`, `allMetrics`, `METRIC_IDS`, `FILTER_TARGETS`, one `MetricDefinition` per aggregation. This package depends on it; a new aggregation without a registry entry fails the build.
 - Neutral helpers: `toEventRow`, `formatUtcTimestamp`, api-key helpers (`parseApiKeyCapabilities`, `serializeApiKeyCapabilities`, `parseCapabilityList`, `hasCapability`, `toApiKeyColumns`, `toApiKeyRateLimit`), audit helpers (`serializeAuditParams`, `clampAuditTool`), `Project`/`ApiKeyRecord`/`ResolvedApiKey`/`ApiKeyCapability`/`AgentAuditEntry`/`SceneRepresentation*`/`SceneRegionRecord`/`SceneRegionSummary` types.

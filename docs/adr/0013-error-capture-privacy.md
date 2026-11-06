@@ -1,6 +1,6 @@
 # ADR 0013: Opt-in runtime error capture and its privacy stance
 
-- **Status:** Proposed
+- **Status:** Proposed; "Same retention rules" superseded by [ADR 0052](./0052-bounded-event-retention.md)
 - **Date:** 2026-06-16
 - **Deciders:** Project owner, engineering
 
