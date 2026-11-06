@@ -1,6 +1,7 @@
 ---
 title: Custom dashboard panels
 description: Write your own dashboard panels with the @uptimizr/react panel contract and register them in the dashboard.
+lastUpdated: 2026-09-22
 ---
 
 The dashboard is built from **panels** — self-contained widgets like the pointer heatmap, the

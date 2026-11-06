@@ -98,5 +98,5 @@ Other `TrackSceneOptions`: `gaze`, `actors` (+ `sampling.nodes`, ADR 0027), `key
 ## More
 
 - Package reference: [README.md](./README.md)
-- Connector guide: https://uptimizr.com/docs/connectors/playcanvas/
+- Connector guide: https://www.uptimizr.com/docs/connectors/playcanvas/
 - Integration guide: https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md

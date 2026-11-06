@@ -14,6 +14,7 @@
     "clean": "rimraf dist .astro node_modules/.vite"
   },
   "dependencies": {
+    "@astrojs/sitemap": "^3.7.4",
     "@astrojs/starlight": "^0.42.8",
     "@vercel/analytics": "^2.0.1",
     "astro": "^7.4.4",

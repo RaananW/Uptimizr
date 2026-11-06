@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.RaananW/uptimizr",
+  "title": "Uptimizr",
+  "description": "Ask an AI agent about your self-hosted 3D scene analytics: heatmaps, meshes, performance, sessions.",
+  "websiteUrl": "https://www.uptimizr.com/docs/guides/mcp/",
+  "repository": {
+    "url": "https://github.com/RaananW/Uptimizr",
+    "source": "github",
+    "subfolder": "oss/packages/mcp"
+  },
+  "version": "1.2.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@uptimizr/mcp",
+      "version": "1.2.3",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "UPTIMIZR_COLLECTOR_URL",
+          "description": "Base URL of your own Uptimizr collector.",
+          "isRequired": true,
+          "format": "string"
+        },
+        {
+          "name": "UPTIMIZR_API_KEY",
+          "description": "Your project API key. The query capability reads; add annotate to enable metadata tools.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

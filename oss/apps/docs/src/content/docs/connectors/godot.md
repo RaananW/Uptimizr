@@ -1,10 +1,11 @@
 ---
-title: Godot
-description: Instrument a Godot 4 web export with the @uptimizr/godot connector.
+title: Godot web export analytics
+description: Add click heatmaps and FPS tracking to a Godot 4 web export with @uptimizr/godot, plus camera, picks and replay through a small bridge.
+lastUpdated: 2026-09-05
 ---
 
 The Godot (web export) connector. Godot 4 compiles to WebAssembly and renders into a
-`<canvas>`, so it is built on the [web-export foundation](/connectors/web-export) and
+`<canvas>`, so it is built on the [web-export foundation](/docs/connectors/web-export/) and
 works in two tiers: a **JS-only tier** (no engine code — pointer heatmaps, FPS, JS
 errors) and a **bridged tier** (a thin copy-in shim adds camera pose, world-space
 picks, and replay).

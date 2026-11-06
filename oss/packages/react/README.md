@@ -169,7 +169,7 @@ const { messages, send, status, setBackend, backend } = useAssistant({
 Like `panels-3d`, the LLM runtime is **optional and code-split**: importing the
 core `@uptimizr/react` barrel pulls **no** assistant or LLM code, and even the
 assistant loads `@mlc-ai/web-llm` (an optional peer) lazily, only when a local
-model actually runs. See the [assistant guide](https://uptimizr.com/docs/guides/assistant/).
+model actually runs. See the [assistant guide](https://www.uptimizr.com/docs/guides/assistant/).
 
 ## License
 

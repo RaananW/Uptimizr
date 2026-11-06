@@ -1,6 +1,7 @@
 ---
 title: Privacy & configuration
 description: Uptimizr's privacy model and the configuration that controls retention, CORS, and opt-in capture.
+lastUpdated: 2026-09-19
 ---
 
 Uptimizr is privacy-first by architecture: the responsible default is the easy default.

@@ -220,6 +220,6 @@ chooser — nothing downloads until the user picks), `systemPrompt` (defaults to
 ## More
 
 - Package reference: [README.md](./README.md)
-- Custom panels guide: https://uptimizr.com/docs/guides/custom-panels/
-- Assistant guide: https://uptimizr.com/docs/guides/assistant/
-- Query API reference: https://uptimizr.com/docs/api/query/
+- Custom panels guide: https://www.uptimizr.com/docs/guides/custom-panels/
+- Assistant guide: https://www.uptimizr.com/docs/guides/assistant/
+- Query API reference: https://www.uptimizr.com/docs/api/query/

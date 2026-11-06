@@ -1,6 +1,7 @@
 ---
-title: Mesh & object tracking
-description: Capture which meshes users interact with, look at, and hesitate over — plus scene actors that move on their own.
+title: Track 3D object interactions
+description: Measure which meshes people click, look at and hesitate over, and find the objects nobody notices.
+lastUpdated: 2026-07-04
 ---
 
 Uptimizr can attribute interaction and attention to the **objects** in your scene, not just to screen
@@ -186,6 +187,6 @@ The active/visitor camera and particle/morph/instance targets are rejected with 
 
 ## See also
 
-- [Performance & diagnostics](/docs/guides/performance/#world-space-gaze) — world-space **gaze**
+- [Performance & diagnostics](/docs/guides/performance/#world-space-gaze-gaze--opt-in) — world-space **gaze**
   attributes attention to whatever geometry the camera-forward ray hits.
 - [Session replay](/docs/guides/replay/) — re-drive recorded actors (`nodes` map / `onNodeTransform`).

@@ -365,5 +365,5 @@ Tests run against a fake `CollectorStore` with `app.inject()` — no live databa
 - Package reference: [README.md](./README.md)
 - HTTP API reference:
   https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md#4-http-api
-- Query API guide: https://uptimizr.com/docs/api/query/
-- Deploy guide: https://uptimizr.com/docs/deploy/collector/
+- Query API guide: https://www.uptimizr.com/docs/api/query/
+- Deploy guide: https://www.uptimizr.com/docs/deploy/collector/

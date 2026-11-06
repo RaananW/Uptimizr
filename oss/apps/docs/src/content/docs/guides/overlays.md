@@ -1,6 +1,7 @@
 ---
 title: In-scene heatmap overlays
-description: Paint world heatmaps and gaze domes into your own running scene with @uptimizr/heatmap.
+description: Show world heatmaps and gaze domes inside your own running 3D scene with @uptimizr/heatmap.
+lastUpdated: 2026-06-20
 ---
 
 Beyond the dashboard viewers, you can paint analytics **into your own running scene** (a
@@ -66,6 +67,6 @@ For a no-bundler page, the package also ships an ESM build you can load from a
 
 ## See also
 
-- [Performance & diagnostics → gaze](/docs/guides/performance/#world-space-gaze) — capture the data this
+- [Performance & diagnostics → gaze](/docs/guides/performance/#world-space-gaze-gaze--opt-in) — capture the data this
   dome visualizes.
 - [Session replay](/docs/guides/replay/) — re-drive a full session instead of an aggregate overlay.

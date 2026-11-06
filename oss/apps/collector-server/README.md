@@ -118,7 +118,7 @@ npx -p @uptimizr/collector-server uptimizr agent report \
 Every report ends with a **Method** section listing each tool call and its
 arguments, so an unattended, model-written document stays auditable. See
 `uptimizr agent report --help`, or the
-[deploy guide](https://uptimizr.com/docs/deploy/collector/#scheduled-agent-reports)
+[deploy guide](https://www.uptimizr.com/docs/deploy/collector/#scheduled-agent-reports)
 for a copy-pasteable weekly GitHub Actions workflow.
 
 ### All-in-one: serve the dashboard too
@@ -249,7 +249,7 @@ the bare rows unchanged (what the dashboard uses); `table` adds a `meta` envelop
 series, or merged spatial clusters, with shares, the metric's caveats and a
 templated `reading` sentence — capped at the registry's `maxSummaryRows`, which is
 what makes a 500-bin heatmap affordable for an LLM. See
-[Result formats](https://uptimizr.com/docs/api/query/#result-formats).
+[Result formats](https://www.uptimizr.com/docs/api/query/#result-formats).
 
 - `GET /health` — liveness probe.
 
@@ -271,7 +271,7 @@ a session may only be driven by the key that opened it. Tools, resources and pro
 `@uptimizr/mcp`'s. Sessions are capped by `COLLECTOR_MCP_MAX_SESSIONS` (default `50`, one too many
 → `503`) and expire after `COLLECTOR_MCP_SESSION_TTL_MS` idle (default 30 minutes); tool calls are
 audited with `surface: "mcp-http"`. Behind a reverse proxy, turn response buffering **off** for
-`/mcp`. See the [MCP guide](https://uptimizr.com/docs/guides/mcp/#hosted-transport-streamable-http).
+`/mcp`. See the [MCP guide](https://www.uptimizr.com/docs/guides/mcp/#hosted-transport-streamable-http).
 
 ## Security
 

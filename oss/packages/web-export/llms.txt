@@ -10,7 +10,7 @@
 
 - [Package reference](./README.md): when to use it directly, the two tiers, `trackWebExport`, the bridge contract.
 - [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
-- [Web-export guide](https://uptimizr.com/docs/connectors/web-export/): the docs-site walkthrough.
+- [Web-export guide](https://www.uptimizr.com/docs/connectors/web-export/): the docs-site walkthrough.
 - [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data (see "Web-export engines").
 - [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), coordinate frame & connector provenance (0018), web-export engine connectors (0045).
 

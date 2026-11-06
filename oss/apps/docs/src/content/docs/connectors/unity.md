@@ -1,10 +1,11 @@
 ---
-title: Unity
-description: Instrument a Unity WebGL export with the @uptimizr/unity connector.
+title: Unity WebGL analytics
+description: Add click heatmaps and FPS tracking to a Unity WebGL export with @uptimizr/unity, plus camera, picks and replay through a small bridge.
+lastUpdated: 2026-09-09
 ---
 
 The Unity (WebGL export) connector. Unity compiles to WebAssembly and renders into a
-`<canvas>`, so it is built on the [web-export foundation](/connectors/web-export) and
+`<canvas>`, so it is built on the [web-export foundation](/docs/connectors/web-export/) and
 works in two tiers: a **JS-only tier** (no engine code — pointer heatmaps, FPS, JS
 errors) and a **bridged tier** (a thin copy-in shim adds camera pose, world-space
 picks, and replay).

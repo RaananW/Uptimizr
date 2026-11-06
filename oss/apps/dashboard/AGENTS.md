@@ -108,5 +108,5 @@ pnpm --filter @uptimizr/dashboard test
 
 - Package reference: [README.md](./README.md)
 - Panel package: [`@uptimizr/react`](../../packages/react/AGENTS.md)
-- Deploy guide: https://uptimizr.com/docs/deploy/dashboard/
-- Query API reference: https://uptimizr.com/docs/api/query/
+- Deploy guide: https://www.uptimizr.com/docs/deploy/dashboard/
+- Query API reference: https://www.uptimizr.com/docs/api/query/

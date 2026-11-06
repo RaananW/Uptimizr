@@ -1,6 +1,7 @@
 ---
 title: Uptimizr Documentation
 description: Open-source, privacy-first analytics for 3D scenes — view-direction & click heatmaps, mesh interactions, performance, and session replay.
+lastUpdated: 2026-09-17
 template: splash
 hero:
   tagline: Analytics for 3D web. Capture what users look at, click, and miss inside any 3D scene — then replay it.
@@ -26,7 +27,8 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 ## What is Uptimizr?
 
 Uptimizr is an open-source, self-hostable analytics platform for 3D scenes. Drop a connector into
-your Babylon.js, three.js, PlayCanvas, react-three-fiber, or A-Frame app and it captures the
+your Babylon.js, three.js, PlayCanvas, react-three-fiber, or A-Frame app, or a Unity, Godot or Unreal
+web export, and it captures the
 spatial signals flat web analytics can't — gaze, clicks, mesh interactions, performance — then
 aggregates them into heatmaps, rankings, and full session replay.
 
@@ -46,6 +48,10 @@ aggregates them into heatmaps, rankings, and full session replay.
 	<Card title="Self-host anywhere" icon="setting">
 		A single collector with an embedded store — zero infrastructure to start. See
 		[Deploy](/docs/deploy/collector/).
+	</Card>
+	<Card title="Guides by goal" icon="open-book">
+		New to measuring 3D? Start with [What is 3D analytics?](/docs/learn/), then see guides for
+		clicks, replay, FPS and configurators.
 	</Card>
 	<Card title="Try it in your browser" icon="laptop">
 		The [live demo](https://demo.uptimizr.com) runs the playground and dashboard side-by-side with

@@ -1,6 +1,7 @@
 ---
 title: sdk-core (advanced)
 description: Build an UptimizrClient directly for custom transports, beforeSend hooks, and multiple collectors.
+lastUpdated: 2026-06-27
 ---
 
 `trackScene` is the one-call path. When you need finer control — a custom transport, a `beforeSend`

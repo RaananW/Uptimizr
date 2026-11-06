@@ -1,6 +1,7 @@
 ---
-title: PlayCanvas
-description: Instrument a PlayCanvas app with the @uptimizr/playcanvas connector.
+title: PlayCanvas analytics
+description: Add heatmaps, entity tracking, real-user FPS and session replay to a PlayCanvas app with the @uptimizr/playcanvas connector.
+lastUpdated: 2026-06-28
 ---
 
 The PlayCanvas connector. `playcanvas` is a peer dependency — the connector reads your existing

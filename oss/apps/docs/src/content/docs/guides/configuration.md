@@ -1,6 +1,7 @@
 ---
 title: Configuration reference
 description: Every option accepted by trackScene / babylonCollector — camera, sampling, idle suppression, channel toggles, delivery, privacy.
+lastUpdated: 2026-09-16
 ---
 
 Every option on this page is accepted by both `trackScene(scene, options)` and the lower-level
@@ -72,19 +73,19 @@ A matching `sampling` channel overrides these:
 
 ## Channel toggles (`capture`)
 
-| Option                   | Default | Effect                                                                                                                |
-| ------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------- |
-| `capture.camera`         | `true`  | Camera-pose / view-direction samples.                                                                                 |
-| `capture.pointerMove`    | `true`  | Continuous pointer movement (`pointer_move`).                                                                         |
-| `capture.clicks`         | `true`  | Click / tap events (`pointer_click`).                                                                                 |
-| `capture.buttons`        | `true`  | Pointer down/up (`pointer_down` / `pointer_up`).                                                                      |
-| `capture.meshPicks`      | `true`  | Mesh interactions (`mesh_interaction`).                                                                               |
-| `capture.perf`           | `true`  | Frame performance (`frame_perf`).                                                                                     |
-| `capture.contextLoss`    | `true`  | WebGL/WebGPU `context_lost` / `context_restored`.                                                                     |
-| `capture.compileStall`   | `true`  | Shader compile stalls (`compile_stall`, Babylon only).                                                                |
-| `capture.hoverDwell`     | `false` | Hover-hesitation capture (`hover_dwell`). See [mesh tracking](/docs/guides/mesh-tracking/#hover-hesitation).          |
-| `capture.resourceSample` | `false` | GPU/memory footprint (`resource_sample`). See [performance](/docs/guides/performance/#gpu--memory-footprint).         |
-| `capture.gaze`           | `false` | World-space gaze (`camera_sample.hitPoint`/`hitMesh`). See [performance](/docs/guides/performance/#world-space-gaze). |
+| Option                   | Default | Effect                                                                                                                                |
+| ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `capture.camera`         | `true`  | Camera-pose / view-direction samples.                                                                                                 |
+| `capture.pointerMove`    | `true`  | Continuous pointer movement (`pointer_move`).                                                                                         |
+| `capture.clicks`         | `true`  | Click / tap events (`pointer_click`).                                                                                                 |
+| `capture.buttons`        | `true`  | Pointer down/up (`pointer_down` / `pointer_up`).                                                                                      |
+| `capture.meshPicks`      | `true`  | Mesh interactions (`mesh_interaction`).                                                                                               |
+| `capture.perf`           | `true`  | Frame performance (`frame_perf`).                                                                                                     |
+| `capture.contextLoss`    | `true`  | WebGL/WebGPU `context_lost` / `context_restored`.                                                                                     |
+| `capture.compileStall`   | `true`  | Shader compile stalls (`compile_stall`, Babylon only).                                                                                |
+| `capture.hoverDwell`     | `false` | Hover-hesitation capture (`hover_dwell`). See [mesh tracking](/docs/guides/mesh-tracking/#hover-hesitation-hover_dwell--opt-in).      |
+| `capture.resourceSample` | `false` | GPU/memory footprint (`resource_sample`). See [performance](/docs/guides/performance/#gpu--memory-footprint-resource_sample--opt-in). |
+| `capture.gaze`           | `false` | World-space gaze (`camera_sample.hitPoint`/`hitMesh`). See [performance](/docs/guides/performance/#world-space-gaze-gaze--opt-in).    |
 
 `meshVisibility`, `hoverDwell`, `resourceSample`, and `gaze` also take an options **object** to tune
 them — documented on the [mesh tracking](/docs/guides/mesh-tracking/) and

@@ -1,6 +1,7 @@
 ---
-title: Babylon Lite
-description: Instrument a Babylon Lite (@babylonjs/lite) scene with the @uptimizr/babylon-lite connector.
+title: Babylon Lite analytics
+description: Add heatmaps, mesh tracking, real-user FPS and session replay to a Babylon Lite scene with the @uptimizr/babylon-lite connector.
+lastUpdated: 2026-06-20
 ---
 
 The **Babylon Lite** connector. Babylon Lite is a functional / data-oriented, WebGPU-only Babylon

@@ -1,12 +1,13 @@
 ---
 title: Web exports (Unity, Godot, Unreal)
 description: Instrument WebAssembly engine exports with the @uptimizr/web-export foundation and its two capture tiers.
+lastUpdated: 2026-09-05
 ---
 
 Unity, Godot, and Unreal compile to **WebAssembly** and render into a `<canvas>`, so
 there is no live JavaScript scene to read. The `@uptimizr/web-export` package is the
-shared foundation behind the [`@uptimizr/unity`](/connectors/unity),
-[`@uptimizr/godot`](/connectors/godot), and [`@uptimizr/unreal`](/connectors/unreal)
+shared foundation behind the [`@uptimizr/unity`](/docs/connectors/unity/),
+[`@uptimizr/godot`](/docs/connectors/godot/), and [`@uptimizr/unreal`](/docs/connectors/unreal/)
 connectors. Most of the time you install one of those engine packages, which bake in
 the engine's native coordinate frame and connector name for you.
 

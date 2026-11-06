@@ -1,11 +1,17 @@
 ---
 const connectors = [
-  { name: "Babylon.js", pkg: "@uptimizr/babylon", engine: "Babylon", status: "Stable" },
-  { name: "Babylon Lite", pkg: "@uptimizr/babylon-lite", engine: "Babylon", status: "Stable" },
-  { name: "three.js", pkg: "@uptimizr/three", engine: "three.js", status: "Stable" },
-  { name: "PlayCanvas", pkg: "@uptimizr/playcanvas", engine: "PlayCanvas", status: "Stable" },
-  { name: "react-three-fiber", pkg: "@uptimizr/r3f", engine: "React Three Fiber", status: "Stable" },
-  { name: "A-Frame", pkg: "@uptimizr/aframe", engine: "A-Frame", status: "Stable" },
+  { name: "Babylon.js", pkg: "@uptimizr/babylon", engine: "Babylon", status: "Stable", slug: "babylon" },
+  { name: "Babylon Lite", pkg: "@uptimizr/babylon-lite", engine: "Babylon", status: "Stable", slug: "babylon-lite" },
+  { name: "three.js", pkg: "@uptimizr/three", engine: "three.js", status: "Stable", slug: "three" },
+  { name: "PlayCanvas", pkg: "@uptimizr/playcanvas", engine: "PlayCanvas", status: "Stable", slug: "playcanvas" },
+  { name: "react-three-fiber", pkg: "@uptimizr/r3f", engine: "React Three Fiber", status: "Stable", slug: "r3f" },
+  { name: "A-Frame", pkg: "@uptimizr/aframe", engine: "A-Frame", status: "Stable", slug: "aframe" },
+];
+const guides = [
+  ...connectors.map((c) => ({ label: `${c.name} analytics`, slug: c.slug })),
+  { label: "Unity WebGL analytics", slug: "unity" },
+  { label: "Godot web analytics", slug: "godot" },
+  { label: "Unreal web analytics", slug: "unreal" },
 ];
 ---
 
@@ -20,7 +26,8 @@ const connectors = [
     </p>
     <p class="conns__scope reveal">
       Uptimizr targets <strong>3D on the web</strong> — WebGL/WebGPU engines that run in the
-      browser. Native runtimes like Unity and Godot aren't supported yet.
+      browser. Unity, Godot and Unreal are supported through their web exports; native builds
+      aren't.
     </p>
     <div class="grid grid--3 conns">
       {
@@ -42,6 +49,10 @@ const connectors = [
         ))
       }
     </div>
+    <nav class="conns__guides reveal" aria-label="Connector guides">
+      <span>Setup guides:</span>
+      {guides.map((g) => <a href={`/docs/connectors/${g.slug}/`}>{g.label}</a>)}
+    </nav>
   </div>
 </section>
 
@@ -82,6 +93,14 @@ const connectors = [
 <style>
   .conns {
     margin-top: 2.4rem;
+  }
+  .conns__guides {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    margin-top: 1.6rem;
+    font-size: 0.92rem;
+    color: var(--fg-muted);
   }
   .conns__scope {
     margin-top: 0.9rem;

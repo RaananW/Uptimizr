@@ -32,6 +32,13 @@ const year = new Date().getFullYear();
         <a href="#privacy">Privacy</a>
       </div>
       <div>
+        <h3>Learn</h3>
+        <a href="/docs/learn/">What is 3D analytics?</a>
+        <a href="/docs/learn/track-object-clicks-threejs/">Track clicks in three.js</a>
+        <a href="/docs/learn/webgl-session-replay/">WebGL session replay</a>
+        <a href="/docs/learn/webgl-real-user-performance/">Real-user FPS</a>
+      </div>
+      <div>
         <h3>Develop</h3>
         <a href={docs}>Documentation</a>
         <a href="#quickstart">Quickstart</a>
@@ -82,7 +89,7 @@ const year = new Date().getFullYear();
   }
   .footer__inner {
     display: grid;
-    grid-template-columns: 1.3fr 2fr;
+    grid-template-columns: 1fr 3fr;
     gap: 2rem;
     padding-bottom: 2.4rem;
   }
@@ -97,7 +104,7 @@ const year = new Date().getFullYear();
   }
   .footer__cols {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 1.5rem;
   }
   .footer__cols h3 {
@@ -121,7 +128,7 @@ const year = new Date().getFullYear();
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 0.6rem;
-    padding: 1.4rem 0 2.4rem;
+    padding-block: 1.4rem 2.4rem;
     border-top: 1px solid var(--edge);
     color: var(--fg-muted);
     font-size: 0.82rem;
@@ -129,6 +136,9 @@ const year = new Date().getFullYear();
   @media (max-width: 720px) {
     .footer__inner {
       grid-template-columns: 1fr;
+    }
+    .footer__cols {
+      grid-template-columns: repeat(2, 1fr);
     }
   }
 </style>

@@ -22,7 +22,7 @@
   "bugs": {
     "url": "https://github.com/RaananW/Uptimizr/issues"
   },
-  "homepage": "https://uptimizr.com/docs/connectors/unity/",
+  "homepage": "https://www.uptimizr.com/docs/connectors/unity/",
   "author": "Raanan Weber (https://github.com/RaananW)",
   "publishConfig": {
     "access": "public"

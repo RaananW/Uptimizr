@@ -103,5 +103,5 @@ store is DPR-scaled), `sceneDescription`, `user`, `meta`, `connector`, `graphics
 ## More
 
 - Package reference: [README.md](./README.md)
-- Connector guide: https://uptimizr.com/docs/connectors/babylon-lite/
+- Connector guide: https://www.uptimizr.com/docs/connectors/babylon-lite/
 - Integration guide: https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md

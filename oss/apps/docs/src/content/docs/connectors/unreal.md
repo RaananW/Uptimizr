@@ -1,10 +1,11 @@
 ---
-title: Unreal
-description: Instrument an Unreal Engine web export with the @uptimizr/unreal connector.
+title: Unreal web export analytics
+description: Add click heatmaps and FPS tracking to an Unreal Engine web export with @uptimizr/unreal, plus best-effort camera and replay through a bridge.
+lastUpdated: 2026-09-05
 ---
 
 The Unreal Engine (web export) connector. Unreal renders into a `<canvas>` via
-WebAssembly, so it is built on the [web-export foundation](/connectors/web-export) and
+WebAssembly, so it is built on the [web-export foundation](/docs/connectors/web-export/) and
 works in two tiers: a **JS-only tier** (no engine code — pointer heatmaps, FPS, JS
 errors) and a **bridged tier** (a thin copy-in shim adds camera pose, world-space
 picks, and replay).

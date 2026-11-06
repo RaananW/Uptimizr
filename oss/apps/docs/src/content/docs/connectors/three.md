@@ -1,6 +1,7 @@
 ---
-title: three.js
-description: Instrument a three.js scene with the @uptimizr/three connector.
+title: three.js analytics
+description: Add heatmaps, object click tracking, real-user FPS and session replay to a three.js scene with the @uptimizr/three connector.
+lastUpdated: 2026-09-05
 ---
 
 The three.js connector. `three` is a peer dependency — the connector reads your existing three.js

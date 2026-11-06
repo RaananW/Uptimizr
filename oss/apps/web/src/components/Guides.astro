@@ -1,0 +1,72 @@
+---
+const guides = [
+  {
+    title: "What is 3D analytics?",
+    body: "What it measures, why page analytics can't see inside a canvas, and where to start.",
+    href: "/docs/learn/",
+  },
+  {
+    title: "Track object clicks in three.js",
+    body: "Log clicks with a Raycaster, or use a connector to rank objects across sessions.",
+    href: "/docs/learn/track-object-clicks-threejs/",
+  },
+  {
+    title: "Google Analytics and 3D scenes",
+    body: "What GA4 can and can't tell you about a WebGL scene, and how to use both.",
+    href: "/docs/learn/google-analytics-3d-scenes/",
+  },
+  {
+    title: "Session replay for WebGL",
+    body: "Why replays of 3D scenes often come back blank, and how event-based replay differs.",
+    href: "/docs/learn/webgl-session-replay/",
+  },
+  {
+    title: "Measure real-user FPS",
+    body: "Find the devices, scenes and camera positions where your scene really slows down.",
+    href: "/docs/learn/webgl-real-user-performance/",
+  },
+  {
+    title: "3D product configurators",
+    body: "See which options get attention, how much of a product shoppers see, and where they stop.",
+    href: "/docs/learn/3d-product-configurator-analytics/",
+  },
+];
+---
+
+<section id="guides" class="section section--alt">
+  <div class="container">
+    <p class="eyebrow reveal">Learn</p>
+    <h2 class="reveal">Guides for measuring 3D on the web</h2>
+    <p class="lead reveal">
+      Practical answers to the questions teams ask once a 3D scene goes live, whichever tools you
+      use.
+    </p>
+    <div class="grid grid--3 guides">
+      {
+        guides.map((g, i) => (
+          <a class="card guide reveal" href={g.href} style={`transition-delay:${(i % 3) * 60}ms`}>
+            <h3>{g.title}</h3>
+            <p>{g.body}</p>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .guides {
+    margin-top: 2.4rem;
+  }
+  .guide {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+  }
+  .guide h3 {
+    margin-bottom: 0.4rem;
+  }
+  .guide p {
+    color: var(--fg-muted);
+  }
+</style>

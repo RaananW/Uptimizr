@@ -1,6 +1,7 @@
 ---
 title: Concepts
 description: The core ideas behind Uptimizr — events, the envelope, scenes, heatmaps, sessions, and replay.
+lastUpdated: 2026-06-27
 ---
 
 A short tour of the vocabulary you'll meet throughout these docs.

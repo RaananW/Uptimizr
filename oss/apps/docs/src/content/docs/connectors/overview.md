@@ -1,6 +1,7 @@
 ---
-title: Connectors overview
-description: How Uptimizr connectors work, which engines are supported, and what they all capture.
+title: 3D engine connectors
+description: Which 3D engines Uptimizr supports, what every connector captures, and how to pick one for a WebGL, WebGPU or WebXR app.
+lastUpdated: 2026-09-05
 ---
 
 A **connector** is the engine-specific adapter that observes your 3D scene and emits events. Every
@@ -23,7 +24,7 @@ which renderer you use.
 | Unreal (web)      | `@uptimizr/unreal`       | Alpha  | `trackUnreal(…)`                         |
 
 > **Web-export engines** (Unity, Godot, Unreal) compile to WebAssembly and render into a `<canvas>`,
-> so there is no live JS scene to read. They share the [`@uptimizr/web-export`](/connectors/web-export)
+> so there is no live JS scene to read. They share the [`@uptimizr/web-export`](/docs/connectors/web-export/)
 > foundation and capture in **two tiers**: a **JS-only tier** (pointer heatmaps, FPS, JS errors — no
 > engine code) and a **bridged tier** (camera pose, world-space picks, replay — via a thin copy-in
 > engine-side shim). For these, the engine is **not** an npm peer dependency.

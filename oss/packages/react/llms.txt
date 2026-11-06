@@ -9,9 +9,9 @@
 
 - [Package reference](./README.md): usage, the export table, the portable catalog, Tailwind setup, the assistant.
 - [Agent guide](./AGENTS.md): entry points, the panel contract, the assistant options, and the rules an agent must follow.
-- [Custom panels guide](https://uptimizr.com/docs/guides/custom-panels/): authoring a `PanelDefinition`.
-- [Assistant guide](https://uptimizr.com/docs/guides/assistant/): the in-browser analytics assistant.
-- [Query API reference](https://uptimizr.com/docs/api/query/): every endpoint a panel can read.
+- [Custom panels guide](https://www.uptimizr.com/docs/guides/custom-panels/): authoring a `PanelDefinition`.
+- [Assistant guide](https://www.uptimizr.com/docs/guides/assistant/): the in-browser analytics assistant.
+- [Query API reference](https://www.uptimizr.com/docs/api/query/): every endpoint a panel can read.
 - [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), extensible dashboard panels (0036), viewer-configurable panels (0039), runtime remote panels (0041), react owns the OSS panel catalog (0047), replay + live presence + portable panels (0049), in-browser analytics assistant (0050), AI-first analytics layer (0051).
 
 ## Entry points

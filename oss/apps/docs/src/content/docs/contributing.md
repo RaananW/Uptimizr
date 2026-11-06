@@ -1,6 +1,7 @@
 ---
 title: Contributing
 description: Work on Uptimizr itself — clone the monorepo, run it from source, and follow the project conventions.
+lastUpdated: 2026-09-13
 ---
 
 These docs are for **using** Uptimizr — you install a connector from npm and self-host the collector

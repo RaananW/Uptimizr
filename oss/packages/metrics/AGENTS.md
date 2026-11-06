@@ -194,5 +194,5 @@ the two is asserted at runtime by `@uptimizr/db`'s `src/__tests__/registry.test.
 ## More
 
 - Package reference: [README.md](./README.md)
-- Query API: https://uptimizr.com/docs/api/query/
+- Query API: https://www.uptimizr.com/docs/api/query/
 - ADR 0051 (AI-first analytics layer), ADR 0050 (browser-safe agent core), ADR 0020 (storage boundary)

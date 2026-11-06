@@ -20,7 +20,7 @@
   "bugs": {
     "url": "https://github.com/RaananW/Uptimizr/issues"
   },
-  "homepage": "https://uptimizr.com/docs/deploy/collector/",
+  "homepage": "https://www.uptimizr.com/docs/deploy/collector/",
   "author": "Raanan Weber (https://github.com/RaananW)",
   "publishConfig": {
     "access": "public"
