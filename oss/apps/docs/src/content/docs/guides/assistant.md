@@ -447,7 +447,7 @@ No data is captured for these metrics, so they WILL return empty — say the cha
 than reporting a zero: mesh_dwell, hover_dwell.
 
 Data: last event 4 min ago, 91 sessions in the last 24 h.
-Raw per-session retention is OFF: session timelines and replay are unavailable by design.
+Raw session access is OFF on this collector: session timelines and replay cannot be read through the API.
 ```
 
 The block is deliberately short (≈1.5 k characters at most, truncated on a line boundary if a
