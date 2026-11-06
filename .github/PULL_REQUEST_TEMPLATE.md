@@ -27,7 +27,7 @@ Closes #
 - [ ] Docs updated where applicable — public docs site (`oss/apps/docs`) and the
       integration/API reference (`docs/integration.md`) for any new feature, option, event, or
       endpoint
-- [ ] **Changeset added** (`pnpm changeset`) for any change to a publishable `@uptimizr/*` package
+- [ ] **Changeset added** (`pnpm changeset`, or `pnpm changeset --empty` if nothing is released)
 - [ ] **Playwright E2E** added/updated under `examples/playground/e2e/` for user-visible features
 - [ ] New decisions captured as an ADR (`docs/adr`) where significant
 

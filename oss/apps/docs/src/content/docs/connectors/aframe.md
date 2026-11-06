@@ -86,3 +86,28 @@ object actually hit. Name your entities' meshes (`object3D.name`) to make `hitMe
   uptimizr="projectId: your-project; collector: https://collect.example.com; xrRaycast: false"
 ></a-scene>
 ```
+
+## Capture attributes
+
+| Attribute               | Meaning                                                          |
+| ----------------------- | ---------------------------------------------------------------- |
+| `projectId`             | Your project id.                                                 |
+| `collector`             | Collector base URL (`endpoint` on the other connectors).         |
+| `sampleCameraMs`        | Camera-pose sampling interval in ms (`0` ⇒ connector default).   |
+| `samplePerfMs`          | Perf sampling interval in ms (`0` ⇒ connector default).          |
+| `pointerMoveThrottleMs` | Minimum gap between `pointer_move` samples (`0` ⇒ default).      |
+| `sceneDescription`      | Free-text label for the experience.                              |
+| `meshVisibility`        | Enable `mesh_visibility` (default `false`).                      |
+| `hoverDwell`            | Enable `hover_dwell` (default `false`).                          |
+| `resourceSample`        | Enable `resource_sample` (default `false`).                      |
+| `gaze`                  | Enable world-space gaze with three's defaults (default `false`). |
+| `cameraGesture`         | Capture `camera_gesture` (default `true`).                       |
+| `disabled`              | Collect nothing (default `false`).                               |
+| `debug`                 | Console debug logs (default `false`).                            |
+
+`disabled` is honored at runtime, so it works as a consent gate: set it on the element and flip it
+to `false` once the visitor opts in, and capture starts; flip it back and capture stops.
+
+```js
+sceneEl.setAttribute("uptimizr", "disabled", false);
+```

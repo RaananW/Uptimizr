@@ -16,14 +16,15 @@ ingestion/query collector, the dashboard, and an embedded DuckDB store.
 ## Golden rules
 
 1. **Keep the storage seam clean.** The OSS collector self-hosts on a single embedded DuckDB
-   file. Optional ClickHouse/Postgres scale engines plug in behind the `@uptimizr/db` store
-   contracts — keep storage details behind those contracts so the store stays swappable.
+   file. Optional Postgres, SQL Server and ClickHouse engines plug in behind the `@uptimizr/db`
+   store contracts — keep storage details behind those contracts so the store stays swappable.
    (ADR 0020)
 2. **One source of truth for events.** All event shapes live in `@uptimizr/schema` as Zod
    schemas. Never redefine an event type elsewhere — import it. Events must be replay-complete
    (ordered, timestamped, keyed by `sessionId`).
 3. **Privacy first.** No client-side persistent IDs, no PII by default. The visitor ID is a
-   server-side daily-rotating hash. Raw per-session retention is opt-in. (ADR 0003)
+   server-side daily-rotating hash. Reading raw per-session streams through the API is opt-in;
+   events themselves are always stored. (ADR 0003)
 4. **TypeScript strict, validate at boundaries.** Validate external input with Zod at the edge.
 5. **Keep backends thin.** Business logic lives in framework-agnostic packages so the API layer
    (Fastify now; possibly Hono at the edge later) stays replaceable. (ADR 0005)
@@ -54,7 +55,7 @@ oss/packages/create-uptimizr create-uptimizr     (self-host scaffolder)
 
 oss/packages/metrics        @uptimizr/metrics    (semantic metric registry — the agent source of truth)
 oss/packages/agent-core     @uptimizr/agent-core (generated read-tool catalog, LLM adapter, agent loop)
-oss/packages/mcp            @uptimizr/mcp        (read-only MCP server over the query API)
+oss/packages/mcp            @uptimizr/mcp        (MCP server over the query API; events read-only)
 oss/packages/agent-eval     @uptimizr/agent-eval (PRIVATE — the agent evaluation harness, not published)
 
 oss/packages/db             @uptimizr/db           (DuckDB store + dialect-agnostic query contracts)
@@ -74,14 +75,17 @@ oss/packages/godot            @uptimizr/godot         (Godot web export bridge)
 oss/packages/unreal           @uptimizr/unreal        (Unreal web export bridge)
 
 examples/playground         Multi-engine demo scene for E2E testing
+examples/godot-web-export   Godot 4 reference integration for @uptimizr/godot
+examples/unity-web-export   Unity 6 sample project for @uptimizr/unity
 infra/docker                docker-compose: optional ClickHouse, Postgres and SQL Server engines
 docs/                       architecture, phases, ADRs
 ```
 
 ## Tech stack
 
-pnpm + Turborepo · TypeScript (Node 22) · Fastify · Next.js + Tailwind · ClickHouse (events) +
-Postgres (metadata) · Babylon.js (first connector) · Zod contracts.
+pnpm + Turborepo · TypeScript (Node 22) · Fastify · Next.js + Tailwind · DuckDB (default store) ·
+optional Postgres, SQL Server and ClickHouse stores · connectors for Babylon.js, Babylon Lite,
+three.js, react-three-fiber, PlayCanvas, A-Frame and web exports · Zod contracts.
 
 ## Commands (run from repo root)
 
@@ -119,8 +123,9 @@ complete.
   `@uptimizr/agent-core` and `@uptimizr/mcp` tarballs and back the MCP prompts, the
   `uptimizr agent report --skill` CLI and the assistant's starter prompts. Edit the SKILL.md, then
   run `pnpm format && pnpm gen:skills`; `pnpm gen:skills:check` is the CI gate.
-- **Changesets:** add a changeset (`pnpm changeset`) for any change to a publishable
-  `@uptimizr/*` package — it drives the release/version bump.
+- **Changesets:** every PR needs a changeset (CI fails without one). Use `pnpm changeset` for a
+  change to a publishable `@uptimizr/*` package — it drives the release/version bump — and
+  `pnpm changeset --empty` when nothing is released.
 - **Pull requests:** fill out every section of `.github/PULL_REQUEST_TEMPLATE.md` (Summary, Linked
   issue, Type of change, Checklist, AI-assisted contribution) and tick each checklist item
   honestly, flagging anything intentionally skipped. The `create-pr` skill reproduces the full gate
@@ -133,9 +138,9 @@ paths. Reusable workflows live as skills under [`.github/skills`](./.github/skil
 
 - `add-event-type` — add a new analytics event end-to-end.
 - `add-connector` — add a new 3D engine connector.
-- `add-migration` — write a hand-written SQL migration (ClickHouse/Postgres, ADR 0007).
+- `add-migration` — write a hand-written SQL migration across the four stores (ADR 0007).
 - `query-analytics` — query collected analytics via the collector read API (auth, params, gotchas).
-- `run-local-stack` — bring up ClickHouse + Postgres + services locally.
+- `run-local-stack` — bring up the local stack (DuckDB; Docker only for the optional stores).
 - `work-on-issue` — take a GitHub issue from assigned to closed (plan, code, review, test, close).
 - `create-pr` — open a PR that passes CI on the first run (reproduce every gate locally first).
 

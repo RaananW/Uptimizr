@@ -8,10 +8,10 @@
 > **Implemented (Issue 2):** Phases A–D shipped. Global time-range + scene + input-source filters
 > with debounced auto-refetch ([`GlobalFilters`](../../oss/apps/dashboard/src/components/GlobalFilters.tsx),
 > [`lib/filters.ts`](../../oss/apps/dashboard/src/lib/filters.ts)); event-volume/FPS strip with
-> brush-to-filter ([`VolumeTimeseries`](../../oss/apps/dashboard/src/components/VolumeTimeseries.tsx));
-> per-session replay scrubber ([`SessionReplay`](../../oss/apps/dashboard/src/components/SessionReplay.tsx));
-> 3D world-heatmap voxel viewer ([`WorldHeatmap3D`](../../oss/apps/dashboard/src/components/WorldHeatmap3D.tsx));
-> and a scene-health panel ([`SceneHealth`](../../oss/apps/dashboard/src/components/SceneHealth.tsx)).
+> brush-to-filter ([`VolumeTimeseries`](../../oss/packages/react/src/catalog/views/VolumeTimeseries.tsx));
+> per-session replay scrubber ([`SessionReplay`](../../oss/packages/react/src/catalog/views3d/SessionReplay.tsx));
+> 3D world-heatmap voxel viewer ([`WorldHeatmap3D`](../../oss/packages/react/src/catalog/views3d/WorldHeatmap3D.tsx));
+> and a scene-health panel ([`SceneHealth`](../../oss/packages/react/src/catalog/views/SceneHealth.tsx)).
 > Backend added three `@uptimizr/db` builders (`distinctScenes`, `timeseries`, `eventTypeCounts`)
 > and routes `GET /api/v1/scenes`, `/timeseries`, `/event-counts`.
 

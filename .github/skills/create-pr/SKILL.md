@@ -15,17 +15,20 @@ record significant decisions as ADRs.
 
 ## What CI runs on every PR
 
-The PR workflow (`.github/workflows/pr.yml`) has six gates; CodeQL runs separately
+The PR workflow (`.github/workflows/pr.yml`) has ten jobs; CodeQL runs separately
 (`.github/workflows/codeql.yml`). All must pass:
 
-| Gate (CI job)   | What it runs                                                                      | Reproduce locally                                                          |
-| --------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| **checks**      | `pnpm format:check`, `pnpm audit --prod --audit-level=high`, `pnpm license-check` | same commands                                                              |
-| **build**       | `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test`                          | same commands                                                              |
-| **changeset**   | requires a new `.changeset/*.md` (not README) added vs `main`                     | `pnpm changeset` (or `--empty`)                                            |
-| **scrub-gate**  | `bash scripts/scrub-gate.sh` — no reserved non-OSS tokens leak in                 | `pnpm scrub-gate`                                                          |
-| **secret-scan** | `gitleaks detect` over **full history** — no secrets committed                    | `gitleaks detect --source . --log-opts="--all" --redact -v` (if installed) |
-| **CodeQL**      | static security analysis of JS/TS                                                 | covered by lint + a clean self-review                                      |
+| Gate (CI job)        | What it runs                                                                                               | Reproduce locally                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **checks**           | `pnpm format:check`, `pnpm gen:skills:check`, `pnpm audit --prod --audit-level=high`, `pnpm license-check` | same commands                                                                            |
+| **build**            | `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm gen:docs:check`, `pnpm test`                            | same commands                                                                            |
+| **store-parity-\***  | parity suites against Postgres, SQL Server and ClickHouse service containers (three jobs)                  | `pnpm stack:up`, then `pnpm test:parity:postgres` / `:mssql` / `:clickhouse`             |
+| **e2e**              | `pnpm test:e2e` (Playwright)                                                                               | `pnpm --filter @uptimizr/example-playground test:e2e:install` once, then `pnpm test:e2e` |
+| **godot-export-e2e** | headless Godot Web export, then its Playwright spec                                                        | `pnpm godot:fetch && pnpm godot:export && pnpm test:e2e:godot`                           |
+| **changeset**        | requires a new `.changeset/*.md` (not README) added vs `main`                                              | `pnpm changeset` (or `--empty`)                                                          |
+| **scrub-gate**       | `bash scripts/scrub-gate.sh` — no reserved non-OSS tokens leak in                                          | `pnpm scrub-gate`                                                                        |
+| **secret-scan**      | `gitleaks detect` over the commits the PR adds (`base..HEAD`) — no secrets committed                       | `gitleaks detect --source . --log-opts="--all" --redact -v` (if installed)               |
+| **CodeQL**           | static security analysis of JS/TS                                                                          | covered by lint + a clean self-review                                                    |
 
 ## 1. Confirm the branch and scope
 
@@ -37,8 +40,8 @@ The PR workflow (`.github/workflows/pr.yml`) has six gates; CodeQL runs separate
 
 ## 2. Add a changeset (always required)
 
-Every PR **must** add a changeset, or the `changeset` gate fails. (The only exception is the bot's
-`changeset-release/main` branch, which agents never push to.)
+Every PR **must** add a changeset, or the `changeset` gate fails. (The only exceptions are the bot's
+`changeset-release/main` branch and Renovate's `renovate/*` branches, which agents never push to.)
 
 - Change touches a publishable `@uptimizr/*` package → `pnpm changeset`, pick the affected
   packages + bump (`patch` / `minor` / `major`), write a one-line summary.
@@ -65,10 +68,10 @@ pnpm scrub-gate
 If it fails, the offending token is in the diff — remove it (don't add it to the allow-list unless
 it's a genuine false positive in a comment, and even then prefer rewording).
 
-## 4. Don't commit secrets (gitleaks scans full history)
+## 4. Don't commit secrets (gitleaks scans every commit)
 
-The secret-scan gate runs `gitleaks` over the **entire git history**, not just the diff — so a
-secret in any commit on the branch fails the PR even if a later commit removes it.
+On a PR the secret-scan gate runs `gitleaks` over **every commit the PR adds**, not just the final
+diff — so a secret in any commit on the branch fails the PR even if a later commit removes it.
 
 - Never commit real keys, tokens, connection strings, or `.env` files. Use placeholders/fixtures.
 - If a secret was committed earlier on the branch, rebase/amend it out of history (not just delete
@@ -81,25 +84,29 @@ From the repo root, run every build/checks-job command and make them all pass:
 
 ```bash
 pnpm format:check
+pnpm gen:skills:check
 pnpm audit --prod --audit-level=high
 pnpm license-check
 pnpm exec turbo run lint --ui=stream
 pnpm exec turbo run typecheck --ui=stream
 pnpm exec turbo run build --ui=stream
+pnpm gen:docs:check
 pnpm exec turbo run test --ui=stream
 ```
 
 - `format:check` red → run `pnpm format` and re-commit. The most common offender is a freshly
   created `.changeset/*.md`; new/edited docs and JSON are next. `format:check` covers **every**
   tracked `**/*.{ts,tsx,js,jsx,json,md,yml,yaml}`, including the changeset you just added.
-- `audit` red → a production dependency has a high+ advisory; bump/replace it or, if it's a
-  documented false positive, follow the repo's audit handling (see `npm-audit-notes`). Do not
-  weaken the audit level.
+- `gen:skills:check` red → run `pnpm gen:skills`. `gen:docs:check` red → run `pnpm gen:docs` (after
+  the build) and commit the result.
+- `audit` red → a production dependency has a high+ advisory; bump/replace it or, if it has no
+  patched release and cannot see untrusted input, add a commented `auditConfig.ignoreGhsas` entry in
+  `pnpm-workspace.yaml`. Do not weaken the audit level.
 - `lint` / `typecheck` red → fix the code; never use `eslint-disable` or `@ts-ignore` to silence a
   real problem, and never bypass with `--no-verify`.
 - Add/extend a **Playwright E2E** under `examples/playground/e2e/` for any user-visible feature or
-  new full-stack path (`pnpm --filter @uptimizr/example-playground test:e2e`); CI doesn't gate it,
-  but the definition of done (see `work-on-issue`) requires it.
+  new full-stack path (`pnpm --filter @uptimizr/example-playground test:e2e`); CI's `e2e` job runs
+  the suite, and the definition of done (see `work-on-issue`) requires it.
 
 ## 6. Docs in the same change
 
@@ -148,8 +155,8 @@ the table above, reproduce it locally, fix it, and push again — don't leave a 
 - [ ] Changeset added (`pnpm changeset` or `--empty`), **Prettier-formatted**, and committed
 - [ ] `pnpm scrub-gate` passes
 - [ ] No secrets anywhere in branch history (gitleaks-clean)
-- [ ] `format:check`, `audit --prod --audit-level=high`, `license-check` all pass
-- [ ] `lint`, `typecheck`, `build`, `test` all pass
+- [ ] `format:check`, `gen:skills:check`, `audit --prod --audit-level=high`, `license-check` all pass
+- [ ] `lint`, `typecheck`, `build`, `gen:docs:check`, `test` all pass
 - [ ] Playwright E2E added/updated for user-visible features
 - [ ] Docs / `docs/integration.md` / ADR / packaged `AGENTS.md`+`llms.txt` updated where applicable
 - [ ] Conventional-commit messages referencing the issue; no `--no-verify`

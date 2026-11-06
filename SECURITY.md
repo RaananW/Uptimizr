@@ -5,14 +5,14 @@ repository (`oss/`).
 
 ## Supported versions
 
-Uptimizr is pre-1.0 and evolving. Security fixes are applied to the latest `main` and released in
-the next version. Older pre-release versions are not maintained — please upgrade to the latest
-release before reporting an issue.
+Security fixes are applied to the latest `main` and released in the next version of each affected
+package. Older releases are not maintained — please upgrade to the latest release before reporting
+an issue.
 
 | Version         | Supported          |
 | --------------- | ------------------ |
 | `main` / latest | :white_check_mark: |
-| older pre-1.0   | :x:                |
+| older releases  | :x:                |
 
 ## Reporting a vulnerability
 
@@ -50,13 +50,17 @@ A few intentional design decisions are relevant when assessing reports:
   aggregate read API; `annotate` is the narrow project-**metadata** write path (events are
   append-only and never writable by a key). `GET /api/v1/whoami` reports the calling key's id,
   capabilities and effective budget — never the key itself.
-- **Raw per-session data is double-gated.** `GET /api/v1/sessions/:id/events` and the live
-  per-session follow `GET /api/v1/live/sessions/:id` require **both**
-  `ENABLE_RAW_SESSION_RETENTION` on the collector and the `query:raw` capability on the key; either
-  one missing is a `403`. A plain `query` key — the kind handed to an agent or the MCP server —
-  cannot reach raw events. The live follow authenticates with a short-lived token because
-  `EventSource` cannot send a header; the key's capability set is carried inside that token so the
-  same check applies.
+- **Raw per-session data is double-gated.** `GET /api/v1/sessions/:id/events`,
+  `GET /api/v1/sessions/:id/narrative` and the live per-session follow
+  `GET /api/v1/live/sessions/:id` require **both** `ENABLE_RAW_SESSION_RETENTION` on the collector
+  and the `query:raw` capability on the key; either one missing is a `403`. A plain `query` key —
+  the kind handed to an agent or the MCP server — cannot reach raw events. The live follow
+  authenticates with a short-lived token because `EventSource` cannot send a header; the key's
+  capability set is carried inside that token so the same check applies.
+- **These gates control API access, not storage.** Events are always written to the store, including
+  each event's full payload, because aggregates are computed from them at query time. With the flag
+  off, raw streams cannot be read through the API but remain in the store, readable by anyone with
+  access to the database file or server. There is no automatic event deletion.
 - **Per-key rate limits.** A key may carry its own request budget, bucketed on the **key id** rather
   than the client IP, falling back to the collector's `COLLECTOR_RATE_LIMIT_*` defaults. Keyless
   ingestion keeps its separate `COLLECTOR_INGEST_RATE_LIMIT_*` budget.
@@ -68,6 +72,13 @@ A few intentional design decisions are relevant when assessing reports:
   are swept. The dashboard is skipped by default via `x-uptimizr-client: dashboard`, which is a
   **volume filter, not a security boundary** — anyone holding the key could send that header, and
   already has everything the key allows. `AUDIT_DASHBOARD_REQUESTS=1` records everything.
+- **Webhook egress is off until allow-listed.** A subscription is created over HTTP by an
+  `annotate` key, so its URL is request-controlled input to an outbound request. Delivery is
+  disabled until `COLLECTOR_WEBHOOK_ALLOWED_HOSTS` names the hosts, only `http` and `https` URLs are
+  accepted, and redirects are not followed. `*` allows every host and is an explicit opt-out.
+- **Hosted MCP is off by default.** The `/mcp` route is not registered until `COLLECTOR_MCP_HTTP=1`.
+  Every request is authenticated with an API key that holds `query`, and a session id is refused if
+  presented by a different key than opened it.
 - **Privacy by default.** No client-side persistent identifiers and no PII by default; the visitor
   id is a server-side daily-rotating hash and raw IPs are never stored.
 

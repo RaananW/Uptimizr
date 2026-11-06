@@ -29,11 +29,10 @@ CLICKHOUSE_PASSWORD= \
   pnpm --filter @uptimizr/collector-server start
 ```
 
-A local ClickHouse is available via the optional scale tier in
-[`infra/docker`](../../../infra/docker):
+A local ClickHouse is available via [`infra/docker`](../../../infra/docker):
 
 ```bash
-cd infra/docker && docker compose up -d   # ClickHouse on :8123
+pnpm stack:up   # from the repo root: ClickHouse on :8123, plus Postgres and SQL Server
 ```
 
 For a **hosted/managed ClickHouse** (e.g. ClickHouse Cloud), point `CLICKHOUSE_URL`
@@ -47,25 +46,27 @@ forward-only — ADR 0007), so it is usable out of the box.
 
 ## Scope
 
-- **Single-tenant only** — no `org_id`, no tenant isolation. The multi-writer
-  `AggregatingMergeTree` rollups and scale tuning remain the proprietary scale
-  tier; this package is the single-instance ClickHouse adapter.
+- **Single-tenant only** — no `org_id`, no tenant isolation. Daily rollups are
+  plain views recomputed at query time.
 - No stubbed features — the full analytics surface (heatmaps, perf percentiles,
   click↔gaze rays) returns results identical to DuckDB on the cross-engine parity
   fixtures.
 
 ## Layout
 
-| File               | Responsibility                                              |
-| ------------------ | ----------------------------------------------------------- |
-| `client.ts`        | Thin `@clickhouse/client` wrapper (HTTP, numeric coercion). |
-| `migrations.ts`    | Forward-only DDL (events, node_samples, metadata, views).   |
-| `events.ts`        | Batched event insert + replay-complete session reads.       |
-| `projects.ts`      | Project + API-key metadata (SHA-256 hashes, caps).          |
-| `audit.ts`         | Agent audit log: record / list / prune.                     |
-| `sceneRegistry.ts` | Per-`(project, scene)` representation upserts/reads.        |
-| `sceneRegions.ts`  | Named scene regions (`ReplacingMergeTree` + tombstones).    |
-| `queries.ts`       | `runClickhouseQuery` — executes a rendered `QuerySpec`.     |
+| File                 | Responsibility                                              |
+| -------------------- | ----------------------------------------------------------- |
+| `client.ts`          | Thin `@clickhouse/client` wrapper (HTTP, numeric coercion). |
+| `migrations.ts`      | Forward-only DDL (events, node_samples, metadata, views).   |
+| `events.ts`          | Batched event insert + replay-complete session reads.       |
+| `projects.ts`        | Project + API-key metadata (SHA-256 hashes, caps).          |
+| `audit.ts`           | Agent audit log: record / list / prune.                     |
+| `sceneRegistry.ts`   | Per-`(project, scene)` representation upserts/reads.        |
+| `sceneRegions.ts`    | Named scene regions (`ReplacingMergeTree` + tombstones).    |
+| `projectMetadata.ts` | Annotations, glossary and saved analyses.                   |
+| `panelSpecs.ts`      | Pinned panel specs.                                         |
+| `subscriptions.ts`   | Conditional subscriptions and their firing log.             |
+| `queries.ts`         | `runClickhouseQuery` — executes a rendered `QuerySpec`.     |
 
 The `CollectorStore` itself is assembled from these building blocks in the
 collector server (`oss/apps/collector-server/src/clickhouseStore.ts`,

@@ -41,11 +41,12 @@ is theirs. Against any collector:
 
 ## MCP
 
-- [`@uptimizr/mcp`](https://www.npmjs.com/package/@uptimizr/mcp): a read-only Model Context Protocol
-  server over a collector's query API, run over stdio with
-  `UPTIMIZR_COLLECTOR_URL` + `UPTIMIZR_API_KEY`. One tool per served metric, plus the
-  `uptimizr://capabilities` and `uptimizr://scenes` resources and three analysis prompts. No
-  ingestion, mutation or raw per-session tools; nothing leaves the operator's infrastructure.
+- [`@uptimizr/mcp`](https://www.npmjs.com/package/@uptimizr/mcp): a Model Context Protocol server
+  over a collector's query API, run over stdio with `UPTIMIZR_COLLECTOR_URL` + `UPTIMIZR_API_KEY`,
+  or hosted by the collector at `/mcp`. One tool per served metric, plus resources such as
+  `uptimizr://capabilities` and `uptimizr://context` and the packaged analysis prompts. No ingestion
+  tool, and nothing can write an event: project-metadata tools need an `annotate` key and
+  `session_narrative` a `query:raw` key. Nothing leaves the operator's infrastructure.
 
 ## Source
 

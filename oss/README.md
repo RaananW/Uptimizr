@@ -21,7 +21,10 @@ to be extractable into a standalone repository.
 - [`packages/replay`](./packages/replay) — `@uptimizr/replay`: re-drive a session in the user's own scene.
 - [`packages/react`](./packages/react) — `@uptimizr/react`: embeddable React analytics panels and shared collector client.
 - [`packages/heatmap`](./packages/heatmap) — `@uptimizr/heatmap`: framework-agnostic 3D heatmap overlay core.
-- [`packages/mcp`](./packages/mcp) — `@uptimizr/mcp`: read-only MCP server over the collector query API.
+- [`packages/metrics`](./packages/metrics) — `@uptimizr/metrics`: semantic metric registry, the source of the agent tool catalog, OpenAPI and docs tables.
+- [`packages/agent-core`](./packages/agent-core) — `@uptimizr/agent-core`: generated read-tool catalog, LLM provider adapters and agent loop.
+- [`packages/mcp`](./packages/mcp) — `@uptimizr/mcp`: MCP server over the collector query API; events are read-only.
+- [`packages/agent-eval`](./packages/agent-eval) — `@uptimizr/agent-eval`: private evaluation harness for the agent, not published.
 - [`packages/create-uptimizr`](./packages/create-uptimizr) — `create-uptimizr`: self-host scaffolding CLI.
 - [`packages/db`](./packages/db) — `@uptimizr/db`: storage contracts, dialect-agnostic query layer, and DuckDB store.
 - [`packages/db-postgres`](./packages/db-postgres) — `@uptimizr/db-postgres`: optional single-tenant Postgres store.

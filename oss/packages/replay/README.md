@@ -114,7 +114,8 @@ frame, and camera orientation is applied via `camera.lookAt(target)` so three
 resolves its −Z-forward convention internally. `three` is an **optional peer
 dependency** — only needed if you use the three driver.
 
-The replay endpoint requires `ENABLE_RAW_SESSION_RETENTION` on the collector.
+The replay endpoint requires `ENABLE_RAW_SESSION_RETENTION` on the collector and an API key
+holding `query:raw`.
 
 ## Design
 

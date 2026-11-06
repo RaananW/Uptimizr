@@ -3,18 +3,46 @@ title: Serve the dashboard
 description: Run the Uptimizr dashboard to visualize heatmaps, mesh rankings, performance, and replay.
 ---
 
-The dashboard is a Next.js app that reads from the collector's query API and renders heatmaps,
-mesh rankings, performance panels, and session replay.
+The dashboard is a static single-page app built with Next.js. It reads from the collector's query
+API and renders heatmaps, mesh rankings, performance panels, and session replay.
+`@uptimizr/dashboard` ships the prebuilt export on npm, so the same assets work against any
+collector with no rebuild.
 
-## Run it locally
+## Serve it
+
+### Standalone
+
+A zero-dependency static server, on its own port:
 
 ```bash
-pnpm dev:dashboard
+npx -p @uptimizr/dashboard uptimizr-dashboard --port 3000   # or PORT / DASHBOARD_PORT
 ```
 
-The dashboard authenticates to the collector with a **project API key**. Configure it via the
-environment (e.g. `NEXT_PUBLIC_API_KEY` and the collector URL) so the browser can call the read API
-with `x-api-key`. The key only ever reads its own project's data.
+Add the dashboard's origin to the collector's `COLLECTOR_CORS_ORIGINS`.
+
+### All-in-one (served by the collector)
+
+One process for ingestion, query and UI. Install `@uptimizr/dashboard` and point the collector at
+its export:
+
+```bash
+COLLECTOR_DASHBOARD_DIR=./node_modules/@uptimizr/dashboard/out \
+  npx -p @uptimizr/collector-server uptimizr serve
+```
+
+The dashboard then loads at the collector's own URL and targets that origin by default. Leave
+`COLLECTOR_DASHBOARD_DIR` unset to keep the collector headless.
+
+### Static host
+
+Copy `out/` to any static host, CDN or object store. Deep links (`/projects/:id/...`) need an SPA
+fallback to `index.html`; the standalone server and the collector do this for you.
+
+## Connect it
+
+The collector URL and a **project API key** are set at runtime in the dashboard's connection bar,
+and the browser calls the read API with `x-api-key`. The key only ever reads its own project's data,
+so you can use one key per project and switch keys in the connection bar.
 
 ## What it shows
 
@@ -54,7 +82,7 @@ with `x-api-key`. The key only ever reads its own project's data.
   against the scene proxy backdrop, so you can see _where_ room-scale VR visitors reach their
   play-space boundary (#157). The boundary polygon / room geometry is never transmitted — only the
   on-device outcome (coarse position + duration) per approach.
-- **Session replay** — re-drive a recorded session inside a scene (requires raw retention; see
+- **Session replay** — re-drive a recorded session inside a scene (requires raw session access; see
   below).
 - **Analytics assistant** — an in-browser LLM assistant (an **Ask the assistant** card on the
   overview) that answers natural-language questions of the connected project, grounded in read-only
@@ -232,18 +260,9 @@ The bucket size and reach threshold are heuristics in your scene's world units, 
 Interactions with no preceding camera sample can't be measured and are dropped.
 :::
 
-## Build for production
-
-```bash
-pnpm --filter @uptimizr/dashboard build
-```
-
-Host it wherever you run Next.js. Point it at your collector's public URL and provide the project
-API key through the environment. Because reads are scoped to the key's project, you can run one
-dashboard per project or switch keys per environment.
-
 ## Replay prerequisites
 
-Session replay reads the raw, ordered event stream from `/api/v1/sessions/:id/events`, which is
-gated behind `ENABLE_RAW_SESSION_RETENTION` on the collector. Enable it only if you
-intend to retain raw per-session events — see [Privacy & configuration](/docs/deploy/privacy/).
+Session replay reads the raw, ordered event stream from `/api/v1/sessions/:id/events`, which needs
+both `ENABLE_RAW_SESSION_RETENTION` on the collector and a key holding `query:raw`. Enable the flag
+only if you want raw per-session events readable through the API — see
+[Privacy & configuration](/docs/deploy/privacy/).

@@ -1,38 +1,46 @@
 ---
-description: Database conventions — ClickHouse (events) and Postgres (metadata).
-applyTo: "oss/packages/db/**"
+description: Database conventions — the DuckDB store and storage contracts, plus the optional Postgres, SQL Server and ClickHouse stores.
+applyTo: "oss/packages/{db,db-postgres,db-mssql,db-clickhouse}/**"
 ---
 
-# `@uptimizr/db` — ClickHouse + Postgres
+# `@uptimizr/db` and the optional stores
 
-Typed clients and migrations for the two-store design (ADR 0002).
+`@uptimizr/db` holds the storage contracts, the dialect-agnostic query layer and the default
+single-file DuckDB store (ADR 0020). `@uptimizr/db-postgres`, `@uptimizr/db-mssql` and
+`@uptimizr/db-clickhouse` are optional stores behind the same contracts. Each store holds events
+**and** metadata in one database, selected with `COLLECTOR_STORE`. All four are single-tenant.
 
-## ClickHouse (event store)
+## Events
 
-- Use the official `@clickhouse/client`.
-- Events table: partition by date (`toYYYYMMDD(ts)` or `toDate(ts)`), `ORDER BY (project_id,
-event_type, ts)`. Choose `MergeTree` family appropriate to the access pattern.
-- Prefer **async inserts** / batching for ingestion throughput; expose a batched insert helper.
-- Store vectors compactly (e.g. `Array(Float32)` or separate `Float32` columns), not JSON blobs,
-  for fields that are queried/aggregated.
-- Raw per-session event storage (for replay) is gated by `ENABLE_RAW_SESSION_RETENTION`
-  (ADR 0003). Provide an ordered read by `session_id` for the timeline endpoint.
-- Aggregations are query-time by default. A future optimization adds ClickHouse **materialized views** for the
-  common daily rollups (`perf_daily`, `events_daily`) to keep dashboards fast at volume; query-time
-  aggregation remains the source of truth and the rollups are append-only migrations. Read rollups
-  with the `-Merge`/`sum` helpers in `clickhouse/queries.ts`.
+- A wide `events` table: hot fields are promoted to columns, and the full validated event is kept
+  in `payload` so reads stay replay-complete. `toEventRow` (`oss/packages/db/src/events.ts`) is the
+  shared mapper.
+- Every event is written regardless of `ENABLE_RAW_SESSION_RETENTION`, which gates reading raw
+  per-session streams at the collector, not storage (ADR 0003). Provide an ordered read by
+  `session_id` for the timeline endpoint. No store deletes events automatically.
+- `node_transform` rows go to a dedicated `node_samples` table.
 
-## Postgres (metadata)
+## Aggregations
 
-- Holds `projects` and `api_keys` in v1 (orgs/users/billing are out of scope for the OSS collector).
-- Use a typed client/ORM consistently across the package; keep migrations versioned and
-  additive (forward-only, idempotent via `IF NOT EXISTS` — see ADR 0007).
+- Define an aggregation once as a pure `buildX(projectId, opts, dialect)` builder in
+  `oss/packages/db/src/query/aggregations.ts`, using `Dialect` fragments. Never hard-code engine
+  SQL.
+- Aggregations run at query time. The daily rollups (`perf_daily`, `events_daily`) are plain views
+  on every store; there are no materialized views.
+- Add a `PARITY_CASES` entry so every engine stays provably equal, and a registry entry in
+  `@uptimizr/metrics`.
+
+## Metadata
+
+- `projects`, `api_keys`, the scene registry, project metadata, subscriptions and the agent audit
+  log live in the same store as events.
 - API keys: store only hashes, never plaintext.
 
 ## Migrations & clients
 
-- Migrations are hand-written ordered SQL with a small in-house runner — no migration
-  framework (ADR 0007). Append new `{ id, sql }` entries; never edit a shipped one.
-- Keep ClickHouse and Postgres migrations in clearly separated, ordered files.
+- Migrations are hand-written ordered SQL with a small in-house runner — no migration framework
+  (ADR 0007). Each store owns its array; a schema change goes in all four. Append new `{ id, sql }`
+  entries; never edit a shipped one. See the `add-migration` skill.
 - Export small, typed client factories; read connection settings from env (see `.env.example`).
-- No DOM/browser imports — this package is server/Node only.
+- No DOM/browser imports in store code — these are server/Node packages. `@uptimizr/db/query` and
+  `@uptimizr/db/summary` are the browser-safe subpaths.

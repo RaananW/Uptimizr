@@ -9,8 +9,8 @@ read the [architecture overview](./docs/architecture/overview.md) and the
 - **Node.js 22** (see `.nvmrc` — `nvm use`)
 - **pnpm 11** (`corepack enable` or install per pnpm docs)
 - **Docker** — _optional_. The OSS default store is a single DuckDB file, so local development
-  needs **no Docker**. Docker is only required for the optional scale path (ClickHouse + Postgres).
-  See [ADR 0020](./docs/adr/0020-open-core-storage-boundary.md).
+  needs **no Docker**. Docker is only required for the optional stores (ClickHouse, Postgres and
+  SQL Server). See [ADR 0020](./docs/adr/0020-open-core-storage-boundary.md).
 
 Windows, macOS and Linux are all supported for development — the package scripts are
 cross-platform, so `cmd.exe` and PowerShell work with no extra setup. Two things still assume a
@@ -27,9 +27,10 @@ cp .env.example .env     # adjust as needed
 pnpm db:setup            # migrate the DuckDB store + seed a demo project + API key
 ```
 
-`pnpm db:setup` prints a `PROJECT_ID` and a `utk_...` API key — paste them into `.env`
-(`VITE_PROJECT_ID`, `VITE_API_KEY`). To reset the store, delete the `.duckdb` file (default
-`./data/uptimizr.duckdb`) and re-run `pnpm db:setup`.
+`pnpm db:setup` writes the seeded project ids and `utk_...` API keys into your `.env`
+(`VITE_PROJECT_ID`, `VITE_API_KEY`, `NEXT_PUBLIC_API_KEY`, and the walkable pair) and prints each
+key once. To reset the store, delete the `.duckdb` file (default `./data/uptimizr.duckdb`) and
+re-run `pnpm db:setup`.
 
 ## Run the local stack (no Docker)
 
@@ -43,8 +44,9 @@ Interact with the playground scene to generate events and confirm they appear in
 > **Single-writer constraint:** DuckDB is an embedded, single-writer store — run only one
 > collector against a given `.duckdb` file at a time.
 >
-> **Scale path:** ClickHouse + Postgres back the optional scale tier. Start them with
-> `pnpm stack:up` (and `pnpm stack:down` to tear down) only if you opt into the scale store.
+> **Optional stores:** ClickHouse, Postgres and SQL Server back the optional `COLLECTOR_STORE`
+> values. Start them with `pnpm stack:up` (and `pnpm stack:down` to tear down) only if you opt into
+> one.
 
 ## Common commands
 
@@ -69,6 +71,8 @@ from it by `scripts/gen-registry-docs.mjs`:
 
 - the §"Query (read)" endpoint table in `docs/integration.md`;
 - the docs-site query reference (`oss/apps/docs/src/content/docs/api/query.mdx`);
+- the docs-site tool and skill tables (`guides/mcp.md`, `guides/agents.mdx`, `deploy/collector.mdx`
+  under `oss/apps/docs/src/content/docs/`);
 - the tool tables in `oss/packages/mcp/` and `oss/packages/agent-core/`
   (`README.md`, `AGENTS.md`, `llms.txt`).
 
@@ -76,8 +80,8 @@ Only the text between the `generated:<block>:start` / `:end` markers is replaced
 each table is hand-written and stays. After changing the registry run:
 
 ```bash
-pnpm build --filter @uptimizr/db...   # the generator reads the built registry
-pnpm gen:docs                         # re-render, then commit the result
+pnpm --filter @uptimizr/mcp... build   # the generator reads the built registry + agent-core
+pnpm gen:docs                          # re-render, then commit the result
 ```
 
 `pnpm gen:docs:check` is the staleness gate; CI runs it after `pnpm build` and fails when a
@@ -134,8 +138,9 @@ redistribution-compatible.
    (`docs/integration.md`) in the same PR — a feature isn't done until it's documented.
 4. Major / user-visible features also need a **Playwright E2E** under `examples/playground/e2e/`
    that drives the real browser → SDK → collector → dashboard/replay round trip.
-5. If your change touches a publishable `@uptimizr/*` package, add a changeset (`pnpm changeset`)
-   and commit the generated `.changeset/*.md` file — see [Releases & changelog](#releases--changelog).
+5. Every PR needs a changeset; CI fails without one. Run `pnpm changeset` if your change touches a
+   publishable `@uptimizr/*` package, or `pnpm changeset --empty` if nothing is released, and commit
+   the generated `.changeset/*.md` file — see [Releases & changelog](#releases--changelog).
 6. Keep PRs focused; describe the change and link related issues.
 
 ### AI-assisted contributions
@@ -152,14 +157,14 @@ level of scrutiny. You remain responsible for everything you submit: make sure i
   Babylon adapter, the collector, and replay. (A guided skill exists under `.github/skills`.)
 - **A new 3D engine connector?** Mirror `@uptimizr/babylon` as a sibling package depending only
   on `@uptimizr/sdk-core` + `@uptimizr/schema`.
-- **A new aggregation/metric?** Give it a registry entry in `@uptimizr/db` (the agent tool catalog,
-  OpenAPI and docs are generated from it) **and** an evaluation case — see below.
+- **A new aggregation/metric?** Give it a registry entry in `@uptimizr/metrics` (the agent tool
+  catalog, OpenAPI and docs are generated from it) **and** an evaluation case — see below.
 
 ## Agent evaluation
 
 The analytics agent's read-tool catalog is generated from the metric registry, so every new metric
 becomes a tool an agent can call. `@uptimizr/agent-eval` (private, `oss/packages/agent-eval`)
-measures whether the agent then uses those tools correctly: a bank of ~48 questions in
+measures whether the agent then uses those tools correctly: a bank of 84 questions in
 `cases/*.yaml`, asked against the seeded parity fixtures through the real collector, scored on tool
 selection, argument correctness and answer accuracy (ADR 0051 §8).
 
@@ -188,20 +193,21 @@ measurement nobody made. See `oss/packages/agent-eval/README.md` for the full pi
 
 Uptimizr publishes the public `@uptimizr/*` packages to npm with
 [Changesets](https://github.com/changesets/changesets). Versions are **declared per change**, not
-bumped by hand, and publishing is a **manual, reviewer-gated** GitHub Actions run — pushes never
-auto-publish.
+bumped by hand, and publishing is **reviewer-gated**: nothing reaches npm until a reviewer approves
+the release on the protected `npm-production` environment.
 
 ### Contributors: add a changeset to your PR
 
-Any PR that changes a publishable package must include a changeset:
+Every PR must include a changeset, or the `Changeset present` CI job fails:
 
 ```bash
-pnpm changeset
+pnpm changeset          # the change touches a publishable package
+pnpm changeset --empty  # nothing is released (docs, CI, examples, private apps)
 ```
 
-Pick the affected packages and a bump level for each, then write a one-line summary (it becomes the
-changelog entry). Commit the generated `.changeset/*.md` file with your PR. Choose the level by
-[Semantic Versioning](https://semver.org):
+For a real changeset, pick the affected packages and a bump level for each, then write a one-line
+summary (it becomes the changelog entry). Commit the generated `.changeset/*.md` file with your PR.
+Choose the level by [Semantic Versioning](https://semver.org):
 
 | Level     | When                                                                                        | Example                                           |
 | --------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------- |
@@ -221,21 +227,31 @@ keep them accurate and user-facing.
 
 ### Maintainers: cut a release
 
-Publishing runs through the **Release** workflow
-([`.github/workflows/release.yml`](./.github/workflows/release.yml)) — `workflow_dispatch` only:
+Versioning and publishing are two workflows, decoupled:
 
-1. **Dry run first.** Trigger the workflow with `dry-run: true` (the default). It lints, typechecks,
-   builds, tests, runs the scrub gate, applies the pending version bumps, and runs
-   `changeset publish --dry-run` so you can review the exact publish set. No approval, no token.
-2. **Real publish.** Re-trigger with `dry-run: false`. The job now requests the protected
-   **`npm-production`** environment and **waits for a required reviewer to approve**. After
-   approval the job publishes via **npm Trusted Publishing (OIDC)** — pnpm exchanges the GitHub
-   `id-token` for a short-lived npm token, so there is no long-lived secret — then pushes the git
-   tags.
+1. **Version PR.** While changesets are pending on `main`,
+   [`.github/workflows/version-pr.yml`](./.github/workflows/version-pr.yml) keeps a
+   `chore(release): version packages` PR open with the version bumps, regenerated changelogs and
+   consumed changesets. It never publishes.
+2. **Merge it.** The **Release** workflow
+   ([`.github/workflows/release.yml`](./.github/workflows/release.yml)) runs on every push to
+   `main`. Its `decide` job skips publishing while changesets are pending, and otherwise only
+   proceeds when a package version is not on npm yet, so an ordinary feature merge requests no
+   approval.
+3. **Approve.** The `publish` job requests the protected **`npm-production`** environment and
+   **waits for a required reviewer to approve**. It then lints, typechecks, builds, tests and runs
+   the scrub gate, publishes with `pnpm publish` via **npm Trusted Publishing (OIDC)** — pnpm
+   exchanges the GitHub `id-token` for a short-lived npm token, so there is no long-lived secret —
+   and pushes the git tags.
+
+To preview the publish set, trigger the Release workflow manually with `dry-run: true` (the
+default). It builds and runs `pnpm --recursive --filter='!create-uptimizr' publish --dry-run
+--no-git-checks`. No approval, no token, no registry writes.
 
 Protections in effect:
 
-- **Manual dispatch + dry-run default** — no accidental releases.
+- **`decide` gate** — the publish job only runs for a commit with no pending changesets and a
+  version missing from npm, and a manual dispatch defaults to a dry run.
 - **`npm-production` environment** — required reviewer approval gates the OIDC publish so no other
   job or workflow (including dry runs) can publish.
 - **npm Trusted Publishing + provenance (OIDC)** — `id-token: write` + `NPM_CONFIG_PROVENANCE`
@@ -273,8 +289,9 @@ bumps need no manual step.
 ### `create-uptimizr` is published manually (not via Changesets)
 
 `create-uptimizr` is the only published package that is **excluded from the automated release**.
-It's listed under `ignore` in [`.changeset/config.json`](./.changeset/config.json), so
-`changeset publish` never versions or publishes it. There are two reasons:
+It's listed under `ignore` in [`.changeset/config.json`](./.changeset/config.json), so Changesets
+never versions it, and the Release workflow leaves it out of `pnpm publish`
+(`--filter='!create-uptimizr'`). There are two reasons:
 
 - It is **unscoped** (`create-uptimizr`, not `@uptimizr/create-uptimizr`), so it falls outside the
   `@uptimizr` scope that the automated OIDC release publishes.

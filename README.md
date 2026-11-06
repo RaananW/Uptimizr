@@ -46,8 +46,8 @@ wipes everything. From source, run it with `pnpm dev:web` (demo on `http://local
   (`COLLECTOR_STORE=mssql`) for shops standardized on SQL Server / Azure SQL, or the **ClickHouse** scale tier
   (`COLLECTOR_STORE=clickhouse`) for high-volume ingestion
   ([ADR 0002](./docs/adr/0002-database.md))
-- **3D connectors:** Babylon.js, Babylon Lite, three.js, react-three-fiber, PlayCanvas, and
-  A-Frame (WebXR)
+- **3D connectors:** Babylon.js, Babylon Lite, three.js, react-three-fiber, PlayCanvas, A-Frame
+  (WebXR), and Unity, Godot and Unreal web exports
 - **Privacy:** cookieless / GDPR-first by default ([ADR 0003](./docs/adr/0003-privacy-model.md))
 
 ## Repository layout
@@ -59,13 +59,14 @@ oss/        Open-source product (Apache-2.0)
   packages/   schema, sdk-core, replay, react (embeddable panels), heatmap,
               create-uptimizr (scaffolder);
               the agent layer: metrics (semantic metric registry), agent-core (generated read-tool
-              catalog + agent loop), mcp (read-only MCP server), agent-eval (private evaluation
+              catalog + agent loop), mcp (MCP server), agent-eval (private evaluation
               harness, not published);
               the stores: db (DuckDB + dialect-agnostic contracts), db-postgres, db-mssql and
               db-clickhouse (optional);
               and the connectors: sdk-babylon, sdk-babylon-lite, sdk-three, sdk-r3f, sdk-playcanvas,
               sdk-aframe, plus the web-export tier (web-export foundation + unity, godot, unreal)
-examples/   playground — multi-engine demo scene for end-to-end testing
+examples/   playground — multi-engine demo scene for end-to-end testing;
+            godot-web-export and unity-web-export — engine sample projects
 infra/      docker-compose for the optional ClickHouse, Postgres and SQL Server engines
 docs/       architecture, phase plans, and ADRs
 ```

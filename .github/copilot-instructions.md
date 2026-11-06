@@ -14,12 +14,13 @@ embedded DuckDB store.
 ## Non-negotiable rules
 
 1. **Storage seam:** the OSS collector self-hosts on a single embedded DuckDB file. Optional
-   ClickHouse/Postgres scale engines plug in behind the `@uptimizr/db` store contracts — keep
-   storage details behind those contracts so the store stays swappable. (ADR 0004 / ADR 0020)
+   Postgres, SQL Server and ClickHouse engines plug in behind the `@uptimizr/db` store contracts —
+   keep storage details behind those contracts so the store stays swappable. (ADR 0004 / ADR 0020)
 2. **Events live once** in `@uptimizr/schema` (Zod). Import event types; never redefine them.
    Keep events replay-complete (ordered, timestamped, `sessionId`-keyed).
 3. **Privacy first:** no client persistent IDs, no PII by default; visitor ID is a server-side
-   daily-rotating hash; raw session retention is opt-in. (ADR 0003)
+   daily-rotating hash; reading raw session streams through the API is opt-in, while events are
+   always stored. (ADR 0003)
 4. **TypeScript strict**, ESM, `import type` for types; validate external input with Zod at the
    boundary.
 5. **Thin backends:** keep logic in framework-agnostic packages. Fastify is the Phase 1 API
@@ -38,7 +39,8 @@ embedded DuckDB store.
 - Update or add docs/ADRs when behavior or decisions change.
 - Reflect any new feature/option/event/endpoint in the public docs site (`oss/apps/docs`) and
   `docs/integration.md` in the same change.
-- Add a **changeset** (`pnpm changeset`) for any change to a publishable `@uptimizr/*` package, and
+- Every PR needs a **changeset**: `pnpm changeset` for a change to a publishable `@uptimizr/*`
+  package, `pnpm changeset --empty` when nothing is released. Also
   add/extend a **Playwright E2E** under `examples/playground/e2e/` for any user-visible or
   full-stack change (capture → collector → dashboard/replay), per the `work-on-issue` skill.
 - When opening a pull request, populate every section of `.github/PULL_REQUEST_TEMPLATE.md`

@@ -13,7 +13,7 @@
 
 The replay timeline is delivered as **one JSON array**, fully buffered on **both** ends:
 
-- **Server** — [`getSessionEvents`](../../oss/packages/db/src/clickhouse/events.ts) runs
+- **Server** — [`getSessionEvents`](../../oss/packages/db-clickhouse/src/events.ts) runs
   `SELECT payload ... ORDER BY ts ASC`, reads **all** rows, `JSON.parse`s each `payload`,
   Zod-validates each, builds one array, and the Fastify route serializes it as a single JSON body.
 - **Client** — [`fetchSessionEvents`](../../oss/packages/replay/src/fetchSession.ts) downloads the

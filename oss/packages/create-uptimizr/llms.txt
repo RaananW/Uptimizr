@@ -9,7 +9,7 @@
 
 - [Package reference](./README.md): usage, optional features, choosing a store, the full flag table.
 - [Agent guide](./AGENTS.md): flags vs prompts, what is generated, and the rules an agent must follow.
-- [Collector CLI](../../apps/collector-server/README.md): `uptimizr init | serve | new-project | new-key | migrate | regions`.
+- [Collector CLI](../../apps/collector-server/README.md): `uptimizr init | serve | new-project | new-key | migrate | regions | agent | subscriptions`.
 - [Quickstart](https://uptimizr.com/docs/quickstart/) and [deploy guide](https://uptimizr.com/docs/deploy/collector/).
 - [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), open-core storage boundary (0020), distribution & self-host DX (0029).
 - [CONTRIBUTING](https://github.com/RaananW/Uptimizr/blob/main/CONTRIBUTING.md): why this package is published manually.

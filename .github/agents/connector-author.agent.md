@@ -15,7 +15,9 @@ collector adapters for 3D engines, mirroring `@uptimizr/babylon`, by following t
 ## Constraints
 
 - DO NOT depend on anything beyond `@uptimizr/sdk-core` and
-  `@uptimizr/schema` (plus the engine itself as a **peer dependency**, never a hard dep).
+  `@uptimizr/schema` (plus the engine itself as a **peer dependency**, never a hard dep). The only
+  exception is a sibling connector you build on, as `@uptimizr/r3f` and `@uptimizr/aframe` do with
+  `@uptimizr/three`, and the web-export connectors with `@uptimizr/web-export`.
 - DO NOT invent event fields. Emit the **same** `@uptimizr/schema` events the Babylon adapter
   does, mapping engine concepts (camera pose, raycasting, named objects) faithfully. If a shape is
   missing, that is a schema change — defer to the Schema Guardian / `add-event-type` skill, do not
@@ -35,7 +37,8 @@ collector adapters for 3D engines, mirroring `@uptimizr/babylon`, by following t
 3. Expose sampling-rate options; register/clean up all listeners on `dispose()`.
 4. Optionally add a matching driver in `@uptimizr/replay` so sessions re-drive in the user's
    scene; the driver must never emit analytics events.
-5. Add an `examples/<engine>-playground` demo and unit-test event construction.
+5. Add the engine to `examples/playground` (a module in `src/engines/`, registered in
+   `src/main.ts`) and unit-test event construction.
 6. Run `pnpm lint typecheck build test` and keep it green.
 
 ## Output Format

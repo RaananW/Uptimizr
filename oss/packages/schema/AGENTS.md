@@ -33,10 +33,10 @@ const batch = collectRequestSchema.parse(requestBody);
 `projectId`, `visitorId` (server-set, daily-rotating hash — clients omit it), `sessionId`
 (client-generated, in-memory), `ts` (epoch ms), `sdkVersion`, and optional `url` / `pageMeta`.
 
-## Event catalog (v1 `type` values)
+## Event catalog
 
-`session_start`, `session_end`, `frame_perf`, `camera_sample`, `pointer_move`, `pointer_click`,
-`mesh_interaction`, `asset_load`, `custom`.
+The canonical list of `type` values is `EVENT_TYPES` in `src/constants.ts` (29 types); the
+[README](./README.md#event-catalog-v1) describes each one.
 
 ## Config shapes (not events)
 

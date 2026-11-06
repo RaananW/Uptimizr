@@ -45,9 +45,8 @@ database. Postgres 14+ is supported (tested against 16).
 
 ## Scope
 
-- **Single-tenant only** — no `org_id`, no tenant isolation. The multi-writer
-  rollups and scale tuning remain the scale tier; this package is the
-  single-instance relational adapter.
+- **Single-tenant only** — no `org_id`, no tenant isolation. Daily rollups are
+  plain views recomputed at query time.
 - No stubbed features — the full analytics surface (heatmaps, perf percentiles,
   click↔gaze rays, funnels) returns results identical to DuckDB on the
   cross-engine parity fixtures.

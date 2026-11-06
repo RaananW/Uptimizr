@@ -43,7 +43,8 @@ wire frame (**left-handed, y-up**) at the emission boundary. The session is attr
 
 Captures camera pose → view-direction heatmap, pointer move/click (with optional raycast hit) →
 screen heatmaps, mesh picks → object engagement, and FPS → performance. Opt-in: mesh visibility,
-hover dwell, and resource sample.
+hover dwell, resource sample, and gaze. Frame perf carries FPS without percentiles or long-frame
+counts.
 
 ## First-person scenes (pointer lock)
 
@@ -86,6 +87,23 @@ to disable XR capture entirely. Name the objects you care about (`object3D.name`
 meaningful. Set `cameraType` if the structural guess is wrong: every `PerspectiveCamera` classifies
 as `free` (first-person), so pass `cameraType: "arc-rotate"` for orbit-style scenes.
 
+`xrCollector({ renderer, sampleMs?, capture?, raycast? })` is the collector `trackScene` registers,
+for a hand-built client.
+
+## Raycast probes
+
+| Helper                                         | Returns                                                                              |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `createSceneRaycaster(scene, camera)`          | `(ndcX, ndcY) => { point, name } \| undefined`, the default pointer probe.           |
+| `createGazeRaycaster(scene, camera, options?)` | `() => { point, name } \| undefined`. Options: `maxDistance`, `meshes`, `predicate`. |
+| `createXrRaycaster(scene, options?)`           | An XR ray probe. Options: `maxDistance`, `predicate`.                                |
+
+Objects named with the `uptimizr-` prefix are skipped. `threeCollector` takes a `raycast` option to
+replace the pointer probe (for example, to limit picking to a layer). `trackScene` does not.
+
+`trackScene` also takes `connector: { name?, version? }` to override the session's provenance, which
+is how `@uptimizr/r3f` attributes sessions to itself.
+
 ## Advanced
 
 For a custom transport, a `beforeSend` hook, or registering multiple collectors, compose the pieces
@@ -103,4 +121,6 @@ client.use(threeCollector({ scene, camera, renderer }));
 client.start({ device: readDeviceCaps(renderer) });
 ```
 
-See [sdk-core (advanced)](/docs/connectors/sdk-core/) for the full client API.
+`threeCollector` is also where the `meshVisibility`, `hoverDwell` and `resourceSample` options
+objects go; `trackScene` does not accept them. See
+[sdk-core (advanced)](/docs/connectors/sdk-core/) for the full client API.
