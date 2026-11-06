@@ -6,11 +6,13 @@ description: Add a new 3D engine connector (e.g. three.js, PlayCanvas, react-thr
 # Skill: Add a new 3D engine connector
 
 Create a new collector adapter for a 3D engine, mirroring `@uptimizr/babylon`. Connectors
-depend only on `@uptimizr/sdk-core` and `@uptimizr/schema`.
+depend only on `@uptimizr/sdk-core` and `@uptimizr/schema`. The exceptions build on a sibling
+connector: `@uptimizr/r3f` and `@uptimizr/aframe` on `@uptimizr/three`, and the web-export
+connectors on `@uptimizr/web-export`.
 
-> Scope: the first public release ships connectors for Babylon, three.js, PlayCanvas, R3F, and
-> A-Frame (Phase 1, see `docs/phases`). Engines beyond that set (Wonderland, Needle, Spline, raw
-> WebGPU/WebGL) are follow-ups — confirm intent before building one.
+> Scope: connectors ship for Babylon, Babylon Lite, three.js, PlayCanvas, R3F and A-Frame, plus
+> the web-export tier for Unity, Godot and Unreal (ADR 0045). Engines beyond that set (Wonderland,
+> Needle, Spline, raw WebGPU/WebGL) are follow-ups — confirm intent before building one.
 
 ## Steps
 
@@ -80,12 +82,14 @@ depend only on `@uptimizr/sdk-core` and `@uptimizr/schema`.
      re-driven in the user's own scene.
 
 8. **Example + tests.**
-   - Add an `examples/<engine>-playground` demo wired to the collector.
+   - Add the engine to the shared playground: a module under `examples/playground/src/engines/`
+     registered in `examples/playground/src/main.ts`.
    - Unit-test event construction; ensure `pnpm lint typecheck build test` passes.
 
 ## Checklist
 
-- [ ] New `@uptimizr/<engine>` package depends only on sdk-core + schema (+ engine peer dep)
+- [ ] New `@uptimizr/<engine>` package depends only on sdk-core + schema (+ engine peer dep), or a
+      sibling connector it builds on
 - [ ] Emits standard schema events; no schema redefinition
 - [ ] World-space data normalized to the canonical frame; `connector` provenance emitted (ADR 0018)
 - [ ] `graphics` backend metadata emitted on `session_start` (ADR 0021)
@@ -93,4 +97,4 @@ depend only on `@uptimizr/sdk-core` and `@uptimizr/schema`.
 - [ ] WebXR guardian/boundary proximity emitted for bounded reference spaces — on-device only, no
       room geometry transmitted (ADR 0048); recommended `nearMeters` default 0.5 m
 - [ ] Optional replay driver added
-- [ ] Example playground + tests; CI green
+- [ ] Playground engine + tests; CI green

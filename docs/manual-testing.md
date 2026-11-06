@@ -1,7 +1,7 @@
 # Manual testing guide (Phase 1, OSS)
 
 End-to-end manual verification of the OSS collector: create the single DuckDB store,
-ingest events, view them in the dashboard, generate real 3D events from the Babylon
+ingest events, view them in the dashboard, generate real 3D events from the
 playground, and replay a session. The OSS path needs **no external database service**
 (ADR 0020) — events and metadata live in one `.duckdb` file.
 
@@ -15,15 +15,16 @@ playground, and replay a session. The OSS path needs **no external database serv
 - The collector ingests batches (`POST /api/v1/collect`, body `{ schemaVersion, events }`) and serves aggregates
   (sessions, pointer/camera heatmaps, top meshes, perf).
 - The dashboard renders those aggregates.
-- The Babylon playground produces real camera/pointer/mesh/perf events.
-- Session replay re-drives a captured session (requires raw retention).
+- The playground produces real camera/pointer/mesh/perf events.
+- Session replay re-drives a captured session (requires `ENABLE_RAW_SESSION_RETENTION` and a
+  `query:raw` key).
 
 ## Prerequisites
 
 - Node 22, pnpm. **No Docker** for the OSS path; Docker is only needed
-  for the optional scale tier (ClickHouse + Postgres scale engines).
+  for the optional stores (ClickHouse, Postgres and SQL Server).
 - OSS ports free: `4318` (collector), `3000` (dashboard), `5173` (playground).
-- Scale-tier-only ports: `8123`/`9000` (ClickHouse), `5432` (Postgres), `1433` (SQL Server),
+- Optional-store ports: `8123`/`9000` (ClickHouse), `5432` (Postgres), `1433` (SQL Server),
   `8080` (Adminer). Each is overridable in `.env` via its `*_HOST_PORT` variable
   (`CLICKHOUSE_HTTP_HOST_PORT`, `CLICKHOUSE_NATIVE_HOST_PORT`, `POSTGRES_HOST_PORT`,
   `MSSQL_HOST_PORT`, `ADMINER_HOST_PORT`); the connection URLs follow it.
@@ -34,10 +35,11 @@ playground, and replay a session. The OSS path needs **no external database serv
 | ---------- | --------------------- | ----------------------------------- |
 | Collector  | http://localhost:4318 | Fastify ingestion + query API (OSS) |
 | Dashboard  | http://localhost:3000 | Next.js analytics UI (OSS)          |
-| Playground | http://localhost:5173 | Babylon demo scene (Vite)           |
-| ClickHouse | http://localhost:8123 | Scale-tier event store (HTTP)       |
-| Postgres   | localhost:5432        | Scale-tier metadata                 |
-| Adminer    | http://localhost:8080 | Scale-tier DB inspection UI         |
+| Playground | http://localhost:5173 | Multi-engine demo scene (Vite)      |
+| ClickHouse | http://localhost:8123 | Optional store (HTTP)               |
+| Postgres   | localhost:5432        | Optional store                      |
+| SQL Server | localhost:1433        | Optional store                      |
+| Adminer    | http://localhost:8080 | DB inspection UI for Postgres       |
 
 > Sections 1–7 cover the OSS collector on a single DuckDB file — no Docker.
 
@@ -58,8 +60,9 @@ filled in automatically by the seed step (step 2).
 > Env loading is automatic — no `source .env` needed. The collector and dashboard
 > `dev` scripts self-load the root `.env` via `dotenv`, the playground reads
 > `VITE_*` from it via Vite `envDir`, and the `db:*` helper scripts wrap their
-> command in `dotenv`. This means `pnpm dev` (start everything via Turborepo) and
-> the individual `pnpm dev:*` scripts both pick up `.env` automatically.
+> command in `dotenv`. This means `pnpm dev` (collector + dashboard via Turborepo),
+> `pnpm dev:stack` (adds the playground) and the individual `pnpm dev:*` scripts all
+> pick up `.env` automatically.
 
 ## 1. (OSS) No database service to start
 
@@ -72,8 +75,8 @@ The file is created by the migrate/seed step below at `DUCKDB_PATH` (default
 > tool's own cwd, so the seed and the collector would use different files and you'd hit
 > `401 invalid api key`. Override only with an **absolute** path.
 
-> Only the optional scale tier needs Docker (`pnpm stack:up`) for its
-> ClickHouse + Postgres scale engines.
+> Only the optional stores need Docker (`pnpm stack:up`): ClickHouse, Postgres and
+> SQL Server.
 
 ## 2. Migrate + seed a project
 
@@ -129,7 +132,7 @@ curl -s -X POST http://localhost:4318/api/v1/collect \
 
 # query it back (auth with the API key)
 curl -s http://localhost:4318/api/v1/perf -H "x-api-key: utk_..."
-# → {"samples":1,"avg_fps":60,...}
+# → [{"samples":1,"avg_fps":60,...}]
 ```
 
 ## 4. Start the dashboard
@@ -194,8 +197,9 @@ events — ADR 0006.)
 
 ## 7. Inspect the store directly (optional)
 
-The OSS store is a single DuckDB file. Inspect it with the DuckDB CLI (use a
-read-only connection so you don't take the single writer lock from the collector):
+The OSS store is a single DuckDB file. Inspect it with the DuckDB CLI. Read-only
+access beside a running collector is not guaranteed, so stop the collector first or
+inspect a copy of the file:
 
 ```bash
 duckdb -readonly ./data/uptimizr.duckdb \
@@ -203,13 +207,13 @@ duckdb -readonly ./data/uptimizr.duckdb \
 duckdb -readonly ./data/uptimizr.duckdb "SELECT id, name FROM projects"
 ```
 
-(The optional ClickHouse + Postgres scale stores are inspected via Adminer / the
-ClickHouse HTTP interface.)
+(The optional stores are inspected with Adminer for Postgres, the ClickHouse HTTP
+interface, or your usual SQL Server tooling.)
 
-## 10. Tear down
+## 8. Tear down
 
 The OSS path has nothing to stop beyond the dev processes — delete the `.duckdb`
-file to reset. For the optional scale engines:
+file to reset. For the optional stores:
 
 ```bash
 pnpm stack:down              # stop containers, keep data volumes
@@ -219,14 +223,13 @@ docker compose -f infra/docker/docker-compose.yml down -v
 
 ## Troubleshooting
 
-| Symptom                                         | Cause / fix                                                                                                                                                |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Collector exits immediately on start            | `VISITOR_HASH_SECRET` empty. Use the `pnpm dev:collector` script so `.env` is loaded, and ensure the value is set.                                         |
-| Dashboard/playground gets `401`                 | Missing/wrong `x-api-key`. Use the seeded `utk_...`.                                                                                                       |
-| Dashboard empty but collector has data          | Playground `VITE_PROJECT_ID` doesn't match the project the API key resolves to. They must be the same seeded project.                                      |
-| Browser CORS error                              | Add the origin to `COLLECTOR_CORS_ORIGINS` (`:3000` and `:5173` are included by default) and restart the collector.                                        |
-| `GET /api/v1/sessions/:id/events` returns `403` | `ENABLE_RAW_SESSION_RETENTION` is false. Set it true and restart the collector.                                                                            |
-| No rows in the store                            | Confirm `pnpm db:setup` ran and the collector flushed (batch interval ~3s).                                                                                |
-| `IO Error: Could not set lock on file` (DuckDB) | Another process holds the single-writer lock. Stop the other collector/CLI (or use `duckdb -readonly`) and retry.                                          |
-| Next build/prerender crash about `useContext`   | The `build`/`start` scripts pin `NODE_ENV=production`, so this shouldn't recur. If you invoke `next build` directly, prefix it with `NODE_ENV=production`. |
-| Port already in use                             | Set the matching `*_HOST_PORT` variable in `.env` and re-run `pnpm stack:up`; the connection URLs in `.env` follow it.                                     |
+| Symptom                                         | Cause / fix                                                                                                            |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Collector exits immediately on start            | `VISITOR_HASH_SECRET` empty. Use the `pnpm dev:collector` script so `.env` is loaded, and ensure the value is set.     |
+| Dashboard/playground gets `401`                 | Missing/wrong `x-api-key`. Use the seeded `utk_...`.                                                                   |
+| Dashboard empty but collector has data          | Playground `VITE_PROJECT_ID` doesn't match the project the API key resolves to. They must be the same seeded project.  |
+| Browser CORS error                              | Add the origin to `COLLECTOR_CORS_ORIGINS` (`:3000` and `:5173` are included by default) and restart the collector.    |
+| `GET /api/v1/sessions/:id/events` returns `403` | `ENABLE_RAW_SESSION_RETENTION` is false (set it true and restart the collector), or the key lacks `query:raw`.         |
+| No rows in the store                            | Confirm `pnpm db:setup` ran and the collector flushed (batch interval ~3s).                                            |
+| `IO Error: Could not set lock on file` (DuckDB) | Another process holds the single-writer lock. Stop the other collector/CLI and retry, or inspect a copy of the file.   |
+| Port already in use                             | Set the matching `*_HOST_PORT` variable in `.env` and re-run `pnpm stack:up`; the connection URLs in `.env` follow it. |

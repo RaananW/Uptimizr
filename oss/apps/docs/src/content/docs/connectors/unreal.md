@@ -4,7 +4,7 @@ description: Instrument an Unreal Engine web export with the @uptimizr/unreal co
 ---
 
 The Unreal Engine (web export) connector. Unreal renders into a `<canvas>` via
-WebAssembly, so it is built on the [web-export foundation](/connectors/web-export) and
+WebAssembly, so it is built on the [web-export foundation](/docs/connectors/web-export/) and
 works in two tiers: a **JS-only tier** (no engine code — pointer heatmaps, FPS, JS
 errors) and a **bridged tier** (a thin copy-in shim adds camera pose, world-space
 picks, and replay).
@@ -45,7 +45,8 @@ await client.stop("manual");
 `trackUnreal` creates the client, registers the JS-only tier collector, exposes the
 engine `bridge` (default `window.__uptimizr_unreal__`), and starts the session with
 Unreal's connector provenance. The JS-only tier captures immediately; wire the
-engine-side shim to `bridge` to add camera pose, picks, and replay.
+engine-side shim to `bridge` to add camera pose, picks, and replay. On a hand-built
+client, register `unrealCollector()` instead.
 
 ## Engine-side bridge
 
@@ -72,7 +73,8 @@ frame in `connector.coordinateSystem`.
 ## Capture
 
 JS-only tier: pointer move/click → screen heatmaps, FPS / long frames → performance,
-JS errors. Bridged tier: camera pose → view-direction heatmap, world-space picks →
+JS errors (on by default; see [web-export options](/docs/connectors/web-export/#options)).
+Bridged tier: camera pose → view-direction heatmap, world-space picks →
 object engagement, scene proxy, and replay.
 
 ## Privacy

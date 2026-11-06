@@ -10,7 +10,10 @@ cost and attention actually land.
 
 The perf channel samples on a slow timer (default ≈0.5 Hz; tune via
 [`sampling.perf`](/docs/guides/configuration/#capture-fidelity-sampling--preferred)). Beyond
-`fps` / `frameTimeMs` / `drawCalls`, each sample reports percentiles and resolution over the window:
+`fps` / `frameTimeMs` / `drawCalls`, a sample can report percentiles and resolution over the window.
+The percentiles and `longFrames` come from Babylon and web exports; three.js, PlayCanvas and Babylon
+Lite report FPS without them, so `/api/v1/perf/frame-time`, `/api/v1/perf/jank` and the `jank_rate`
+health factor have no data on those engines.
 
 | Field                              | Meaning                                                                                             |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------- |
@@ -59,8 +62,21 @@ cost the scene asks of the device_ on a slow timer (default every 15 s), separat
 trackScene(scene, {
   // ...
   capture: { resourceSample: true },
-  resourceSample: { intervalMs: 15000 }, // one footprint sample per window (default)
 });
+```
+
+To change the cadence, pass a `resourceSample` object to the connector's collector on a
+[hand-built client](/docs/guides/configuration/#advanced-custom-client--beforesend); `trackScene`
+does not take it:
+
+```ts
+client.use(
+  babylonCollector({
+    scene,
+    capture: { resourceSample: true },
+    resourceSample: { intervalMs: 15000 }, // one footprint sample per window (default)
+  }),
+);
 ```
 
 Each `resource_sample` carries whatever the engine can cheaply report, all optional: `textureBytes`,
@@ -69,10 +85,12 @@ Each `resource_sample` carries whatever the engine can cheaply report, all optio
 hardware.
 
 Coverage differs by engine (the SDK never mutates the engine): **Babylon** reports `triangles` (active
-indices ÷ 3) and `vertices`; **three.js** reports `triangles` (`renderer.info.render.triangles`).
-`jsHeapBytes` comes from `performance.memory` — **Chromium-only**, omitted elsewhere rather than zeroed.
-Resident `textureBytes` / `geometryBytes` aren't on either engine's public surface, so they're left
-unset; the read API's averages ignore unreported metrics (an absent metric never reads as `0`).
+indices ÷ 3) and `vertices`; **three.js** reports `triangles` (`renderer.info.render.triangles`);
+**PlayCanvas** reports `triangles` (`app.stats.frame.triangles`); **Babylon Lite** reports only
+`jsHeapBytes`. `jsHeapBytes` comes from `performance.memory` — **Chromium-only**, omitted elsewhere
+rather than zeroed. Resident `textureBytes` / `geometryBytes` aren't reported by any connector, so
+they're left unset; the read API's averages ignore unreported metrics (an absent metric never reads
+as `0`).
 
 ## Shader compile stalls (`compile_stall`)
 

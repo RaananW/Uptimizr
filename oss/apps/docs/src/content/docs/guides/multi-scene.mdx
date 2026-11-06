@@ -38,8 +38,11 @@ client.setScene("level-2");
 
 `setScene` emits an ordered `scene_change` marker and stamps the new `sceneId` onto **every
 subsequent event**, so gaze/click heatmaps, mesh interactions, performance, and custom events are
-all attributable to the scene that was active when they happened. Filter any read endpoint by the
-`scene` query param to get per-scene results.
+all attributable to the scene that was active when they happened. Filter a read endpoint with the
+`scene` query param to get per-scene results. Not every endpoint takes it, and one that does not
+ignores it: `/api/v1/meshes/top`, `/api/v1/perf`, `/api/v1/perf/render-scale` and
+`/api/v1/perf/resources` are project-wide. Use `/api/v1/meshes/sources` and `/api/v1/perf/by-scene`
+for those questions.
 
 :::note[Scene id, not engine scene]
 `sceneId` is a stable analytics label _you_ choose (`"level-2"`, `"sku-chair-walnut"`,
@@ -166,11 +169,11 @@ without a proxy `nearestMesh` is `null` and the summary says so in its caveats. 
 panels use the same pair to name a voxel on hover. See
 [Labelled spatial clusters](/docs/api/query/#labelled-spatial-clusters).
 
-Registering regions is an **authenticated write** — like the scene-proxy upload it uses your project
-API key, which must hold the `annotate` capability (`uptimizr new-key <projectId> --capabilities
-annotate`), so do it from a build script, a server-side route, or a developer-only path, never from
-a public bundle. There is also a CLI, which writes straight to the store and needs no key:
-`uptimizr regions set lobby --file regions.json`. See
+Registering regions is an **authenticated write**: the key must hold the `annotate` capability
+(`uptimizr new-key <projectId> --capabilities annotate`). The scene-proxy upload needs only `query`.
+Either way, do it from a build script, a server-side route, or a developer-only path, never from a
+public bundle. There is also a CLI, which writes straight to the store and needs no key:
+`uptimizr regions set lobby --file regions.json --project <projectId>`. See
 [Scene regions](/docs/api/query/#scene-regions).
 
 ## In the dashboard
@@ -200,4 +203,4 @@ target can switch levels/models in lockstep by reacting to the `scene_change` ev
 
 - [Custom events & input](/docs/guides/events/) — the rest of the client API (`track`, `trackInput`).
 - [Sessions & lifecycle](/docs/guides/sessions/) — how a session starts, flushes, and ends.
-- [Query endpoints](/docs/api/query/) — filtering aggregates by `sceneId`.
+- [Query endpoints](/docs/api/query/) — filtering aggregates by `scene`.

@@ -8,8 +8,9 @@ how the shipped pieces connect today. For the rationale behind individual decisi
 Three properties shape everything below:
 
 1. **One collector is the only gateway to the data.** Dashboards, replay, the in-browser assistant
-   and AI agents all read the same HTTP API with the same auth and scoping. Nothing opens the store
-   directly ([ADR 0005](../adr/0005-backend-framework.md)).
+   and AI agents all read the same HTTP API with the same auth and scoping. None of them opens the
+   store directly; only the operator's own `uptimizr` CLI does
+   ([ADR 0005](../adr/0005-backend-framework.md)).
 2. **Events are defined once**, in `@uptimizr/schema`, and validated at every boundary.
 3. **Zero infrastructure to start.** The default store is an embedded DuckDB file — no external
    database service ([ADR 0020](../adr/0020-open-core-storage-boundary.md)).
@@ -32,16 +33,16 @@ flowchart LR
     Store[("store (one of)<br/>DuckDB (default) · Postgres<br/>SQL Server · ClickHouse")]
     Reg["@uptimizr/metrics<br/>semantic metric registry"]
     Collector --> Store
-    Reg -. "declares the 69 served aggregations" .-> Collector
+    Reg -. "declares the 76 served metrics" .-> Collector
   end
 
   Collector -- "aggregate query API" --> Dashboard["dashboard (Next.js)<br/>+ @uptimizr/react panels"]
   Collector -- "SSE live stream / presence" --> Dashboard
-  Collector -- "GET /sessions/:id/events<br/>(query:raw + retention)" --> Replay["@uptimizr/replay<br/>re-drive in the user's own scene"]
+  Collector -- "GET /sessions/:id/events<br/>(query:raw + ENABLE_RAW_SESSION_RETENTION)" --> Replay["@uptimizr/replay<br/>re-drive in the user's own scene"]
 
   subgraph Agents["Agent layer"]
     AgentCore["@uptimizr/agent-core<br/>generated tool catalog"]
-    Mcp["@uptimizr/mcp<br/>read-only MCP server (stdio)"]
+    Mcp["@uptimizr/mcp<br/>MCP server (stdio, or /mcp on the collector)"]
     Assistant["in-browser assistant<br/>(user's own model)"]
     AgentCore --> Mcp
     AgentCore --> Assistant
@@ -78,11 +79,11 @@ flowchart LR
 
 - **`collector-server` (Fastify)** — the one gateway. A keyless `POST /api/v1/collect` validates
   batches against `@uptimizr/schema` and enriches them (daily-rotating cookieless visitor hash,
-  coarse user-agent classification); the read side serves ~69 aggregate endpoints, the scene and
-  region registries, the SSE live stream, the raw replay timeline, an OpenAPI document, `whoami` and
-  the agent audit log. Protected by CORS, per-key and per-IP rate limiting, bounded bodies and
-  security headers. It stays thin: aggregation lives in the store packages, semantics in the
-  registry.
+  coarse user-agent classification); the read side serves 76 registry-backed read endpoints, the
+  query DSL, the scene and region registries, the SSE live stream, the raw replay timeline, an
+  OpenAPI document, `whoami` and the agent audit log. Protected by CORS, per-key and per-IP rate
+  limiting, bounded bodies and security headers. It stays thin: aggregation lives in the store
+  packages, semantics in the registry.
 - **Storage** — the same dialect-agnostic query contracts over four engines, selected with
   `COLLECTOR_STORE` ([ADR 0002](../adr/0002-database.md),
   [ADR 0019](../adr/0019-simplified-single-store-backend.md),
@@ -95,9 +96,9 @@ flowchart LR
   | `mssql`                | `@uptimizr/db-mssql`      | Shops standardised on SQL Server / Azure SQL.                                     |
   | `clickhouse`           | `@uptimizr/db-clickhouse` | High-volume ingestion; the scale tier.                                            |
 
-  `@uptimizr/db` also owns the migrations, the aggregation builders, and the result-envelope shaping
-  (`tableResult` / `summarizeRows`). A parity suite proves every optional store returns the same rows
-  as DuckDB for the same fixtures.
+  `@uptimizr/db` also owns the aggregation builders and the result-envelope shaping (`tableResult` /
+  `summarizeRows`); each store owns its own migrations. A parity suite proves every optional store
+  returns the same rows as DuckDB for the same fixtures.
 
 ### Consume — humans
 
@@ -161,16 +162,16 @@ after the first is **generated**:
 
 ```mermaid
 flowchart TD
-  Reg["<b>@uptimizr/metrics</b><br/>71 metric definitions — 69 served<br/>grain · column units · row JSON Schema<br/>filters · limits · interpretation · caveats · source channels"]
+  Reg["<b>@uptimizr/metrics</b><br/>78 metric definitions — 76 served<br/>grain · column units · row JSON Schema<br/>filters · limits · interpretation · caveats · source channels"]
   Tools["<b>@uptimizr/agent-core</b><br/>readTools: one typed GET-only tool per served metric"]
   OpenApi["<b>GET /api/v1/openapi.json</b><br/>OpenAPI 3.1 + x-uptimizr-* extensions"]
   Caps["<b>uptimizr://capabilities</b><br/>event types · tool catalog · parameter glossary · the whole registry"]
   Docs["docs tables + packaged AGENTS.md / llms.txt<br/>(pnpm gen:docs, CI-checked)"]
-  Mcp["<b>@uptimizr/mcp</b><br/>read-only MCP server (stdio)"]
+  Mcp["<b>@uptimizr/mcp</b><br/>MCP server (stdio, or /mcp on the collector)"]
   Asst["<b>in-browser assistant</b><br/>user's own local or hosted model"]
   Fmt["result envelopes<br/>full | table | <b>summary</b>"]
   Keys["scoped API keys<br/>query · query:raw · annotate · ingest<br/>per-key rate limits · agent_audit log"]
-  Eval["<b>@uptimizr/agent-eval</b> (private)<br/>48 questions × real collector × fixtures<br/>tool choice · arguments · accuracy vs a baseline"]
+  Eval["<b>@uptimizr/agent-eval</b> (private)<br/>84 questions × real collector × fixtures<br/>tool choice · arguments · accuracy vs a baseline"]
 
   Reg --> Tools
   Reg --> OpenApi
@@ -189,7 +190,7 @@ flowchart TD
 
 - **Metric registry — `@uptimizr/metrics`.** A dependency-light package (`zod` +
   `@uptimizr/schema`, deliberately **no** database driver, so `npx @uptimizr/mcp` does not drag a
-  ~37 MB DuckDB binding along) holding 71 metric definitions. Each declares what one row _is_, each
+  ~37 MB DuckDB binding along) holding 78 metric definitions. Each declares what one row _is_, each
   column's unit, the row's JSON Schema, accepted filters, row limits, interpretation notes, caveats
   and the capture channels that feed it. A CI test asserts every aggregation builder has a registry
   entry and that each endpoint's Zod querystring matches the declared filters, so adding an
@@ -200,10 +201,13 @@ flowchart TD
   OpenAPI 3.1 document (`GET /api/v1/openapi.json`, no key required), and `@uptimizr/mcp` renders it
   into the `uptimizr://capabilities` resource. `pnpm gen:docs` renders it into the docs tables and
   the packaged `AGENTS.md` / `llms.txt`, and `pnpm gen:docs:check` fails when any of them drift.
-- **Two clients, one catalog.** `@uptimizr/mcp` is a read-only MCP server over stdio; the dashboard's
-  in-browser assistant runs the user's **own** model (WebLLM locally, or a hosted backend with their
-  own key). Both consume `@uptimizr/agent-core`, so the agent surface is defined once and cannot
-  drift. Neither exposes ingestion, mutation or raw per-session tools.
+- **Three clients, one catalog.** `@uptimizr/mcp` is an MCP server over stdio, and the collector
+  hosts the same server at `/mcp` when `COLLECTOR_MCP_HTTP=1`; the dashboard's in-browser assistant
+  runs the user's **own** model (WebLLM locally, or a hosted backend with their own key); and
+  `uptimizr agent report` runs one read-only agent pass from the CLI. All consume
+  `@uptimizr/agent-core`, so the agent surface is defined once and cannot drift. None exposes
+  ingestion or can write an event. Project-metadata write tools are offered only to a key holding
+  `annotate`, and `session_narrative` only to one holding `query:raw`.
 - **Agent-shaped results.** Every aggregate read accepts `format=full | table | summary`. `summary`
   returns a bounded digest — ranked rows, a trend, or merged spatial clusters — with shares, a
   sample size, the metric's caveats and a templated `reading` sentence, capped at the metric's
@@ -216,8 +220,22 @@ flowchart TD
   own rate budget, bucketed on the key id, and every authenticated non-dashboard request is written
   to the agent audit log (route pattern, redacted params, row count, duration, status — refusals
   included) readable at `GET /api/v1/audit`.
+- **One query endpoint.** `POST /api/v1/query` is a closed DSL that runs any registry metric, with
+  comparison, `explain` and drill-down queries (ADR 0051 §3).
+- **Insight primitives.** `/api/v1/insights/*` serves baseline, movers, anomalies, significance and
+  a scene-health score, computed in pure TypeScript over other metrics (ADR 0051 §4).
+- **Project context and metadata.** `GET /api/v1/context` is the document an agent reads first.
+  Annotations, the glossary, saved analyses and pinned panel specs are the `annotate`-gated write
+  path; a panel spec is data, never code (ADR 0051 §5, §7).
+- **Session narrative.** `GET /api/v1/sessions/:id/narrative` compacts one session into a bounded
+  account, behind the same two gates as the raw stream (ADR 0051 §7).
+- **Subscriptions.** Standing predicates over a metric, evaluated in-process and delivered over SSE
+  or a signed webhook; webhook egress is off until allow-listed (ADR 0051 §6).
+- **Packaged skills.** Investigation methodologies ship as Agent Skills files in
+  `@uptimizr/agent-core` and back the MCP prompts, `uptimizr agent report --skill` and the
+  assistant's starter prompts (ADR 0051 §7).
 - **The catalog is measured.** `@uptimizr/agent-eval` (private to the repository — an instrument,
-  not a shipped package) asks 48 real analytics questions of an agent through the _real_ collector
+  not a shipped package) asks 84 real analytics questions of an agent through the _real_ collector
   over deterministic fixtures, scoring tool selection, argument correctness and answer accuracy
   against a committed baseline. That is what keeps the registry's descriptions honest: a description
   that makes a model choose badly fails CI rather than quietly producing a wrong answer.
@@ -226,9 +244,14 @@ flowchart TD
 
 Cookieless and GDPR-first by default ([ADR 0003](../adr/0003-privacy-model.md)). The client never
 generates a persistent identifier; the server derives a visitor hash from `hash(ip + ua + dailySalt)`
-that rotates daily, and raw IPs are never stored. Aggregates are the default surface — raw
-per-session retention (required for replay and live-follow) is **opt-in per deployment** and, since
-ADR 0051 §7, additionally gated on the `query:raw` key capability. Captured errors are redacted
+that rotates daily, and raw IPs are never stored. Aggregates are the default surface — reading raw
+per-session streams through the API (required for replay and live-follow) is **opt-in per
+deployment** with `ENABLE_RAW_SESSION_RETENTION` and, since ADR 0051 §7, additionally gated on the
+`query:raw` key capability. That flag gates access, not storage: events are always written to the
+store, including each event's full payload, because aggregates are computed from them at query
+time. With the flag off, raw streams cannot be read through the API but remain in the store,
+readable by anyone with access to the database file or server, and no automatic event deletion
+exists. Captured errors are redacted
 ([ADR 0013](../adr/0013-error-capture-privacy.md)) and AR/XR events carry only coarse buckets, never
 room geometry.
 

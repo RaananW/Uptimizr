@@ -16,12 +16,13 @@ The OSS storage contracts plus the single-file **DuckDB** store (ADR 0020):
   `panel_specs` (ADR 0051 §7).
 - **Engine-neutral contracts** — the dialect-agnostic query layer (`buildX` + `Dialect`), the
   neutral event-row mapper (`toEventRow`, `formatUtcTimestamp`), and the metadata types
-  (`Project`, `ApiKeyRecord`, `SceneRepresentation*`). An optional, separately-licensed
-  scale store composes these to drive its single-tenant ClickHouse + Postgres engines.
+  (`Project`, `ApiKeyRecord`, `SceneRepresentation*`). The optional stores compose these
+  contracts.
 
-This package carries **no ClickHouse/Postgres dependency**. The optional scale engines live in a
-separately-licensed scale store. Server/Node only — no DOM imports. Aggregations are
-**query-time** in v1 (no materialized views).
+This package carries **no ClickHouse/Postgres dependency**. The optional stores
+(`@uptimizr/db-postgres`, `@uptimizr/db-mssql`, `@uptimizr/db-clickhouse`) are Apache-2.0 packages
+in this repo. Server/Node only — no DOM imports. Aggregations are **query-time** in v1 (no
+materialized views).
 
 ## Install
 
@@ -63,8 +64,8 @@ every tool (collector + CLIs) shares one canonical file regardless of cwd.
 ## Rules for agents
 
 - **Migrations are forward-only and additive.** Append to `DUCKDB_MIGRATIONS`; never edit a
-  shipped migration (ADR 0007). The ClickHouse/Postgres scale migrations live alongside the
-  scale store.
+  shipped migration (ADR 0007). The Postgres, SQL Server and ClickHouse migrations live in their
+  own store packages and need the same change.
 - A new aggregation = a pure `buildX(projectId, opts, dialect)` builder returning a `QuerySpec`
   (`{ query, query_params }`), run with `runDuckdbQuery`. Keep builders pure, dialect-agnostic,
   and unit-tested without a live database; add a `PARITY_CASES` entry so both engines stay equal.
@@ -101,14 +102,15 @@ every tool (collector + CLIs) shares one canonical file regardless of cwd.
   parameters with `serializeAuditParams()` (drops credential-shaped keys, bounds the document)
   before they reach a store, and clamp the endpoint with `clampAuditTool()`.
 - **Single-writer store.** DuckDB allows only one read-write process per file; assume a single
-  collector per `.duckdb` file. Back up = copy the file. Multi-writer / horizontal scale is the
-  optional ClickHouse scale tier, not this package.
+  collector per `.duckdb` file. Back up = copy the file. Multi-writer / horizontal scale is an
+  optional Postgres, SQL Server or ClickHouse store, not this package.
 
 ## Metric registry (ADR 0051 §1)
 
 [`@uptimizr/metrics`](../metrics) is the semantic layer over the aggregations: one
-`MetricDefinition` per exported `build*` (plus two builder-less resource entries — `session_meta`,
-`scene_representation`) declaring id, title, agent-facing description, builder, collector endpoint,
+`MetricDefinition` per exported `build*` (plus three builder-less resource entries — `session_meta`,
+`session_narrative`, `scene_representation` — and five derived insight entries) declaring id, title,
+agent-facing description, builder, collector endpoint,
 `grain`, `dimensions`, `filters`, the output `row` Zod schema, per-column semantics (unit /
 measure / label / axis / `rateOf`), row `limits`, `interpretation`, `caveats`, `sourceChannels`
 (the ADR 0012 capture dials that must be on for the metric to have data), `related` metrics,
@@ -399,7 +401,7 @@ import {
 ## Cross-engine parity (ADR 0020)
 
 The dialect-agnostic aggregations (`buildX(projectId, opts, dialect)`) are rendered per engine
-(`duckdbDialect` for OSS, `clickhouseDialect` for the scale tier). A shared parity harness
+(`duckdbDialect`, `postgresDialect`, `mssqlDialect`, `clickhouseDialect`). A shared parity harness
 proves the engines produce equal analytics:
 
 - `PARITY_EVENTS` — one deterministic fixture event set exercising every aggregation (2D/3D
@@ -411,8 +413,8 @@ proves the engines produce equal analytics:
   below and returns a list of differences (empty = parity).
 
 OSS ships the **DuckDB-vs-golden** suite (`src/__tests__/duckdbParity.test.ts`, CI-runnable, no
-service). The scale tier reuses the same exported `PARITY_CASES`/golden to run
-**DuckDB-vs-ClickHouse**; two engines that both match the golden are in parity by transitivity.
+service). The optional store packages reuse the same exported `PARITY_CASES`/golden in their own
+parity suites; two engines that both match the golden are in parity by transitivity.
 
 **Tolerance rules** (see `src/parity/compare.ts`):
 

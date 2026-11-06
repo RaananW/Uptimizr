@@ -50,7 +50,7 @@ Get from an uninstrumented scene to your first heatmap in three steps.
    });
 
    // later, on teardown
-   tracker.dispose();
+   await tracker.stop("manual");
    ```
 
 3. **Open the dashboard** and watch heatmaps fill in as users explore your scene.

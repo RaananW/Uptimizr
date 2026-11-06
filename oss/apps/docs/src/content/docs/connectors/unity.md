@@ -4,7 +4,7 @@ description: Instrument a Unity WebGL export with the @uptimizr/unity connector.
 ---
 
 The Unity (WebGL export) connector. Unity compiles to WebAssembly and renders into a
-`<canvas>`, so it is built on the [web-export foundation](/connectors/web-export) and
+`<canvas>`, so it is built on the [web-export foundation](/docs/connectors/web-export/) and
 works in two tiers: a **JS-only tier** (no engine code — pointer heatmaps, FPS, JS
 errors) and a **bridged tier** (a thin copy-in shim adds camera pose, world-space
 picks, and replay).
@@ -138,7 +138,8 @@ records Unity's native frame in `connector.coordinateSystem`.
 ## Capture
 
 JS-only tier: pointer move/click → screen heatmaps, FPS / long frames → performance,
-JS errors. Bridged tier: camera pose → view-direction heatmap, world-space picks →
+JS errors (on by default; see [web-export options](/docs/connectors/web-export/#options)).
+Bridged tier: camera pose → view-direction heatmap, world-space picks →
 object engagement, scene proxy, and replay.
 
 ## Privacy

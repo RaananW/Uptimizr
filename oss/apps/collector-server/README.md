@@ -121,6 +121,22 @@ arguments, so an unattended, model-written document stays auditable. See
 [deploy guide](https://uptimizr.com/docs/deploy/collector/#scheduled-agent-reports)
 for a copy-pasteable weekly GitHub Actions workflow.
 
+### Standing questions: `uptimizr subscriptions`
+
+A **conditional subscription** is a standing predicate over a metric, evaluated in-process and
+delivered over SSE, a signed webhook, or both:
+
+```bash
+uptimizr subscriptions add --file fps-drop.json --project <projectId>
+uptimizr subscriptions list --project <projectId>
+uptimizr subscriptions test <id> --project <projectId>     # evaluate once; never delivers
+uptimizr subscriptions remove <id> --project <projectId>
+```
+
+`--project` may be replaced by `UPTIMIZR_PROJECT_ID`. Webhook delivery is off until
+`COLLECTOR_WEBHOOK_ALLOWED_HOSTS` names the hosts. See the
+[deploy guide](https://uptimizr.com/docs/deploy/collector/#subscriptions--webhooks).
+
 ### All-in-one: serve the dashboard too
 
 The collector can also serve a pre-built static dashboard from its own origin, so
@@ -166,8 +182,9 @@ the DuckDB file on a volume (DuckDB is single-writer — one collector process p
 file; back up by copying the file).
 
 > Installing as a dependency instead of via `npx`? `npm install @uptimizr/collector-server`
-> exposes the `uptimizr` CLI (`init` / `serve` / `new-project` / `migrate`) plus
-> the legacy `uptimizr-collector` bin; `@uptimizr/db` exposes the DuckDB-only
+> exposes the `uptimizr` CLI (`init` / `serve` / `new-project` / `new-key` / `migrate` /
+> `regions` / `agent` / `subscriptions`) plus the legacy `uptimizr-collector` bin;
+> `@uptimizr/db` exposes the DuckDB-only
 > `uptimizr-db-new-project` / `uptimizr-db-migrate`.
 
 ## Endpoints
@@ -200,8 +217,8 @@ the project the API key resolves to.
 - Sessions: `GET /api/v1/sessions`, `GET /api/v1/sessions/:id/meta`,
   `GET /api/v1/sessions/:id/trajectory`.
 - Heatmaps: `GET /api/v1/heatmaps/pointer`, `/camera`, `/position`, `/world`
-  (+ `/world/stats`), `/gaze` (+ `/gaze/stats`), `/mesh-uv`, `/click-rays`,
-  `/flow`, `/perf`, `/errors`.
+  (+ `/world/stats`), `/gaze` (+ `/gaze/stats`), `/boundary` (+ `/boundary/stats`),
+  `/mesh-uv`, `/click-rays`, `/flow`, `/perf`, `/errors`.
 - Mesh / interaction insights: `GET /api/v1/meshes/top`, `/sources`, `/trend`,
   `/dwell`, `/blind-spots`, `/kinds`, `/reachability`, plus `/clicks/dead`,
   `/clicks/rage`, `/hover/dwell`, `/camera-gestures`, `/interactions/sources`,
@@ -215,14 +232,29 @@ the project the API key resolves to.
 - Scene / path / funnel analytics: `GET /api/v1/scenes`, `/scene-representations`,
   `/timeseries`, `/event-counts`, `/coverage`, `/coverage/view-histogram`,
   `/paths`, `/camera/distance`, `/navigation`, `/backtrack`, `/funnel`,
-  `/scene-retention`, `/load-bounce`, `/variant-leaderboard`, `/xr/rotation`,
-  `/xr/sources`, `/xr/abandonment`, `/xr/locomotion`.
+  `/scene-retention`, `/load-bounce`, `/variant-leaderboard`,
+  `/vocabulary/custom-events`, `/xr/rotation`, `/xr/sources`, `/xr/abandonment`,
+  `/xr/locomotion`, `/xr/tracking`, `/xr/boundary-contacts`,
+  `/ar/placement/attempts`, `/ar/placement/surfaces`, `/ar/placement/time-to-place`.
+- Insights: `GET /api/v1/insights/baseline`, `/movers`, `/anomalies`,
+  `/significance`, `/scene-health`.
+- Query DSL: `POST /api/v1/query` (and `GET /api/v1/query?q=<url-encoded JSON>`)
+  runs any registry metric.
+- Project context: `GET /api/v1/context`, the document an agent reads first.
 - Scene representations: `PUT /api/v1/scenes/:sceneId/representation`,
   `GET /api/v1/scenes/:sceneId/representation`.
+- Scene regions: `GET` / `PUT /api/v1/scenes/:sceneId/regions`,
+  `GET /api/v1/scene-regions`.
+- Project metadata: `/api/v1/annotations`, `/api/v1/glossary`, `/api/v1/analyses`
+  and `/api/v1/panels`. Reads need `query`, writes need `annotate`.
+- Subscriptions: `/api/v1/subscriptions` and `/api/v1/subscriptions/stream`. Reads
+  need `query`, writes need `annotate`, and the stream uses a live token.
 - `GET /api/v1/sessions/:id/events` — ordered replay timeline. Raw per-session
   data, so it is **gated twice**: `ENABLE_RAW_SESSION_RETENTION` must be on
   **and** the key must hold `query:raw` (`403` otherwise). Supports buffered JSON
   or NDJSON streaming (`Accept: application/x-ndjson` / `?format=ndjson`).
+- `GET /api/v1/sessions/:id/narrative` — a bounded, compacted account of one
+  session, behind the same two gates.
 - Key identity + audit: `GET /api/v1/whoami` (the calling key's project, key id,
   capabilities, label and effective rate limit) and `GET /api/v1/audit`
   (`since`/`until`/`limit`) — see
@@ -235,8 +267,9 @@ Live endpoints:
   per-session follow can enforce `query:raw` without a header `EventSource`
   cannot send.
 - `GET /api/v1/live/presence`, `/live/stream`, `/live/sessions/:id` — SSE streams
-  authenticated with `?token=...`; the per-session follow is gated by raw
-  retention **and** `query:raw`, exactly like the replay timeline.
+  authenticated with `?token=...`; the per-session follow is gated by
+  `ENABLE_RAW_SESSION_RETENTION` **and** `query:raw`, exactly like the replay
+  timeline.
 
 Common query params include `since`, `until` (epoch ms), `bins`, `limit`, `scene`,
 `session`, `cameraMode`, `source`, and spatial `cellSize` / `region` where supported.
@@ -287,6 +320,7 @@ if `VISITOR_HASH_SECRET` is missing.
 | Query/read routes                         | `x-api-key`        | Read access is scoped to the project the key resolves to.                                                                                               |
 | `POST /api/v1/live/token`                 | `x-api-key`        | Exchanges a project query key for a short-lived SSE token.                                                                                              |
 | Live SSE routes (`/api/v1/live/*` `GET`s) | `?token=...`       | Browser `EventSource` cannot attach custom headers, so live streams use short-lived bearer tokens.                                                      |
+| `GET /api/v1/subscriptions/stream`        | `?token=...`       | The same short-lived live token, for the same reason.                                                                                                   |
 | `GET /health`                             | None               | Liveness probe.                                                                                                                                         |
 | `GET /api/v1/openapi.json`                | None               | API documentation, not data — a client needs it before it has a key. Rate-limited like every other route.                                               |
 | `/mcp` (when `COLLECTOR_MCP_HTTP=1`)      | `x-api-key`        | Hosted MCP. `Authorization: Bearer <key>` is accepted as an alias on this route only; the session id is never a credential on its own.                  |
@@ -295,18 +329,18 @@ if `VISITOR_HASH_SECRET` is missing.
 
 A key carries a **set of capabilities** (ADR 0051 §7), not a single role:
 
-| Capability  | Grants                                                                                                    |
-| ----------- | --------------------------------------------------------------------------------------------------------- |
-| `query`     | The aggregate analytics API, the scene registry, the live token exchange and `GET /api/v1/audit`.         |
-| `query:raw` | Raw per-session streams: `GET /api/v1/sessions/:id/events` and `GET /api/v1/live/sessions/:id`.           |
-| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events.   |
-| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys. |
+| Capability  | Grants                                                                                                          |
+| ----------- | --------------------------------------------------------------------------------------------------------------- |
+| `query`     | The aggregate analytics API, the scene registry, the live token exchange and `GET /api/v1/audit`.               |
+| `query:raw` | Raw per-session streams: `GET /api/v1/sessions/:id/events`, `/sessions/:id/narrative` and `/live/sessions/:id`. |
+| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events.         |
+| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys.       |
 
 `uptimizr init` / `uptimizr new-project` mint the operator's **owner** key —
 `query`, `query:raw` and `annotate`, labelled `owner` — because that key drives the dashboard,
 session replay, the live follow and scene regions. `query:raw` is inert on its own: the raw routes
 also need `ENABLE_RAW_SESSION_RETENTION`, so granting it up front turns nothing on and only saves
-re-minting the key when retention is switched on later.
+re-minting the key when that flag is switched on later.
 
 `uptimizr new-key` is how every **other** key is issued, and it still defaults to `query` alone —
 what an agent or MCP client should hold:
@@ -321,7 +355,7 @@ uptimizr new-key <projectId> --capabilities query,annotate --label "weekly-repor
 ```
 
 > **Breaking change.** `query:raw` is new, and the raw per-session endpoints now require **both**
-> `ENABLE_RAW_SESSION_RETENTION` **and** `query:raw` — previously retention alone was enough for
+> `ENABLE_RAW_SESSION_RETENTION` **and** `query:raw` — previously the flag alone was enough for
 > any `query` key. Existing keys keep working for every aggregate endpoint; a key that drives
 > session replay or live-follow must be re-minted with `--capabilities query,query:raw`. Keys minted
 > by `init` / `new-project` already carry it.
@@ -353,8 +387,8 @@ Because `POST /api/v1/collect` accepts unauthenticated input, every request is t
   the [_Ingestion payload bounds_](../../packages/schema/README.md#ingestion-payload-bounds)
   table). An oversized field rejects the batch, so a single request can't smuggle a huge blob or
   exhaust memory/storage. Connectors truncate locally before sending.
-- **Rate limited.** `@fastify/rate-limit` (`COLLECTOR_RATE_LIMIT_MAX` /
-  `COLLECTOR_RATE_LIMIT_WINDOW_MS`) caps requests per client.
+- **Rate limited.** `@fastify/rate-limit` caps requests per client, with a dedicated ingest budget
+  (`COLLECTOR_INGEST_RATE_LIMIT_MAX` / `COLLECTOR_INGEST_RATE_LIMIT_WINDOW_MS`).
 - **Residual risk.** A keyless endpoint can still receive spoofed or spammy events scoped to a
   known `projectId`. This is an accepted trade-off for cookieless, client-side capture; deployers
   who need stronger guarantees can front the collector with their own auth/WAF and tighten the
@@ -370,6 +404,14 @@ Environment-driven (see [`.env.example`](../../../.env.example)):
 - Privacy / replay / live: `VISITOR_HASH_SECRET` (required),
   `ENABLE_RAW_SESSION_RETENTION`, `LIVE_TOKEN_SECRET`, `LIVE_TOKEN_TTL_MS`,
   `LIVE_WINDOW_MS`, `LIVE_MAX_CONNECTIONS`, `LIVE_PRESENCE_INTERVAL_MS`.
+  `ENABLE_RAW_SESSION_RETENTION` gates reading raw per-session streams, not
+  storage: events are always written to the store, including each event's full
+  payload, because aggregates are computed from them at query time. With it off,
+  raw streams cannot be read through the API but remain in the store, readable
+  by anyone with access to the database file or server. No automatic event
+  deletion exists.
+- Subscriptions: `COLLECTOR_SUBSCRIPTIONS` (default on), `COLLECTOR_SUBSCRIPTIONS_MAX_CONCURRENT`
+  (default `4`), `COLLECTOR_WEBHOOK_ALLOWED_HOSTS` (empty = no webhook egress).
 - Rate limits: `COLLECTOR_RATE_LIMIT_MAX`, `COLLECTOR_RATE_LIMIT_WINDOW_MS`,
   `COLLECTOR_INGEST_RATE_LIMIT_MAX`, `COLLECTOR_INGEST_RATE_LIMIT_WINDOW_MS`
   (a key's own budget overrides the first pair).

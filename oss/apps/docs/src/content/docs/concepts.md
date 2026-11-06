@@ -65,5 +65,8 @@ returns percentile aggregates (median/p50, min, avg) so a "p95 frame time" is on
 
 Because the event stream is replay-complete, a recorded session can be **re-driven** inside your
 own scene — re-applying the visitor's camera, pointer, and interactions (and, opt-in, scene-actor
-motion). Replay reads the raw, ordered event stream, which requires the collector to run with
-`ENABLE_RAW_SESSION_RETENTION` enabled.
+motion). Replay reads the raw, ordered event stream through the API, which requires the collector to
+run with `ENABLE_RAW_SESSION_RETENTION` enabled and a key holding `query:raw`. Despite its name, the
+flag gates access, not storage: every event is always written to the store, and with the flag off
+the raw stream stays there but cannot be read through the API. See
+[Privacy & configuration](/docs/deploy/privacy/).

@@ -310,7 +310,7 @@ contract. Tier 1 (dashboard dome) stays for people who don't embed the overlay.
 > **Canvas interaction fix (shipped):** the embedded dashboard canvases previously bound the mouse
 > wheel to Babylon's orbit-zoom, which hijacked page scrolling. Wheel-zoom is now removed
 > (`disableWheelZoom`) in favor of explicit +/- `ZoomButtons`, so the page scrolls normally over a
-> canvas — see [`lib/orbitZoom.ts`](../../oss/apps/dashboard/src/lib/orbitZoom.ts).
+> canvas — see [`lib/orbitZoom.ts`](../../oss/packages/react/src/catalog/lib/orbitZoom.ts).
 
 ### 7.8 Position-aware flow ("B+"): standpoint → gaze → mesh for walkable scenes
 

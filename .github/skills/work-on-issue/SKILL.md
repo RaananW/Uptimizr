@@ -52,11 +52,11 @@ Match tests to what the change touches; a change is not done until it is covered
   coverage through any capture/store/replay paths it touches (see the `add-event-type` skill).
 - **Collector-server endpoints** → tests for the success path plus boundary failures
   (validation rejects, limits enforced, auth required where applicable).
-- **db** → unit-test the pure SQL/`QuerySpec` builders; real ClickHouse/Postgres integration runs
-  via `infra/docker`, not in unit tests.
+- **db** → unit-test the pure SQL/`QuerySpec` builders; real Postgres, SQL Server and ClickHouse
+  integration runs in each store's parity suite against `infra/docker`, not in unit tests.
 - **Replay** → a driver must never emit analytics; assert determinism (seek/reset) where relevant.
 - **SDK capture / dashboard UI** → unit-test event construction; add/extend an
-  `examples/*-playground` E2E (Playwright) when the change is user-visible behavior.
+  `examples/playground/e2e/` spec (Playwright) when the change is user-visible behavior.
 - **Major / user-visible features are not done without an E2E.** Any feature that adds a new
   user-facing capability or a new full-stack path (a new SSE/HTTP surface, a new dashboard panel
   or interaction, a new capture→collector→dashboard/replay flow) **must** add or extend a
@@ -89,7 +89,7 @@ Do a real diff review of your own change — `git --no-pager diff` — against t
 - **Naming & clarity:** names match existing conventions; no `any` without justification.
 
 If anything fails the review, fix it and re-review before moving on. For larger changes, consider
-spawning a separate review pass (the repo `code-review` skill) for a second look.
+a separate review pass for a second look.
 
 ## 6. Validate (the gate)
 
@@ -97,14 +97,15 @@ From the repo root:
 
 ```bash
 pnpm format:check
+pnpm gen:skills:check
 pnpm exec turbo run lint --ui=stream
 pnpm exec turbo run typecheck --ui=stream
 pnpm exec turbo run build --ui=stream
+pnpm gen:docs:check
 pnpm exec turbo run test --ui=stream
 ```
 
-All must pass. (CI is currently `workflow_dispatch`-only to conserve Actions minutes, so local
-validation is the real gate — do not skip it.) Use `--ui=stream` for readable logs.
+All must pass. Use `--ui=stream` for readable logs.
 
 ## 7. Commit & push
 
@@ -136,7 +137,7 @@ An issue is **done** only when all of the following hold — and the trail is re
 - [ ] Major/user-visible feature has a Playwright E2E under `examples/playground/e2e/` exercising
       the real round trip (incl. cross-origin and any retention/privacy-gated paths)
 - [ ] Self-review done against the step-5 checklist (correctness, scope, security, privacy, docs)
-- [ ] `pnpm format:check lint typecheck build test` all green
+- [ ] `pnpm format:check` and `pnpm lint typecheck build test` all green
 - [ ] Conventional commit referencing the issue; pushed; PR opened; no `--no-verify`
 - [ ] Docs/ADRs and packaged `AGENTS.md`/`llms.txt` updated where needed
 - [ ] Closing comment posted (what / commit / how tested / follow-ups); issue closed

@@ -1,6 +1,6 @@
 ---
 title: Install via CDN / script tag
-description: Use Uptimizr connectors with no build step — load a standalone bundle from a CDN or your collector and call window.Uptimizr.
+description: Use Uptimizr connectors with no build step — load a standalone bundle from a CDN or your own static host and call window.Uptimizr.
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -25,6 +25,9 @@ step-by-step recipes (Babylon Playground, CodePen/JSFiddle, the PlayCanvas Edito
 | PlayCanvas   | `uptimizr-playcanvas.global.js`   | `window.Uptimizr`    |
 | A-Frame      | `uptimizr-aframe.global.js`       | `window.UptimizrAframe` (registers the `uptimizr` component) |
 | Replay       | `uptimizr-replay.global.js`       | `window.UptimizrReplay` |
+| Unity        | `uptimizr-unity.global.js`        | `window.UptimizrUnity` (`trackUnity`) |
+| Godot        | `uptimizr-godot.global.js`        | `window.UptimizrGodot` (`trackGodot`) |
+| Unreal       | `uptimizr-unreal.global.js`       | `window.UptimizrUnreal` (`trackUnreal`) |
 
 :::note
 react-three-fiber is React-only — there is no global bundle. Use the [npm package](/docs/connectors/r3f/).
@@ -42,8 +45,8 @@ The standalone bundle is just a static file, so serve it however you like:
   <!-- or pin a version: .../npm/@uptimizr/babylon@0.1.0/dist/uptimizr-babylon.global.js -->
   ```
 
-- **From your own collector / static host** — self-host the file (any static host, object store, or
-  CDN works) and point the `<script>` at it. The local playground serves it at
+- **From your own static host** — self-host the file (any static host, object store, or CDN works)
+  and point the `<script>` at it. The collector does not serve it. The local playground does, at
   `/uptimizr-babylon.global.js`.
 
 ## Usage

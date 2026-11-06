@@ -4,7 +4,7 @@ description: Instrument a Godot 4 web export with the @uptimizr/godot connector.
 ---
 
 The Godot (web export) connector. Godot 4 compiles to WebAssembly and renders into a
-`<canvas>`, so it is built on the [web-export foundation](/connectors/web-export) and
+`<canvas>`, so it is built on the [web-export foundation](/docs/connectors/web-export/) and
 works in two tiers: a **JS-only tier** (no engine code — pointer heatmaps, FPS, JS
 errors) and a **bridged tier** (a thin copy-in shim adds camera pose, world-space
 picks, and replay).
@@ -33,7 +33,8 @@ await client.stop("manual");
 `trackGodot` creates the client, registers the JS-only tier collector, exposes the
 engine `bridge` (default `window.__uptimizr_godot__`), and starts the session with
 Godot's connector provenance. The JS-only tier captures immediately; wire the
-engine-side shim to `bridge` to add camera pose, picks, and replay.
+engine-side shim to `bridge` to add camera pose, picks, and replay. On a hand-built
+client, register `godotCollector()` instead.
 
 ## Engine-side bridge
 
@@ -93,7 +94,8 @@ coordinate math. The session records Godot's native frame in
 ## Capture
 
 JS-only tier: pointer move/click → screen heatmaps, FPS / long frames → performance,
-JS errors. Bridged tier: camera pose → view-direction heatmap, world-space picks →
+JS errors (on by default; see [web-export options](/docs/connectors/web-export/#options)).
+Bridged tier: camera pose → view-direction heatmap, world-space picks →
 object engagement, scene proxy, and replay.
 
 ## Privacy

@@ -52,12 +52,15 @@ Everything you need arrives through the `PanelContext`:
 | `filters`            | Raw filter state, for panels that need `cameraMode` etc. directly.                                                                                                         |
 | `surface`            | `"overview"` or `"session"`.                                                                                                                                               |
 | `sessionId`          | The inspected session id on the session surface.                                                                                                                           |
+| `session`            | Optional metadata of the inspected session: its recorded scene and camera type.                                                                                            |
 | `capabilities`       | Range-derived flags such as `hasFirstPerson`.                                                                                                                              |
-| `actions`            | Host actions: `selectSession`, `setTimeRange`, `setFilters`.                                                                                                               |
+| `actions`            | Host actions: `selectSession`, `setTimeRange`, `setFilters`, and the optional `clearTimeRange` that undoes a brush.                                                        |
 | `live`               | Live layer: `presence`, `enabled`, `status`, `sceneId`, and `subscribe(handler)` for the SSE firehose.                                                                     |
 | `settings`           | Resolved values of the panel's declared [`settings`](#per-panel-settings) (ADR 0039).                                                                                      |
 
 ### Driving the host from a panel
+
+A definition may also set `collapsible` / `defaultCollapsed` for the host chrome.
 
 Use `ctx.actions` to interact with the rest of the dashboard — e.g. open a session drill-down from
 a row click, or brush a time range:
@@ -211,9 +214,9 @@ real time when `ctx.live` shows it as live). The per-session live-follow hook `u
 (and the `LiveStatus` / `LiveSessionState` types) are exported from the package root for panels
 that drive their own tail.
 
-The host (`PanelHost`) filters the array by the active surface and each panel's `enabled` gate,
-then renders the bodies into the grid. There is nothing else to wire up — no manual placement in
-`page.tsx`.
+The host (`PanelHost`, part of the dashboard app rather than `@uptimizr/react`) filters the array by
+the active surface and each panel's `enabled` gate, then renders the bodies into the grid. There is
+nothing else to wire up — no manual placement in `page.tsx`.
 
 ## Loading panels at runtime
 
@@ -398,8 +401,75 @@ loader does.
 import { loadSpecPanels, mergePanels } from "@uptimizr/react";
 
 const { panels, errors } = await loadSpecPanels(api);
-const grid = mergePanels(builtinPanels, panels);
+const { panels: grid, errors: mergeErrors } = mergePanels(builtinPanels, panels);
 ```
 
 A project holds at most **50** panel specs — lower than the other metadata caps, because every
 spec is a query the dashboard runs on every load.
+
+## Embedding panels in your own app
+
+`@uptimizr/react` also works without the dashboard. Wrap your app once, then render any panel:
+
+```bash
+npm install @uptimizr/react react react-dom
+```
+
+```tsx
+import {
+  UptimizrProvider,
+  SessionsPanel,
+  PointerHeatmapPanel,
+  PerformanceSummaryPanel,
+} from "@uptimizr/react";
+
+export function Analytics({ apiKey }: { apiKey: string }) {
+  return (
+    <UptimizrProvider endpoint="https://collect.example.com" apiKey={apiKey}>
+      <PerformanceSummaryPanel />
+      <SessionsPanel onSelect={(id) => console.log(id)} />
+      <PointerHeatmapPanel params={{ since: Date.now() - 86_400_000, scene: "lobby" }} />
+    </UptimizrProvider>
+  );
+}
+```
+
+The key reaches the browser, so give an embed a read-only `query` key of its own.
+
+| Component                   | Props                                                                     |
+| --------------------------- | ------------------------------------------------------------------------- |
+| `UptimizrProvider`          | `endpoint`, `apiKey`.                                                     |
+| `SessionsPanel`             | `params?`, `onSelect?(sessionId)`, `selectedId?`.                         |
+| `PointerHeatmapPanel`       | `params?`, `gridSize?` (default `32`; must match the `bins` you request). |
+| `ViewDirectionHeatmapPanel` | `params?`, `gridSize?` (default `24`; must match the `bins` you request). |
+| `PerformanceSummaryPanel`   | `params?`.                                                                |
+| `PanelCard`                 | `title`, `subtitle?`, `style?`, `children`: the card chrome.              |
+| `PanelMessage`              | `children`: a muted status line for inside a card.                        |
+
+`params` is forwarded to the query API (`since`, `until`, `scene`, `session`, `source`, …).
+
+| Hook or class                                        | What it gives you                                                                        |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `useCollectorApi()`                                  | The shared `CollectorApi`. Throws outside a provider.                                    |
+| `useUptimizr()`                                      | `{ api, endpoint }`. Throws outside a provider.                                          |
+| `useOptionalUptimizr()`                              | The same, or `null` without a provider.                                                  |
+| `useAsync(loader, deps)`                             | `{ data, loading, error }` for a promise-returning loader.                               |
+| `usePanelData(panel, ctx, revision?)`                | Run a `PanelDefinition`'s `load()` with cancellation.                                    |
+| `useSessionTail(api, id, enabled, onEvent, onReset)` | Follow one session's live tail through a `CollectorApi`.                                 |
+| `new CollectorApi(baseUrl, apiKey, client?)`         | The typed query client. `client` is `"dashboard"` (default), `"assistant"` or `"agent"`. |
+
+`client` sets the `x-uptimizr-client` header, which is what the
+[audit log](/docs/api/overview/#agent-audit-log) skips for `"dashboard"`.
+
+To render the whole set, iterate `ossPanelCatalog` with your own chrome: each entry has `id`, `title`,
+`span` and `surfaces`, and you call `panel.load(ctx)` and `panel.render({ data, ctx })` with a
+`PanelContext` you supply. The catalog's panel bodies use the dashboard's Tailwind classes, and
+Tailwind v4 skips `node_modules`, so point it at the package or they render unstyled:
+
+```css
+@import "tailwindcss";
+@source "../node_modules/@uptimizr/react/dist/**/*.js";
+```
+
+`@babylonjs/core` and `@babylonjs/loaders` are optional peers, needed only when a 3D panel renders.
+To compose a 3D view outside the catalog, import it from `@uptimizr/react/panels-3d`.

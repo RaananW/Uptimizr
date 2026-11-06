@@ -154,7 +154,7 @@ The assistant is tuned for that reality:
   result, so ask for `summary` when the answer could be large. Prefer questions that map to a small
   result and pass `limit` / `scene` / a tight range as well.
 - **An evaluated tool catalog.** The tools the assistant hands your model are not just generated —
-  they are measured. A bank of ~48 real analytics questions is run against a deterministic fixture
+  they are measured. A bank of 84 real analytics questions is run against a deterministic fixture
   set through this same catalog whenever it changes, and each answer is scored on tool selection,
   argument correctness and accuracy, so a tool description that makes a model pick badly shows up as
   a failed case. The harness is in the repository at
@@ -276,7 +276,7 @@ import { AssistantPanel } from "@uptimizr/react/assistant";
 
 // Reuses an ambient <UptimizrProvider>, or pass the collector connection directly.
 export function Analytics() {
-  return <AssistantPanel collectorUrl="http://localhost:4318" apiKey="proj_…" />;
+  return <AssistantPanel collectorUrl="http://localhost:4318" apiKey="utk_…" />;
 }
 ```
 
@@ -340,7 +340,7 @@ import { useAssistant } from "@uptimizr/react/assistant";
 function MyAssistant() {
   const { messages, send, status, toolActivity, backend, setBackend, isReady } = useAssistant({
     collectorUrl: "http://localhost:4318",
-    apiKey: "proj_…",
+    apiKey: "utk_…",
     // Optional: pass an explicit backend, or omit to load the persisted choice.
     // With neither, `backend` stays `null` on first run (no auto-select) so you
     // can render your own chooser before anything loads.
@@ -450,7 +450,7 @@ Raw per-session retention is OFF: session timelines and replay are unavailable b
 ```
 
 The block is deliberately short (≈1.5 k characters at most, truncated on a line boundary if a
-project is unusually large), because the same prompt has to carry the tool schemas for a 1–3 B local
+project is unusually large), because the same prompt has to carry the tool schemas for a 7–8B local
 model. It is re-stamped on **every** send, so a context that arrives mid-conversation still reaches
 the model, and it sits after the current-time line so the original prompt is unchanged.
 

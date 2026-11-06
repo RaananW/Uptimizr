@@ -13,8 +13,8 @@ The authoritative endpoint reference is [docs/integration.md](../../../docs/inte
 §"HTTP API" → "Query (read)". This skill is the workflow and the gotchas; that table is the
 contract. The request/response shapes are also encoded in
 [oss/apps/collector-server/src/routes/query.ts](../../../oss/apps/collector-server/src/routes/query.ts)
-(Zod querystrings) and mirrored client-side by the dashboard's `CollectorApi`
-([oss/apps/dashboard/src/lib/api.ts](../../../oss/apps/dashboard/src/lib/api.ts)).
+(Zod querystrings) and mirrored client-side by `CollectorApi`
+([oss/packages/react/src/api.ts](../../../oss/packages/react/src/api.ts)).
 
 ## 1. Auth & tenant scoping (read this first)
 
@@ -22,12 +22,12 @@ contract. The request/response shapes are also encoded in
 - The project is resolved **from the key** server-side. Reads are always scoped to that project —
   any client-supplied project id is ignored, so a caller can only ever read its own data.
 - No key / unknown key → `401`. There is no cross-project query; that boundary is by design
-  (ADR 0003 privacy model, ADR 0009 ClickHouse tenant isolation). Do not add a `projectId` query
-  param to "widen" a query — it will be ignored.
+  (ADR 0003 privacy model). Do not add a `projectId` query param to "widen" a query — it will be
+  ignored.
 
 ```bash
 KEY=…   # a project API key
-BASE=https://collect.example.com   # or http://localhost:8787 locally
+BASE=https://collect.example.com   # or http://localhost:4318 locally
 curl -s -H "x-api-key: $KEY" "$BASE/api/v1/sessions?limit=20"
 ```
 
@@ -93,19 +93,21 @@ Read the full table in docs/integration.md; the high-frequency ones:
 - **Empty (200 + no rows) ≠ error.** It usually means the time window or `scene`/`session` filter
   excluded everything. Widen `since`/`until` and drop filters to confirm data exists, then narrow.
 - **Raw per-session events are gated.** `/api/v1/sessions/:id/events` (the replay stream) returns
-  `403` unless the collector runs with `ENABLE_RAW_SESSION_RETENTION` (ADR 0003). The aggregate
-  endpoints never expose raw events — don't reach for the raw stream to build an aggregate.
+  `403` unless the collector runs with `ENABLE_RAW_SESSION_RETENTION` **and** the key holds
+  `query:raw` (ADR 0003, ADR 0051 §7). The aggregate endpoints never expose raw events — don't reach
+  for the raw stream to build an aggregate.
 - **No pagination beyond `limit`.** List endpoints cap at `limit` (≤ 1000); there are no cursors.
   Narrow with `since`/`until`/`scene` instead of paging.
 
 ## 5. Prefer the MCP server for agents
 
-For an AI agent (or any MCP client) that should read analytics, use the read-only
+For an AI agent (or any MCP client) that should read analytics, use the
 [`@uptimizr/mcp`](../../../oss/packages/mcp/README.md) server instead of hand-rolling HTTP calls.
 It wraps each read endpoint above as a typed, GET-only tool and is configured with
-`UPTIMIZR_COLLECTOR_URL` + `UPTIMIZR_API_KEY`. It exposes **no** ingestion, mutation, or
-raw-event tools — it is exactly the surface this skill describes, with the auth and unit pitfalls
-handled for you (ADR 0017).
+`UPTIMIZR_COLLECTOR_URL` + `UPTIMIZR_API_KEY`. It exposes **no** ingestion tool and nothing that
+can write an event. Project-metadata write tools register only for a key holding `annotate`, and
+`session_narrative` only for one holding `query:raw`. The auth and unit pitfalls are handled for
+you (ADR 0017).
 
 ## 6. If you change the query surface
 
@@ -118,7 +120,8 @@ edit. Follow the `work-on-issue` skill and keep four things in lockstep:
    `docs/integration.md` §"Query (read)", the docs-site `api/query` page and the packaged
    `README`/`AGENTS.md`/`llms.txt` of `@uptimizr/mcp` and `@uptimizr/agent-core`; never hand-edit
    the text between their `generated:*` markers, and
-4. the matching tool in `oss/packages/mcp` (so agents see it) and `CollectorApi` in the dashboard.
+4. `CollectorApi` in `oss/packages/react/src/api.ts`. The agent and MCP tools are generated from
+   the registry, so they need no hand edit.
 
 `GET /api/v1/openapi.json` and the MCP `uptimizr://capabilities` resource are generated from the
 registry at runtime, so they need no follow-up edit — but check them when you change a row schema.

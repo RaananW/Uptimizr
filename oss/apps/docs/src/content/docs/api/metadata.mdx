@@ -1,6 +1,6 @@
 ---
 title: Metadata endpoints
-description: Annotations, the project glossary and saved analyses — the collector's only write path besides ingestion, behind the `annotate` capability.
+description: Annotations, the project glossary and saved analyses — project metadata written behind the `annotate` capability.
 ---
 
 Numbers alone do not carry what a team knows. These three endpoints are where that knowledge goes:
@@ -14,7 +14,8 @@ the answer it got.
 | `saved_analyses` | A titled question plus the conclusion drawn from it, so it need not be re-derived.            |
 
 :::note[Events stay read-only]
-This is the collector's only write path besides ingestion, and it writes **metadata, never events**.
+These endpoints write **metadata, never events**, like the collector's other non-ingestion writes
+(pinned panels, subscriptions, scene regions and proxies).
 Nothing here can write, alter or delete an analytics event: the query API remains read-only and
 aggregate-only. Every write needs a key holding the `annotate` capability, reads need `query`, and
 every write is recorded in the [agent audit log](/docs/api/overview/).

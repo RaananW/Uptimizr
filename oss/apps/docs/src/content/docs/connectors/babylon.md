@@ -25,7 +25,7 @@ const tracker = trackScene(scene, {
 });
 
 // later, on teardown
-tracker.dispose();
+await tracker.stop("manual");
 ```
 
 `trackScene` creates the client, registers the Babylon collector, reads device/GPU caps, and starts
@@ -34,7 +34,7 @@ the session. The return value exposes the session id, custom events, and lifecyc
 ```ts
 tracker.track("add_to_cart", { sku: "ABC-123" });
 tracker.setScene("level-2");
-tracker.dispose();
+await tracker.stop("manual");
 ```
 
 ## Choosing the camera
@@ -93,16 +93,20 @@ Off by default for privacy and cost — enable as needed:
 trackScene(scene, {
   projectId,
   endpoint,
-  capture: { hoverDwell: true, resourceSample: true, gaze: true },
+  capture: { meshVisibility: true, hoverDwell: true, resourceSample: true, gaze: true },
   meshVisibility: { meshes: ["product-hero"], windowMs: 5000 },
 });
 ```
 
-- `meshVisibility` — per-object dwell summaries (`mesh_visibility`).
+- `capture.meshVisibility` — per-object dwell summaries (`mesh_visibility`), tuned by the
+  `meshVisibility` options.
 - `capture.hoverDwell` — hover hesitation episodes (`hover_dwell`).
 - `capture.resourceSample` — GPU/memory footprint (`resource_sample`).
 - `capture.gaze` — world-space gaze hit points (`camera_sample.hitPoint`).
-- `captureErrors` — opt-in `runtime_error` capture (not auto-redacted).
+
+`trackScene` turns these on with their defaults. The `hoverDwell` and `resourceSample` options
+objects are `babylonCollector` options, and `captureErrors` is an `UptimizrClient` option; see the
+[configuration reference](/docs/guides/configuration/) for where each option goes.
 
 ## Scene proxy (3D heatmap backdrop)
 
@@ -117,6 +121,33 @@ const proxy = scanSceneProxy(scene, { sceneId: "lobby" });
 ```
 
 For a custom transport or a `beforeSend` hook, see [sdk-core (advanced)](/docs/connectors/sdk-core/).
+
+## WebXR
+
+XR capture is opt-in on Babylon: there is no scene-global XR handle, so you pass the experience
+returned by `createDefaultXRExperienceAsync()`. Controller/gaze **pose** becomes `pointer_move` with
+a world-space `ray`, the **trigger** becomes `pointer_click`, and trigger/squeeze become
+`mesh_interaction` when a probe resolves a hit. The headset pose keeps flowing as `camera_sample`.
+
+```ts
+const xr = await scene.createDefaultXRExperienceAsync();
+
+const client = trackScene(scene, {
+  projectId,
+  endpoint,
+  xr: { experience: xr, sampleMs: 250 },
+});
+```
+
+| `xr` option  | Default | Effect                                                                                                 |
+| ------------ | ------- | ------------------------------------------------------------------------------------------------------ |
+| `experience` | —       | **Required.** The `WebXRDefaultExperience`.                                                            |
+| `sampleMs`   | `250`   | Controller pose sampling interval.                                                                     |
+| `capture`    | all on  | `pointerMove`, `clicks`, `meshPicks`, `tracking` (tracking loss/recovery as `capability_change`).      |
+| `raycast`    | —       | `(origin, direction) => { point, name } \| undefined`, in Babylon's world frame. Needed for mesh hits. |
+
+The same options go to `babylonXrCollector({ experience, ... })` on a hand-built client, and
+`babylonBoundaryCollector` adds [guardian proximity](/docs/guides/events/#guardian--boundary-touch-heatmap-room-scale-vr-comfort).
 
 ## AR placement (WebXR "view in your room")
 

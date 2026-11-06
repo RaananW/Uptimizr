@@ -1,6 +1,6 @@
 ---
-description: Conventions for the SDK packages (sdk-core, sdk-babylon, replay) — browser runtime.
-applyTo: "oss/packages/{sdk-core,sdk-babylon,replay}/**"
+description: Conventions for the SDK packages (sdk-core, the connectors, replay) — browser runtime.
+applyTo: "oss/packages/{sdk-core,sdk-babylon,sdk-babylon-lite,sdk-three,sdk-r3f,sdk-playcanvas,sdk-aframe,replay}/**"
 ---
 
 # SDK conventions (client runtime)
@@ -14,8 +14,8 @@ small, dependency-light, and side-effect-free on import.
 - Import event types from `@uptimizr/schema`; never redefine them.
 - No analytics package may set cookies or create a persistent client-side identifier
   (ADR 0003). Sessions are in-memory only.
-- `sdk-babylon` and `replay` must treat `@babylonjs/core` as a **peer dependency**, never a hard
-  dependency, so they don't ship their own Babylon copy.
+- Connectors and `replay` must treat their engine as a **peer dependency**, never a hard
+  dependency, so they don't ship their own copy.
 
 ## `@uptimizr/sdk-core`
 
@@ -37,7 +37,8 @@ small, dependency-light, and side-effect-free on import.
 
 ## `@uptimizr/replay`
 
-- A framework-agnostic replay **core** plus a **Babylon driver**.
+- A framework-agnostic replay **core** plus **engine drivers** for Babylon, Babylon Lite, three.js
+  and PlayCanvas.
 - Given a session's ordered event stream (from `GET /api/v1/sessions/:id/events`) and the user's
   own scene, re-drive camera/pointer/picks faithfully against event timestamps.
 - Replay must not emit new analytics events (no feedback loop).
