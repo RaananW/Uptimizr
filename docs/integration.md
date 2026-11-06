@@ -96,6 +96,19 @@ document.head.appendChild(s);
 > `pnpm playground` prints this snippet pre-filled with a local project id and a
 > tunnel/localhost endpoint. See [run-local-stack](../.github/skills/run-local-stack/SKILL.md).
 
+With a bundler, none of this applies: install from npm and your bundler connects Uptimizr to your
+engine. Without one, pick by how the page loads code. Neither option includes the engine.
+
+- **A module page** (three.js, Babylon Lite): import the ESM bundle (`uptimizr-three.js`,
+  `uptimizr-babylon-lite.js`, `uptimizr-playcanvas.js`) and map the engine with an import map.
+  Nothing goes on `window`.
+- **A classic page** (PlayCanvas, A-Frame): load the global bundle. It finds the engine on the global
+  the engine's own script sets (`window.pc`, or `window.THREE` / `AFRAME.THREE`) when first used, so
+  script order doesn't matter, except that the A-Frame bundle must load after `aframe.min.js`. If the
+  global is missing, `trackScene` throws an error saying what to do.
+
+See [Install via CDN](../oss/apps/docs/src/content/docs/connectors/cdn.mdx) for the recipes.
+
 ### Web-export engines (Unity / Godot / Unreal)
 
 Engines that compile to **WebAssembly** and render into a `<canvas>` (Unity WebGL,

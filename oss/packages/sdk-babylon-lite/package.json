@@ -45,7 +45,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run bundle && pnpm run bundle:global",
     "bundle": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --external:@babylonjs/lite --minify --legal-comments=none --banner:js=\"/* @uptimizr/babylon-lite standalone bundle — Apache-2.0. Async-import into any page that already runs @babylonjs/lite; lite stays external (peer dependency, never bundled). */\" --outfile=dist/uptimizr-babylon-lite.js",
-    "bundle:global": "esbuild src/index.ts --bundle --format=iife --log-override:empty-import-meta=silent --global-name=Uptimizr --platform=browser --target=es2022 --external:@babylonjs/lite --minify --legal-comments=none --banner:js=\"/* @uptimizr/babylon-lite standalone bundle (global) — Apache-2.0. Inject via a <script> tag into a page that runs @babylonjs/lite; exposes window.Uptimizr. lite stays external (peer dependency, never bundled). */\" --outfile=dist/uptimizr-babylon-lite.global.js",
+    "bundle:global": "node ../../../scripts/bundle-global.mjs src/index.ts --engine=@babylonjs/lite --global-name=Uptimizr --banner=\"/* @uptimizr/babylon-lite standalone bundle (global) — Apache-2.0. Inject via a <script> tag into a page that runs @babylonjs/lite; exposes window.Uptimizr. lite is never bundled: it is read when first used from window.BabylonLite, which the page must set. */\" --outfile=dist/uptimizr-babylon-lite.global.js",
     "bundle:watch": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --external:@babylonjs/lite --sourcemap --watch --outfile=dist/uptimizr-babylon-lite.js",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",

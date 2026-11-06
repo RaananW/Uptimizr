@@ -78,15 +78,18 @@ start flowing to your collector — confirm them in the dashboard or the [query 
 
 :::tip
 Using the [Babylon Lite](/docs/connectors/babylon-lite/) build instead? Import from
-`@uptimizr/babylon-lite` (or point the script `src` at `uptimizr-babylon-lite.global.js`) — the call
-takes `camera` and `canvas` explicitly: `trackScene(scene, camera, canvas, { ... })`.
+`@uptimizr/babylon-lite` — the call takes `camera` and `canvas` explicitly:
+`trackScene(scene, camera, canvas, { ... })`. Lite is ESM-only, so on a page with no bundler use the
+ESM bundle with an import map; see the Babylon Lite tab below.
 :::
 
 ## CodePen, JSFiddle, Glitch & StackBlitz
 
 These sandboxes let you add `<script>` tags directly, so you can load the engine and the Uptimizr
-bundle side by side. Load the Uptimizr global **after** the engine, then call `trackScene` once the
-scene/camera/renderer exist.
+bundle side by side, then call `trackScene` once the scene/camera/renderer exist. The bundle stays
+engine-free and [looks your engine up on a global](/docs/connectors/cdn/#how-the-bundle-finds-your-engine)
+when it first needs it, so script order doesn't matter as long as the global is set before
+`trackScene`. Only A-Frame's bundle has to load after the engine.
 
 <Tabs syncKey="engine">
   <TabItem label="Babylon.js">
@@ -102,13 +105,36 @@ scene/camera/renderer exist.
   </script>
   ```
   </TabItem>
+  <TabItem label="Babylon Lite">
+  ```html
+  <script type="importmap">
+    { "imports": { "@babylonjs/lite": "https://cdn.jsdelivr.net/npm/@babylonjs/lite@1.38.1/dist/index.js" } }
+  </script>
+  <script type="module">
+    import * as BabylonLite from "@babylonjs/lite";
+    import { trackScene } from "https://cdn.jsdelivr.net/npm/@uptimizr/babylon-lite/dist/uptimizr-babylon-lite.js";
+
+    // ...create engine, scene and camera...
+    // Lite has no active camera, so pass camera + canvas explicitly.
+    trackScene(scene, camera, canvas, {
+      projectId: "your-project",
+      endpoint: "https://collect.example.com",
+    });
+  </script>
+  ```
+  </TabItem>
   <TabItem label="three.js">
   ```html
-  <script src="https://cdn.jsdelivr.net/npm/@uptimizr/three/dist/uptimizr-three.global.js"></script>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js" } }
+  </script>
   <script type="module">
+    import * as THREE from "three";
+    import { trackScene } from "https://cdn.jsdelivr.net/npm/@uptimizr/three/dist/uptimizr-three.js";
+
     // ...create scene, camera, renderer...
     // three has no active camera, so pass camera + renderer explicitly.
-    Uptimizr.trackScene(scene, camera, renderer, {
+    trackScene(scene, camera, renderer, {
       projectId: "your-project",
       endpoint: "https://collect.example.com",
     });
@@ -227,7 +253,9 @@ editor](https://threejs.org/editor/), Unity/Unreal WebGL exports, and similar to
 editor-specific Uptimizr plugin — once you have the exported project:
 
 - If it has a build step, follow the connector's [npm install](/docs/connectors/overview/).
-- If it's a static page, drop in the [CDN `<script>` bundle](/docs/connectors/cdn/).
+- If it's a static page, drop in the [CDN `<script>` bundle](/docs/connectors/cdn/), or on a
+  module page such as a three.js export, the
+  [ESM bundle with an import map](/docs/connectors/cdn/#es-modules-with-an-import-map).
 
 In both cases you call the same `trackScene(...)` once the engine's `scene` (and, for three.js,
 `camera` + `renderer`) exist.
