@@ -11,7 +11,7 @@
 - [Package reference](./README.md): the two tiers, `trackUnreal`, the best-effort caveat.
 - [Agent guide](./AGENTS.md): rules, the engine-side vs web-side split, export caveats.
 - [Engine-side bridge](./bridge/README.md): the copy-in `Uptimizr.h`/`Uptimizr.cpp`, viable web targets, the JS API.
-- [Unreal guide](https://uptimizr.com/docs/connectors/unreal/): the docs-site walkthrough.
+- [Unreal guide](https://www.uptimizr.com/docs/connectors/unreal/): the docs-site walkthrough.
 - [Shared foundation](../web-export/README.md): `@uptimizr/web-export`, the bridge contract and the JS-only tier.
 - [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data (see "Web-export engines").
 - [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), coordinate frame & connector provenance (0018), web-export engine connectors (0045).

@@ -22,7 +22,7 @@
   "bugs": {
     "url": "https://github.com/RaananW/Uptimizr/issues"
   },
-  "homepage": "https://uptimizr.com/docs/connectors/sdk-core/",
+  "homepage": "https://www.uptimizr.com/docs/connectors/sdk-core/",
   "author": "Raanan Weber (https://github.com/RaananW)",
   "publishConfig": {
     "access": "public"

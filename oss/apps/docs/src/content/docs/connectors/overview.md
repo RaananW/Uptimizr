@@ -1,6 +1,7 @@
 ---
-title: Connectors overview
-description: How Uptimizr connectors work, which engines are supported, and what they all capture.
+title: 3D engine connectors
+description: Which 3D engines Uptimizr supports, what every connector captures, and how to pick one for a WebGL, WebGPU or WebXR app.
+lastUpdated: 2026-11-06
 ---
 
 A **connector** is the engine-specific adapter that observes your 3D scene and emits events. Every

@@ -1,6 +1,7 @@
 ---
 title: Sessions & lifecycle
 description: How sessions start and end, the browser/engine lifecycle events captured, opt-in error capture, and anonymized session context.
+lastUpdated: 2026-11-06
 ---
 
 A **session** is one continuous visit to your 3D experience. It is the unit of replay and the key every

@@ -112,6 +112,10 @@ complete.
 - **Tests:** Vitest for unit/integration. **Major / user-visible features also require a
   Playwright E2E** under `examples/playground/e2e/` that drives the real browser → SDK → collector
   → dashboard/replay round trip (`work-on-issue` skill, step 4).
+- **Docs page dates:** every page under `oss/apps/docs/src/content/docs` carries a `lastUpdated`
+  frontmatter date, which drives the visible date and the sitemap's `lastmod`. Bump it when you
+  change what a page says, not for formatting or typo fixes. `git log` isn't used because shallow
+  clones would report the wrong date.
 - **Generated metric tables:** the endpoint/tool tables in `docs/integration.md`, the docs-site
   `api/query` page and the packaged `README`/`AGENTS.md`/`llms.txt` of `@uptimizr/mcp` and
   `@uptimizr/agent-core` are **generated** from the metric registry (ADR 0051) by

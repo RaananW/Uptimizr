@@ -21,7 +21,7 @@
   "bugs": {
     "url": "https://github.com/RaananW/Uptimizr/issues"
   },
-  "homepage": "https://uptimizr.com/docs/connectors/unreal/",
+  "homepage": "https://www.uptimizr.com/docs/connectors/unreal/",
   "author": "Raanan Weber (https://github.com/RaananW)",
   "publishConfig": {
     "access": "public"

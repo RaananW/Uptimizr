@@ -102,7 +102,7 @@ scenes, pointer/world/gaze/camera heatmaps, mesh attention and blind spots, dead
 navigation and desire lines, performance (FPS distribution, jank, compile stalls, per-device and
 per-scene), errors and stability, XR/AR comfort and placement, and conversion (funnel, scene
 retention, load→bounce, variant leaderboard). The full table is in the
-[MCP guide](https://uptimizr.com/docs/guides/mcp/), and each tool maps one-to-one to a documented
+[MCP guide](https://www.uptimizr.com/docs/guides/mcp/), and each tool maps one-to-one to a documented
 collector query endpoint (see the
 [integration guide](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md)).
 
@@ -238,7 +238,7 @@ Install the WebLLM runtime alongside the assistant if you use the local backend:
 npm install @mlc-ai/web-llm
 ```
 
-See the [assistant guide](https://uptimizr.com/docs/guides/assistant/) for the curated model list,
+See the [assistant guide](https://www.uptimizr.com/docs/guides/assistant/) for the curated model list,
 privacy trade-offs, and the provider CORS requirements.
 
 ## More

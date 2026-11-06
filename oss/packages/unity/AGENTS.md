@@ -115,6 +115,6 @@ See [`bridge/README.md`](./bridge/README.md) for the full contract and the JS AP
 
 - Package reference: [README.md](./README.md)
 - Engine-side bridge: [`bridge/README.md`](./bridge/README.md)
-- Unity guide: https://uptimizr.com/docs/connectors/unity/
+- Unity guide: https://www.uptimizr.com/docs/connectors/unity/
 - Shared foundation: [`@uptimizr/web-export`](../web-export/AGENTS.md)
 - Integration guide: https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md

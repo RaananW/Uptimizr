@@ -16,12 +16,15 @@ This is the marketing site. The documentation, and the machine-readable versions
   concepts and the core guides, without the per-engine and long reference pages.
 - [Complete documentation](https://www.uptimizr.com/docs/llms-full.txt): every docs page, inlined.
 - Per-topic sets, each one section of the docs inlined:
+  [Guides by goal](https://www.uptimizr.com/docs/_llms-txt/guides-by-goal.txt),
   [SDK and connectors](https://www.uptimizr.com/docs/_llms-txt/sdk-and-connectors.txt),
   [Capturing and using data](https://www.uptimizr.com/docs/_llms-txt/capturing-and-using-data.txt),
   [AI and agents](https://www.uptimizr.com/docs/_llms-txt/ai-and-agents.txt),
   [HTTP API](https://www.uptimizr.com/docs/_llms-txt/http-api.txt),
   [Deploy and self-host](https://www.uptimizr.com/docs/_llms-txt/deploy-and-self-host.txt).
 - [Docs site](https://www.uptimizr.com/docs/): the human-readable version.
+- [What is 3D analytics?](https://www.uptimizr.com/docs/learn/): the category explained, with
+  task-focused guides for three.js clicks, WebGL session replay, real-user FPS and configurators.
 - [Building agents on Uptimizr](https://www.uptimizr.com/docs/guides/agents/): the AI-first layer
   end to end — metric registry, discovery, MCP, result formats, scoped keys, evaluation.
 

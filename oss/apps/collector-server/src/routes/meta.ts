@@ -1185,7 +1185,7 @@ export function buildOpenApiDocument(
         "own people and agents write, require the `annotate` capability, and are audited. " +
         "Check each operation's `x-uptimizr-capability`.",
       license: { name: "Apache-2.0", identifier: "Apache-2.0" },
-      contact: { name: "Uptimizr", url: "https://uptimizr.com/docs/" },
+      contact: { name: "Uptimizr", url: "https://www.uptimizr.com/docs/" },
     },
     servers: [{ url: "/", description: "This collector." }],
     security: [{ apiKey: [] }],

@@ -9,7 +9,7 @@
 
 - [Package reference](./README.md): component + hook usage, options, replay, package boundary.
 - [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
-- [Connector guide](https://uptimizr.com/docs/connectors/r3f/): the docs-site walkthrough.
+- [Connector guide](https://www.uptimizr.com/docs/connectors/r3f/): the docs-site walkthrough.
 - [three connector](../sdk-three/README.md): the capture engine and the full option surface.
 - [Integration & API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md): track and query the data.
 - [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), input-source-agnostic events (0011), sampling & fidelity (0012), coordinate frame & connector provenance (0018).

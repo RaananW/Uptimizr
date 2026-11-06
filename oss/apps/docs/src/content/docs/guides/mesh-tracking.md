@@ -1,6 +1,7 @@
 ---
-title: Mesh & object tracking
-description: Capture which meshes users interact with, look at, and hesitate over — plus scene actors that move on their own.
+title: Track 3D object interactions
+description: Measure which meshes people click, look at and hesitate over, and find the objects nobody notices.
+lastUpdated: 2026-11-06
 ---
 
 Uptimizr can attribute interaction and attention to the **objects** in your scene, not just to screen

@@ -1,6 +1,7 @@
 ---
 title: Ingestion
 description: The collector's batched event ingestion endpoint.
+lastUpdated: 2026-11-06
 ---
 
 The SDK delivers events to a single ingestion endpoint. You normally never call this directly — a

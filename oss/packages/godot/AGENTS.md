@@ -122,6 +122,6 @@ is a no-op outside the Web export. Full setup, options and the bridge contract a
 
 - Package reference: [README.md](./README.md)
 - Engine-side bridge: [`bridge/README.md`](./bridge/README.md)
-- Godot guide: https://uptimizr.com/docs/connectors/godot/
+- Godot guide: https://www.uptimizr.com/docs/connectors/godot/
 - Shared foundation: [`@uptimizr/web-export`](../web-export/AGENTS.md)
 - Integration guide: https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md

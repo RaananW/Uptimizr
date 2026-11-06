@@ -11,8 +11,8 @@
 - [Package reference](./README.md): self-host, all endpoints, security, the full configuration list.
 - [Agent guide](./AGENTS.md): the CLI, capabilities, result envelopes, filters, stores, and the rules an agent must follow.
 - [HTTP API reference](https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md#4-http-api): keys, capabilities, rate limits, the audit log, storage backends.
-- [Query API guide](https://uptimizr.com/docs/api/query/): every read endpoint and the result formats.
-- [Deploy guide](https://uptimizr.com/docs/deploy/collector/): running it in production.
+- [Query API guide](https://www.uptimizr.com/docs/api/query/): every read endpoint and the result formats.
+- [Deploy guide](https://www.uptimizr.com/docs/deploy/collector/): running it in production.
 - [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): privacy model (0003), thin backends (0005), migrations (0007), consumer-facing agents (0017), open-core storage boundary (0020), distribution & self-host DX (0029), live sessions (0032), AI-first analytics layer (0051).
 
 ## Self-describe before you call

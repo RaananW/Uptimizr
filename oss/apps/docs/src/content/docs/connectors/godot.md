@@ -1,6 +1,7 @@
 ---
-title: Godot
-description: Instrument a Godot 4 web export with the @uptimizr/godot connector.
+title: Godot web export analytics
+description: Add click heatmaps and FPS tracking to a Godot 4 web export with @uptimizr/godot, plus camera, picks and replay through a small bridge.
+lastUpdated: 2026-11-06
 ---
 
 The Godot (web export) connector. Godot 4 compiles to WebAssembly and renders into a

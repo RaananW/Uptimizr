@@ -1,6 +1,7 @@
 ---
-title: Introduction
-description: What Uptimizr captures, how the pieces fit together, and the principles behind the project.
+title: What is Uptimizr?
+description: Uptimizr is open-source, self-hosted analytics for 3D scenes. See what it captures, how the pieces fit together and the principles behind it.
+lastUpdated: 2026-11-06
 ---
 
 Uptimizr is a **3D-scene analytics platform** — like web analytics, but for 3D apps. It captures

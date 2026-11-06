@@ -1484,7 +1484,7 @@ ray, flow, reachability and navigation reads are emulated with an indexed
 nearest-row lookup (`LATERAL` / `CROSS APPLY`), and the daily rollups are
 recomputed at query time; SQL Server additionally stores vector columns as JSON
 arrays and computes percentiles through a small T-SQL helper function. See the
-[self-hosting guide](https://uptimizr.com/docs/deploy/collector/) for the
+[self-hosting guide](https://www.uptimizr.com/docs/deploy/collector/) for the
 full walkthrough of each store.
 
 ### Ingestion
@@ -1524,7 +1524,7 @@ client by `COLLECTOR_INGEST_RATE_LIMIT_MAX` (default `300`) per
 > catalog) — plus one curated **prompt per packaged skill** that drives the existing tools.
 > The collector can also **host that same server itself** over MCP's Streamable HTTP transport (see
 > below), so a remote agent connects with a URL and a key. See the
-> [MCP guide](https://uptimizr.com/docs/guides/mcp/) for the full resource/prompt/tool reference.
+> [MCP guide](https://www.uptimizr.com/docs/guides/mcp/) for the full resource/prompt/tool reference.
 
 All query endpoints take `x-api-key` and the shared params `since`, `until`
 (epoch ms), and (where binned) `bins`. The aggregate endpoints also accept an
@@ -2121,7 +2121,7 @@ subscription. Webhook egress requires `COLLECTOR_WEBHOOK_ALLOWED_HOSTS`; a webho
 write-only and reads carry a masked placeholder. Bodies are signed
 `X-Uptimizr-Signature: sha256=<hex>` over the raw bytes, with `X-Uptimizr-Delivery` for dedupe,
 and retried 3× with backoff. See the
-[Subscriptions & webhooks](https://uptimizr.com/docs/deploy/collector/#subscriptions--webhooks)
+[Subscriptions & webhooks](https://www.uptimizr.com/docs/deploy/collector/#subscriptions--webhooks)
 guide.
 
 CLI: `uptimizr subscriptions list | add --file <sub.json> | remove <id> | test <id>`, each with
@@ -2973,7 +2973,7 @@ constant-time comparison. Exit codes: `0` success, `1` usage/configuration,
 
 Scheduling is yours — cron, a systemd timer or a GitHub Action. A copy-pasteable
 weekly workflow is in the
-[collector deployment guide](https://uptimizr.com/docs/deploy/collector/#scheduled-agent-reports).
+[collector deployment guide](https://www.uptimizr.com/docs/deploy/collector/#scheduled-agent-reports).
 
 ### Funnels (`/api/v1/funnel`) — caller-configured (ADR 0038, #78)
 
@@ -3280,5 +3280,5 @@ would break the rich `PanelContext`), so only point the manifest at sources you 
 allowlist is a guardrail, not a sandbox. Loading is resilient: an unreachable/invalid manifest, an
 incompatible `contract`, a blocked origin, a failed import, or a throwing `render` is isolated per
 panel and surfaced in a "panels failed to load" banner without breaking the grid. See the
-[Custom dashboard panels guide](https://uptimizr.com/docs/guides/custom-panels/) for a full
+[Custom dashboard panels guide](https://www.uptimizr.com/docs/guides/custom-panels/) for a full
 walkthrough.

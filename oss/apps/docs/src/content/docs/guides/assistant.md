@@ -1,6 +1,7 @@
 ---
 title: In-browser assistant (LLM)
 description: Ask natural-language questions of your 3D analytics with a client-side agent, powered by a local WebGPU model or your own hosted LLM key. No Uptimizr backend, no default data egress.
+lastUpdated: 2026-11-06
 ---
 
 The in-browser assistant lets anyone ask natural-language questions of their 3D analytics

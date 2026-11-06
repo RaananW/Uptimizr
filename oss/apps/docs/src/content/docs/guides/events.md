@@ -1,6 +1,7 @@
 ---
 title: Custom events & input
 description: Record your own domain events, capture keyboard/gamepad input actions, report capability fallbacks, and switch scenes within a session.
+lastUpdated: 2026-11-06
 ---
 
 The built-in channels cover pointer, camera, mesh, and performance. These APIs let your app contribute

@@ -1,6 +1,7 @@
 ---
-title: A-Frame
-description: Instrument an A-Frame (WebXR) scene with the @uptimizr/aframe connector.
+title: A-Frame analytics
+description: Add heatmaps, object tracking and WebXR controller capture to an A-Frame scene with the @uptimizr/aframe connector.
+lastUpdated: 2026-11-06
 ---
 
 The A-Frame (WebXR) connector. A-Frame renders three.js under the hood, so this package is a thin

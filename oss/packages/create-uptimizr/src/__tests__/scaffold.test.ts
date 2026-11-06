@@ -197,7 +197,7 @@ describe("scaffold", () => {
       'npx uptimizr new-key <projectId> --capabilities query --label "mcp-agent"',
     );
     expect(readme).toContain(
-      "https://uptimizr.com/docs/deploy/collector/#api-keys-and-capabilities",
+      "https://www.uptimizr.com/docs/deploy/collector/#api-keys-and-capabilities",
     );
   });
 

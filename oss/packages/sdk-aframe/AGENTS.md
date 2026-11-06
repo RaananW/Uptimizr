@@ -104,6 +104,6 @@ active camera is the headset). In-scene XR hits are resolved by default with thr
 ## More
 
 - Package reference: [README.md](./README.md)
-- Connector guide: https://uptimizr.com/docs/connectors/aframe/
+- Connector guide: https://www.uptimizr.com/docs/connectors/aframe/
 - three connector guide: [`@uptimizr/three`](../sdk-three/AGENTS.md)
 - Integration guide: https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md

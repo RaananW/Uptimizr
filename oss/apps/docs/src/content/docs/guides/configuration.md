@@ -1,6 +1,7 @@
 ---
 title: Configuration reference
 description: Every SDK option and where it goes (trackScene, the connector collector, or UptimizrClient) — camera, sampling, idle suppression, channel toggles, delivery, privacy.
+lastUpdated: 2026-11-06
 ---
 
 SDK options live on three layers. `trackScene(scene, options)` is the one-call path: it forwards a

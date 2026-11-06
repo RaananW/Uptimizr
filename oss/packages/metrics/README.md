@@ -138,7 +138,7 @@ a database driver is dead weight they can never use. Splitting the registry out 
 ## Links
 
 - [Agent guide](./AGENTS.md)
-- [Query API reference](https://uptimizr.com/docs/api/query/)
+- [Query API reference](https://www.uptimizr.com/docs/api/query/)
 - [ADR 0051 — AI-first analytics layer](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0051-ai-first-analytics-layer.md)
 
 ## License

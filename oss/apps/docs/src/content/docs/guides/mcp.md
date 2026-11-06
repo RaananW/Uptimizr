@@ -1,6 +1,7 @@
 ---
 title: MCP server (AI agents)
 description: Let an AI agent answer natural-language questions about your 3D analytics with the @uptimizr/mcp server — events read-only, metadata writes behind the annotate capability.
+lastUpdated: 2026-11-06
 ---
 
 `@uptimizr/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server over your

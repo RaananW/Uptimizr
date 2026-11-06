@@ -192,7 +192,7 @@ units, row JSON Schema, row limits, interpretation and caveats — ADR 0051) and
 `uptimizr://context` (the live project context document), `uptimizr://scenes` (live scene ids) and
 `uptimizr://skills` (the methodology catalog below) — plus one curated **prompt per packaged
 skill**, listed in the table below, that drives the tools above. See the
-[MCP guide](https://uptimizr.com/docs/guides/mcp/) for details.
+[MCP guide](https://www.uptimizr.com/docs/guides/mcp/) for details.
 
 ## Methodology skills
 
@@ -240,7 +240,7 @@ resources and prompts are identical — both transports are built by the same `c
 below. Tool calls made that way are recorded in the collector's audit log with
 `surface: "mcp-http"`; calls from this package over stdio are ordinary HTTP reads, recorded as
 `http`. See the
-[hosted transport guide](https://uptimizr.com/docs/guides/mcp/#hosted-transport-streamable-http).
+[hosted transport guide](https://www.uptimizr.com/docs/guides/mcp/#hosted-transport-streamable-http).
 
 ## Programmatic use
 

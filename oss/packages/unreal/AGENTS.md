@@ -132,6 +132,6 @@ once per second. Outside Emscripten (e.g. the desktop editor) every entry point 
 
 - Package reference: [README.md](./README.md)
 - Engine-side bridge: [`bridge/README.md`](./bridge/README.md)
-- Unreal guide: https://uptimizr.com/docs/connectors/unreal/
+- Unreal guide: https://www.uptimizr.com/docs/connectors/unreal/
 - Shared foundation: [`@uptimizr/web-export`](../web-export/AGENTS.md)
 - Integration guide: https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md

@@ -1,6 +1,7 @@
 ---
-title: Performance & diagnostics
-description: Frame-performance fields, GPU/memory footprint sampling, shader compile stalls, capability changes, and world-space gaze.
+title: Real-user performance for 3D scenes
+description: Measure FPS, frame time, jank, shader stalls and GPU footprint on real visitor devices, broken down by device, scene and camera position.
+lastUpdated: 2026-11-06
 ---
 
 Beyond heatmaps, Uptimizr captures how the scene **performs** on real devices and where its rendering

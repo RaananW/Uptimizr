@@ -1,6 +1,7 @@
 ---
-title: Babylon.js
-description: Instrument a Babylon.js scene with the @uptimizr/babylon connector.
+title: Babylon.js analytics
+description: Add heatmaps, mesh tracking, real-user FPS and session replay to a Babylon.js scene with the @uptimizr/babylon connector.
+lastUpdated: 2026-11-06
 ---
 
 The Babylon.js connector. `@babylonjs/core` is a peer dependency — the connector reads your

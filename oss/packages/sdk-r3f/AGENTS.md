@@ -97,6 +97,6 @@ are re-exported here, so an R3F host can build pointer / gaze / WebXR hit-resolu
 ## More
 
 - Package reference: [README.md](./README.md)
-- Connector guide: https://uptimizr.com/docs/connectors/r3f/
+- Connector guide: https://www.uptimizr.com/docs/connectors/r3f/
 - three connector guide: [`@uptimizr/three`](../sdk-three/AGENTS.md)
 - Integration guide: https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md

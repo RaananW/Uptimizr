@@ -563,7 +563,7 @@ they need, and a labelled key is what makes the audit log answerable:
 npx uptimizr new-key <projectId> --capabilities query --label "mcp-agent"
 \`\`\`
 
-See [API keys and capabilities](https://uptimizr.com/docs/deploy/collector/#api-keys-and-capabilities).
+See [API keys and capabilities](https://www.uptimizr.com/docs/deploy/collector/#api-keys-and-capabilities).
 
 ## Commands
 

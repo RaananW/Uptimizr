@@ -9,7 +9,7 @@
 
 - [Package reference](./README.md): install, the `MetricDefinition` fields, every export, how to add a metric.
 - [Agent guide](./AGENTS.md): rules and canonical usage for AI agents.
-- [Query API reference](https://uptimizr.com/docs/api/query/): the endpoints these metrics describe.
+- [Query API reference](https://www.uptimizr.com/docs/api/query/): the endpoints these metrics describe.
 - [Architecture Decision Records](https://github.com/RaananW/Uptimizr/tree/main/docs/adr): ADR 0051 (AI-first analytics layer), ADR 0050 (browser-safe agent core).
 
 ## Key exports

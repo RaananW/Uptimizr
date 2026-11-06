@@ -20,7 +20,7 @@
   "bugs": {
     "url": "https://github.com/RaananW/Uptimizr/issues"
   },
-  "homepage": "https://uptimizr.com/docs/guides/replay/",
+  "homepage": "https://www.uptimizr.com/docs/guides/replay/",
   "author": "Raanan Weber (https://github.com/RaananW)",
   "publishConfig": {
     "access": "public"

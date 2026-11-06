@@ -125,5 +125,5 @@ global), `onSceneProxy`, `flushIntervalMs` (5000), `transport`, `disabled`, `deb
 ## More
 
 - Package reference: [README.md](./README.md)
-- Web-export guide: https://uptimizr.com/docs/connectors/web-export/
+- Web-export guide: https://www.uptimizr.com/docs/connectors/web-export/
 - Integration guide: https://github.com/RaananW/Uptimizr/blob/main/docs/integration.md

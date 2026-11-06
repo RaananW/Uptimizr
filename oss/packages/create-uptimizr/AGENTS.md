@@ -107,5 +107,5 @@ project + API key there, because the `uptimizr` CLI honours `COLLECTOR_STORE` fo
 
 - Package reference: [README.md](./README.md)
 - Collector CLI: [`@uptimizr/collector-server`](../../apps/collector-server/AGENTS.md)
-- Quickstart: https://uptimizr.com/docs/quickstart/
-- Deploy guide: https://uptimizr.com/docs/deploy/collector/
+- Quickstart: https://www.uptimizr.com/docs/quickstart/
+- Deploy guide: https://www.uptimizr.com/docs/deploy/collector/

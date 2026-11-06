@@ -1,6 +1,7 @@
 ---
 title: In-scene heatmap overlays
-description: Paint world heatmaps and gaze domes into your own running scene with @uptimizr/heatmap.
+description: Show world heatmaps and gaze domes inside your own running 3D scene with @uptimizr/heatmap.
+lastUpdated: 2026-11-06
 ---
 
 Beyond the dashboard viewers, you can paint analytics **into your own running scene** (a

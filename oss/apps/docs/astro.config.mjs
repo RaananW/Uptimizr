@@ -1,13 +1,26 @@
 // @ts-check
+import { URL } from "node:url";
 import { defineConfig } from "astro/config";
+import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
 import starlightLlmsTxt from "starlight-llms-txt";
+import { readLastUpdatedBySlug } from "./lastmod.mjs";
+
+const lastUpdatedBySlug = readLastUpdatedBySlug();
 
 // https://astro.build/config
 export default defineConfig({
   site: "https://www.uptimizr.com",
   base: "/docs",
   integrations: [
+    // Starlight skips its own sitemap when this one is present, so we can add `lastmod`.
+    sitemap({
+      serialize(item) {
+        const slug = new URL(item.url).pathname.replace(/^\/docs\/?/, "").replace(/\/$/, "");
+        const lastmod = lastUpdatedBySlug.get(slug);
+        return lastmod ? { ...item, lastmod } : item;
+      },
+    }),
     starlight({
       title: "Uptimizr Docs",
       description:
@@ -47,6 +60,12 @@ export default defineConfig({
           // Topic-scoped subsets (served at /docs/_llms-txt/<slug>.txt) so an agent can load
           // just the part of the docs its task needs instead of the ~500 KB complete set.
           customSets: [
+            {
+              label: "Guides by goal",
+              description:
+                "what 3D analytics is, task-focused guides, and how Uptimizr compares with other tools",
+              paths: ["learn", "learn/**"],
+            },
             {
               label: "SDK and connectors",
               description: "installing the SDK and every 3D engine connector",
@@ -89,6 +108,8 @@ export default defineConfig({
           // table and the long reference pages stay in llms-full.txt and the sets above.
           exclude: [
             "contributing",
+            "learn",
+            "learn/**",
             "connectors/!(overview)",
             "guides/assistant",
             "guides/custom-panels",
@@ -98,7 +119,8 @@ export default defineConfig({
         }),
       ],
       logo: {
-        src: "./src/assets/logo-lockup.svg",
+        light: "./src/assets/logo-lockup-light.svg",
+        dark: "./src/assets/logo-lockup.svg",
         replacesTitle: true,
       },
       favicon: "/favicon.svg",
@@ -125,6 +147,19 @@ export default defineConfig({
             { label: "Quickstart", slug: "quickstart" },
             { label: "Concepts", slug: "concepts" },
             { label: "Contributing", slug: "contributing" },
+          ],
+        },
+        {
+          label: "Guides by goal",
+          items: [
+            { label: "What is 3D analytics?", slug: "learn" },
+            { label: "Track object clicks in three.js", slug: "learn/track-object-clicks-threejs" },
+            { label: "Google Analytics and 3D scenes", slug: "learn/google-analytics-3d-scenes" },
+            { label: "Session replay for WebGL", slug: "learn/webgl-session-replay" },
+            { label: "Measure real-user FPS", slug: "learn/webgl-real-user-performance" },
+            { label: "Product configurators", slug: "learn/3d-product-configurator-analytics" },
+            { label: "Unity, Godot and Unreal", slug: "learn/unity-godot-unreal-web-analytics" },
+            { label: "Uptimizr vs Cognitive3D", slug: "learn/cognitive3d-alternative" },
           ],
         },
         {

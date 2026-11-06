@@ -1,6 +1,7 @@
 ---
-title: Unity
-description: Instrument a Unity WebGL export with the @uptimizr/unity connector.
+title: Unity WebGL analytics
+description: Add click heatmaps and FPS tracking to a Unity WebGL export with @uptimizr/unity, plus camera, picks and replay through a small bridge.
+lastUpdated: 2026-11-06
 ---
 
 The Unity (WebGL export) connector. Unity compiles to WebAssembly and renders into a

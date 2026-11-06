@@ -1,6 +1,7 @@
 ---
 title: Web exports (Unity, Godot, Unreal)
 description: Instrument WebAssembly engine exports with the @uptimizr/web-export foundation and its two capture tiers.
+lastUpdated: 2026-11-06
 ---
 
 Unity, Godot, and Unreal compile to **WebAssembly** and render into a `<canvas>`, so
