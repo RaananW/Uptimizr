@@ -170,9 +170,9 @@ without a proxy `nearestMesh` is `null` and the summary says so in its caveats. 
 panels use the same pair to name a voxel on hover. See
 [Labelled spatial clusters](/docs/api/query/#labelled-spatial-clusters).
 
-Registering regions is an **authenticated write**: the key must hold the `annotate` capability
-(`uptimizr new-key <projectId> --capabilities annotate`). The scene-proxy upload needs only `query`.
-Either way, do it from a build script, a server-side route, or a developer-only path, never from a
+Registering regions and uploading a scene proxy are **authenticated writes**: the key must hold the
+`annotate` capability (`uptimizr new-key <projectId> --capabilities annotate`). Do either from a
+build script, a server-side route, or a developer-only path, never from a
 public bundle. There is also a CLI, which writes straight to the store and needs no key:
 `uptimizr regions set lobby --file regions.json --project <projectId>`. See
 [Scene regions](/docs/api/query/#scene-regions).

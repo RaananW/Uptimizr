@@ -1320,7 +1320,7 @@ A key carries a **set of capabilities** (ADR 0051 §7), not a single role:
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `query`     | The aggregate analytics API — everything in the tables below, plus the scene registry, the live token exchange and `/api/v1/audit`.                                               |
 | `query:raw` | Raw **per-session** data: `GET /api/v1/sessions/:id/events`, the live per-session follow `GET /api/v1/live/sessions/:id`, and the compacted `GET /api/v1/sessions/:id/narrative`. |
-| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events — events stay read-only.                                                   |
+| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs, scene proxies and regions). Never events — events stay read-only.                        |
 | `ingest`    | Reserved for server-side write paths. Public ingestion is keyless (see below), so issued keys are normally read keys.                                                             |
 
 `uptimizr init` and `uptimizr new-project` mint one key, the operator's **owner**
@@ -2218,7 +2218,7 @@ await registerRegions(
 );
 ```
 
-The key passed to `registerRegions` needs the `annotate` capability.
+The key passed to `registerRegions` needs the `annotate` capability, as does a scene-proxy upload.
 
 > **Never ship the API key in a public bundle.** Event capture is deliberately
 > keyless (ADR 0003), but the scene registry — proxy upload and regions alike — is
