@@ -187,6 +187,11 @@ export function createMemoryStore({
     insertEvents: async (incoming) => {
       events.push(...incoming);
     },
+    pruneEvents: async (cutoffMs) => {
+      for (let i = events.length - 1; i >= 0; i -= 1) {
+        if (events[i]!.ts < cutoffMs) events.splice(i, 1);
+      }
+    },
     // The query DSL (ADR 0051 §3) compiles to SQL, and this store has no SQL
     // engine — it answers a handful of aggregates by walking the array above.
     // Rather than grow a second, JavaScript re-implementation of seventy

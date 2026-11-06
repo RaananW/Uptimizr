@@ -77,11 +77,13 @@ async function loadDashboard(page: Page): Promise<void> {
 /**
  * Open one session's drill-down from the sessions table. The table shows a 12-char
  * prefix and the drill-down header the full id, so ids longer than 12 chars keep
- * the two distinguishable (the table is on the session surface too).
+ * the two distinguishable (the table is on the session surface too). The session
+ * inspector prints the full id a second time once its fetch lands, so `first()`
+ * pins the header, which precedes it, and the assertion cannot race that fetch.
  */
 async function openSession(page: Page, sessionId: string): Promise<void> {
   await page.getByText(sessionId.slice(0, 12), { exact: true }).first().click();
-  await expect(page.getByText(sessionId, { exact: true })).toBeVisible();
+  await expect(page.getByText(sessionId, { exact: true }).first()).toBeVisible();
 }
 
 const walkedPath = (page: Page) =>

@@ -141,6 +141,7 @@ import {
   migratePostgres,
   runPostgresQuery,
   insertEvents as pgInsertEvents,
+  pruneEvents as pgPruneEvents,
   getSessionEvents as pgGetSessionEvents,
   streamSessionEvents as pgStreamSessionEvents,
   getSessionMeta as pgGetSessionMeta,
@@ -213,6 +214,7 @@ export async function createPostgresStore(): Promise<CollectorStore> {
     pruneAudit: (cutoffMs) => pgPruneAudit(pgc, cutoffMs),
     projectExists: async (projectId) => (await pgGetProject(pgc, projectId)) !== null,
     insertEvents: (events) => pgInsertEvents(pgc, [...events]),
+    pruneEvents: (cutoffMs) => pgPruneEvents(pgc, cutoffMs),
     // Query DSL v1 (ADR 0051 §3): any registry metric, compiled onto its own
     // aggregation builder and run through the same Postgres path — and therefore
     // the same parity coverage and the same numeric coercion — as the canned

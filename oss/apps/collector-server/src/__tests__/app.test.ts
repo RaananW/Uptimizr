@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LIMITS } from "@uptimizr/schema";
 import type { AnyEvent } from "@uptimizr/schema";
 import type { AgentAuditEntry, ResolvedApiKey } from "@uptimizr/db";
@@ -26,6 +26,7 @@ const config: CollectorConfig = {
   bodyLimit: 1_048_576,
   cspMode: "strict",
   auditRetentionDays: 30,
+  eventRetentionDays: 0,
   auditDashboardRequests: false,
   mcpHttpEnabled: false,
   mcpMaxSessions: 50,
@@ -2255,11 +2256,25 @@ describe("scene registry routes", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/scenes/lobby/representation",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "annotate-key" },
       payload: { proxy, label: "Main Lobby" },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ sceneId: "lobby", kind: "proxy", label: "Main Lobby" });
+    await app.close();
+  });
+
+  it("refuses a scene proxy write from a query-only key, and stores nothing", async () => {
+    const putSceneProxy = vi.fn();
+    const app = await buildApp({ store: makeStore({ putSceneProxy }), config });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/representation",
+      headers: { "x-api-key": "valid-key" },
+      payload: { proxy, label: "Main Lobby" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(putSceneProxy).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -2282,6 +2297,25 @@ describe("scene registry routes", () => {
     expect(res.statusCode).toBe(204);
     expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
     expect(String(res.headers["access-control-allow-methods"])).toContain("PUT");
+    await app.close();
+  });
+
+  it("allows the PATCH method in the CORS preflight (subscription updates from the browser)", async () => {
+    const app = await buildApp({
+      store: makeStore(),
+      config: { ...config, corsOrigins: ["http://localhost:5173"] },
+    });
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/api/v1/subscriptions/sub_1",
+      headers: {
+        origin: "http://localhost:5173",
+        "access-control-request-method": "PATCH",
+        "access-control-request-headers": "x-api-key,content-type",
+      },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(String(res.headers["access-control-allow-methods"])).toContain("PATCH");
     await app.close();
   });
 
@@ -2315,7 +2349,7 @@ describe("scene registry routes", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/scenes/other/representation",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "annotate-key" },
       payload: { proxy },
     });
     expect(res.statusCode).toBe(400);

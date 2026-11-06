@@ -138,6 +138,13 @@ export interface CollectorStore extends SubscriptionStore {
   /** Delete audit rows older than `cutoffMs` (epoch ms). Idempotent. */
   pruneAudit(cutoffMs: number): Promise<void>;
   /**
+   * Delete stored events older than `cutoffMs` (epoch ms), by event `ts`, for
+   * `EVENT_RETENTION_DAYS` (ADR 0052). Covers every raw event, including
+   * `node_transform` samples, and nothing else: projects, keys and project
+   * metadata stay. Idempotent.
+   */
+  pruneEvents(cutoffMs: number): Promise<void>;
+  /**
    * Whether a project with this id exists. The ingest route uses it to reject
    * events for unknown projects — the public `projectId` is the ingest credential,
    * so a non-existent project must never have data written under it.

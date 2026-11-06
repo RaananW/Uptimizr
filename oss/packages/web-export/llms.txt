@@ -2,7 +2,7 @@
 
 > The shared foundation for Uptimizr's web-export engine connectors (Unity, Godot, Unreal —
 > ADR 0045). These engines render into a `<canvas>` from WebAssembly, so there is no live JS scene
-> to read: a JS-only tier captures pointer heatmaps / FPS / errors with no engine code, and a thin
+> to read: a JS-only tier captures pointer heatmaps / FPS (and opt-in JS errors) with no engine code, and a thin
 > engine-side shim pushes pose, picks, perf and a scene proxy over a tiny versioned bridge. All
 > schema mapping and coordinate normalization stay in TypeScript.
 

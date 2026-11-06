@@ -27,7 +27,7 @@
 - Client: `createMssqlClient(settings, overrides?)`, `resolveMssqlConfig`, `ensureMssqlDatabase`, `dropMssqlDatabase`, `assertSafeIdentifier`, `formatTemporal`; types `MssqlClient` / `MssqlExecutor` / `MssqlRow` / `MssqlClientOverrides`.
 - Migrations: `MSSQL_MIGRATIONS`, `migrateMssql(client)` — forward-only, idempotent, `sp_getapplock`-serialized (ADR 0007).
 - Queries: `runMssqlQuery(client, spec)` — `toTsql` + positional params + numeric coercion at the driver edge (ADR 0051 §2).
-- Events: `insertEvents`, `getSessionEvents`, `streamSessionEvents`, `getSessionMeta`.
+- Events: `insertEvents`, `getSessionEvents`, `streamSessionEvents`, `getSessionMeta`, `pruneEvents` (the `EVENT_RETENTION_DAYS` delete, over `events` and `node_samples`).
 - Metadata: `createProject`, `getProject`, `createApiKey`, `resolveApiKey`, `hashApiKey`, `apiKeyPrefix`, `generateApiKey` (keys stored only as SHA-256 hashes).
 - Audit: `recordAudit`, `listAudit`, `pruneAudit` (key ids, never keys).
 - Scene registry: `upsertSceneProxy`, `getSceneRepresentation`, `listSceneRepresentations`, `putSceneRegions`, `getSceneRegions`, `listSceneRegions`.

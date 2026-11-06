@@ -64,3 +64,23 @@ describe("loadConfig — hosted MCP transport (#313)", () => {
     expect(loadConfig({ ...baseEnv, COLLECTOR_MCP_MAX_SESSIONS: "lots" }).mcpMaxSessions).toBe(50);
   });
 });
+
+describe("loadConfig — EVENT_RETENTION_DAYS", () => {
+  it("keeps events forever unless it is set", () => {
+    expect(loadConfig({ ...baseEnv }).eventRetentionDays).toBe(0);
+    expect(loadConfig({ ...baseEnv, EVENT_RETENTION_DAYS: "" }).eventRetentionDays).toBe(0);
+    expect(loadConfig({ ...baseEnv, EVENT_RETENTION_DAYS: "0" }).eventRetentionDays).toBe(0);
+  });
+
+  it("reads a number of days", () => {
+    expect(loadConfig({ ...baseEnv, EVENT_RETENTION_DAYS: " 90 " }).eventRetentionDays).toBe(90);
+  });
+
+  it("refuses a value that would silently keep events forever", () => {
+    for (const value of ["30d", "forever", "-1", "Infinity"]) {
+      expect(() => loadConfig({ ...baseEnv, EVENT_RETENTION_DAYS: value })).toThrow(
+        /EVENT_RETENTION_DAYS must be a number of days/,
+      );
+    }
+  });
+});

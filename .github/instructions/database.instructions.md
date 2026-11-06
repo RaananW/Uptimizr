@@ -17,7 +17,8 @@ single-file DuckDB store (ADR 0020). `@uptimizr/db-postgres`, `@uptimizr/db-mssq
   shared mapper.
 - Every event is written regardless of `ENABLE_RAW_SESSION_RETENTION`, which gates reading raw
   per-session streams at the collector, not storage (ADR 0003). Provide an ordered read by
-  `session_id` for the timeline endpoint. No store deletes events automatically.
+  `session_id` for the timeline endpoint. The only deletion is `pruneEvents`, the opt-in
+  `EVENT_RETENTION_DAYS` sweep, which must cover both `events` and `node_samples` (ADR 0052).
 - `node_transform` rows go to a dedicated `node_samples` table.
 
 ## Aggregations

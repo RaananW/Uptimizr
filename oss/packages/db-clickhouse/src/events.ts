@@ -239,3 +239,22 @@ export async function getSessionMeta(
     user: event?.user,
   };
 }
+
+/**
+ * Delete stored events older than `cutoffMs` (epoch ms): the
+ * `EVENT_RETENTION_DAYS` sweep (ADR 0052). A `node_transform` event lives in
+ * `node_samples` rather than `events` (ADR 0027), so both tables are pruned;
+ * leaving either behind would keep raw per-session data past the window.
+ *
+ * Compares `ts`, the column every aggregate filters on, so aggregates lose
+ * exactly the purged rows. Idempotent, so the collector can run it on a timer; a
+ * partial failure is finished by the next sweep.
+ *
+ * Uses the same lightweight `DELETE` as `pruneAudit`: rows stop being visible
+ * at once and leave disk when their parts next merge.
+ */
+export async function pruneEvents(client: ClickhouseClient, cutoffMs: number): Promise<void> {
+  const before = `toUnixTimestamp64Milli(ts) < ${Math.trunc(cutoffMs)}`;
+  await client.command(`DELETE FROM events WHERE ${before}`);
+  await client.command(`DELETE FROM node_samples WHERE ${before}`);
+}

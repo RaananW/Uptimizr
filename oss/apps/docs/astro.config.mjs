@@ -153,6 +153,7 @@ export default defineConfig({
           label: "Guides by goal",
           items: [
             { label: "What is 3D analytics?", slug: "learn" },
+            { label: "Ask an AI agent", slug: "learn/ai-agent-3d-analytics" },
             { label: "Track object clicks in three.js", slug: "learn/track-object-clicks-threejs" },
             { label: "Google Analytics and 3D scenes", slug: "learn/google-analytics-3d-scenes" },
             { label: "Session replay for WebGL", slug: "learn/webgl-session-replay" },

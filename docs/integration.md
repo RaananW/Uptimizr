@@ -395,10 +395,10 @@ browser. To limit
 noisy loops, consecutive identical `message`+`stack` errors are de-duplicated and
 capture is capped at 50 events per session.
 
-Web exports are the exception: the JS-only tier of `@uptimizr/web-export` (and so
-Unity, Godot and Unreal) captures `runtime_error` **by default**, independently of
-`captureErrors` and without the de-duplication or the cap. Turn it off with
-`capture: { errors: false }`.
+Web exports use their own switch: in `@uptimizr/web-export` (and so Unity, Godot and
+Unreal), opt in with `capture: { errors: true }` rather than `captureErrors`. The
+default, the de-duplication and the cap are the same, and `beforeSend` is an option
+of `trackWebExport`.
 
 The optional `position` is the best-effort camera position at the moment the error
 fired, stamped connector-side (Babylon reads the tracked camera's `globalPosition`;
@@ -594,7 +594,13 @@ requires an API key holding the `query:raw`
 Despite its name, the flag gates access, not storage. The collector always writes
 every event to the store, including each event's full payload, because aggregates are
 computed from those rows at query time. With the flag off, raw streams cannot be read
-through the API but remain in the store, and there is no automatic event deletion.
+through the API but remain in the store.
+
+Events are kept indefinitely by default. Setting `EVENT_RETENTION_DAYS` to a positive
+number deletes older events, including `node_transform` samples, at startup and every
+six hours (ADR 0052). Aggregates are computed from those rows, so a purge also removes
+those days from every aggregate, permanently. It does not shrink a DuckDB file; see
+[Event retention](https://www.uptimizr.com/docs/deploy/privacy/#event-retention).
 
 ---
 
@@ -1333,7 +1339,7 @@ A key carries a **set of capabilities** (ADR 0051 §7), not a single role:
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `query`     | The aggregate analytics API — everything in the tables below, plus the scene registry, the live token exchange and `/api/v1/audit`.                                               |
 | `query:raw` | Raw **per-session** data: `GET /api/v1/sessions/:id/events`, the live per-session follow `GET /api/v1/live/sessions/:id`, and the compacted `GET /api/v1/sessions/:id/narrative`. |
-| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events — events stay read-only.                                                   |
+| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs, scene proxies and regions). Never events — events stay read-only.                        |
 | `ingest`    | Reserved for server-side write paths. Public ingestion is keyless (see below), so issued keys are normally read keys.                                                             |
 
 `uptimizr init` and `uptimizr new-project` mint one key, the operator's **owner**
@@ -2231,7 +2237,7 @@ await registerRegions(
 );
 ```
 
-The key passed to `registerRegions` needs the `annotate` capability.
+The key passed to `registerRegions` needs the `annotate` capability, as does a scene-proxy upload.
 
 > **Never ship the API key in a public bundle.** Event capture is deliberately
 > keyless (ADR 0003), but the scene registry — proxy upload and regions alike — is

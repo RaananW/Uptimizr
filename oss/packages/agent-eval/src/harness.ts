@@ -67,6 +67,7 @@ const EVAL_CONFIG: CollectorConfig = {
   // Audit log (#309): keep the default retention and never audit the
   // dashboard's own requests — the harness has no dashboard.
   auditRetentionDays: 30,
+  eventRetentionDays: 0,
   auditDashboardRequests: false,
   mcpHttpEnabled: false,
   mcpMaxSessions: 50,

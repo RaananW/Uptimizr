@@ -2412,16 +2412,18 @@ export const queryRoutes: FastifyPluginAsync<Options> = async (app, { store, con
 
   // Register/replace a scene's proxy geometry. The path scene id must match the
   // proxy's own `sceneId` (the proxy is the source of truth for the geometry).
+  // A metadata write like regions: it needs `annotate`, so a read-only key handed
+  // to an agent cannot replace the geometry the dashboard and summaries rely on.
   r.put(
     "/api/v1/scenes/:sceneId/representation",
     { schema: { params: sceneParams, body: putRepresentationBody } },
     async (req, reply) => {
-      const projectId = await authProject(req, reply, store);
-      if (!projectId) return reply;
+      const resolved = await requireCapability(req, reply, store, "annotate");
+      if (!resolved) return reply;
       if (req.body.proxy.sceneId !== req.params.sceneId) {
         return reply.code(400).send({ error: "proxy sceneId does not match path" });
       }
-      return store.putSceneProxy(projectId, req.body.proxy, req.body.label);
+      return store.putSceneProxy(resolved.projectId, req.body.proxy, req.body.label);
     },
   );
 

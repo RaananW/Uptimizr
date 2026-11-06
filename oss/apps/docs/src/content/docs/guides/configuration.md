@@ -215,8 +215,10 @@ reads aggregates only.
 
 Despite its name, the flag gates access, not storage. The collector always writes every event to
 the store, including each event's full payload, because aggregates are computed from those rows at
-query time. With the flag off, raw streams cannot be read through the API but remain in the store,
-and there is no automatic event deletion. See [Privacy & configuration](/docs/deploy/privacy/).
+query time. With the flag off, raw streams cannot be read through the API but remain in the store.
+Events are kept indefinitely unless you set
+[`EVENT_RETENTION_DAYS`](/docs/deploy/privacy/#event-retention), which also removes those days from
+aggregates. See [Privacy & configuration](/docs/deploy/privacy/).
 
 ## Collector-side keys, limits and auditing
 

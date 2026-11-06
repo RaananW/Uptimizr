@@ -125,6 +125,39 @@ describe("startJsOnlyCapture — rAF perf tier", () => {
 });
 
 describe("startJsOnlyCapture — error tier", () => {
+  const errorsOnly = { pointerMove: false, clicks: false, buttons: false, perf: false };
+  const fireError = (message: string, stack = "") =>
+    dispatchEvent(Object.assign(new Event("error"), { message, error: { stack } }));
+
+  it("captures no errors unless capture.errors opts in (ADR 0013)", () => {
+    const { ctx, events } = makeCtx();
+    const stop = startJsOnlyCapture({ ctx, capture: { ...errorsOnly } });
+    // No `.error`: Vitest fails a run on an error event that carries one with no listener.
+    dispatchEvent(Object.assign(new Event("error"), { message: "boom" }));
+    dispatchEvent(Object.assign(new Event("unhandledrejection"), { reason: new Error("nope") }));
+    expect(events.filter((e) => e.type === "runtime_error")).toHaveLength(0);
+    stop();
+  });
+
+  it("de-duplicates consecutive identical errors", () => {
+    const { ctx, events } = makeCtx();
+    const stop = startJsOnlyCapture({ ctx, capture: { ...errorsOnly, errors: true } });
+    fireError("boom", "at a");
+    fireError("boom", "at a");
+    fireError("other", "at b");
+    fireError("boom", "at a");
+    expect(events.filter((e) => e.type === "runtime_error")).toHaveLength(3);
+    stop();
+  });
+
+  it("stops at 50 errors per session", () => {
+    const { ctx, events } = makeCtx();
+    const stop = startJsOnlyCapture({ ctx, capture: { ...errorsOnly, errors: true } });
+    for (let i = 0; i < 60; i += 1) fireError(`boom ${i}`);
+    expect(events.filter((e) => e.type === "runtime_error")).toHaveLength(50);
+    stop();
+  });
+
   it("maps a window error event to runtime_error", () => {
     const { ctx, events } = makeCtx();
     const stop = startJsOnlyCapture({

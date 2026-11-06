@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Route } from "@playwright/test";
 
 import { API_KEY, COLLECTOR_URL, DASHBOARD_URL } from "./constants.js";
 import {
@@ -83,6 +83,35 @@ function topMeshFromResult(result: unknown): string | null {
   return null;
 }
 
+/**
+ * The top mesh according to the collector itself, read with the same key the
+ * dashboard uses. Call it AFTER navigating away from the playground: leaving the
+ * page is what flushes the SDK's queued events, and the beacon lands a moment
+ * later, so an earlier read races the rows the assistant's tool will see. Waits
+ * for two identical reads in a row before trusting the answer (#359).
+ */
+async function settledTopMesh(request: APIRequestContext): Promise<string> {
+  let previous: string | undefined;
+  let body: string | undefined;
+  await expect
+    .poll(
+      async () => {
+        previous = body;
+        const response = await request.get(`${COLLECTOR_URL}/api/v1/meshes/top`, {
+          headers: { "x-api-key": API_KEY },
+        });
+        expect(response.ok()).toBeTruthy();
+        body = await response.text();
+        return body === previous;
+      },
+      { intervals: [500], timeout: 10_000 },
+    )
+    .toBe(true);
+  const mesh = topMeshFromResult(JSON.parse(body!));
+  expect(mesh, "seeded session should yield a top mesh").toBeTruthy();
+  return mesh!;
+}
+
 /** True when the request body advertises at least one tool (function-calling). */
 function requestHasTools(body: { tools?: unknown }): boolean {
   return Array.isArray(body.tools) && body.tools.length > 0;
@@ -142,14 +171,6 @@ test("assistant answers a grounded question end to end", async ({ page, request 
   await driveInteractions(page, { keyboard: true });
   await waitForEventTypes(request, sessionId, ["mesh_interaction", "pointer_click"]);
 
-  // Ground truth: the collector's own answer, fetched directly with the same key.
-  const topRes = await request.get(`${COLLECTOR_URL}/api/v1/meshes/top`, {
-    headers: { "x-api-key": API_KEY },
-  });
-  expect(topRes.ok()).toBeTruthy();
-  const expectedTopMesh = topMeshFromResult(await topRes.json());
-  expect(expectedTopMesh, "seeded session should yield a top mesh").toBeTruthy();
-
   // 2) Deterministic LLM: fulfil the hosted endpoint ourselves (no real weights).
   await page.route("**/mock-llm/**", async (route: Route) => {
     const body = route.request().postDataJSON() as { messages?: OpenAiRequestMessage[] };
@@ -194,6 +215,7 @@ test("assistant answers a grounded question end to end", async ({ page, request 
 
   // The connected dashboard renders — the assistant drawer is available.
   await expect(page.getByText("Top meshes")).toBeVisible({ timeout: 20_000 });
+  const expectedTopMesh = await settledTopMesh(request);
 
   // 4) Open the assistant and configure the (mocked) hosted backend. On first
   //    open the panel presents an explicit backend chooser (no auto-preselect),
@@ -234,7 +256,7 @@ test("assistant answers a grounded question end to end", async ({ page, request 
 
   // 7) The rendered answer is grounded: it names the real top mesh.
   const answer = assistant.locator('[data-role="assistant"]');
-  await expect(answer).toContainText(expectedTopMesh!, { timeout: 20_000 });
+  await expect(answer).toContainText(expectedTopMesh, { timeout: 20_000 });
 
   // 7a) Once the turn completes the working indicator clears (idle, no spinner).
   await expect(assistant.getByRole("status")).toHaveText("");
@@ -271,13 +293,6 @@ test("assistant recovers an empty answer via the forced final pass", async ({ pa
   const sessionId = await bootEngine(page, "babylon");
   await driveInteractions(page, { keyboard: true });
   await waitForEventTypes(request, sessionId, ["mesh_interaction", "pointer_click"]);
-
-  const topRes = await request.get(`${COLLECTOR_URL}/api/v1/meshes/top`, {
-    headers: { "x-api-key": API_KEY },
-  });
-  expect(topRes.ok()).toBeTruthy();
-  const expectedTopMesh = topMeshFromResult(await topRes.json());
-  expect(expectedTopMesh, "seeded session should yield a top mesh").toBeTruthy();
 
   // 2) Mock: tool-call once, then an EMPTY final while tools are offered; a
   //    grounded final only on the forced (tools-disabled) call.
@@ -331,6 +346,7 @@ test("assistant recovers an empty answer via the forced final pass", async ({ pa
   await page.getByPlaceholder("utk_…").fill(API_KEY);
   await page.getByRole("button", { name: /load/i }).click();
   await expect(page.getByText("Top meshes")).toBeVisible({ timeout: 20_000 });
+  const expectedTopMesh = await settledTopMesh(request);
 
   // 4) Configure the mocked hosted backend.
   await page.getByRole("button", { name: "Ask the assistant" }).click();
@@ -350,7 +366,7 @@ test("assistant recovers an empty answer via the forced final pass", async ({ pa
   const toolActivity = assistant.getByRole("list", { name: "Tool activity" });
   await expect(toolActivity.getByText("top_meshes")).toBeVisible({ timeout: 20_000 });
   const answer = assistant.locator('[data-role="assistant"]');
-  await expect(answer).toContainText(expectedTopMesh!, { timeout: 20_000 });
+  await expect(answer).toContainText(expectedTopMesh, { timeout: 20_000 });
 });
 
 /**
@@ -371,13 +387,6 @@ test("assistant sends a guided example prompt and answers it end to end", async 
   const sessionId = await bootEngine(page, "babylon");
   await driveInteractions(page, { keyboard: true });
   await waitForEventTypes(request, sessionId, ["mesh_interaction", "pointer_click"]);
-
-  const topRes = await request.get(`${COLLECTOR_URL}/api/v1/meshes/top`, {
-    headers: { "x-api-key": API_KEY },
-  });
-  expect(topRes.ok()).toBeTruthy();
-  const expectedTopMesh = topMeshFromResult(await topRes.json());
-  expect(expectedTopMesh, "seeded session should yield a top mesh").toBeTruthy();
 
   // 2) Deterministic LLM: call `top_meshes`, then ground the final answer.
   await page.route("**/mock-llm/**", async (route: Route) => {
@@ -417,6 +426,7 @@ test("assistant sends a guided example prompt and answers it end to end", async 
   await page.getByPlaceholder("utk_…").fill(API_KEY);
   await page.getByRole("button", { name: /load/i }).click();
   await expect(page.getByText("Top meshes")).toBeVisible({ timeout: 20_000 });
+  const expectedTopMesh = await settledTopMesh(request);
 
   await page.getByRole("button", { name: "Ask the assistant" }).click();
   const assistant = page.getByRole("region", { name: "Analytics assistant" });
@@ -436,7 +446,7 @@ test("assistant sends a guided example prompt and answers it end to end", async 
   const toolActivity = assistant.getByRole("list", { name: "Tool activity" });
   await expect(toolActivity.getByText("top_meshes")).toBeVisible({ timeout: 20_000 });
   const answer = assistant.locator('[data-role="assistant"]');
-  await expect(answer).toContainText(expectedTopMesh!, { timeout: 20_000 });
+  await expect(answer).toContainText(expectedTopMesh, { timeout: 20_000 });
 });
 
 /**
@@ -679,13 +689,6 @@ test("assistant streams the answer incrementally (hosted SSE)", async ({ page, r
   await driveInteractions(page, { keyboard: true });
   await waitForEventTypes(request, sessionId, ["mesh_interaction", "pointer_click"]);
 
-  const topRes = await request.get(`${COLLECTOR_URL}/api/v1/meshes/top`, {
-    headers: { "x-api-key": API_KEY },
-  });
-  expect(topRes.ok()).toBeTruthy();
-  const expectedTopMesh = topMeshFromResult(await topRes.json());
-  expect(expectedTopMesh, "seeded session should yield a top mesh").toBeTruthy();
-
   // 2) A real streaming mock provider: a streamed tool call, then the grounded
   //    answer delivered as eight fragments 250 ms apart (~2 s of streaming).
   const llm = await startStreamingLlm({
@@ -703,6 +706,7 @@ test("assistant streams the answer incrementally (hosted SSE)", async ({ page, r
     await page.getByPlaceholder("utk_…").fill(API_KEY);
     await page.getByRole("button", { name: /load/i }).click();
     await expect(page.getByText("Top meshes")).toBeVisible({ timeout: 20_000 });
+    const expectedTopMesh = await settledTopMesh(request);
 
     await page.getByRole("button", { name: "Ask the assistant" }).click();
     const assistant = page.getByRole("region", { name: "Analytics assistant" });
@@ -725,14 +729,14 @@ test("assistant streams the answer incrementally (hosted SSE)", async ({ page, r
     await expect(streaming).toContainText("The most-");
     // Captured mid-stream: the answer is not complete yet (the mesh name is the
     // last fragment, ~2 s after the first).
-    await expect(streaming).not.toContainText(expectedTopMesh!);
+    await expect(streaming).not.toContainText(expectedTopMesh);
     await expect(assistant.getByRole("status")).toContainText("Streaming");
 
     // 6) FINAL: the complete grounded answer, as exactly one assistant bubble
     //    (the live bubble was replaced, not duplicated), no streaming marker, and
     //    the working indicator cleared.
     const answer = assistant.locator('[data-role="assistant"]');
-    await expect(answer).toContainText(`is ${expectedTopMesh!}.`, { timeout: 20_000 });
+    await expect(answer).toContainText(`is ${expectedTopMesh}.`, { timeout: 20_000 });
     await expect(answer).toHaveCount(1);
     await expect(streaming).toHaveCount(0);
     await expect(answer).toContainText("The most-interacted mesh in this scene is");

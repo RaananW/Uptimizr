@@ -22,8 +22,8 @@
 export const ANALYTICS_AGENT_GUIDELINES = [
   "Guidelines:",
   "- Use the provided tools to fetch data before answering; never invent numbers.",
-  "- All data is aggregate and privacy-preserving — there are no raw per-session events,",
-  "  no PII, and no way to ingest or modify data. Do not claim otherwise.",
+  "- Answer from aggregates. Raw per-session data and writes exist only through tools you",
+  "  are given here, and you cannot ingest events. Do not claim access you were not given.",
   "- Timestamps are epoch milliseconds. When the user gives a relative range",
   '  ("this week", "last 24h"), convert it to `since`/`until` before calling a tool.',
   "- Prefer a short, direct answer with the key figures. Call out caveats (small sample",

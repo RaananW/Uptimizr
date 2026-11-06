@@ -14,6 +14,7 @@ import { createLiveBus, type LiveBus } from "./liveBus.js";
 import { attachApiKey, normalizeMcpBearer } from "./auth.js";
 import { storeProjectMetadata, type ProjectMetadataProvider } from "./projectMetadata.js";
 import { registerAuditHooks, startAuditRetention } from "./audit.js";
+import { startEventRetention } from "./eventRetention.js";
 import { buildDashboardCsp } from "./csp.js";
 import { isInternalDispatch, newInternalDispatchToken } from "./internalDispatch.js";
 import { collectRoutes } from "./routes/collect.js";
@@ -120,8 +121,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     // breaks the browser preflight for scene-proxy registration
     // (PUT /api/v1/scenes/:id/representation). DELETE is needed for the metadata
     // write path (#310: removing an annotation, a term, a saved analysis) and for
-    // ending an MCP session over `/mcp` (#313). List the verbs the HTTP API uses.
-    methods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
+    // ending an MCP session over `/mcp` (#313). PATCH updates a subscription
+    // (PATCH /api/v1/subscriptions/:id). List the verbs the HTTP API uses.
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
     // Streamable HTTP returns the session id in a response header the client has
     // to echo back; a browser cannot read it unless it is explicitly exposed.
     ...(config.mcpHttpEnabled ? { exposedHeaders: ["Mcp-Session-Id"] } : {}),
@@ -176,6 +178,8 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   registerAuditHooks(app, store, config, internalDispatchToken);
   const stopAuditRetention = startAuditRetention(app, store, config);
   app.addHook("onClose", async () => stopAuditRetention());
+  const stopEventRetention = startEventRetention(app, store, config);
+  app.addHook("onClose", async () => stopEventRetention());
 
   // Record every route's Zod schemas as they are registered, so the generated
   // OpenAPI document describes each parameter with the *same* schema that

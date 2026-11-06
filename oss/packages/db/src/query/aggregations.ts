@@ -874,7 +874,11 @@ export function buildFlowHeatmap(
   };
 }
 
-/** Most-interacted meshes (from `mesh_interaction` and pointer hits). */
+/**
+ * Most-interacted meshes (from `mesh_interaction` and pointer hits). Ties break on
+ * the mesh name, so the leader and the row cap are a function of the data rather
+ * than of the engine's scan order.
+ */
 export function buildTopMeshes(
   projectId: string,
   opts: RangeOptions & SessionOptions & { limit?: number },
@@ -891,7 +895,7 @@ export function buildTopMeshes(
       FROM events
       WHERE project_id = ${pid} AND mesh != ''${range}${session}
       GROUP BY mesh
-      ORDER BY count DESC
+      ORDER BY count DESC, mesh ASC
       LIMIT ${limit}
     `,
     metric: "top_meshes",

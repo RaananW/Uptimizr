@@ -26,7 +26,7 @@ const AT_MS = mssqlDialect.epochMs("at");
  * absolute epoch, so the value is split into whole seconds plus a millisecond
  * remainder — both well inside `int` — and added in two steps.
  */
-function epochToDatetime(param: string): string {
+export function epochToDatetime(param: string): string {
   return `DATEADD(millisecond, ${param} % 1000, DATEADD(second, ${param} / 1000, CAST(N'1970-01-01' AS datetime2(3))))`;
 }
 

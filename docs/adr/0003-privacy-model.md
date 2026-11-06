@@ -1,6 +1,6 @@
 # ADR 0003: Cookieless, GDPR-first privacy model
 
-- **Status:** Accepted
+- **Status:** Accepted; retention statement superseded by [ADR 0052](./0052-bounded-event-retention.md)
 - **Date:** 2026-06-16
 - **Deciders:** Project owner, engineering
 

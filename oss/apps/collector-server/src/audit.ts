@@ -31,9 +31,9 @@ import { isInternalDispatch } from "./internalDispatch.js";
  */
 
 /** How often the retention sweep runs. Daily is plenty for a 30-day window. */
-const PRUNE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+export const PRUNE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
  * Register the audit hooks on `app`:

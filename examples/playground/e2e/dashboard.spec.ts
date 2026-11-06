@@ -76,8 +76,9 @@ test("dashboard renders captured events end to end", async ({ page, request }) =
   const sessionCell = page.getByText(shortId, { exact: true }).first();
   await expect(sessionCell).toBeVisible();
   await sessionCell.click();
-  // The drill-down header shows the full session id.
-  await expect(page.getByText(sessionId, { exact: true })).toBeVisible();
+  // The drill-down header shows the full session id. The session inspector prints
+  // it again once its fetch lands, so `first()` pins the header, which precedes it.
+  await expect(page.getByText(sessionId, { exact: true }).first()).toBeVisible();
 });
 
 /**

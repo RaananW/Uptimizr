@@ -18,7 +18,13 @@ export { CLICKHOUSE_MIGRATIONS, migrateClickhouse } from "./migrations.js";
 
 export { runClickhouseQuery } from "./queries.js";
 
-export { insertEvents, getSessionEvents, streamSessionEvents, getSessionMeta } from "./events.js";
+export {
+  insertEvents,
+  getSessionEvents,
+  streamSessionEvents,
+  getSessionMeta,
+  pruneEvents,
+} from "./events.js";
 export type { SessionMeta } from "./events.js";
 
 export {

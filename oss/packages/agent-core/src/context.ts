@@ -184,7 +184,7 @@ export function renderContextForPrompt(
     if (parts.length > 0) lines.push("", `Data: ${parts.join(", ")}.`);
     if (quality.retention?.rawSessions === false) {
       lines.push(
-        "Raw per-session retention is OFF: session timelines and replay are unavailable by design.",
+        "Raw session access is OFF on this collector: session timelines and replay cannot be read through the API.",
       );
     }
   }
