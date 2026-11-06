@@ -48,8 +48,9 @@ The ingest budget is per client, separate from the read budget:
 ## Scene registry (write)
 
 A scene can register a **proxy** of its geometry (per-mesh bounding boxes) so the dashboard's 3D
-heatmaps draw against a recognizable backdrop. Unlike ingestion, this needs a project API key
-holding `query`, so run it from a trusted context rather than a public bundle.
+heatmaps draw against a recognizable backdrop. Unlike ingestion, uploading one needs a project API
+key holding `annotate`, so run it from a trusted context rather than a public bundle. Reading a
+proxy back needs `query`.
 
 | Method | Path                                     | Purpose                                                              | Body                |
 | ------ | ---------------------------------------- | -------------------------------------------------------------------- | ------------------- |

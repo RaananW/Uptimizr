@@ -108,7 +108,7 @@ A key carries a **set of capabilities**, not a single role. `new-key` defaults t
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `query`     | The aggregate analytics API, the scene registry, the live token exchange, and `GET /api/v1/audit`.                                                |
 | `query:raw` | Raw per-session data: `GET /api/v1/sessions/:id/events`, `GET /api/v1/live/sessions/:id`, and the compacted `GET /api/v1/sessions/:id/narrative`. |
-| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events.                                           |
+| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs, scene proxies and regions). Never events.                |
 | `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys.                                         |
 
 The raw endpoints are gated **twice**: the collector must run with `ENABLE_RAW_SESSION_RETENTION`

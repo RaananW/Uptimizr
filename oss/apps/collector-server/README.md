@@ -329,12 +329,12 @@ if `VISITOR_HASH_SECRET` is missing.
 
 A key carries a **set of capabilities** (ADR 0051 §7), not a single role:
 
-| Capability  | Grants                                                                                                          |
-| ----------- | --------------------------------------------------------------------------------------------------------------- |
-| `query`     | The aggregate analytics API, the scene registry, the live token exchange and `GET /api/v1/audit`.               |
-| `query:raw` | Raw per-session streams: `GET /api/v1/sessions/:id/events`, `/sessions/:id/narrative` and `/live/sessions/:id`. |
-| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events.         |
-| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys.       |
+| Capability  | Grants                                                                                                                             |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `query`     | The aggregate analytics API, the scene registry, the live token exchange and `GET /api/v1/audit`.                                  |
+| `query:raw` | Raw per-session streams: `GET /api/v1/sessions/:id/events`, `/sessions/:id/narrative` and `/live/sessions/:id`.                    |
+| `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs, scene proxies and regions). Never events. |
+| `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys.                          |
 
 `uptimizr init` / `uptimizr new-project` mint the operator's **owner** key —
 `query`, `query:raw` and `annotate`, labelled `owner` — because that key drives the dashboard,

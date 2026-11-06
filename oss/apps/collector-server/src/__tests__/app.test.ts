@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LIMITS } from "@uptimizr/schema";
 import type { AnyEvent } from "@uptimizr/schema";
 import type { AgentAuditEntry, ResolvedApiKey } from "@uptimizr/db";
@@ -2256,11 +2256,25 @@ describe("scene registry routes", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/scenes/lobby/representation",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "annotate-key" },
       payload: { proxy, label: "Main Lobby" },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ sceneId: "lobby", kind: "proxy", label: "Main Lobby" });
+    await app.close();
+  });
+
+  it("refuses a scene proxy write from a query-only key, and stores nothing", async () => {
+    const putSceneProxy = vi.fn();
+    const app = await buildApp({ store: makeStore({ putSceneProxy }), config });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/scenes/lobby/representation",
+      headers: { "x-api-key": "valid-key" },
+      payload: { proxy, label: "Main Lobby" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(putSceneProxy).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -2335,7 +2349,7 @@ describe("scene registry routes", () => {
     const res = await app.inject({
       method: "PUT",
       url: "/api/v1/scenes/other/representation",
-      headers: { "x-api-key": "valid-key" },
+      headers: { "x-api-key": "annotate-key" },
       payload: { proxy },
     });
     expect(res.statusCode).toBe(400);
