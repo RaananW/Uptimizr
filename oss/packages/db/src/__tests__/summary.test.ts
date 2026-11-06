@@ -283,6 +283,96 @@ describe("summarizeRows — ranked grains", () => {
   });
 });
 
+describe("summarizeRows — measures that do not rank highest-first", () => {
+  /** A movers row: only the columns the ranking reads. */
+  const mover = (name: string, z: number | null, aboveMinSample = true): ResultRow => ({
+    metric: name,
+    z,
+    aboveMinSample,
+  });
+
+  it("ranks movers by magnitude, so the biggest drop outranks a flat metric", () => {
+    const rows = [
+      mover("flat_metric", 0),
+      mover("small_rise", 1.5),
+      mover("big_drop", -6),
+      mover("small_drop", -2),
+      mover("big_rise", 4),
+    ];
+    const summary = summarizeRows("insight_movers", rows) as RankedSummary;
+    expect(summary.top.map((row) => row.label)).toEqual([
+      "big_drop",
+      "big_rise",
+      "small_drop",
+      "small_rise",
+      "flat_metric",
+    ]);
+    // Ranked on size, reported with the sign that says which way it went.
+    expect(summary.top.map((row) => row.value)).toEqual([-6, 4, -2, 1.5, 0]);
+    expect(summary.reading).toContain("has the largest z by magnitude with -6");
+    expect(summary.reading).toContain("followed by");
+  });
+
+  it("keeps the biggest drop in a capped digest", () => {
+    const risers = Array.from({ length: 15 }, (_, index) =>
+      mover(`rise_${index}`, 1 + index / 100),
+    );
+    const summary = summarizeRows("insight_movers", [
+      ...risers,
+      mover("worst_drop", -9),
+    ]) as RankedSummary;
+    expect(summary.top.length).toBe(metric("insight_movers").limits.maxSummaryRows);
+    expect(summary.top[0]?.label).toBe("worst_drop");
+  });
+
+  it("ranks a below-sample mover after every real one, as the full rows do", () => {
+    const summary = summarizeRows("insight_movers", [
+      mover("unprecedented", 900, false),
+      mover("real_drop", -3),
+      mover("no_spread", null),
+      mover("real_rise", 2),
+    ]) as RankedSummary;
+    expect(summary.top.map((row) => row.label)).toEqual([
+      "real_drop",
+      "real_rise",
+      "no_spread",
+      "unprecedented",
+    ]);
+  });
+
+  it("is a function of the row set, not of the order the rows arrived in", () => {
+    const rows = [mover("a", -3), mover("b", 3), mover("c", 0)];
+    const forward = summarizeRows("insight_movers", rows);
+    const rotated = summarizeRows("insight_movers", rotate(rows, 2));
+    expect(JSON.stringify(rotated)).toBe(JSON.stringify(forward));
+  });
+
+  it("ranks anomalies by magnitude rather than by the timeline", () => {
+    const summary = summarizeRows("insight_anomalies", [
+      { metric: "error_rate", bucketStart: 1, z: 4 },
+      { metric: "fps", bucketStart: 2, z: -11 },
+    ]) as RankedSummary;
+    expect(summary.top.map((row) => row.value)).toEqual([-11, 4]);
+  });
+
+  it("reads scene health worst-first, with unscored scenes last", () => {
+    const summary = summarizeRows("insight_scene_health", [
+      { scene: "unscored", score: null },
+      { scene: "healthy", score: 82 },
+      { scene: "struggling", score: 31 },
+      { scene: "middling", score: 50 },
+    ]) as RankedSummary;
+    expect(summary.top.map((row) => row.label)).toEqual([
+      "struggling",
+      "middling",
+      "healthy",
+      "unscored",
+    ]);
+    expect(summary.reading).toContain("is lowest on score with 31");
+    expect(summary.reading).not.toContain("leads on");
+  });
+});
+
 describe("summarizeRows — bucket grains", () => {
   const rising: ResultRow[] = [
     { bucket: 3000, events: 30, avg_fps: 60 },

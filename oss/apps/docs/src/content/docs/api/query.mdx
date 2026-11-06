@@ -26,7 +26,9 @@ defaults to `full` for every other client.
 `maxSummaryRows`, so a 500-bin heatmap costs the same as a 5-bin one. Its shape follows what one row
 of the metric *is* — `ranked` top rows for a leaderboard, a `series` (first/last/min/max/trend/slope)
 for a time bucket, merged `clusters` for a binned or voxelised heatmap, and the `record` itself for a
-single-row metric.
+single-row metric. `ranked` rows run highest first, except that a signed measure (`insight_movers`,
+`insight_anomalies`) ranks by magnitude with each `value` keeping its sign, and `insight_scene_health`
+ranks lowest first.
 
 ```bash
 curl -H "x-api-key: $KEY" \

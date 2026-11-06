@@ -163,6 +163,19 @@ describe("metric registry — internal consistency", () => {
     }
   });
 
+  it("declares `rank` only on the measure, and at most one `gate` column", () => {
+    for (const metric of allMetrics()) {
+      const entries = Object.entries(metric.columns);
+      for (const [name, column] of entries) {
+        if (column.rank != null) expect(column.measure, `${metric.id}.${name}`).toBe(true);
+      }
+      expect(
+        entries.filter(([, column]) => column.gate === true).length,
+        `${metric.id}: more than one gate column`,
+      ).toBeLessThanOrEqual(1);
+    }
+  });
+
   it("declares at most one measure and one label column, and resolvable rateOf", () => {
     for (const metric of metrics) {
       const entries = Object.entries(metric.columns);

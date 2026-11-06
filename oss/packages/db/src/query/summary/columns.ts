@@ -24,6 +24,11 @@ export function measureColumn(metric: MetricDefinition): Column | undefined {
   return columnsOf(metric).find(([, semantics]) => semantics.measure);
 }
 
+/** The column that says whether a row is evidence (`gate: true`), if it declares one. */
+export function gateColumn(metric: MetricDefinition): Column | undefined {
+  return columnsOf(metric).find(([, semantics]) => semantics.gate);
+}
+
 /** The column that names a row (`label: true`), if it declares one. */
 export function labelColumn(metric: MetricDefinition): Column | undefined {
   return columnsOf(metric).find(([, semantics]) => semantics.label);
