@@ -94,6 +94,7 @@ set without `name` and `frame`.
 | `sceneId`               | —                     | Scene id for a proxy pushed over the bridge. Use `meta.sceneId` to tag events.          |
 | `bridgeGlobal`          | `__uptimizr_<name>__` | `window` property the shim finds the bridge on. `false` attaches none.                  |
 | `onSceneProxy`          | —                     | Called with a wire-correct `SceneProxy` when the engine pushes one.                     |
+| `beforeSend`            | —                     | Inspect, redact or drop each event before it is queued.                                 |
 | `user`, `meta`          | —                     | `session_start` context. Nothing fills in `graphics` here; pass it via `meta.graphics`. |
 | `flushIntervalMs`       | `5000`                | Max time between flushes.                                                               |
 | `transport`             | beacon → fetch        | Custom transport object.                                                                |
@@ -105,14 +106,13 @@ set without `name` and `frame`.
 | `clicks`      | `true`  | `pointer_click`.                                         |
 | `buttons`     | `false` | `pointer_down` / `pointer_up`.                           |
 | `perf`        | `true`  | rAF `frame_perf`. Turn off if the shim calls `pushPerf`. |
-| `errors`      | `true`  | `window` error + unhandled rejection → `runtime_error`.  |
+| `errors`      | `false` | `window` error + unhandled rejection → `runtime_error`.  |
 
-The JS-only tier captures `runtime_error` **by default**, unlike the other connectors, where
-capture is an opt-in `captureErrors` client option. These events are not auto-redacted and do not
-get that option's de-duplication or 50-per-session cap, and `trackWebExport` has no `beforeSend`.
-Disable them with `capture: { errors: false }`, or redact by building an `UptimizrClient` with a
-`beforeSend` hook and registering `webExportCollector` (or `unityCollector` / `godotCollector` /
-`unrealCollector`) on it.
+`runtime_error` capture is **off by default**, as on every other connector, because error text can
+carry PII (ADR 0013). Opt in with `capture: { errors: true }`. Consecutive identical errors are
+de-duplicated and capture stops at 50 events per session. Nothing is auto-redacted, so redact with
+the `beforeSend` option of `trackWebExport` (or `trackUnity` / `trackGodot` / `trackUnreal`), which
+runs on every event before it is queued.
 
 `setSceneProxy` builds the proxy but does not upload it. Registering it is the host's job, from
 `onSceneProxy`, with a [`PUT`](/docs/api/ingestion/#scene-registry-write) from a trusted context:
