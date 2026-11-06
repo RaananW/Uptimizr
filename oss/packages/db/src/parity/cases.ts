@@ -382,6 +382,17 @@ const DELEGATED_PARITY_CASES: readonly ParityCase[] = [
     ],
   },
   {
+    name: "topMeshesCapped",
+    build: (d) => buildTopMeshes(PID, { ...PARITY_RANGE, limit: 2 }, d),
+    sortKeys: ["mesh"],
+    // Rows compare as a multiset, so ordering only shows through the cap: all three
+    // meshes tie on count, and the tiebreak decides which two survive it (#359).
+    golden: [
+      { mesh: "box", count: 2 },
+      { mesh: "floor", count: 2 },
+    ],
+  },
+  {
     name: "meshDwell",
     build: (d) => buildMeshDwell(PID, PARITY_RANGE, d),
     sortKeys: ["mesh"],

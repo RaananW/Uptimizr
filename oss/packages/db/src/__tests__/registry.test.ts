@@ -190,6 +190,7 @@ const PARITY_CASE_METRIC: Readonly<Record<string, MetricId | null>> = {
   flowHeatmap: "flow_links",
   flowHeatmapByStandpoint: "flow_links",
   topMeshes: "top_meshes",
+  topMeshesCapped: "top_meshes",
   meshDwell: "mesh_dwell",
   meshBlindSpots: "mesh_blind_spots",
   topMeshesBySource: "mesh_sources",
