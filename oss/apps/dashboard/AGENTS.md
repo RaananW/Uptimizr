@@ -8,11 +8,12 @@
 The open-source analytics UI for Uptimizr — projects, sessions, heatmaps, performance summaries
 and replay for 3D scenes. Built with **Next.js (App Router)** + **Tailwind CSS**.
 
-It is a **passive viewer**. It reads only from the collector's query API
-(`@uptimizr/collector-server`) — never ClickHouse/Postgres/DuckDB directly — and it does **no
-authoring**: it mints no projects or keys, writes no events, and ships no admin surface. Creating
-projects and keys is the `uptimizr` CLI's job; declaring scene regions is the CLI, the
-`annotate`-gated HTTP endpoint, or `registerRegions` in `@uptimizr/sdk-core`.
+It is a **viewer**. It reads only from the collector's query API
+(`@uptimizr/collector-server`) — never ClickHouse/Postgres/DuckDB directly. It mints no projects or
+keys, writes no events, and ships no admin surface. Its one write path is pinning and unpinning
+panels, which needs an `annotate` key. Creating projects and keys is the `uptimizr` CLI's job;
+declaring scene regions is the CLI, the `annotate`-gated HTTP endpoint, or `registerRegions` in
+`@uptimizr/sdk-core`.
 
 Every panel it renders comes from [`@uptimizr/react`](../../packages/react), which owns the OSS
 panel catalog (ADR 0047). The dashboard is a thin consumer that adds chrome, layout and routing.
@@ -80,8 +81,8 @@ a real collector and, unchanged, against the demo's in-browser DuckDB-Wasm layer
   proxies the collector — the dashboard must stay deployable as plain static files.
 - **Panels live in `@uptimizr/react`** (ADR 0047). Add or change a panel there; never fork one
   into this app.
-- **Keep it a passive viewer.** No project/key minting, no ingestion, no admin writes. Those are
-  the CLI's and the collector's responsibilities.
+- **Keep it a viewer.** No project/key minting, no ingestion, no admin writes; the only writes are
+  `annotate`-gated pinned panels. The rest is the CLI's and the collector's responsibility.
 - **Keep the static export viable.** No feature may require a Next server at runtime: a route that
   must exist in the export is `force-static`, and deep-link routing is handled by the host's SPA
   fallback, not by Next rewrites.

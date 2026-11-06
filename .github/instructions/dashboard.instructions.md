@@ -10,22 +10,14 @@ The OSS analytics UI: projects, live event feed, heatmaps, and session/perf summ
 ## Conventions
 
 - Next.js App Router + TypeScript + Tailwind CSS.
-- Read data from the collector's query API (`NEXT_PUBLIC_COLLECTOR_URL`); the dashboard does not
-  talk to ClickHouse/Postgres directly.
+- Read data only from the collector's query API. The collector URL and API key are runtime values
+  from the connection bar; `NEXT_PUBLIC_COLLECTOR_URL` is a local-dev default. The dashboard never
+  talks to a database directly.
 - Import shared event/query types from `@uptimizr/schema` where applicable; never redefine them.
-- Keep the dashboard self-contained within `oss/` and read storage through `@uptimizr/db` (ADR 0004).
-
-## v1 scope (abstract heatmaps)
-
-- Projects list + live event feed.
-- **2D pointer heatmap** rendered on a canvas (screen-normalized positions).
-- **Camera-direction heatmap** rendered on an abstract sphere (no project `.glb` overlay in v1 —
-  that's deferred).
-- Sessions list and basic perf summary (FPS, device/GPU, asset load).
-- An in-dashboard per-session replay viewer is a stretch goal.
+- Panels live in `@uptimizr/react` (ADR 0047); add or change a panel there, not in this app.
 
 ## Quality
 
-- Server Components by default; Client Components only where interactivity (canvas, 3D) requires.
+- The canonical artifact is a static export, so no feature may require a Next server at runtime.
 - Keep rendering performant for high event volumes (aggregate server-side, paginate, stream).
 - Don't introduce client-side persistent identifiers or analytics-on-analytics (ADR 0003).

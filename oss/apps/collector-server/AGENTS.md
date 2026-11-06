@@ -41,6 +41,7 @@ mint one with `uptimizr new-key <projectId> --capabilities query` instead.
 | `uptimizr regions set <scene>` | Replace a scene's named regions from `--file <regions.json>`.        |
 | `uptimizr regions get <scene>` | Print a scene's named regions as JSON.                               |
 | `uptimizr agent report`        | Run a read-only agent once and write a Markdown report (see below).  |
+| `uptimizr subscriptions …`     | `list`, `add --file`, `remove <id>`, `test <id>` (see below).        |
 | `uptimizr help`                | Usage.                                                               |
 
 `new-key` flags: `--capabilities <list>` (comma-separated; default `query`), `--label <name>`,
@@ -51,7 +52,7 @@ uptimizr new-key <projectId> --capabilities query,annotate \
   --label "weekly-report-agent" --rate-limit-max 120 --rate-limit-window-ms 60000
 ```
 
-`regions` commands take `--project <projectId>` (or `UPTIMIZR_PROJECT_ID`). They talk to the store
+`regions` and `subscriptions` commands take `--project <projectId>` (or `UPTIMIZR_PROJECT_ID`). They talk to the store
 **directly**, so they need no API key — an operator command, unlike the HTTP equivalent.
 
 **Every command targets the store selected by `COLLECTOR_STORE`**, read through the same
@@ -111,7 +112,9 @@ A key carries a **set of capabilities**, not a single role. `new-key` defaults t
 | `ingest`    | Reserved for server-side write paths. Public ingestion is keyless, so issued keys are normally read keys.                                         |
 
 The raw endpoints are gated **twice**: the collector must run with `ENABLE_RAW_SESSION_RETENTION`
-**and** the key must hold `query:raw` — otherwise `403`. Retention alone is not enough.
+**and** the key must hold `query:raw` — otherwise `403`. The flag alone is not enough, and it gates
+reading only: events are always written to the store, including each event's full payload, because
+aggregates are computed from them at query time, and no automatic event deletion exists.
 
 `--rate-limit-max` / `--rate-limit-window-ms` give a key its own request budget, bucketed on the
 **key id** rather than the client IP; keys without one fall back to `COLLECTOR_RATE_LIMIT_*`.
@@ -341,7 +344,7 @@ ADR 0041's remote-panel trust decision is not widened.
   endpoint's rows parse against the metric's `row` schema on a seeded store, an empty one, and the
   in-memory store.
 - **Never weaken the raw-data gate.** `ENABLE_RAW_SESSION_RETENTION` **and** `query:raw`, both,
-  for `/sessions/:id/events` and `/live/sessions/:id` (ADR 0003).
+  for `/sessions/:id/events`, `/sessions/:id/narrative` and `/live/sessions/:id` (ADR 0003).
 - **Never log secrets or raw IPs.** The audit log's subject is the key **id**; `params` drops
   credential-shaped fields and is capped at 512 bytes. Audit writes happen after the response is
   flushed, so they can never block or fail a request. Refusals are recorded too.

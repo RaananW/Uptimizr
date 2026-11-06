@@ -25,13 +25,15 @@ The OSS storage contracts plus the single-file **DuckDB** store:
   accessors enforce the per-project caps in `METADATA_LIMITS` and throw `MetadataLimitError` when a
   project is full.
 
-This package carries **no ClickHouse/Postgres dependency**. Optional scale adapters such as
-`@uptimizr/db-clickhouse` compose these contracts behind the same interface. Server/Node only — no
-DOM imports. Aggregations are **query-time** in v1; no materialized views.
+This package carries **no ClickHouse/Postgres dependency**. The optional stores
+(`@uptimizr/db-postgres`, `@uptimizr/db-mssql`, `@uptimizr/db-clickhouse`) are Apache-2.0 packages
+in this repo that compose these contracts behind the same interface. Server/Node only — no DOM
+imports. Aggregations are **query-time** in v1; no materialized views.
 
 > **Single-writer constraint.** DuckDB is an embedded, single-writer store: only one process may
 > open the file read-write at a time. Run a single collector per file; for multi-writer /
-> horizontal scale use the ClickHouse scale path. **Back up = copy the file.**
+> horizontal scale use an optional Postgres, SQL Server or ClickHouse store. **Back up = copy the
+> file.**
 
 ## Usage
 
@@ -68,20 +70,21 @@ const projectId = await duckdbResolveApiKey(db, "utk_…");
 ```
 
 Connection settings come from the environment (see [`.env.example`](../../../.env.example));
-`readDbSettings()` exposes `DUCKDB_PATH`, the `CLICKHOUSE_*` settings used by adapters, and raw
-session retention. When `DUCKDB_PATH` is unset the store defaults to
+`readDbSettings()` exposes `DUCKDB_PATH`, the connection settings of the optional stores, and the
+`ENABLE_RAW_SESSION_RETENTION` flag. When `DUCKDB_PATH` is unset the store defaults to
 `<repo-root>/data/uptimizr.duckdb` — resolved against the monorepo root (the directory with
 `pnpm-workspace.yaml`), not the process cwd, so the collector and the migrate/seed/new-project
 CLIs all share one canonical file regardless of which package they run from. The collector selects
-its backend with `COLLECTOR_STORE` (`duckdb` by default; `clickhouse` and `memory` are also wired in
-`@uptimizr/collector-server`).
+its backend with `COLLECTOR_STORE` (`duckdb` by default; `postgres`, `mssql`, `clickhouse` and
+`memory` are also wired in `@uptimizr/collector-server`).
 
 ## Metric registry (`@uptimizr/metrics`)
 
 The semantic layer over these aggregations — **what every aggregation means** — lives in its own
 package, [`@uptimizr/metrics`](../metrics). It is a `Readonly<Record<MetricId, MetricDefinition>>`
-with one entry per exported `build*` aggregation (plus two builder-less "resource" entries for the
-session descriptor and the scene representation), declaring the metric's id, title, agent-facing
+with one entry per exported `build*` aggregation (plus three builder-less "resource" entries for the
+session descriptor, the session narrative and the scene representation, and five derived insight
+entries), declaring the metric's id, title, agent-facing
 description, the builder behind it, its collector endpoint, result `grain`, group-by `dimensions`,
 accepted `filters`, the output `row` schema (Zod), per-column semantics (unit, measure, label,
 `rateOf`), row `limits`, how to read the result (`interpretation`), the `caveats` that make it
@@ -175,14 +178,14 @@ Two invariants worth knowing before extending it:
 ## Extending
 
 - **New columns / tables:** append a migration to `DUCKDB_MIGRATIONS`. Forward-only and additive —
-  never edit a shipped migration. The ClickHouse/Postgres scale migrations live alongside the
-  scale store.
+  never edit a shipped migration. The Postgres, SQL Server and ClickHouse migrations live in their
+  own store packages and need the same change.
 - **New aggregation — define once, emit per dialect:** add a pure
   `buildX(projectId, opts, dialect)` builder in `src/query/aggregations.ts` that renders a
   `QuerySpec` (`{ query, query_params }`) using the `Dialect` fragments (never hard-code
-  engine-specific SQL). Run it with `runDuckdbQuery(db, buildX(..., duckdbDialect))`; the scale
-  path runs the _same_ builder with `clickhouseDialect`. Add a `PARITY_CASES` entry so both engines
-  stay provably equal, **and a `METRIC_REGISTRY` entry so consumers know what it means**. Builders
+  engine-specific SQL). Run it with `runDuckdbQuery(db, buildX(..., duckdbDialect))`; the optional
+  stores run the _same_ builder with their own dialects. Add a `PARITY_CASES` entry so every engine
+  stays provably equal, **and a `METRIC_REGISTRY` entry so consumers know what it means**. Builders
   are pure and unit-tested without a live database.
 
 ## Develop
@@ -193,7 +196,7 @@ pnpm --filter @uptimizr/db typecheck
 pnpm --filter @uptimizr/db test
 ```
 
-Integration against real ClickHouse/Postgres lives with the scale store; the unit
+Integration against real Postgres, SQL Server and ClickHouse lives in those store packages; the unit
 tests here cover the pure mapping, the dialect-agnostic SQL builders, and the DuckDB store against
 an in-memory (`:memory:`) database.
 

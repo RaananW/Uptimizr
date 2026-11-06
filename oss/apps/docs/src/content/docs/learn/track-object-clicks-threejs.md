@@ -110,8 +110,7 @@ Hover and visibility capture are off by default. Turn them on when you need them
 const client = trackScene(scene, camera, renderer, {
   projectId: "your-project",
   endpoint: "https://collect.example.com",
-  capture: { hoverDwell: true },
-  meshVisibility: { meshes: ["product-hero"] },
+  capture: { hoverDwell: true, meshVisibility: true },
 });
 ```
 

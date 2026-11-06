@@ -1,7 +1,7 @@
 ---
 title: Custom events & input
 description: Record your own domain events, capture keyboard/gamepad input actions, report capability fallbacks, and switch scenes within a session.
-lastUpdated: 2026-08-03
+lastUpdated: 2026-11-06
 ---
 
 The built-in channels cover pointer, camera, mesh, and performance. These APIs let your app contribute
@@ -18,7 +18,8 @@ const client = trackScene(scene, { projectId, endpoint });
 client.track("add_to_cart", { sku: "ABC-123", price: 49 });
 ```
 
-Keep the property map free of PII. Read per-type counts from
+Keep the property map free of PII. A `name` is at most 128 characters, and `props` holds at most 64
+entries of `string` (≤ 1024 characters), `number`, `boolean` or `null`. Read per-type counts from
 `GET /api/v1/event-counts`.
 
 ## Input actions (keyboard, gamepad, XR)
@@ -57,6 +58,16 @@ three.js / PlayCanvas (and react-three-fiber via `@uptimizr/r3f`) accept the sam
 option. They have no keyboard observable, so they listen on `window` — handy for
 pointer-lock / FPS scenes where the canvas rarely holds focus.
 
+## Camera gestures (`camera_gesture`)
+
+On by default on the Babylon, three.js, PlayCanvas and Babylon Lite connectors (and so on
+react-three-fiber and A-Frame). Each gesture records navigation intent — a `kind` of `orbit`, `pan`,
+`dolly`, `zoom`, `roll`, `fly` or `navigate` — with `durationMs` and, where they apply, `orbitDeg`,
+`rollDeg`, `zoomRatio` and `panDist`, so navigation stays separate from object selection. Turn it
+off with `capture.cameraGesture: false`. The collector option `cameraGestureSensitivity` (default
+`1`) scales every dead-zone: above `1` ignores smaller moves. Read the rollup from
+`GET /api/v1/camera-gestures`.
+
 ## Capability changes (fallbacks & recovery)
 
 Rendering capability isn't constant: some visitors run WebGPU, others fall back to WebGL2; weaker
@@ -90,8 +101,8 @@ that degraded and an optional `durationMs` (the completed degraded-episode lengt
 episode, emitted on recovery), which powers the tracking-quality timeline
 (`GET /api/v1/xr/tracking`). The Babylon connector reports coarse XR tracking loss/recovery
 automatically when a hand or controller drops out of the input registry mid-session (toggle via the
-XR capture `tracking` option, default on). This pairs with the raw
-[`context_lost` / `context_restored`](/docs/guides/sessions/#engine--browser-lifecycle-events)
+`tracking` key of [`xr.capture`](/docs/connectors/babylon/#webxr), default on). This pairs with the
+raw [`context_lost` / `context_restored`](/docs/guides/sessions/#engine--browser-lifecycle-events)
 events — it's the higher-level "what we ran as" signal. Read the rollup from `GET /api/v1/capabilities`.
 
 ## Rendering technology (always-on)
@@ -99,7 +110,8 @@ events — it's the higher-level "what we ran as" signal. Read the rollup from `
 Each session's `session_start.graphics` block records the rendering API surface (`api`), the real
 backend beneath it (`backend`, e.g. WebGPU → Metal), the API/driver version (`apiVersion`), and the
 `shadingLanguage` — captured once per session as non-PII, low-cardinality metadata (ADR 0021 /
-ADR 0046). It is **always-on**: every connector reports it, so no opt-in is needed.
+ADR 0046). It is **always-on** for the JS-engine connectors, so no opt-in is needed. Web exports
+report it only if you pass `meta.graphics`.
 
 The dashboard's **Rendering technology** panel aggregates the mix across the selected window — counts
 by API, backend, and shading language — backed by `GET /api/v1/rendering-technology`, the always-on
@@ -113,8 +125,9 @@ shader-compile/link failures, richer context-loss reasons, WebGPU `uncapturederr
 length-capped `message`/`code`, and a `count` rollup-or-marker discriminator).
 
 It is **off by default** and gated by the `captureGraphicsDiagnostics`
-[option](/docs/guides/configuration/) — like `runtime_error`, the text can leak application IP, so
-you opt in and redact via `beforeSend`. The default emission is a rate-limited per-session rollup so
+[client option](/docs/guides/configuration/#client-options) — like `runtime_error`, the text can
+leak application IP, so you opt in and redact via `beforeSend`. `trackScene` does not take it, so
+set it on a hand-built `UptimizrClient`. The default emission is a rate-limited per-session rollup so
 an error storm can't flood ingestion. `context_lost` / `context_restored` are exempt and stay
 always-on; engine-driven backend fallback stays in `capability_change` above.
 

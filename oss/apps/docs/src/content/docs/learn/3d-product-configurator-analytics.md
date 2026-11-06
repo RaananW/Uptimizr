@@ -38,8 +38,7 @@ import { trackScene } from "@uptimizr/three";
 const client = trackScene(scene, camera, renderer, {
   projectId: "your-project",
   endpoint: "https://collect.example.com",
-  capture: { hoverDwell: true },
-  meshVisibility: {}, // needed for blind-spot reports
+  capture: { hoverDwell: true, meshVisibility: true }, // meshVisibility powers blind-spot reports
 });
 ```
 

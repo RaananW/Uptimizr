@@ -1,7 +1,7 @@
 ---
 title: Track 3D object interactions
 description: Measure which meshes people click, look at and hesitate over, and find the objects nobody notices.
-lastUpdated: 2026-07-04
+lastUpdated: 2026-11-06
 ---
 
 Uptimizr can attribute interaction and attention to the **objects** in your scene, not just to screen
@@ -19,6 +19,10 @@ Read it back via `GET /api/v1/meshes/top`:
 GET /api/v1/meshes/top?since=...&limit=20
 x-api-key: your-project-api-key
 ```
+
+This endpoint takes no `scene` filter and ignores one. For a single scene, read
+`GET /api/v1/meshes/sources?scene=...` or the [query DSL](/docs/api/query/#one-query-endpoint-the-query-dsl)
+with `"segment": { "scene": "lobby" }`.
 
 :::caution
 Mesh attribution relies on your meshes having **stable names**. Procedurally-generated or clone-suffixed
@@ -57,6 +61,7 @@ summary per tracked object per window (never per frame):
 ```ts
 trackScene(scene, {
   // ...
+  capture: { meshVisibility: true }, // this is what turns it on
   meshVisibility: {
     windowMs: 5000, // one summary per object every 5 s (default)
     meshes: ["product-hero"], // allowlist; omit to track all visible meshes
@@ -66,6 +71,10 @@ trackScene(scene, {
   },
 });
 ```
+
+The `meshVisibility` object is a `trackScene` option on Babylon. On three.js, PlayCanvas and Babylon
+Lite, `trackScene` takes `capture.meshVisibility` only; pass the object to the connector's collector
+to tune it.
 
 Each summary carries `visibleMs` (time in view), `centeredMs` (time within `centeredAngleDeg` of the
 camera-forward axis), and `maxScreenFraction` (peak apparent size, 0–1).
@@ -84,11 +93,24 @@ Where do pointer users **hover and hesitate** without clicking? High dwell with 
 trackScene(scene, {
   // ...
   capture: { hoverDwell: true },
-  hoverDwell: {
-    minDwellMs: 500, // ignore pass-overs shorter than this (default)
-    meshes: ["product-hero"], // allowlist; omit to track every hovered mesh
-  },
 });
+```
+
+To tune it, pass a `hoverDwell` object to the connector's collector on a
+[hand-built client](/docs/guides/configuration/#advanced-custom-client--beforesend); `trackScene`
+does not take it:
+
+```ts
+client.use(
+  babylonCollector({
+    scene,
+    capture: { hoverDwell: true },
+    hoverDwell: {
+      minDwellMs: 500, // ignore pass-overs shorter than this (default)
+      meshes: ["product-hero"], // allowlist; omit to track every hovered mesh
+    },
+  }),
+);
 ```
 
 One **bucketed** `hover_dwell` summary is emitted per hover _episode_ (never per frame). An episode ends
@@ -158,6 +180,31 @@ trackScene(scene, {
 no-op with a dev-mode warning. Tier-1 transforms are sampled in the canonical **world** frame; Tier-2
 bone transforms are **skeleton-local** (the only frame portable across differing world placements of the
 same rig). Idle suppression applies — a static actor or unmoving bone emits nothing.
+
+### Capturing a subtree
+
+A `sampling.nodes` value may also be an object, so one declared actor stands in for a moving
+hierarchy — a glTF whose internal parts animate — without naming every descendant. Each captured
+descendant is a `node_transform` carrying a `childPath` relative to the actor.
+
+```ts
+sampling: {
+  nodes: {
+    forklift: { hz: 10, include: "*", maxDepth: 4, maxNodes: 32, exclude: ["Shadow"] },
+  },
+},
+```
+
+| Key        | Default   | Effect                                                                     |
+| ---------- | --------- | -------------------------------------------------------------------------- |
+| `hz`       | —         | Capture rate for the actor and its descendants (Hz, `"frame"` or `0`).     |
+| `include`  | root only | Descendant names to capture, or `"*"` for every descendant under the caps. |
+| `maxDepth` | `8`       | How far below the actor to descend (the actor is depth 0).                 |
+| `maxNodes` | `64`      | Descendant cap, applied after a deterministic breadth-first walk.          |
+| `exclude`  | —         | Descendant names to skip, along with their subtrees.                       |
+
+Subtree capture works on Babylon, three and PlayCanvas. Bones go through `sampling.bones`, and
+cameras are refused.
 
 ### Engine support
 

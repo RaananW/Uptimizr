@@ -43,35 +43,37 @@ Every event carries a shared envelope:
 
 ## Event catalog (v1)
 
-| `type`                | Purpose                                                                                                             |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `session_start`       | Session begins; carries device, graphics, scene, connector, and opt-in user metadata.                               |
-| `session_end`         | Session ends; duration + reason.                                                                                    |
-| `frame_perf`          | Sampled FPS / frame-time window, with optional percentile/jank/render-scale/spatial fields.                         |
-| `camera_sample`       | Camera position, direction, target, fov, and optional gaze hit — view-direction heatmap.                            |
-| `node_transform`      | Replay-complete transforms for developer-declared scene actors / bones / subtree children.                          |
-| `pointer_move`        | Screen-normalized position + optional 3D hit + input-source metadata.                                               |
-| `pointer_click`       | Click heatmap event with screen/hit/button/input-source metadata.                                                   |
-| `pointer_down`        | Pointer/button press transition.                                                                                    |
-| `pointer_up`          | Pointer/button release transition.                                                                                  |
-| `camera_gesture`      | Typed navigation gesture (orbit/pan/dolly/zoom/roll/fly/navigate).                                                  |
-| `mesh_interaction`    | Hover / pick / click / drag / teleport on a named mesh.                                                             |
-| `mesh_visibility`     | Bucketed per-object visibility / centered-time summary.                                                             |
-| `hover_dwell`         | Hover hesitation summary for a mesh, with optional UV.                                                              |
-| `compile_stall`       | Shader / pipeline / material compilation hitch duration.                                                            |
-| `resource_sample`     | Opt-in low-rate GPU / memory footprint sample.                                                                      |
-| `capability_change`   | App-reported capability / fidelity fallback or recovery.                                                            |
-| `asset_load`          | Asset name, bytes, load ms, time-to-first-frame.                                                                    |
-| `scene_change`        | Ordered marker for an active `sceneId` transition.                                                                  |
-| `viewport_resize`     | Debounced viewport/canvas size marker.                                                                              |
-| `visibility_change`   | Page visibility marker.                                                                                             |
-| `focus_change`        | Window/canvas focus marker.                                                                                         |
-| `context_lost`        | Rendering context lost marker.                                                                                      |
-| `context_restored`    | Rendering context restored marker.                                                                                  |
-| `graphics_diagnostic` | Opt-in engine/GPU-health signal (errors, shader-compile failures, context loss, `uncapturederror`). Off by default. |
-| `runtime_error`       | Opt-in JavaScript error / unhandled rejection capture.                                                              |
-| `input_action`        | Discrete keyboard/gamepad/app action event.                                                                         |
-| `custom`              | Developer-defined `name` + open `props` record.                                                                     |
+| `type`                  | Purpose                                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `session_start`         | Session begins; carries device, graphics, scene, connector, and opt-in user metadata.                               |
+| `session_end`           | Session ends; duration + reason.                                                                                    |
+| `frame_perf`            | Sampled FPS / frame-time window, with optional percentile/jank/render-scale/spatial fields.                         |
+| `camera_sample`         | Camera position, direction, target, fov, and optional gaze hit — view-direction heatmap.                            |
+| `node_transform`        | Replay-complete transforms for developer-declared scene actors / bones / subtree children.                          |
+| `pointer_move`          | Screen-normalized position + optional 3D hit + input-source metadata.                                               |
+| `pointer_click`         | Click heatmap event with screen/hit/button/input-source metadata.                                                   |
+| `pointer_down`          | Pointer/button press transition.                                                                                    |
+| `pointer_up`            | Pointer/button release transition.                                                                                  |
+| `camera_gesture`        | Typed navigation gesture (orbit/pan/dolly/zoom/roll/fly/navigate).                                                  |
+| `mesh_interaction`      | Hover / pick / click / drag / teleport on a named mesh.                                                             |
+| `mesh_visibility`       | Bucketed per-object visibility / centered-time summary.                                                             |
+| `hover_dwell`           | Hover hesitation summary for a mesh, with optional UV.                                                              |
+| `compile_stall`         | Shader / pipeline / material compilation hitch duration.                                                            |
+| `resource_sample`       | Opt-in low-rate GPU / memory footprint sample.                                                                      |
+| `capability_change`     | App-reported capability / fidelity fallback or recovery.                                                            |
+| `asset_load`            | Asset name, bytes, load ms, time-to-first-frame.                                                                    |
+| `scene_change`          | Ordered marker for an active `sceneId` transition.                                                                  |
+| `viewport_resize`       | Debounced viewport/canvas size marker.                                                                              |
+| `visibility_change`     | Page visibility marker.                                                                                             |
+| `focus_change`          | Window/canvas focus marker.                                                                                         |
+| `context_lost`          | Rendering context lost marker.                                                                                      |
+| `context_restored`      | Rendering context restored marker.                                                                                  |
+| `graphics_diagnostic`   | Opt-in engine/GPU-health signal (errors, shader-compile failures, context loss, `uncapturederror`). Off by default. |
+| `runtime_error`         | Opt-in JavaScript error / unhandled rejection capture.                                                              |
+| `input_action`          | Discrete keyboard/gamepad/app action event.                                                                         |
+| `xr_boundary_proximity` | The visitor approached or touched the guardian / play-area boundary.                                                |
+| `ar_placement`          | An AR model placement, with a coarse surface bucket.                                                                |
+| `custom`                | Developer-defined `name` + open `props` record.                                                                     |
 
 ## Opt-in engine diagnostics (`graphics_diagnostic`)
 

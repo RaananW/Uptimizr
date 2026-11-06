@@ -1,7 +1,7 @@
 ---
 title: Run the collector
 description: Self-host the Uptimizr collector from npm — the OSS default needs no Docker, just a single DuckDB file.
-lastUpdated: 2026-09-19
+lastUpdated: 2026-11-06
 ---
 
 import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
@@ -29,10 +29,12 @@ config, a tiny runner, and a client snippet for your engine:
 npm create uptimizr@latest
 ```
 
-Follow the prompts, then start it:
+Follow the prompts, then install it, mint your first project and start it:
 
 ```bash
 cd <your-folder>
+npm install
+npm run setup        # mints your first project + owner API key (printed once)
 npm start            # runs `uptimizr serve` under the hood
 ```
 
@@ -47,8 +49,8 @@ suite** and test everything in one go:
 The prompts also ask which **store** to use. `duckdb` (the default) needs nothing else; `postgres`,
 `clickhouse` and `mssql` point the scaffold at a database you already run — `.env` gets the matching
 `COLLECTOR_STORE` and connection variables (`POSTGRES_URL`, `CLICKHOUSE_*`, `MSSQL_URL`) with
-local-server placeholders to edit, and `package.json` gains the store package. `npm run setup` then
-creates the schema and mints the first project in that database.
+local-server placeholders to edit, and `package.json` gains the store package. Edit `.env` before
+`npm run setup`, which then creates the schema and mints the first project in that database.
 
 Skip the prompts with flags — `--full` (collector + dashboard + demo), `--dashboard`, `--demo`,
 `--minimal` (collector only), or `--store <duckdb|postgres|clickhouse|mssql>`:
@@ -115,7 +117,7 @@ To name places inside a scene (so spatial queries can be drilled with `?region=<
 ## Inspect & back up
 
 - Inspect the store directly with the DuckDB CLI (`DUCKDB_PATH` defaults to
-  `./data/uptimizr.duckdb`):
+  `./data/uptimizr.duckdb`). Stop the collector first, or inspect a copy of the file:
 
   ```bash
   duckdb ./data/uptimizr.duckdb "SELECT event_type, count(*) FROM events GROUP BY 1"
@@ -125,9 +127,9 @@ To name places inside a scene (so spatial queries can be drilled with `?region=<
 
 :::caution[Single-writer constraint]
 DuckDB is an embedded, single-writer store: only **one process** may open the file read-write at a
-time. Run a single collector instance against a given file, and stop it before inspecting with
-another writer. Concurrent readers are fine in read-only mode. For multi-writer / horizontal scale,
-use the [`postgres` store](#relational-path-postgres), the
+time. Run a single collector instance against a given file. Read-only access beside a running
+collector is not guaranteed, so stop the collector or inspect a copy of the file. For multi-writer
+/ horizontal scale, use the [`postgres` store](#relational-path-postgres), the
 [`mssql` store](#relational-path-sql-server) or the
 [`clickhouse` store](#scale-path-clickhouse).
 :::
@@ -170,8 +172,8 @@ cross-engine parity suite against a live Postgres). Two row-store trade-offs are
   so these render as an indexed nearest-row lookup per left row (`JOIN LATERAL … ORDER BY ts DESC
 LIMIT 1`). Results are the same; on very large sessions these reads are slower than the
   columnar engines' single merge pass.
-- **Daily rollups are recomputed at query time.** `perf_daily` / `events_daily` are plain views —
-  fine at single-tenant scale; the incremental rollups remain the ClickHouse scale tier.
+- **Daily rollups are recomputed at query time.** `perf_daily` / `events_daily` are plain views, on
+  this store as on every other.
 
 Choose Postgres when you need:
 
@@ -282,8 +284,8 @@ currently exposed through env vars.
 
 ## Configuration
 
-Key environment variables (the CLI writes a starter `.env`; see the repo's `.env.example` for the
-full list):
+Key environment variables (the CLI writes a starter `.env`; the repo's `.env.example` shows most of
+them with comments):
 
 | Variable                                           | Purpose                                                                                         |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -301,12 +303,20 @@ full list):
 | `CLICKHOUSE_URL`                                   | ClickHouse HTTP endpoint when `COLLECTOR_STORE=clickhouse` (default `http://localhost:8123`).   |
 | `CLICKHOUSE_DATABASE`                              | ClickHouse database name (default `uptimizr`; created on first boot).                           |
 | `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD`          | ClickHouse credentials (default `default` / empty).                                             |
+| `COLLECTOR_HOST`                                   | Interface the collector binds (default `0.0.0.0`).                                              |
 | `COLLECTOR_PORT`                                   | Port the collector listens on (default `4318`).                                                 |
 | `VISITOR_HASH_SECRET`                              | Secret for the daily-rotating, server-side visitor hash.                                        |
 | `COLLECTOR_CORS_ORIGINS`                           | Allowed browser origins for ingestion/query (comma-separated).                                  |
 | `COLLECTOR_TRUST_PROXY`                            | Trust `X-Forwarded-*` behind a reverse proxy: `true`, or a trusted IP/CIDR list.                |
-| `ENABLE_RAW_SESSION_RETENTION`                     | Opt-in raw per-session event retention, required for replay.                                    |
+| `COLLECTOR_BODY_LIMIT`                             | Max accepted request body size in bytes (default `1048576`).                                    |
+| `ENABLE_RAW_SESSION_RETENTION`                     | Allows reading raw per-session streams through the API; required for replay. Events are stored either way ([details](/docs/deploy/privacy/#raw-session-access-is-opt-in)). |
+| `LIVE_TOKEN_SECRET`                                | Secret that signs live tokens. Falls back to `VISITOR_HASH_SECRET`, with a startup warning.     |
+| `LIVE_TOKEN_TTL_MS`                                | Live token lifetime (default `900000`).                                                         |
+| `LIVE_WINDOW_MS`                                   | Liveness window for presence and follow (default `30000`).                                      |
+| `LIVE_MAX_CONNECTIONS`                             | Max concurrent live SSE connections per collector (default `200`).                              |
+| `LIVE_PRESENCE_INTERVAL_MS`                        | Interval between presence snapshots / SSE heartbeats (default `2000`).                          |
 | `COLLECTOR_RATE_LIMIT_MAX` / `_WINDOW_MS`          | Default request budget per client (`600` per `60000` ms). A key's own budget overrides it.      |
+| `COLLECTOR_INGEST_RATE_LIMIT_MAX` / `_WINDOW_MS`   | Request budget for `POST /api/v1/collect` (`300` per `60000` ms).                               |
 | `AUDIT_RETENTION_DAYS`                             | How long agent-audit rows are kept (default `30`; `0` keeps them forever).                      |
 | `AUDIT_DASHBOARD_REQUESTS`                         | Also audit the dashboard's own requests (default off — see below).                              |
 | `COLLECTOR_MCP_HTTP`                               | Serve MCP over Streamable HTTP at `/mcp` (default **off** — see below).                         |
@@ -315,6 +325,8 @@ full list):
 | `COLLECTOR_SUBSCRIPTIONS`                          | Run the conditional-subscription scheduler (default **on**; `0` keeps the API, runs no timers). |
 | `COLLECTOR_SUBSCRIPTIONS_MAX_CONCURRENT`           | Subscription evaluations allowed at once (default `4`).                                        |
 | `COLLECTOR_WEBHOOK_ALLOWED_HOSTS`                  | Hosts a subscription webhook may POST to. **Empty by default — no webhook egress at all.**      |
+| `COLLECTOR_DASHBOARD_DIR`                          | Serve a static dashboard export from the collector ([all-in-one](/docs/deploy/dashboard/#all-in-one-served-by-the-collector)). |
+| `COLLECTOR_CSP`                                    | Content-Security-Policy for the served dashboard: `strict` (default) or `off`.                  |
 
 See [Privacy & configuration](/docs/deploy/privacy/) for the privacy-relevant settings.
 
@@ -326,7 +338,7 @@ than "can read everything":
 | Capability  | Grants                                                                                                                            |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `query`     | The aggregate analytics API, the scene registry, the live token exchange and the audit trail.                                      |
-| `query:raw` | Raw **per-session** streams: the replay timeline (`/api/v1/sessions/:id/events`) and the live per-session follow.                  |
+| `query:raw` | Raw **per-session** streams: the replay timeline (`/api/v1/sessions/:id/events`), the session narrative and the live per-session follow. |
 | `annotate`  | The project **metadata** write path (annotations, glossary, saved analyses, panel specs). Never events — events stay append-only.  |
 | `ingest`    | Reserved for server-side write paths. Public ingestion is keyless by design, so issued keys are normally read keys.                |
 
@@ -334,7 +346,7 @@ than "can read everything":
 key holding `query`, `query:raw` and `annotate`, labelled `owner` — everything the operator's own
 surfaces need: the dashboard, session replay, the live per-session follow and scene regions.
 `query:raw` grants nothing on its own (the raw routes also need `ENABLE_RAW_SESSION_RETENTION`), so
-having it up front turns nothing on. It only means that switching retention on later does not make
+having it up front turns nothing on. It only means that switching that flag on later does not make
 replay answer `403` until a second key is minted and swapped into the dashboard.
 
 **Every other key is narrow by default.** `uptimizr new-key` still issues `query` (read-only)
@@ -357,12 +369,12 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 
 :::caution[Breaking change: raw session access needs `query:raw`]
 Reading a raw per-session stream now requires **both** `ENABLE_RAW_SESSION_RETENTION` on the
-collector **and** the `query:raw` capability on the key. Previously retention alone was enough
+collector **and** the `query:raw` capability on the key. Previously the flag alone was enough
 and any `query` key could read it.
 
 Existing keys keep working for every aggregate endpoint and need no migration. A key that drives
 **session replay** or the **live per-session follow** must be re-minted with `query:raw` (or a
-second key issued alongside it) — otherwise those two endpoints answer `403`.
+second key issued alongside it) — otherwise those endpoints answer `403`.
 
 Keys minted by `uptimizr init` / `uptimizr new-project` already carry `query:raw`, so a fresh
 self-host needs no second key: switch `ENABLE_RAW_SESSION_RETENTION` on and replay works. Only

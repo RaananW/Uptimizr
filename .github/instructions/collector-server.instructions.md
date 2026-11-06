@@ -20,9 +20,13 @@ The public-facing ingestion + query API. Treat all client input as untrusted.
 - Accept **batched** events. Validate → enrich → insert.
 - **Enrich** server-side: derive the cookieless visitor hash `hash(ip + ua + dailySalt)` (daily
   rotation), optional coarse geo. Never store the raw IP. (ADR 0003)
-- Insert into ClickHouse via batched/async inserts (`@uptimizr/db`). Don't block the request on
-  slow inserts beyond what's needed for durability guarantees.
-- Honor `ENABLE_RAW_SESSION_RETENTION`: only persist raw ordered session streams when enabled.
+- Insert through the configured `CollectorStore`. Don't block the request on slow inserts beyond
+  what's needed for durability guarantees.
+- `ENABLE_RAW_SESSION_RETENTION` gates **reading** raw per-session streams, not storage. Events are
+  always written to the store, including each event's full payload, because aggregates are computed
+  from them at query time. With the flag off, raw streams cannot be read through the API but remain
+  in the store, readable by anyone with access to the database file or server. No automatic event
+  deletion exists.
 - **Ingest is unauthenticated by design.** The SDK ships events with `navigator.sendBeacon`,
   which cannot attach secret headers, so the public `projectId` is the only credential (like a
   GA measurement ID). Compensate at the boundary: a batch must share one `projectId` (reject
@@ -39,8 +43,8 @@ The public-facing ingestion + query API. Treat all client input as untrusted.
 ## Security (public endpoint)
 
 - `@fastify/cors` (restrict to configured origins), `@fastify/rate-limit`, `@fastify/helmet`.
-- Authenticate query/read routes with project API keys (from Postgres) as appropriate. Ingest is
-  the deliberate exception (see above).
+- Authenticate query/read routes with project API keys (resolved through the configured store) as
+  appropriate. Ingest is the deliberate exception (see above).
 - Never log secrets, raw IPs, or full payloads at info level. The logger is configured to omit
   the client IP/`remoteAddress` and to redact `?token=` from URLs; keep it that way.
 - **TLS is mandatory in production but terminated upstream** — the collector speaks plain HTTP

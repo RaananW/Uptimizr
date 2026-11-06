@@ -1,7 +1,7 @@
 ---
 title: sdk-core (advanced)
 description: Build an UptimizrClient directly for custom transports, beforeSend hooks, and multiple collectors.
-lastUpdated: 2026-06-27
+lastUpdated: 2026-11-06
 ---
 
 `trackScene` is the one-call path. When you need finer control — a custom transport, a `beforeSend`
@@ -33,20 +33,80 @@ await client.stop("manual");
 
 ## Client configuration
 
-| Option            | Default        | Effect                                                                       |
-| ----------------- | -------------- | ---------------------------------------------------------------------------- |
-| `projectId`       | —              | Your project id (required).                                                  |
-| `endpoint`        | —              | Collector base URL (required).                                               |
-| `batchSize`       | `20`           | Events per network flush.                                                    |
-| `flushIntervalMs` | `5000`         | Max time between flushes (`0` disables the timer).                           |
-| `beforeSend`      | —              | Per-event hook; return `null` to drop. Runs after the envelope is filled in. |
-| `transport`       | beacon → fetch | Custom delivery (e.g. to observe sends).                                     |
-| `offload`         | `main`         | Run aggregation + batching on the main thread or an opt-in worker.           |
-| `disabled`        | `false`        | Collect nothing (e.g. honor Do-Not-Track).                                   |
+| Option                       | Default        | Effect                                                                        |
+| ---------------------------- | -------------- | ----------------------------------------------------------------------------- |
+| `projectId`                  | —              | Your project id (required).                                                   |
+| `endpoint`                   | —              | Collector base URL (required).                                                |
+| `batchSize`                  | `20`           | Events queued before an early flush.                                          |
+| `flushIntervalMs`            | `5000`         | Max time between flushes (`0` disables the timer).                            |
+| `maxQueueSize`               | `1000`         | Events retained while offline before the oldest are dropped.                  |
+| `beforeSend`                 | —              | Per-event hook; return `null` to drop. Runs after the envelope is filled in.  |
+| `transport`                  | beacon → fetch | Custom transport object: `{ send(batch) }`. Resolve `false` to re-queue.      |
+| `offload`                    | `main`         | Run aggregation + batching on the main thread or an opt-in worker.            |
+| `createWorker`               | —              | Construct the offload worker yourself. Only consulted with `offload: worker`. |
+| `captureLifecycle`           | `true`         | Emit `viewport_resize` / `focus_change` / `visibility_change`.                |
+| `resizeDebounceMs`           | `250`          | Debounce window for `viewport_resize`.                                        |
+| `captureErrors`              | `false`        | Opt-in `runtime_error` capture; not auto-redacted.                            |
+| `captureGraphicsDiagnostics` | `false`        | Opt-in `graphics_diagnostic` capture; not auto-redacted.                      |
+| `captureShaderSource`        | `false`        | Include raw shader source in shader-compile diagnostics.                      |
+| `sdkVersion`                 | package value  | Override the reported SDK version.                                            |
+| `disabled`                   | `false`        | Collect nothing (e.g. honor Do-Not-Track).                                    |
+| `debug`                      | `false`        | Console debug logs.                                                           |
+
+`trackScene` passes only `projectId`, `endpoint`, `flushIntervalMs`, `transport`, `disabled` and
+`debug` to the client, so the other options in this table are set by building the client yourself.
 
 `beforeSend` runs on every event after the envelope is filled in; use it to redact fields or sample
 a noisy channel. It is **not** exposed through `trackScene` — reach for the custom-client path when
 you need it.
+
+A hand-built client only sends what you give `start()`. `trackScene` also fills in `graphics` and
+`connector`; pass them yourself to keep them (`readGraphics(scene)` and `readConnector(scene)` on
+the Babylon connector).
+
+## Client API
+
+| Member                      | What it does                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------ |
+| `sessionId`, `config`       | The in-memory session id and the resolved configuration.                             |
+| `use(collector)`            | Register a capture plugin. After `start`, it starts immediately.                     |
+| `start(meta?)`              | Emit `session_start`, schedule flushing, start collectors.                           |
+| `track(name, props?)`       | Emit a `custom` event.                                                               |
+| `trackInput(action, opts?)` | Emit an `input_action`.                                                              |
+| `reportCapabilityChange(c)` | Emit a `capability_change`.                                                          |
+| `setScene(sceneId)`         | Switch the active scene; emits `scene_change`.                                       |
+| `emit(event)`               | Queue any schema event, minus the envelope. A no-op before `start` or when disabled. |
+| `flush(opts?)`              | Send queued events now. `{ unload: true }` keeps the send on the main thread.        |
+| `stop(reason?)`             | Emit `session_end`, flush, and tear down collectors and timers.                      |
+| `setPositionProvider(fn)`   | Supply the camera position stamped on errors and diagnostics.                        |
+| `now()`                     | Current timestamp in epoch ms.                                                       |
+
+`emit` is how an app reports an event no connector captures for it, such as `asset_load`:
+
+```ts
+client.emit({ type: "asset_load", name: "hero.glb", loadMs: 842 });
+```
+
+## Custom collectors
+
+A `Collector` is the extension point every connector is built on: a `name` plus a `start(ctx)` that
+returns a handle with `stop()`. `ctx` is a `CollectorContext` carrying `config`, `sessionId`,
+`emit`, `track`, `trackInput`, `reportCapabilityChange`, `setScene`, `setPositionProvider`,
+`createAggregation` and `now`.
+
+```ts
+import type { Collector } from "@uptimizr/sdk-core";
+
+const heartbeat: Collector = {
+  name: "heartbeat",
+  start(ctx) {
+    const timer = setInterval(() => ctx.track("heartbeat"), 30_000);
+    return { stop: () => clearInterval(timer) };
+  },
+};
+
+client.use(heartbeat);
+```
 
 ## Worker offload (opt-in)
 

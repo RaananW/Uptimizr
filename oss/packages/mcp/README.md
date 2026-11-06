@@ -14,9 +14,10 @@ analytics event — **events are read-only**. A key holding `query:raw` addition
 `ENABLE_RAW_SESSION_RETENTION`.
 
 The one exception is gated: when the configured key holds the `annotate` capability the server also
-registers the **project-metadata** tools `annotate`, `define_term` and `save_analysis` (plus
-`list_annotations`, `list_glossary`, `list_analyses`), which leave notes, definitions and saved
-analyses behind. The server asks `GET /api/v1/whoami` once at start-up, so a read-only key yields a
+registers the **project-metadata** tools `annotate`, `define_term`, `save_analysis`, `pin_panel` and
+`unpin_panel` (plus `list_annotations`, `list_glossary`, `list_analyses`, `list_panels`), which
+leave notes, definitions, saved analyses and pinned panels behind. The server asks
+`GET /api/v1/whoami` once at start-up, so a read-only key yields a
 read-only server, and every metadata write is recorded in the project's agent audit log.
 
 ## How it connects

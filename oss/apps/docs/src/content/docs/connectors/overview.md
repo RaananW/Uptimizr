@@ -1,7 +1,7 @@
 ---
 title: 3D engine connectors
 description: Which 3D engines Uptimizr supports, what every connector captures, and how to pick one for a WebGL, WebGPU or WebXR app.
-lastUpdated: 2026-09-05
+lastUpdated: 2026-11-06
 ---
 
 A **connector** is the engine-specific adapter that observes your 3D scene and emits events. Every
@@ -60,14 +60,17 @@ file URL. Disable it with `capture: { assetLoad: false }`.
 
 - **The engine is a peer dependency.** Connectors read your existing engine instance and never
   bundle or mutate the scene.
-- **Clean teardown.** Calling `dispose()` / `stop()` removes every DOM listener, timer, and
-  animation-frame callback. No cookies, no persistent IDs.
+- **Clean teardown.** Calling `client.stop()` removes every DOM listener, timer, and animation-frame
+  callback. No cookies, no persistent IDs.
 - **Canonical coordinate frame.** World-space data is normalized to Uptimizr's canonical wire frame
   (left-handed, y-up) at the emission boundary, while `connector.coordinateSystem` records the
   engine's native frame for provenance.
-- **Same options everywhere.** Capture fidelity (`sampling`), channel toggles (`capture`), scene
-  actors, and opt-in channels work the same across connectors. Engine differences are only in how
-  you hand the scene/camera/renderer to `trackScene`.
+- **Shared option names.** Core `sampling` and `capture` names are shared across connectors, and you
+  hand the scene/camera/renderer to `trackScene` differently per engine. Some options are
+  engine-specific (`keyBindings` and bone capture are not on Babylon Lite, `capture.compileStall` is
+  Babylon-only, `capture.assetLoad` is PlayCanvas-only, and `xr` is opt-in on Babylon but on by
+  default on three), and web exports have their own smaller set. See each connector page and the
+  [configuration reference](/docs/guides/configuration/).
 
 ## Advanced setup
 

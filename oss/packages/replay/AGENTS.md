@@ -40,7 +40,8 @@ const player = new ReplayPlayer(events, driver, { speed: 1, onComplete: () => {}
 player.play(); // play / pause / seek(ms) / stop
 ```
 
-The replay endpoint requires `ENABLE_RAW_SESSION_RETENTION` on the collector.
+The replay endpoint requires `ENABLE_RAW_SESSION_RETENTION` on the collector and an API key
+holding `query:raw`.
 
 ## Scene backdrop
 

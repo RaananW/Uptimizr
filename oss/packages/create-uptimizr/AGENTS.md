@@ -97,8 +97,8 @@ project + API key there, because the `uptimizr` CLI honours `COLLECTOR_STORE` fo
   CLI change, not a scaffolder change.
 - Store choices must stay in step with the collector's `COLLECTOR_STORE` values
   (`duckdb` | `postgres` | `mssql` | `clickhouse`).
-- **This package is released manually.** It is unscoped and listed under `ignore` in
-  `.changeset/config.json`, so `changeset publish` never versions or publishes it — bump its
+- **This package is released manually.** It is unscoped, listed under `ignore` in
+  `.changeset/config.json` and excluded from the Release workflow's `pnpm publish` — bump its
   `package.json` version by hand and `npm publish` from an account with rights. Do **not** add it
   to a changeset: an ignored package in a changeset fails `changeset version`. See
   [CONTRIBUTING.md](https://github.com/RaananW/Uptimizr/blob/main/CONTRIBUTING.md).

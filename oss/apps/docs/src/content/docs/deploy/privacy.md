@@ -1,7 +1,7 @@
 ---
 title: Privacy & configuration
-description: Uptimizr's privacy model and the configuration that controls retention, CORS, and opt-in capture.
-lastUpdated: 2026-09-19
+description: Uptimizr's privacy model and the configuration that controls raw session access, CORS, and opt-in capture.
+lastUpdated: 2026-11-06
 ---
 
 Uptimizr is privacy-first by architecture: the responsible default is the easy default.
@@ -15,34 +15,46 @@ Uptimizr is privacy-first by architecture: the responsible default is the easy d
 - **Derived, coarse browser/OS — never the raw User-Agent.** The request User-Agent is used only to
   compute the visitor hash and to derive a coarse `{ browser, os }` family pair (e.g. `Safari` /
   `iOS`) for the performance device segment. The raw User-Agent and version are never stored — only
-  the two low-cardinality families. Derived, non-PII (ADR 0003 / ADR 0041).
+  the two low-cardinality families. Derived, non-PII (ADR 0003 / ADR 0042).
 - **No PII by default.** Events carry spatial and performance signals, not personal data. Never put
   PII in `meta`, `track` props, or `user`.
 - **Opt-in user descriptor.** `user.id` must be pseudonymous or hashed — never an email, username,
   or raw account id. Omit it to stay fully anonymous (see
   [sdk-core](/docs/connectors/sdk-core/#anonymized-users-opt-in)).
 
-## Retention is opt-in
+## Raw session access is opt-in
 
-Raw per-session event retention — the ordered stream that powers **replay** — is **opt-in** on the
-collector:
+Reading raw per-session streams — the ordered events that power **replay** — through the API is
+**opt-in** on the collector:
 
 ```bash
 ENABLE_RAW_SESSION_RETENTION=true
 ```
 
-With it off, the collector keeps only aggregates; `/api/v1/sessions/:id/events` and
-`/api/v1/sessions/:id/narrative` return `403`. The
-aggregate endpoints never expose raw events.
+Despite its name, this flag gates **access, not storage**. The collector always writes every event
+to the store, including each event's full payload, because aggregates are computed from those rows
+at query time.
 
-Retention is only **half** the gate. Reading a raw per-session stream — the replay timeline
-`/api/v1/sessions/:id/events` and the live per-session follow `/api/v1/live/sessions/:id` — also
-requires an API key holding the `query:raw`
+With the flag off, `/api/v1/sessions/:id/events`, `/api/v1/sessions/:id/narrative` and the live
+per-session follow `/api/v1/live/sessions/:id` return `403`. The raw events remain in the store and
+are readable by anyone with access to the database file or server. The aggregate endpoints never
+expose raw events.
+
+The collector has no automatic event deletion: stored events stay until you remove them yourself.
+
+The flag is only **half** the gate. Reading a raw per-session stream — the replay timeline
+`/api/v1/sessions/:id/events`, the compacted `/api/v1/sessions/:id/narrative` and the live
+per-session follow `/api/v1/live/sessions/:id` — also requires an API key holding the `query:raw`
 [capability](/docs/deploy/collector/#api-keys-and-capabilities). A plain `query` key reads
-aggregates only, whatever retention is set to, so "who may see raw sessions" is a deliberate,
+aggregates only, whatever the flag is set to, so "who may see raw sessions" is a deliberate,
 per-key decision rather than a collector-wide switch.
 
 :::caution[Breaking change]
+This is a tightening: previously `ENABLE_RAW_SESSION_RETENTION` alone was enough and any `query`
+key could read the raw stream. Existing keys keep working for every aggregate endpoint; a key that
+drives replay or live-follow must be re-minted with
+`uptimizr new-key <projectId> --capabilities query,query:raw`.
+:::
 
 ### What a session narrative shows
 
@@ -69,12 +81,6 @@ It **never** carries:
 If your app attaches personal data to a custom-event property or to an error message, that is the
 one place it could reach a narrative — error messages are truncated but not filtered, which is the
 same trade-off as the raw stream and the dashboard's error panels.
-
-This is a tightening: previously `ENABLE_RAW_SESSION_RETENTION` alone was enough and any `query`
-key could read the raw stream. Existing keys keep working for every aggregate endpoint; a key that
-drives replay or live-follow must be re-minted with
-`uptimizr new-key <projectId> --capabilities query,query:raw`.
-:::
 
 ## Agent activity is audited
 

@@ -18,8 +18,7 @@ elsewhere.
 - Events must be **replay-complete**: ordered, timestamped, and keyed by `sessionId`, with enough
   fidelity to reconstruct a session (camera pose, pointer position, picked mesh, etc.). See
   ADR 0006.
-- v1 event types: `session_start`, `session_end`, `frame_perf`, `camera_sample`, `pointer_move`,
-  `pointer_click`, `mesh_interaction`, `asset_load`, `custom`. Use a discriminated union on a
+- The canonical event list is `EVENT_TYPES` in `src/constants.ts`. Use a discriminated union on a
   `type` field.
 - Keep numeric payloads compact (e.g. arrays of numbers for vectors) — these are high-volume.
 - The package must stay **dependency-light** (Zod only) and free of any DOM, Node, Babylon, or

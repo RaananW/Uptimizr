@@ -1,7 +1,7 @@
 ---
 title: Query endpoints
 description: The collector's read API — sessions, heatmaps, mesh and performance aggregates, and replay.
-lastUpdated: 2026-09-22
+lastUpdated: 2026-11-06
 ---
 
 All read endpoints take `x-api-key` and the [shared parameters](/docs/api/overview/). Reads are
@@ -725,7 +725,7 @@ aggregations are read against, so they aggregate nothing and take no `format`.
 
 A region is `{ id, label, bounds: [minX,minY,minZ,maxX,maxY,maxZ], description? }`.
 Author them with `registerRegions` from `@uptimizr/sdk-core`, with a plain `PUT`,
-or offline with `uptimizr regions set <sceneId> --file regions.json`.
+or offline with `uptimizr regions set <sceneId> --file regions.json --project <projectId>`.
 
 :::caution
 The two reads take a `query`-capable API key; the **write** takes an
@@ -749,10 +749,13 @@ developer-only path.
 | `POST` | `/api/v1/live/token`          | Exchange the API key for the short-lived live-stream `token`.  | `query`     | —                      |
 
 :::caution[Raw per-session access has two gates]
-Both raw routes need **both** halves, and either one missing is a `403`:
+All three raw routes need **both** halves, and either one missing is a `403`:
 
 1. the collector running with `ENABLE_RAW_SESSION_RETENTION` (ADR 0003), **and**
 2. the `query:raw` capability on the key (ADR 0051 §7).
+
+The flag gates access, not storage: events are always written to the store, and with it off they
+stay there but cannot be read through these routes.
 
 A plain `query` key reads every aggregate endpoint on this page but is refused here. Mint a
 raw-capable key with
@@ -773,7 +776,29 @@ dips, errors, how it ended, then a totals entry) instead of every sampled event.
 route on this page that accepts **`format=text`** — a line per entry, for putting a whole session
 in a model's context — alongside the usual `full` and `table`. See
 [Session narrative](/docs/guides/sessions/#session-narrative) for the parameters and
-[Privacy & retention](/docs/deploy/privacy/#what-a-session-narrative-shows) for what it omits.
+[Privacy & configuration](/docs/deploy/privacy/#what-a-session-narrative-shows) for what it omits.
+
+## Live streams
+
+The live routes are Server-Sent Events, because `EventSource` cannot send a header. Exchange the key
+for a token with `POST /api/v1/live/token`, which answers `{ token, expiresAt }`, then pass it as
+`?token=`. A missing or expired token is `401`, and a stream past the connection cap is `503`.
+
+| Method | Path                    | Purpose                                                                                                 | Params           |
+| ------ | ----------------------- | ------------------------------------------------------------------------------------------------------- | ---------------- |
+| `GET`  | `/api/v1/live/presence` | `event: presence` snapshots, on connect and on an interval. Not gated by `ENABLE_RAW_SESSION_RETENTION`.                 | `token`          |
+| `GET`  | `/api/v1/live/stream`   | `event: event` frames for every arriving event in the project. `types` is a comma-separated allow-list. | `token`, `types` |
+
+A presence snapshot is `{ activeSessions, activeVisitors, sessions }`, where each roster row is
+`{ sessionId, sceneId, startedAt, lastSeen, activity }`.
+
+| Environment variable        | Default               | Effect                                                     |
+| --------------------------- | --------------------- | ---------------------------------------------------------- |
+| `LIVE_WINDOW_MS`            | `30000`               | How recently a session must have sent an event to be live. |
+| `LIVE_TOKEN_SECRET`         | `VISITOR_HASH_SECRET` | Signs live tokens. Set a value of its own in production.   |
+| `LIVE_TOKEN_TTL_MS`         | `900000`              | Live token lifetime.                                       |
+| `LIVE_MAX_CONNECTIONS`      | `200`                 | Max concurrent SSE connections per collector.              |
+| `LIVE_PRESENCE_INTERVAL_MS` | `2000`                | Interval between pushed presence snapshots.                |
 
 ## Example
 

@@ -1,7 +1,7 @@
 ---
 title: MCP server (AI agents)
 description: Let an AI agent answer natural-language questions about your 3D analytics with the @uptimizr/mcp server — events read-only, metadata writes behind the annotate capability.
-lastUpdated: 2026-09-19
+lastUpdated: 2026-11-06
 ---
 
 `@uptimizr/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server over your
@@ -14,10 +14,11 @@ It's a thin wrapper: each analytics tool maps one-to-one to a documented
 and nothing in the server can write, alter or delete an analytics event — **events are read-only**.
 
 The one exception is deliberate and gated: when the configured key holds the `annotate` capability,
-the server also registers the **project-metadata** tools `annotate`, `define_term` and
-`save_analysis` (plus `list_annotations`, `list_glossary`, `list_analyses`), which write notes,
-definitions and saved analyses through the [metadata endpoints](/docs/api/metadata/). The server
-asks `GET /api/v1/whoami` once at start-up, so a read-only key yields a read-only server — and every
+the server also registers the **project-metadata** tools `annotate`, `define_term`, `save_analysis`,
+`pin_panel` and `unpin_panel` (plus `list_annotations`, `list_glossary`, `list_analyses`,
+`list_panels`), which write notes, definitions, saved analyses and pinned panels through the
+[metadata endpoints](/docs/api/metadata/) and the [panel endpoints](/docs/api/query/#pinned-panels).
+The server asks `GET /api/v1/whoami` once at start-up, so a read-only key yields a read-only server — and every
 metadata write is recorded in the project's agent audit log.
 
 The tool catalog itself lives in the framework-agnostic, browser-safe **`@uptimizr/agent-core`**
@@ -169,7 +170,7 @@ Most tools accept an optional time range (`since` / `until`, epoch ms) plus the 
 endpoint supports (`scene`, `session`, `source`, `bins`, `cellSize`, `limit`, `cameraMode`,
 `region`, …). `session_meta`, `session_trajectory` and `scene_representation` take a required id.
 
-The catalog is also **evaluated**, not just generated: a bank of ~48 real analytics questions is run
+The catalog is also **evaluated**, not just generated: a bank of 84 real analytics questions is run
 against a deterministic fixture set through this exact tool surface on every change to it, and each
 answer is scored on tool selection, argument correctness and accuracy. That is what keeps the tool
 descriptions honest — every metric the collector serves has at least one question an agent is
@@ -493,6 +494,9 @@ you configured holds the `annotate` capability.
 | `list_annotations` | Read the notes already left — worth doing **before** explaining a spike someone has already explained. |
 | `list_glossary`    | Read the project's vocabulary before interpreting mesh names, scene ids or custom events.              |
 | `list_analyses`    | Read questions this project has asked before, and what they concluded.                                 |
+| `pin_panel`        | Put a query, a chart and a reading on the project dashboard.                                           |
+| `unpin_panel`      | Remove a pinned panel, for the whole project.                                                          |
+| `list_panels`      | Read what is already pinned.                                                                           |
 
 Mint the key with the capability:
 
@@ -502,7 +506,8 @@ uptimizr new-key <projectId> --capabilities query,annotate --label "weekly-repor
 
 Without it the server starts read-only and never offers the tools; with it, every write is bounded
 at the collector's edge and recorded in the agent audit log. They write **metadata only** — see
-[Metadata endpoints](/docs/api/metadata/) for the shapes, the bounds and the privacy note.
+[Metadata endpoints](/docs/api/metadata/) for the shapes, the bounds and the privacy note, and
+[Pinned panels](/docs/api/query/#pinned-panels) for the panel spec.
 
 ## Hosted transport (Streamable HTTP)
 

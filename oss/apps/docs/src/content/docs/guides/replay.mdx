@@ -1,7 +1,7 @@
 ---
 title: Session replay for 3D scenes
 description: Replay a visitor's session inside your own 3D scene with @uptimizr/replay, using recorded camera, pointer and mesh events instead of video.
-lastUpdated: 2026-06-25
+lastUpdated: 2026-11-06
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -11,8 +11,9 @@ pointer / mesh / custom / input events are surfaced to callbacks so you can draw
 mesh, or annotate a timeline.
 
 :::caution
-The collector must have **raw-session retention** enabled (`ENABLE_RAW_SESSION_RETENTION=true`) for
-the session-events endpoint to return data. A `403` means it's off.
+Reading a session needs **both** `ENABLE_RAW_SESSION_RETENTION=true` on the collector and an API key
+holding `query:raw`. A `403` means one of the two is missing; the response body says which. The flag
+gates access, not storage: events are stored either way.
 :::
 
 ## Option A — npm
@@ -60,10 +61,61 @@ npm install @uptimizr/replay
   player.play();
   ```
   </TabItem>
+  <TabItem label="PlayCanvas">
+  ```ts
+  import { fetchSessionEvents, ReplayPlayer } from "@uptimizr/replay";
+  import { createPlayCanvasReplayDriver } from "@uptimizr/replay/playcanvas";
+
+  const events = await fetchSessionEvents({ endpoint, apiKey, sessionId });
+  // PlayCanvas has no single active camera, so `camera` (an Entity) is required.
+  const driver = createPlayCanvasReplayDriver({
+    camera: cameraEntity, // required
+    onPointer: (screen, hitPoint, hitMesh, type) => { /* draw cursor / flash */ },
+  });
+
+  const player = new ReplayPlayer(events, driver, { speed: 1 });
+  player.play();
+  ```
+  </TabItem>
+  <TabItem label="Babylon Lite">
+  ```ts
+  import { fetchSessionEvents, ReplayPlayer } from "@uptimizr/replay";
+  import { createBabylonLiteReplayDriver } from "@uptimizr/replay/babylon-lite";
+
+  const events = await fetchSessionEvents({ endpoint, apiKey, sessionId });
+  // `camera` is the Lite ArcRotateCamera to re-drive.
+  const driver = createBabylonLiteReplayDriver({
+    camera, // required
+    onPointer: (screen, hitPoint, hitMesh, type) => { /* draw cursor / flash */ },
+  });
+
+  const player = new ReplayPlayer(events, driver, { speed: 1 });
+  player.play();
+  ```
+  </TabItem>
 </Tabs>
 
 `ReplayPlayer` is deterministic — seeking backward resets the driver and replays from the start.
-`player.durationMs` gives the total length.
+`player.durationMs` gives the total length, and `player.isPlaying` the current state. Besides
+`speed`, the third argument takes `onProgress(elapsedMs, durationMs)` and `onComplete()`.
+
+All four drivers take the same callbacks (`onPointer`, `onMeshInteraction`, `onCustom`,
+`onInputAction`, `onLifecycle`, `onError`) plus `nodes` and `onNodeTransform`.
+
+### Streaming a session
+
+`fetchSessionEvents` buffers the whole session. `fetchSessionEventsStream` takes the same options
+and yields events as they arrive, over NDJSON when the collector supports it and from the buffered
+array when it does not. A malformed line is skipped and reported through the optional
+`onMalformedLine(count)`.
+
+```ts
+import { fetchSessionEventsStream } from "@uptimizr/replay";
+
+for await (const event of fetchSessionEventsStream({ endpoint, apiKey, sessionId })) {
+  // one validated event at a time, in server order
+}
+```
 
 ### Replaying scene actors
 
@@ -77,8 +129,9 @@ const driver = createBabylonReplayDriver({
   nodes: {
     "npc-guard": () => scene.getMeshByName("Guard_root"), // resolver, name, or ref
   },
-  onNodeTransform: (sample, ts) => {
-    /* sample.nodeId / sample.boneId? / sample.position / sample.rotation / sample.scale? */
+  onNodeTransform: (nodeId, transform, ts) => {
+    /* transform.boneId? / transform.childPath? / transform.position / transform.rotation /
+       transform.scale? */
   },
 });
 ```
@@ -87,6 +140,28 @@ The Babylon, three, and PlayCanvas drivers re-apply Tier-1 root transforms **and
 (matching each bone by name on the node's skeleton). The `babylon-lite` driver drives the Tier-1 root
 and forwards bone samples to the callback only. Unknown `nodeId` / `boneId` are skipped without error
 (forward/back-compatible).
+
+### Rigid subtree reconstruction
+
+To re-pose a whole **rigid** sub-hierarchy from one captured node, `reconstructRigidSubtree` combines
+the sampled root pose with the scene proxy's scan-time `path` / `world` fields. It is pure and
+engine-agnostic:
+
+```ts
+import { reconstructRigidSubtree } from "@uptimizr/replay";
+
+const meshes = reconstructRigidSubtree({
+  proxy, // the registered SceneProxy
+  rootPath: "Forklift/Mast", // the captured node's path
+  rootWorld: sampledRootTransform, // its live { position, rotation, scale }
+  // rootWorldAtScan is optional; falls back to the proxy mesh at rootPath
+});
+// → [{ name, path, world: { position, rotation, scale } }, …] for strict descendants
+```
+
+It returns only strict descendants of `rootPath`, and `[]` when no scan-time root transform is
+available. Non-rigid deformation isn't reconstructed, and a captured `childPath` sample wins over a
+reconstructed pose.
 
 ### Loading a scene backdrop
 
@@ -135,7 +210,12 @@ document.head.appendChild(r);
 once `scene` exists and has an `activeCamera`. It always logs a concise summary and warns about the
 common "nothing happens" causes: an empty session, a session with no `camera_sample` events (camera
 won't move), or a scene with no active camera. (`pnpm playground` prints this snippet pre-filled and
-serves the bundle at `/uptimizr-replay.global.js`.)
+serves the bundle at `/uptimizr-replay.global.js`.) It resolves to a handle with `play`, `pause`,
+`stop`, `seek`, `durationMs` and `isPlaying`.
+
+Beyond the options shown, `replayInScene` takes `camera` (defaults to `scene.activeCamera`), `speed`,
+`onPointer`, `onMeshInteraction`, `onCustom`, `onLifecycle`, `onError`, `onProgress`, `onComplete`,
+`loadBackdrop` and `backdropPluginExtension`.
 
 `backdropUrl` loads a `.glb`/`.gltf` into the scene before replay. To keep the global bundle from
 shipping a second copy of Babylon's `SceneLoader`, it **reuses the host page's loader**: expose Babylon
@@ -144,7 +224,8 @@ as `window.BABYLON` (with `LoadAssetContainerAsync` and a glTF loader registered
 
 ## Troubleshooting
 
-- **`403` from the events endpoint** — raw-session retention is off (`ENABLE_RAW_SESSION_RETENTION`).
+- **`403` from the events endpoint** — `ENABLE_RAW_SESSION_RETENTION` is off, or the key lacks
+  `query:raw`. The response body says which.
 - **`200` with 0 events** — usually an **API-key / project mismatch**: reads are scoped to the key's
   project, so a valid session id looked up with another project's key returns nothing. Copy the session
   id and the API key from the **same** dashboard project.
@@ -163,7 +244,7 @@ When the session is **live right now** (it has produced an event within the acti
 same window switches to **live follow**: new camera moves and interactions stream in and the timeline
 grows in real time. A **● LIVE** control pins the playhead to the live edge; scrub back (or press Play)
 to review what already happened, then press **● LIVE** to jump back to the edge. Live follow uses the
-same raw-retention gate as replay — with retention off, the window shows nothing to follow.
+same gate as replay — with `ENABLE_RAW_SESSION_RETENTION` off, the window shows nothing to follow.
 
 ### Load your model into the birdview
 

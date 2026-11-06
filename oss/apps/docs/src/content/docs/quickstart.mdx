@@ -1,7 +1,7 @@
 ---
 title: "Quickstart: add analytics to a 3D scene"
 description: Add Uptimizr to a Babylon.js, three.js, PlayCanvas, react-three-fiber or A-Frame scene and see your first heatmap in three steps.
-lastUpdated: 2026-06-20
+lastUpdated: 2026-11-06
 ---
 
 import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
@@ -51,7 +51,7 @@ Get from an uninstrumented scene to your first heatmap in three steps.
    });
 
    // later, on teardown
-   tracker.dispose();
+   await tracker.stop("manual");
    ```
 
 3. **Open the dashboard** and watch heatmaps fill in as users explore your scene.

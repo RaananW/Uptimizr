@@ -1,7 +1,7 @@
 ---
 title: Building agents on Uptimizr
 description: The AI-first analytics layer end to end — the semantic metric registry, capability discovery, OpenAPI, the MCP server, the in-browser assistant, agent-shaped result formats, scoped keys and the evaluation harness.
-lastUpdated: 2026-11-01
+lastUpdated: 2026-11-06
 ---
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
@@ -78,8 +78,8 @@ describe the API.
 - **`uptimizr://context`** / **`GET /api/v1/context`** — the [project context
   document](/docs/api/context/). Read it **first**, before anything else: it carries the project's
   real scene ids and named region ids, the custom events the application emits with the props they
-  carry, the top meshes and bound input actions, how fresh the data is, whether raw retention is on,
-  and which metrics will return empty because every capture channel that feeds them is off. It is
+  carry, the top meshes and bound input actions, how fresh the data is, whether raw session reads
+  are on, and which metrics will return empty because every capture channel that feeds them is off. It is
   bounded (well under 16 KB) and cached per project, so it is cheap to re-read. Without it an agent
   guesses a scene id, filters on a custom-event name that does not exist, and reports a disabled
   channel's zero as a finding.
@@ -166,6 +166,67 @@ persisted. Every report ends with a **Method** section listing the tool calls an
 so an unattended document stays auditable. `--dry-run` prints the exact prompt without calling a
 provider, and `UPTIMIZR_AGENT_PROVIDER=scripted` exercises the whole path with no model and no
 key at all. See [Scheduled agent reports](/docs/deploy/collector/#scheduled-agent-reports).
+
+### Headless — `@uptimizr/agent-core`
+
+For your own agent loop — a Node service, a bot, a browser UI — depend on the framework-agnostic
+package directly. It ships no model and no key: you supply an `LlmProvider`, either your own
+(`complete({ messages, tools, signal, onToken })` resolving to `{ kind: "tool_calls", toolCalls }`
+or `{ kind: "final", content }`) or an adapter from `@uptimizr/agent-core/providers/hosted` or
+`/providers/webllm`.
+
+```ts
+import { createCollectorClient, renderAgentSkill, runAgent } from "@uptimizr/agent-core";
+import { createHostedProvider } from "@uptimizr/agent-core/providers/hosted";
+
+const client = createCollectorClient({
+  collectorUrl: "https://collect.example.com",
+  apiKey: "utk_…",
+});
+const provider = createHostedProvider({
+  api: "anthropic",
+  endpoint: "https://api.anthropic.com/v1",
+  apiKey: "sk-ant-…",
+  model: "claude-3-5-haiku-latest",
+});
+
+const result = await runAgent({
+  provider,
+  client,
+  messages: [
+    { role: "system", content: "You are a 3D analytics assistant." },
+    { role: "user", content: renderAgentSkill("weekly_scene_health", { scene: "lobby" }) },
+  ],
+});
+console.log(result.content);
+```
+
+| `runAgent` option    | Default     | Effect                                                                               |
+| -------------------- | ----------- | ------------------------------------------------------------------------------------ |
+| `provider`, `client` | —           | Required, with `messages`: the LLM backend, and the collector client for tool calls. |
+| `messages`           | —           | The conversation so far.                                                             |
+| `tools`              | `readTools` | The tool catalog to expose.                                                          |
+| `maxSteps`           | `8`         | Provider turns before returning.                                                     |
+| `forceFinalAnswer`   | `true`      | Make one extra tool-free turn when a run would end with no answer.                   |
+| `maxToolResultChars` | `8000`      | Truncate longer tool results, with a marker.                                         |
+| `signal`             | —           | Cancellation signal.                                                                 |
+| `onStream`           | —           | Receives `delta` and `turn_end` events as the reply is generated.                    |
+
+It resolves to `{ content, messages, steps, stoppedOnMaxSteps }`, and issues collector `GET`s only.
+
+| Export                                                        | What it is                                                       |
+| ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `readTools`, `coreReadTools`                                  | The full `query` catalog, and the small subset for local models. |
+| `selectReadTools("core" \| "full")`, `filterReadTools(names)` | Pick a catalog, or narrow it by name.                            |
+| `rawTools`                                                    | The `query:raw` tools. Register only for a key holding it.       |
+| `writeTools`                                                  | The `annotate` metadata tools. Not part of `runAgent`'s catalog. |
+| `AGENT_SKILLS`, `AGENT_SKILL_NAMES`                           | The packaged skills.                                             |
+| `getAgentSkill(name)`, `renderAgentSkill(name, args?)`        | Look up a skill, or render its user turn.                        |
+| `renderContextForPrompt(document)`                            | The [project context](/docs/api/context/) as a prompt block.     |
+| `ANALYTICS_AGENT_GUIDELINES`, `renderCurrentTimeLine(ms)`     | System-prompt building blocks.                                   |
+
+`createCollectorClient(config, fetchImpl?)` throws `CollectorError`, with a `status`, on a non-2xx
+response.
 
 ### Plain HTTP
 
@@ -353,7 +414,8 @@ phrase the result in words.
 import { registerRegions } from "@uptimizr/sdk-core";
 ```
 
-…or register them offline with `uptimizr regions set <sceneId> --file regions.json`. Reading the
+…or register them offline with
+`uptimizr regions set <sceneId> --file regions.json --project <projectId>`. Reading the
 vocabulary (`GET /api/v1/scene-regions`) takes a `query` key; **writing** it takes an `annotate` key,
 so a read-only agent key cannot redraw your map. See
 [scene regions](/docs/api/query/#scene-regions).
@@ -516,7 +578,7 @@ Full reference: [API keys and capabilities](/docs/api/overview/#api-keys-and-cap
 
 "AI-first" is a claim until something measures it. The repository carries an **evaluation harness**
 (`oss/packages/agent-eval`, private to the repo — it is an instrument, not a shipped package): a bank
-of **48** real analytics questions, asked of an agent through the _real_ collector over a
+of **84** real analytics questions, asked of an agent through the _real_ collector over a
 deterministic fixture set, and scored on **tool selection**, **argument correctness** and **answer
 accuracy**.
 
@@ -534,7 +596,7 @@ the collector answering one it was not asked — the inversion that turns "I che
 was fine" into "the lobby stopped being fine at 14:02".
 
 ```bash
-uptimizr subscriptions add --file fps-drop.json
+uptimizr subscriptions add --file fps-drop.json --project <projectId>
 ```
 
 A subscription names a registry metric, a window and a predicate — a threshold crossing, an

@@ -70,9 +70,10 @@ Drivers are available for three.js, Babylon.js, Babylon Lite and PlayCanvas.
 
 ## What you need to know first
 
-- **Retention is opt-in.** Raw session events are only kept when the collector runs with
-  `ENABLE_RAW_SESSION_RETENTION=true`, and reading them needs an API key with the `query:raw`
-  [capability](/docs/deploy/collector/#api-keys-and-capabilities).
+- **Access is opt-in.** Reading a session needs `ENABLE_RAW_SESSION_RETENTION=true` on the collector
+  and an API key with the `query:raw`
+  [capability](/docs/deploy/collector/#api-keys-and-capabilities). The flag controls access, not
+  storage: [events are stored either way](/docs/deploy/privacy/#raw-session-access-is-opt-in).
 - **Your scene must match the session.** Replay runs in the scene you provide, so a major scene
   change can make older sessions line up poorly.
 - **It re-applies, it doesn't re-simulate.** Objects that move on their own, such as NPCs, doors and

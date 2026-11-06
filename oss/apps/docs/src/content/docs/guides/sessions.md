@@ -1,7 +1,7 @@
 ---
 title: Sessions & lifecycle
 description: How sessions start and end, the browser/engine lifecycle events captured, opt-in error capture, and anonymized session context.
-lastUpdated: 2026-09-19
+lastUpdated: 2026-11-06
 ---
 
 A **session** is one continuous visit to your 3D experience. It is the unit of replay and the key every
@@ -33,28 +33,32 @@ recorded on `session_end` alongside `durationMs`. After `stop` the client emits 
 So the timeline reflects everything around the scene — not just camera and pointer activity — the SDK
 records these discrete lifecycle events (privacy-safe: dimensions, booleans, and enum states only):
 
-| Event               | Source              | When                                                                   |
-| ------------------- | ------------------- | ---------------------------------------------------------------------- |
-| `viewport_resize`   | `sdk-core`          | Window resized (debounced) + once at session start.                    |
-| `focus_change`      | `sdk-core`          | Window gained/lost focus (`{ focused }`).                              |
-| `visibility_change` | `sdk-core`          | Tab shown/hidden (`{ state: "visible" \| "hidden" }`).                 |
-| `context_lost`      | `@uptimizr/babylon` | Engine lost its GPU context (rendering suspended).                     |
-| `context_restored`  | `@uptimizr/babylon` | Engine recovered its GPU context.                                      |
-| `compile_stall`     | `@uptimizr/babylon` | Main-thread shader/pipeline compilation hitch (`durationMs`, `phase`). |
-| `capability_change` | _app-reported_      | Fallback/recovery (`kind`, `from`, `to`, `reason`).                    |
-| `runtime_error`     | `sdk-core`          | Uncaught JS error / unhandled rejection (opt-in).                      |
+| Event                 | Source                     | When                                                                   |
+| --------------------- | -------------------------- | ---------------------------------------------------------------------- |
+| `viewport_resize`     | `sdk-core`                 | Window resized (debounced) + once at session start.                    |
+| `focus_change`        | `sdk-core`                 | Window gained/lost focus (`{ focused }`).                              |
+| `visibility_change`   | `sdk-core`                 | Tab shown/hidden (`{ state: "visible" \| "hidden" }`).                 |
+| `context_lost`        | Babylon, three, PlayCanvas | Engine lost its GPU context (rendering suspended).                     |
+| `context_restored`    | Babylon, three, PlayCanvas | Engine recovered its GPU context.                                      |
+| `compile_stall`       | `@uptimizr/babylon`        | Main-thread shader/pipeline compilation hitch (`durationMs`, `phase`). |
+| `capability_change`   | _app-reported_             | Fallback/recovery (`kind`, `from`, `to`, `reason`).                    |
+| `runtime_error`       | `sdk-core`                 | Uncaught JS error / unhandled rejection (opt-in).                      |
+| `graphics_diagnostic` | Babylon, three             | Opt-in GPU-health signal. See [events](/docs/guides/events/).          |
 
 The generic browser events are controlled by `captureLifecycle` (default `true`); `viewport_resize` is
-debounced by `resizeDebounceMs` (default `250`). Engine context-loss events are controlled by
-`capture.contextLoss` (default `true`). `compile_stall` is controlled by `capture.compileStall`
+debounced by `resizeDebounceMs` (default `250`). Both are `UptimizrClient` options, so changing them
+means [building the client yourself](/docs/guides/configuration/#client-options). Engine
+context-loss events are controlled by `capture.contextLoss` (default `true`). `compile_stall` is controlled by `capture.compileStall`
 (default `true`) and is **Babylon-only** (three.js has no equivalent engine hook). `capability_change`
 is [app-reported](/docs/guides/events/#capability-changes-fallbacks--recovery). The flush-on-hidden and
 end-on-`pagehide` behavior is always active, independent of `captureLifecycle`.
 
 ## Error capture
 
-`runtime_error` capture is **off by default** and gated by `captureErrors`. When enabled,
-`sdk-core` listens for `window` `error` and `unhandledrejection` and emits:
+`runtime_error` capture is **off by default** and gated by `captureErrors`, an `UptimizrClient`
+option that `trackScene` does not take, so enable it by
+[building the client yourself](/docs/guides/configuration/#advanced-custom-client--beforesend).
+When enabled, `sdk-core` listens for `window` `error` and `unhandledrejection` and emits:
 
 ```jsonc
 {
@@ -78,6 +82,11 @@ the browser.
 To limit noisy loops, consecutive identical `message`+`stack` errors are de-duplicated and capture is
 capped at 50 events per session.
 
+Web exports are the exception: the JS-only tier of `@uptimizr/web-export` (and so Unity, Godot and
+Unreal) captures `runtime_error` **by default**, independently of `captureErrors` and without the
+de-duplication or the cap. Turn it off with `capture: { errors: false }`; see
+[web-export options](/docs/connectors/web-export/#options).
+
 ## Session context (`meta`, `sceneDescription`, `user`)
 
 `trackScene` attaches context to the one-time `session_start` event. `device` and `scene` are
@@ -85,8 +94,8 @@ auto-detected; you supply the rest — all optional:
 
 - **`sceneDescription`** — free-text label for the experience, merged into the auto-detected scene
   metadata.
-- **`meta`** — page/area context: `sceneId` (initial scene/area id), `url` (defaults to
-  `location.href`), and `pageMeta`.
+- **`meta`** — page/area context: `sceneId` (initial scene/area id, 1–64 chars of
+  `[A-Za-z0-9._:-]`; anything else is ignored), `url` (defaults to `location.href`), and `pageMeta`.
 - **`user`** — caller-supplied, **anonymized** user context (see below).
 
 ```ts
@@ -94,7 +103,7 @@ const client = trackScene(scene, {
   projectId,
   endpoint,
   sceneDescription: "product-configurator",
-  meta: { sceneId: "configurator/step-1", url: location.href, pageMeta: { title: document.title } },
+  meta: { sceneId: "configurator.step-1", url: location.href, pageMeta: { title: document.title } },
   user: { id: hashedUserId, traits: { plan: "pro", returning: true } },
 });
 ```
@@ -130,11 +139,13 @@ only a `query` key. The **ordered raw event stream** that powers
 2. the API key must hold the `query:raw`
    [capability](/docs/deploy/collector/#api-keys-and-capabilities).
 
-Either half missing answers `403`.
+Either half missing answers `403`. The flag gates access, not storage: events are always written
+to the store, and with it off they stay there but cannot be read through the API. See
+[Privacy & configuration](/docs/deploy/privacy/).
 
 The key `uptimizr init` / `uptimizr new-project` already minted holds `query:raw` — it is the
 operator's [owner key](/docs/deploy/collector/#api-keys-and-capabilities) (`query`, `query:raw`,
-`annotate`) — so on a fresh self-host only the retention half is left to switch on. To give a
+`annotate`) — so on a fresh self-host only the collector flag is left to switch on. To give a
 **separate** key the same reach (a standalone replay tool, an agent you trust with raw streams):
 
 ```bash
@@ -143,8 +154,8 @@ npx -p @uptimizr/collector-server uptimizr new-key <projectId> \
 ```
 
 :::caution[Breaking change]
-Retention alone used to be enough: any `query` key could read the raw stream once retention was
-on. Aggregate endpoints are unaffected and existing keys need no migration, but a key issued
+The flag alone used to be enough: any `query` key could read the raw stream once it was on.
+Aggregate endpoints are unaffected and existing keys need no migration, but a key issued
 before this change and used for replay or live-follow must be re-minted with `query:raw`.
 :::
 
@@ -174,7 +185,7 @@ session 019bf1d4 — 74 events over 41.0s
 
 **It is gated exactly like the raw stream** — `ENABLE_RAW_SESSION_RETENTION` **and** a
 `query:raw` key, either one missing is a `403` — because it is derived from the same data. An
-unknown session (or one recorded before retention was switched on) is a `404`.
+unknown session is a `404`.
 
 | Parameter      | Default | What it does                                                                      |
 | -------------- | ------- | --------------------------------------------------------------------------------- |
@@ -191,4 +202,4 @@ Each entry is `{ tMs, kind, summary, refs }`, where `kind` is one of `scene`, `d
 `interaction`, `perf_dip`, `error`, `diagnostic`, `capability`, `xr`, `end` or `summary`, and
 `refs` names at most a mesh, a scene and a custom-event/input-action name. Timestamps are always
 **relative to the session's first event**. What a narrative deliberately leaves out is covered in
-[Privacy & retention](/docs/deploy/privacy/#what-a-session-narrative-shows).
+[Privacy & configuration](/docs/deploy/privacy/#what-a-session-narrative-shows).

@@ -2,7 +2,7 @@
 
 > OSS storage contracts + the single-file DuckDB store (events + metadata in one `.duckdb` file;
 > ADR 0020). Dialect-agnostic query builders defined once and emitted per engine. No
-> ClickHouse/Postgres dependency — those live with a separately-licensed scale store. Server/Node
+> ClickHouse/Postgres dependency — the optional stores are Apache-2.0 packages in this repo. Server/Node
 > only. Query-time aggregation; forward-only, additive migrations. Single-writer store.
 
 ## Docs

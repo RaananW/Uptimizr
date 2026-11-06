@@ -69,10 +69,6 @@ pnpm --filter @uptimizr/dashboard build          # Next server build
 pnpm --filter @uptimizr/dashboard build:static   # static export (out/)
 ```
 
-> Note: the `build`/`build:static`/`start` scripts pin `NODE_ENV=production` inline, so a stray
-> exported `NODE_ENV=development` in your shell no longer crashes the prerender step. You don't
-> need to `unset NODE_ENV` manually.
-
 ## Current OSS surface
 
 - Project/session selection, live presence, and live event feed.
@@ -81,4 +77,6 @@ pnpm --filter @uptimizr/dashboard build:static   # static export (out/)
   more.
 - Session detail with metadata/raw-event inspector, replay view, live-follow replay when the
   session is active, and first-person trajectory view.
+- Pinned panels drawn from the project's panel specs, a subscriptions panel, and an opt-in,
+  lazily loaded in-browser analytics assistant.
 - Optional runtime/remote panels via `NEXT_PUBLIC_PANELS_MANIFEST_URL`.

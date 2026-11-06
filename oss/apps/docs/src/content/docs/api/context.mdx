@@ -1,14 +1,14 @@
 ---
 title: Project context
 description: GET /api/v1/context — the one read that tells an agent what your project's scenes, regions, custom events and capture channels actually are.
-lastUpdated: 2026-09-19
+lastUpdated: 2026-11-06
 ---
 
 An agent that has never seen your project knows the _shape_ of this API — every metric, every
 parameter, every row schema, from the [metric registry](/docs/api/query/). It knows nothing about
 _your_ project: what the scenes are called, which regions have names, which capture channels are on,
-what your application calls its own events, whether raw retention is enabled, or how fresh the data
-is.
+what your application calls its own events, whether raw session reads are enabled, or how fresh the
+data is.
 
 `GET /api/v1/context` answers all of it in one read. It takes a `query`-capable `x-api-key`, it is
 bounded (well under 16 KB for a typical project), and the collector caches it per project for about
@@ -82,7 +82,7 @@ curl -H "x-api-key: $KEY" "https://collect.example.com/api/v1/context"
 | `vocabulary.customEvents[].props` | Observed prop keys with a coarse type. Prop **values** are never reported.                                                                          |
 | `capture.channels`                | One entry per canonical event type, so an absence is never ambiguous.                                                                               |
 | `metrics.disabledByCapture`       | These metrics return empty because every capture channel that feeds them is off. Say the channel is off — do not report the zero as a finding.       |
-| `dataQuality.retention`           | `rawSessions: false` means session timelines and replay are unavailable **by design** (privacy, opt-in), not broken.                                |
+| `dataQuality.retention`           | `rawSessions: false` means session timelines and replay can't be read through the API **by design** (privacy, opt-in), not broken. The events are still stored. |
 | `dataQuality.lastEventAt`         | How stale the answer you are about to give is. `null` means the project has recorded nothing.                                                        |
 
 Everything in the document is aggregate and project-scoped — nothing a `query` key could not already

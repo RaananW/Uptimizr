@@ -1,7 +1,7 @@
 ---
 title: Godot web export analytics
 description: Add click heatmaps and FPS tracking to a Godot 4 web export with @uptimizr/godot, plus camera, picks and replay through a small bridge.
-lastUpdated: 2026-09-05
+lastUpdated: 2026-11-06
 ---
 
 The Godot (web export) connector. Godot 4 compiles to WebAssembly and renders into a
@@ -34,7 +34,8 @@ await client.stop("manual");
 `trackGodot` creates the client, registers the JS-only tier collector, exposes the
 engine `bridge` (default `window.__uptimizr_godot__`), and starts the session with
 Godot's connector provenance. The JS-only tier captures immediately; wire the
-engine-side shim to `bridge` to add camera pose, picks, and replay.
+engine-side shim to `bridge` to add camera pose, picks, and replay. On a hand-built
+client, register `godotCollector()` instead.
 
 ## Engine-side bridge
 
@@ -94,7 +95,8 @@ coordinate math. The session records Godot's native frame in
 ## Capture
 
 JS-only tier: pointer move/click → screen heatmaps, FPS / long frames → performance,
-JS errors. Bridged tier: camera pose → view-direction heatmap, world-space picks →
+JS errors (on by default; see [web-export options](/docs/connectors/web-export/#options)).
+Bridged tier: camera pose → view-direction heatmap, world-space picks →
 object engagement, scene proxy, and replay.
 
 ## Privacy

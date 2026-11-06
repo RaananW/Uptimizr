@@ -33,7 +33,7 @@ arguments (`camera`, `renderer`).
 > ships the shim as a copy-in asset — e.g. `@uptimizr/godot` includes a `JavaScriptBridge`
 > autoload (`bridge/UptimizrGodot.gd` / `.cs`) you register in **Project Settings →
 > Autoload**. See the
-> [web-export connector docs](https://uptimizr.dev/connectors/web-export) for the
+> [web-export connector docs](https://www.uptimizr.com/docs/connectors/web-export/) for the
 > bridge contract and per-engine native frames. The Godot bridged tier is **verified**
 > by an automated headless Godot 4 Web export driven by Playwright in CI; the reference
 > integration is [`examples/godot-web-export`](../examples/godot-web-export/README.md)
@@ -82,7 +82,7 @@ through the DOM also sidesteps any TypeScript/`import` rewriting on the host pag
 
 ```js
 const s = document.createElement("script");
-s.src = "https://collect.example.com/uptimizr-babylon.global.js";
+s.src = "https://cdn.jsdelivr.net/npm/@uptimizr/babylon/dist/uptimizr-babylon.global.js";
 s.onload = () => {
   Uptimizr.trackScene(scene, {
     projectId: "your-project-id",
@@ -152,7 +152,7 @@ records the native frame as `connector.coordinateSystem` on `session_start`. The
 does **no** coordinate math and sends only poses, FPS, and developer-named objects (no
 invented IDs, no raw input text — ADR 0003). Godot (negate Z) and Unreal (z-up rebase +
 cm→m scale) follow the same two-tier model with their own native frames; see the
-[web-export connector docs](https://uptimizr.dev/connectors/web-export).
+[web-export connector docs](https://www.uptimizr.com/docs/connectors/web-export/).
 
 ### Custom events
 
@@ -162,6 +162,9 @@ discrete and always captured at 100% — they are never rate-limited.
 ```ts
 client.track("add_to_cart", { sku: "ABC-123", price: 49 });
 ```
+
+A `name` is at most 128 characters, and `props` holds at most 64 entries of `string`
+(≤ 1024 characters), `number`, `boolean` or `null`.
 
 ### Input actions (keyboard, gamepad, …)
 
@@ -270,8 +273,8 @@ client.setScene("level-2");
 - **stamps the new `sceneId` on every subsequent event** until the next call.
 
 The declarative `@uptimizr/aframe` component takes the initial id as the `sceneId`
-attribute (`<a-scene uptimizr="…; sceneId: level-1">`); switching at runtime is a
-programmatic host's job via the re-exported `trackScene` client.
+attribute (`<a-scene uptimizr="…; sceneId: level-1">`). The component has no runtime
+scene switch, so a programmatic host imports `trackScene` from `@uptimizr/three`.
 
 It is a no-op when the id is unchanged, and invalid ids are ignored (logged when
 `debug` is on). You may call it **before** the session starts — the id is then
@@ -280,8 +283,9 @@ the `<script>`-tag form, since `Uptimizr.trackScene(...)` also returns the
 client.
 
 Per-scene analytics then come from the optional `scene` query param on the heatmap
-and mesh endpoints (see [§4](#4-http-api)) — e.g. `?scene=level-2` to view a single
-level.
+and most mesh endpoints (see [§4](#4-http-api)) — e.g. `?scene=level-2` to view a single
+level. `/api/v1/meshes/top` and `/api/v1/perf` take no `scene` and ignore one; use
+`/api/v1/meshes/sources` and `/api/v1/perf/by-scene` for those questions.
 
 ### Session lifecycle (automatic end & `stop`)
 
@@ -312,23 +316,24 @@ So the timeline reflects everything happening around the scene — not just came
 and pointer activity — the SDK also records these discrete lifecycle events
 (privacy-safe: dimensions, booleans, and enum states only):
 
-| Event                 | Source              | When                                                                                                                                                                                                                                                                                                                                                                                                     |
-| --------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `viewport_resize`     | `sdk-core`          | Window resized (debounced) + once at session start.                                                                                                                                                                                                                                                                                                                                                      |
-| `focus_change`        | `sdk-core`          | Window gained/lost focus (`{ focused }`).                                                                                                                                                                                                                                                                                                                                                                |
-| `visibility_change`   | `sdk-core`          | Tab shown/hidden (`{ state: "visible" \| "hidden" }`).                                                                                                                                                                                                                                                                                                                                                   |
-| `context_lost`        | `@uptimizr/babylon` | Engine lost its GPU context (rendering suspended).                                                                                                                                                                                                                                                                                                                                                       |
-| `context_restored`    | `@uptimizr/babylon` | Engine recovered its GPU context.                                                                                                                                                                                                                                                                                                                                                                        |
-| `compile_stall`       | `@uptimizr/babylon` | Main-thread shader/pipeline compilation hitch (`durationMs`, `phase`).                                                                                                                                                                                                                                                                                                                                   |
-| `capability_change`   | _app-reported_      | Fallback/recovery transition (`kind`, `from`, `to`, `reason`) — e.g. WebGPU→WebGL2, or an XR `tracking` degradation (`source`, `handedness`, `durationMs`; #155).                                                                                                                                                                                                                                        |
-| `runtime_error`       | `sdk-core`          | Uncaught JS error / unhandled promise rejection (opt-in). Optional best-effort `position` (camera pose when it fired) powers the spatial error heatmap (#154).                                                                                                                                                                                                                                           |
-| `graphics_diagnostic` | engine connector    | Opt-in GPU-health signal — today: WebGPU `device.lost` (`category: device-lost`), `uncapturederror` rollup (`validation`/`out-of-memory`), and context-creation failure (`category: context-loss`, `fatal`). Babylon + three; WebGL device-loss no-op. Optional best-effort `position` powers the spatial error heatmap (#154).                                                                          |
-| `ar_placement`        | `@uptimizr/babylon` | AR object-placement settle (#156, ADR 0048): emitted **once per placement settle** (not per frame) for retail "view in your room" AR. Carries `mesh`, final world `position`, coarse `surface` (`floor`/`wall`/`table`/`ceiling`/`unknown`), `attempts` (re-placements), `timeToPlaceMs`, `scale` (1 = authored real-world size), and `final`. App-driven via `babylonArPlacementCollector` (see below). |
+| Event                 | Source                     | When                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `viewport_resize`     | `sdk-core`                 | Window resized (debounced) + once at session start.                                                                                                                                                                                                                                                                                                                                                      |
+| `focus_change`        | `sdk-core`                 | Window gained/lost focus (`{ focused }`).                                                                                                                                                                                                                                                                                                                                                                |
+| `visibility_change`   | `sdk-core`                 | Tab shown/hidden (`{ state: "visible" \| "hidden" }`).                                                                                                                                                                                                                                                                                                                                                   |
+| `context_lost`        | Babylon, three, PlayCanvas | Engine lost its GPU context (rendering suspended).                                                                                                                                                                                                                                                                                                                                                       |
+| `context_restored`    | Babylon, three, PlayCanvas | Engine recovered its GPU context.                                                                                                                                                                                                                                                                                                                                                                        |
+| `compile_stall`       | `@uptimizr/babylon`        | Main-thread shader/pipeline compilation hitch (`durationMs`, `phase`).                                                                                                                                                                                                                                                                                                                                   |
+| `capability_change`   | _app-reported_             | Fallback/recovery transition (`kind`, `from`, `to`, `reason`) — e.g. WebGPU→WebGL2, or an XR `tracking` degradation (`source`, `handedness`, `durationMs`; #155).                                                                                                                                                                                                                                        |
+| `runtime_error`       | `sdk-core`                 | Uncaught JS error / unhandled promise rejection (opt-in). Optional best-effort `position` (camera pose when it fired) powers the spatial error heatmap (#154).                                                                                                                                                                                                                                           |
+| `graphics_diagnostic` | engine connector           | Opt-in GPU-health signal — today: WebGPU `device.lost` (`category: device-lost`), `uncapturederror` rollup (`validation`/`out-of-memory`), and context-creation failure (`category: context-loss`, `fatal`). Babylon + three; WebGL device-loss no-op. Optional best-effort `position` powers the spatial error heatmap (#154).                                                                          |
+| `ar_placement`        | `@uptimizr/babylon`        | AR object-placement settle (#156, ADR 0048): emitted **once per placement settle** (not per frame) for retail "view in your room" AR. Carries `mesh`, final world `position`, coarse `surface` (`floor`/`wall`/`table`/`ceiling`/`unknown`), `attempts` (re-placements), `timeToPlaceMs`, `scale` (1 = authored real-world size), and `final`. App-driven via `babylonArPlacementCollector` (see below). |
 
 The generic browser events are captured by `sdk-core` and controlled by
 `captureLifecycle` (default `true`); `viewport_resize` is debounced by
-`resizeDebounceMs` (default `250`). The engine context-loss events are captured by
-the Babylon connector and controlled by `capture.contextLoss` (default `true`).
+`resizeDebounceMs` (default `250`). Both are `UptimizrClient` options. The engine
+context-loss events are captured by the Babylon, three.js and PlayCanvas connectors
+and controlled by `capture.contextLoss` (default `true`).
 Shader/pipeline `compile_stall` events (#42) are captured by the Babylon connector
 and controlled by `capture.compileStall` (default `true`) — they time Babylon's
 main-thread shader-compilation span, the #1 source of first-interaction hitches.
@@ -353,7 +358,8 @@ independent of `captureLifecycle`.
 #### Error capture (opt-in)
 
 `runtime_error` capture is **off by default** and gated by `captureErrors` (see
-[ADR 0013](./adr/0013-error-capture-privacy.md)). When enabled, `sdk-core` listens
+[ADR 0013](./adr/0013-error-capture-privacy.md)), an `UptimizrClient` option that
+`trackScene` does not take. When enabled, `sdk-core` listens
 for `window` `error` and `unhandledrejection` and emits a `runtime_error` event:
 
 ```jsonc
@@ -376,17 +382,23 @@ browser. To limit
 noisy loops, consecutive identical `message`+`stack` errors are de-duplicated and
 capture is capped at 50 events per session.
 
+Web exports are the exception: the JS-only tier of `@uptimizr/web-export` (and so
+Unity, Godot and Unreal) captures `runtime_error` **by default**, independently of
+`captureErrors` and without the de-duplication or the cap. Turn it off with
+`capture: { errors: false }`.
+
 The optional `position` is the best-effort camera position at the moment the error
 fired, stamped connector-side (Babylon reads the tracked camera's `globalPosition`;
 other connectors omit it when no camera resolves). It reuses the promoted `position`
-column and powers the [spatial **error heatmap**](#reads-the-query-api)
+column and powers the [spatial **error heatmap**](#query-read)
 (`GET /api/v1/heatmaps/errors`) so you can see _where_ in the scene errors cluster,
 not just _when_. It is additive and backward-compatible — older events simply omit it.
 
 #### Engine diagnostics (opt-in)
 
 `graphics_diagnostic` capture is **off by default** and gated by
-`captureGraphicsDiagnostics` ([ADR 0021](./adr/0021-graphics-backend-and-engine-diagnostics.md)).
+`captureGraphicsDiagnostics` ([ADR 0021](./adr/0021-graphics-backend-and-engine-diagnostics.md)),
+an `UptimizrClient` option that `trackScene` does not take.
 It carries engine-authored GPU-health signals — GPU errors/warnings, shader-compile/link
 failures, richer context-loss reasons, WebGPU `uncapturederror`, and sampled
 `gl.getError()` — in one engine-agnostic shape:
@@ -439,8 +451,9 @@ inputs, all optional:
 
 - **`sceneDescription`** — a free-text label for the experience, merged into the
   auto-detected scene metadata.
-- **`meta`** — page/area context: `sceneId` (initial scene/area id, ADR 0010),
-  `url` (defaults to `location.href`), and `pageMeta`.
+- **`meta`** — page/area context: `sceneId` (initial scene/area id, ADR 0010; 1–64
+  chars of `[A-Za-z0-9._:-]`, anything else is ignored), `url` (defaults to
+  `location.href`), and `pageMeta`.
 - **`user`** — caller-supplied, **anonymized** user context (see below).
 
 ```ts
@@ -453,7 +466,7 @@ const client = trackScene(scene, {
 
   // Page / area context.
   meta: {
-    sceneId: "configurator/step-1",
+    sceneId: "configurator.step-1",
     url: location.href,
     pageMeta: { title: document.title },
   },
@@ -559,18 +572,34 @@ funnel** panel.
 
 No cookies, no persistent client id; the `sessionId` is in-memory only. Never put
 PII in `meta`, `track` props, or `user` — `user.id` must be pseudonymous/hashed
-(ADR 0003). Per-session raw event retention (needed for replay) is opt-in on the
-collector via `ENABLE_RAW_SESSION_RETENTION=true`, **and** reading a raw stream
-additionally requires an API key holding the `query:raw`
+(ADR 0003). Reading raw per-session streams through the API (needed for replay) is
+opt-in on the collector via `ENABLE_RAW_SESSION_RETENTION=true`, **and** additionally
+requires an API key holding the `query:raw`
 [capability](#api-keys-capabilities-rate-limits-and-the-audit-log) — a plain
-`query` key reads aggregates only, whatever retention is set to.
+`query` key reads aggregates only, whatever the flag is set to.
+
+Despite its name, the flag gates access, not storage. The collector always writes
+every event to the store, including each event's full payload, because aggregates are
+computed from those rows at query time. With the flag off, raw streams cannot be read
+through the API but remain in the store, and there is no automatic event deletion.
 
 ---
 
 ## 2. Tracking options (how to raise or lower the rate)
 
-All options below are accepted by both `trackScene(scene, options)` and
-`babylonCollector(options)`.
+Options live on three layers. `trackScene(scene, options)` forwards a fixed set of
+options to the connector's collector and to the client, and ignores anything else:
+
+| Accepted by                    | Options                                                                                                                                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `trackScene` and the collector | `sampling`, the legacy ms knobs, idle suppression, `capture`, `gaze`, `actors`, `keyBindings`; on Babylon also `camera`, `jankFrameMs`, `meshVisibility`                                         |
+| `trackScene` only              | `projectId`, `endpoint`, `flushIntervalMs`, `transport`, `disabled`, `debug`, `meta`, `sceneDescription`, `user`, `xr`                                                                           |
+| The collector only             | `hoverDwell`, `resourceSample`, `cameraGestureSensitivity`, `raycast`; on three, PlayCanvas and Babylon Lite also `meshVisibility`                                                               |
+| `new UptimizrClient()` only    | `batchSize`, `maxQueueSize`, `offload`, `createWorker`, `beforeSend`, `sdkVersion`, `captureLifecycle`, `resizeDebounceMs`, `captureErrors`, `captureGraphicsDiagnostics`, `captureShaderSource` |
+
+To set a collector-only or client-only option, build the client yourself as in
+[Advanced setup](#advanced-setup-custom-client-beforesend). The samples below use
+Babylon's `babylonCollector`.
 
 ### Which camera is recorded (`camera`)
 
@@ -609,7 +638,6 @@ trackScene(scene, {
     camera: 10, // 10 Hz camera pose
     pointerMove: 60, // 60 Hz pointer movement
     perf: 0.5, // a perf sample every 2 s
-    // perSource: { leftController: 30, rightHand: 30, gaze: 0 }, // XR (ADR 0011)
   },
 });
 ```
@@ -617,6 +645,9 @@ trackScene(scene, {
 There is **no enforced ceiling** — higher fidelity simply costs more storage.
 Omitted channels keep the conservative defaults (≈1 Hz camera, ≈4 Hz pointer,
 ≈0.5 Hz perf). To capture _everything_, set the channel to `"frame"`.
+
+`sampling.perSource` is reserved: the type accepts it, but no connector applies it
+yet. XR pose cadence is set with `xr.sampleMs`.
 
 **Discrete** events — `pointer_click`, `pointer_down`/`pointer_up`,
 `mesh_interaction`, `scene_change`, `session_start`/`session_end`, `custom`,
@@ -672,6 +703,13 @@ an unknown id is a no-op with a dev-mode warning. Tier-1 transforms are sampled 
 the canonical **world** frame; Tier-2 bone transforms are **skeleton-local** (the
 only frame portable across differing world placements of the same rig). Idle
 suppression applies — a static actor or an unmoving bone emits nothing.
+
+A `sampling.nodes` value may also be an object, so one actor stands in for a moving
+hierarchy (ADR 0033): `{ hz, include, maxDepth, maxNodes, exclude }`. `include` is a
+list of descendant names or `"*"` (omitted ⇒ root only), `maxDepth` defaults to `8`
+and `maxNodes` to `64`, and `exclude` skips named subtrees. Descendants are emitted
+as `node_transform` samples carrying a `childPath`. Subtree capture works on Babylon,
+three and PlayCanvas.
 
 > **`actors` is engine-typed.** Each connector adds `actors` to its own
 > `TrackSceneOptions`, and the resolver's return type is that engine's node type:
@@ -729,25 +767,27 @@ and/or raise the sampling rate; to dedupe a stable FPS, set
 
 ### Channel toggles (`capture`) and delivery
 
-| Option                                                                                                          | Default      | Effect                                                                                                                                                                                                                                                                                                                                                       |
-| --------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `capture.camera` / `pointerMove` / `clicks` / `buttons` / `meshPicks` / `perf` / `contextLoss` / `compileStall` | all `true`   | Enable/disable individual channels.                                                                                                                                                                                                                                                                                                                          |
-| `captureLifecycle`                                                                                              | `true`       | Emit `viewport_resize` / `focus_change` / `visibility_change`.                                                                                                                                                                                                                                                                                               |
-| `resizeDebounceMs`                                                                                              | `250`        | Debounce window for `viewport_resize`.                                                                                                                                                                                                                                                                                                                       |
-| `captureErrors`                                                                                                 | `false`      | Opt-in `runtime_error` capture (ADR 0013); not auto-redacted.                                                                                                                                                                                                                                                                                                |
-| `captureGraphicsDiagnostics`                                                                                    | `false`      | Opt-in engine `graphics_diagnostic` capture (ADR 0021); not auto-redacted. Gates GPU-health signals; `context_lost`/`context_restored` stay always-on.                                                                                                                                                                                                       |
-| `captureShaderSource`                                                                                           | `false`      | Sub-opt-in to `captureGraphicsDiagnostics`: include raw shader source in shader-compile diagnostics. Off by default — shader source is application IP (ADR 0021); even with diagnostics on, source is stripped unless this is set. Still length-capped + passes through `beforeSend`.                                                                        |
-| `meshVisibility`                                                                                                | _off_        | Opt-in object-dwell capture (`mesh_visibility`, ADR 0003). Pass an options object to enable; off by default for privacy. See below.                                                                                                                                                                                                                          |
-| `hoverDwell`                                                                                                    | _off_        | Opt-in hover-hesitation capture (`hover_dwell`, ADR 0003). Enable `capture.hoverDwell` and (optionally) pass an options object; off by default for privacy. See below.                                                                                                                                                                                       |
-| `resourceSample`                                                                                                | _off_        | Opt-in GPU/memory footprint capture (`resource_sample`, ADR 0003). Enable `capture.resourceSample` and (optionally) pass a `resourceSample` options object; off by default. See below.                                                                                                                                                                       |
-| `gaze`                                                                                                          | _off_        | Opt-in world-space gaze capture (`camera_sample.hitPoint` / `hitMesh`, ADR 0030). Enable `capture.gaze` and (optionally) pass a `gaze` options object; off by default for privacy + cost. See below.                                                                                                                                                         |
-| `jankFrameMs`                                                                                                   | `50`         | A rendered frame slower than this counts toward `frame_perf.longFrames`.                                                                                                                                                                                                                                                                                     |
-| `flushIntervalMs`                                                                                               | `5000`       | Max time between network flushes. `0` disables the timer.                                                                                                                                                                                                                                                                                                    |
-| `transport`                                                                                                     | beacon→fetch | Custom delivery (e.g. to observe sends).                                                                                                                                                                                                                                                                                                                     |
-| `offload`                                                                                                       | `main`       | `"worker"` moves per-frame aggregation (percentiles, transform decomposition, visibility bucketing, idle-diffs, gesture classification) + serialization off the render thread into an opt-in same-origin worker; engine reads and the terminal unload flush stay main-thread. Opt-in, byte-for-byte identical output, silent fallback (ADR 0031 / ADR 0044). |
-| `disabled`                                                                                                      | `false`      | Collect nothing (e.g. honor Do-Not-Track).                                                                                                                                                                                                                                                                                                                   |
-| `debug`                                                                                                         | `false`      | Console debug logs.                                                                                                                                                                                                                                                                                                                                          |
-| `sceneDescription`, `user`, `meta`                                                                              | —            | Extra `session_start` context.                                                                                                                                                                                                                                                                                                                               |
+| Option                                                                                                                            | Default      | Effect                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `capture.camera` / `pointerMove` / `clicks` / `buttons` / `cameraGesture` / `meshPicks` / `perf` / `contextLoss` / `compileStall` | all `true`   | Enable/disable individual channels. `compileStall` is Babylon-only.                                                                                                                                                                                                                                                                                                                   |
+| `capture.keyboard` / `nodes` / `bones`                                                                                            | `true`       | Set `false` to disable key, actor or bone capture even when `keyBindings`, `actors` + `sampling.nodes` or `sampling.bones` are configured. Without those they capture nothing.                                                                                                                                                                                                        |
+| `capture.assetLoad`                                                                                                               | `true`       | PlayCanvas only: `asset_load` capture.                                                                                                                                                                                                                                                                                                                                                |
+| `captureLifecycle`                                                                                                                | `true`       | `UptimizrClient` option. Emit `viewport_resize` / `focus_change` / `visibility_change`.                                                                                                                                                                                                                                                                                               |
+| `resizeDebounceMs`                                                                                                                | `250`        | `UptimizrClient` option. Debounce window for `viewport_resize`.                                                                                                                                                                                                                                                                                                                       |
+| `captureErrors`                                                                                                                   | `false`      | `UptimizrClient` option. Opt-in `runtime_error` capture (ADR 0013); not auto-redacted.                                                                                                                                                                                                                                                                                                |
+| `captureGraphicsDiagnostics`                                                                                                      | `false`      | `UptimizrClient` option. Opt-in engine `graphics_diagnostic` capture (ADR 0021); not auto-redacted. Gates GPU-health signals; `context_lost`/`context_restored` stay always-on.                                                                                                                                                                                                       |
+| `captureShaderSource`                                                                                                             | `false`      | `UptimizrClient` option. Sub-opt-in to `captureGraphicsDiagnostics`: include raw shader source in shader-compile diagnostics. Off by default — shader source is application IP (ADR 0021); even with diagnostics on, source is stripped unless this is set. Still length-capped + passes through `beforeSend`.                                                                        |
+| `meshVisibility`                                                                                                                  | _off_        | Opt-in object-dwell capture (`mesh_visibility`, ADR 0003). Enable `capture.meshVisibility` and (optionally) pass an options object; off by default for privacy. See below.                                                                                                                                                                                                            |
+| `hoverDwell`                                                                                                                      | _off_        | Opt-in hover-hesitation capture (`hover_dwell`, ADR 0003). Enable `capture.hoverDwell`; the options object is a collector option. Off by default for privacy. See below.                                                                                                                                                                                                              |
+| `resourceSample`                                                                                                                  | _off_        | Opt-in GPU/memory footprint capture (`resource_sample`, ADR 0003). Enable `capture.resourceSample`; the options object is a collector option. Off by default. See below.                                                                                                                                                                                                              |
+| `gaze`                                                                                                                            | _off_        | Opt-in world-space gaze capture (`camera_sample.hitPoint` / `hitMesh`, ADR 0030). Enable `capture.gaze` and (optionally) pass a `gaze` options object; off by default for privacy + cost. See below.                                                                                                                                                                                  |
+| `jankFrameMs`                                                                                                                     | `50`         | A rendered frame slower than this counts toward `frame_perf.longFrames`. Babylon and web exports only.                                                                                                                                                                                                                                                                                |
+| `flushIntervalMs`                                                                                                                 | `5000`       | Max time between network flushes. `0` disables the timer.                                                                                                                                                                                                                                                                                                                             |
+| `transport`                                                                                                                       | beacon→fetch | Custom transport object, `{ send(batch) }`, e.g. to observe sends. Resolve `false` to re-queue a batch.                                                                                                                                                                                                                                                                               |
+| `offload`                                                                                                                         | `main`       | `UptimizrClient` option. `"worker"` moves per-frame aggregation (percentiles, transform decomposition, visibility bucketing, idle-diffs, gesture classification) + serialization off the render thread into an opt-in same-origin worker; engine reads and the terminal unload flush stay main-thread. Opt-in, byte-for-byte identical output, silent fallback (ADR 0031 / ADR 0044). |
+| `disabled`                                                                                                                        | `false`      | Collect nothing (e.g. honor Do-Not-Track).                                                                                                                                                                                                                                                                                                                                            |
+| `debug`                                                                                                                           | `false`      | Console debug logs.                                                                                                                                                                                                                                                                                                                                                                   |
+| `sceneDescription`, `user`, `meta`                                                                                                | —            | Extra `session_start` context.                                                                                                                                                                                                                                                                                                                                                        |
 
 ### Object dwell (`meshVisibility`) — opt-in
 
@@ -760,6 +800,7 @@ and `maxScreenFraction` (its peak apparent size, 0–1).
 ```ts
 trackScene(scene, {
   // ...
+  capture: { meshVisibility: true }, // this is what turns it on
   meshVisibility: {
     windowMs: 5000, // one summary per object every 5 s (default)
     meshes: ["product-hero"], // allowlist; omit to track all visible meshes
@@ -769,6 +810,10 @@ trackScene(scene, {
   },
 });
 ```
+
+The `meshVisibility` object is a `trackScene` option on Babylon. On three, PlayCanvas
+and Babylon Lite, `trackScene` takes `capture.meshVisibility` only; pass the object to
+the connector's collector to tune it.
 
 With `boundingBox: true`, each summary may also carry `bounds` — the object's
 world-space axis-aligned box `[minX, minY, minZ, maxX, maxY, maxZ]` (the
@@ -802,11 +847,24 @@ interactive but isn't (or isn't obviously clickable)" signal.
 trackScene(scene, {
   // ...
   capture: { hoverDwell: true },
-  hoverDwell: {
-    minDwellMs: 500, // ignore pass-overs shorter than this (default)
-    meshes: ["product-hero"], // allowlist; omit to track every hovered mesh
-  },
 });
+```
+
+To tune it, pass a `hoverDwell` object to the connector's collector on a
+[hand-built client](#advanced-setup-custom-client-beforesend); `trackScene` does not
+take it:
+
+```ts
+client.use(
+  babylonCollector({
+    scene,
+    capture: { hoverDwell: true },
+    hoverDwell: {
+      minDwellMs: 500, // ignore pass-overs shorter than this (default)
+      meshes: ["product-hero"], // allowlist; omit to track every hovered mesh
+    },
+  }),
+);
 ```
 
 Each `hover_dwell` event carries `mesh`, `dwellMs`, and the originating input
@@ -826,20 +884,35 @@ on `session_start` to spot scenes that overspend their target hardware.
 trackScene(scene, {
   // ...
   capture: { resourceSample: true },
-  resourceSample: {
-    intervalMs: 15000, // one footprint sample per window (default)
-  },
 });
+```
+
+To change the cadence, pass a `resourceSample` object to the connector's collector on a
+[hand-built client](#advanced-setup-custom-client-beforesend); `trackScene` does not
+take it:
+
+```ts
+client.use(
+  babylonCollector({
+    scene,
+    capture: { resourceSample: true },
+    resourceSample: {
+      intervalMs: 15000, // one footprint sample per window (default)
+    },
+  }),
+);
 ```
 
 Connector coverage differs by what each engine exposes structurally (the SDK never
 mutates the engine): the **Babylon** connector reports `triangles` (active
 indices ÷ 3) and `vertices`; the **three.js** connector reports `triangles`
-(`renderer.info.render.triangles`). `jsHeapBytes` comes from
-`performance.memory.usedJSHeapSize`, which is **Chromium-only** — it's omitted on
-other browsers rather than zeroed. Resident `textureBytes`/`geometryBytes` aren't
-on either engine's public surface, so they're left unset; the read API's averages
-ignore unreported metrics (so an absent metric never reads as `0`).
+(`renderer.info.render.triangles`); the **PlayCanvas** connector reports `triangles`
+(`app.stats.frame.triangles`); the **Babylon Lite** connector reports only
+`jsHeapBytes`. `jsHeapBytes` comes from `performance.memory.usedJSHeapSize`, which is
+**Chromium-only** — it's omitted on other browsers rather than zeroed. Resident
+`textureBytes`/`geometryBytes` aren't reported by any connector, so they're left
+unset; the read API's averages ignore unreported metrics (so an absent metric never
+reads as `0`).
 
 ### World-space gaze (`gaze`) — opt-in
 
@@ -889,16 +962,21 @@ params, and 3D renderer.
 In an immersive session the three-based connectors map controller/gaze pose to
 `pointer_move` rays and `select`/`squeeze` to `pointer_click` / `mesh_interaction`
 (ADR 0011). Resolving those rays to a world hit (`hitPoint`/`hitMesh` on the ray
-samples, the object a `mesh_interaction` attaches to) takes a probe:
+samples, the object a `mesh_interaction` attaches to) takes a probe. Babylon is
+opt-in instead: it has no scene-global XR handle, so you pass the experience.
 
+- **`@uptimizr/babylon`** — `trackScene(scene, { xr: { experience, sampleMs?, capture?, raycast? } })`, or `babylonXrCollector` with the same options on a hand-built client. `experience` is what `scene.createDefaultXRExperienceAsync()` returns; `capture` toggles `pointerMove`, `clicks`, `meshPicks` and `tracking`; `raycast` is an `(origin, direction) => { point, name } | undefined` probe.
 - **`@uptimizr/three`** — `createXrRaycaster(scene, { maxDistance?, predicate? })` builds a world-space ray probe (single reused `THREE.Raycaster`; `uptimizr-` overlays skipped). Pass it as `trackScene(…, { xr: { raycast } })`. Without a probe, rays and clicks are still captured.
 - **`@uptimizr/r3f`** — same `xr` option through `useUptimizr` / `<Uptimizr>`.
 - **`@uptimizr/aframe`** — **on by default**: the component builds the probe over the live scene graph; `<a-scene uptimizr="…; xrRaycast: false">` opts out (rays + clicks only).
 
 ### Frame performance (`frame_perf`) fields
 
-Beyond `fps`/`frameTimeMs`/`drawCalls`, each `frame_perf` sample reports
-percentiles and render resolution measured over the sampling window:
+Beyond `fps`/`frameTimeMs`/`drawCalls`, a `frame_perf` sample can report percentiles
+and render resolution measured over the sampling window. The percentiles and
+`longFrames` come from Babylon and web exports; three, PlayCanvas and Babylon Lite
+report FPS without them, so `/api/v1/perf/frame-time` and `/api/v1/perf/jank` have no
+data on those engines:
 
 | Field                              | Meaning                                                                                                                                                                                                                                                                                                                                                |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -912,7 +990,7 @@ Because `frame_perf.position` reuses the same promoted `position` column as othe
 spatial events, no migration is needed and older SDKs (which never send it) keep
 working — their perf samples simply don't appear in the spatial heatmap. The
 collector exposes these binned samples at
-[`GET /api/v1/heatmaps/perf`](#read-api), and the dashboard renders them as the
+[`GET /api/v1/heatmaps/perf`](#query-read), and the dashboard renders them as the
 **Performance heatmap (3D)** panel (hot = slow: each voxel's colour/size scales
 with slowness so your worst spots stand out, and hovering a cell shows its
 avg/min FPS and sample count).
@@ -970,8 +1048,9 @@ per-mesh grid via `GET /api/v1/heatmaps/mesh-uv` (§4), surfaced by the dashboar
 
 Replay re-drives a captured session in **your own** scene: camera pose is applied
 directly, and pointer/mesh/custom events are surfaced to callbacks so you can draw
-a cursor, highlight a mesh, etc. The collector must have raw-session retention
-enabled for the session-events endpoint to return data.
+a cursor, highlight a mesh, etc. Reading a session needs
+`ENABLE_RAW_SESSION_RETENTION` on the collector and a `query:raw` key; the flag gates
+access through the session-events endpoint, not storage.
 
 ### Option A — npm
 
@@ -1027,9 +1106,9 @@ const driver = createBabylonReplayDriver({
   nodes: {
     "npc-guard": () => scene.getMeshByName("Guard_root"), // resolver, name, or ref
   },
-  onNodeTransform: (sample, ts) => {
-    /* sample.nodeId / sample.boneId? / sample.position / sample.rotation /
-       sample.scale? — annotate or drive a proxy marker */
+  onNodeTransform: (nodeId, transform, ts) => {
+    /* transform.boneId? / transform.childPath? / transform.position /
+       transform.rotation / transform.scale? — annotate or drive a proxy marker */
   },
 });
 ```
@@ -1052,6 +1131,16 @@ const driver = createThreeReplayDriver({
 ```
 
 The same `fetchSessionEvents` + `ReplayPlayer` drive it; only the driver differs.
+
+PlayCanvas and Babylon Lite follow the same shape, with `camera` required:
+`createPlayCanvasReplayDriver({ camera: cameraEntity, … })` from
+`@uptimizr/replay/playcanvas`, and `createBabylonLiteReplayDriver({ camera, … })` from
+`@uptimizr/replay/babylon-lite` (Lite's `ArcRotateCamera`).
+
+`fetchSessionEventsStream` takes the same options as `fetchSessionEvents` (plus
+`onMalformedLine(count)`) and yields events as they arrive, over NDJSON when the
+collector supports it. `ReplayPlayer`'s third argument also takes
+`onProgress(elapsedMs, durationMs)` and `onComplete()`.
 
 `ReplayPlayer` is deterministic — seeking backward resets the driver and replays
 from the start. `player.durationMs` gives the total length.
@@ -1118,7 +1207,7 @@ The global build exposes `window.UptimizrReplay`, with a one-call
 
 ```js
 const r = document.createElement("script");
-r.src = "https://collect.example.com/uptimizr-replay.global.js";
+r.src = "https://cdn.jsdelivr.net/npm/@uptimizr/replay/dist/uptimizr-replay.global.js";
 r.onload = () => {
   UptimizrReplay.replayInScene({
     scene,
@@ -1147,8 +1236,9 @@ backdrop.
 a concise summary and warns about the common "nothing happens" causes — an empty
 session, a session with no `camera_sample` events (camera won't move), or a scene
 with no active camera. Pass `debug: true` for per-step logs (fetch, event counts,
-duration, completion). A `403` from the events endpoint means raw-session
-retention is off (`ENABLE_RAW_SESSION_RETENTION`, ADR 0003).
+duration, completion). A `403` from the events endpoint means
+`ENABLE_RAW_SESSION_RETENTION` is off (ADR 0003) or the key lacks `query:raw`; the
+response body says which.
 
 If a session returns **0 events** (a `200` with an empty array), the most common
 cause is an **API-key / project mismatch**: reads are scoped to the key's project,
@@ -1202,12 +1292,14 @@ gaze.dispose(); // remove from the scene when done
 sky.dispose();
 ```
 
-All helpers return an overlay handle (`render` / `setVisible` / `dispose`). There
-is no scene registry at this tier, so `cellSize` and the gaze `radius` have no
+All helpers return an overlay handle (`render` / `clear` / `setVisible` / `dispose`).
+There is no scene registry at this tier, so `cellSize` and the gaze `radius` have no
 inherent units — supply values that fit your scene (or expose them as controls).
 Gaze has two in-scene forms — `showGazeDome` (discrete markers) and
 `showGazeSkydome` (continuous equirectangular field, with the engine-free
-`buildGazeEquirect` builder exported for non-Babylon hosts).
+`buildGazeEquirect` builder exported for non-Babylon hosts). A Babylon Lite scene
+uses `@uptimizr/heatmap/babylon-lite`, which has `showWorldHeatmap` and `showGazeDome`
+but no skydome.
 For a no-bundler page, the package also ships an ESM build
 (`dist/uptimizr-heatmap.babylon.js`) you can import from a
 `<script type="module">` (it expects the host page to provide `@babylonjs/core`).
@@ -1258,7 +1350,7 @@ uptimizr new-key <projectId> --capabilities query,query:raw --label "replay"
 > **Breaking change (from the release that adds this section).** `query:raw` is
 > new, and the raw per-session endpoints now require **both** halves of the gate:
 > `ENABLE_RAW_SESSION_RETENTION` on the collector **and** `query:raw` on the key.
-> Previously, retention alone was enough and any `query` key could read the raw
+> Previously, the flag alone was enough and any `query` key could read the raw
 > stream. **Existing keys keep working for every aggregate endpoint**, but a key
 > that drives session replay or live-follow must be re-minted with `query:raw`
 > (or a new one issued alongside it). Keys minted by `uptimizr init` /
@@ -1358,6 +1450,18 @@ built by the same `createMcpServer()` factory in `@uptimizr/mcp`.
 - **Audited** with `surface: "mcp-http"` and the underlying route pattern as
   `toolOrPath`.
 
+### Server settings
+
+Beyond the settings in the sections around this one:
+
+| Variable                  | Default   | Effect                                                                                      |
+| ------------------------- | --------- | ------------------------------------------------------------------------------------------- |
+| `COLLECTOR_HOST`          | `0.0.0.0` | Bind address.                                                                               |
+| `COLLECTOR_CSP`           | `strict`  | Content-Security-Policy for the bundled dashboard: `strict` or `off`.                       |
+| `COLLECTOR_DASHBOARD_DIR` | unset     | Path to a pre-built static dashboard (`out/`) to serve. Unset keeps the collector headless. |
+
+The `uptimizr-collector` bin is kept for compatibility and does what `uptimizr serve` does.
+
 ### Storage backends (`COLLECTOR_STORE`)
 
 The API is identical whichever store backs it — the dashboard, SDKs and this
@@ -1388,6 +1492,13 @@ full walkthrough of each store.
 | Method | Path              | Notes                                                                                                          |
 | ------ | ----------------- | -------------------------------------------------------------------------------------------------------------- |
 | `POST` | `/api/v1/collect` | Batched events. The SDK uses `navigator.sendBeacon` (credentialed) and falls back to `fetch` with `keepalive`. |
+
+The body is `{ schemaVersion?, events, meta? }` with 1–1000 events, and the response is
+`{ accepted, rejected }`. Ingestion is keyless: every event's public `projectId` must
+match (`400` otherwise) and name an existing project (`401 unknown project`). Bodies are
+capped by `COLLECTOR_BODY_LIMIT` (default `1048576` bytes, `413` above it), and each
+client by `COLLECTOR_INGEST_RATE_LIMIT_MAX` (default `300`) per
+`COLLECTOR_INGEST_RATE_LIMIT_WINDOW_MS` (default `60000`, `429` above it).
 
 ### Query (read)
 
@@ -1465,7 +1576,7 @@ self-describing without a second lookup:
   "meta": {
     "metric": "top_meshes",
     "range": { "since": 1757000000000, "until": 1757600000000 },
-    "filters": { "scene": "lobby", "limit": 50 },
+    "filters": { "limit": 50 },
     "sampleSize": { "sessions": null, "events": 9130 },
     "rows": 63,
     "truncated": false,
@@ -1492,7 +1603,7 @@ of tokens as a 5-bin one. Its shape follows the metric's grain:
   "kind": "ranked",
   "metric": "top_meshes",
   "range": { "since": 1757000000000, "until": 1757600000000 },
-  "filters": { "scene": "lobby" },
+  "filters": {},
   "sampleSize": { "sessions": null, "events": 9130 },
   "total": 9130,
   "measure": { "column": "count", "unit": "count", "additive": true },
@@ -1734,13 +1845,28 @@ The table below is **generated** from the metric registry (`pnpm gen:docs`); CI 
 
 The read routes that are **not** registry metrics are the raw per-session event stream that replay
 uses, and the two routes that describe the _calling key_ rather than the project's telemetry. None
-of them aggregates anything, so none of them takes `format` — a stray `format=` on them is ignored:
+of them aggregates anything, so none of them takes the result-envelope `format`. The events route
+has its own `format=json|ndjson`, and a stray `format=` on the other two is ignored:
 
 | Method | Path                          | Purpose                                                                                                                                                                                         |
 | ------ | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET`  | `/api/v1/sessions/:id/events` | Ordered raw event stream for replay. Requires **both** `ENABLE_RAW_SESSION_RETENTION` on the collector (ADR 0003) and the `query:raw` capability on the key (ADR 0051 §7); otherwise `403`.     |
 | `GET`  | `/api/v1/whoami`              | The calling key's identity — project, key id, capabilities, label and the rate-limit budget in force. See [API keys](#api-keys-capabilities-rate-limits-and-the-audit-log) above.               |
 | `GET`  | `/api/v1/audit`               | The project's agent-audit trail, newest first (`since` / `until` / `limit`). Needs the ordinary `query` capability. See [API keys](#api-keys-capabilities-rate-limits-and-the-audit-log) above. |
+
+The live routes are Server-Sent Events, so they authenticate with a short-lived `?token=`
+from `POST /api/v1/live/token` (`{ token, expiresAt }`) rather than a header. A missing or expired
+token is `401`, and a stream past `LIVE_MAX_CONNECTIONS` (default `200`) is `503`.
+
+| Method | Path                        | Purpose                                                                                                                     |
+| ------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/v1/live/presence`     | `event: presence` snapshots of `{ activeSessions, activeVisitors, sessions }`. Not gated by `ENABLE_RAW_SESSION_RETENTION`. |
+| `GET`  | `/api/v1/live/stream`       | `event: event` frames for every arriving event in the project. `types` is a comma-separated allow-list.                     |
+| `GET`  | `/api/v1/live/sessions/:id` | The per-session tail. Needs `ENABLE_RAW_SESSION_RETENTION` and a token minted by a `query:raw` key.                         |
+
+Their other settings are `LIVE_WINDOW_MS` (`30000`), `LIVE_TOKEN_SECRET` (defaults to
+`VISITOR_HASH_SECRET`; set a value of its own in production), `LIVE_TOKEN_TTL_MS` (`900000`) and
+`LIVE_PRESENCE_INTERVAL_MS` (`2000`).
 
 ### Query DSL (`POST /api/v1/query`)
 
@@ -1998,7 +2124,8 @@ and retried 3× with backoff. See the
 [Subscriptions & webhooks](https://www.uptimizr.com/docs/deploy/collector/#subscriptions--webhooks)
 guide.
 
-CLI: `uptimizr subscriptions list | add --file <sub.json> | remove <id> | test <id>`.
+CLI: `uptimizr subscriptions list | add --file <sub.json> | remove <id> | test <id>`, each with
+`--project <projectId>` (or `UPTIMIZR_PROJECT_ID`).
 
 ### Scene registry (representations)
 
@@ -2006,7 +2133,7 @@ A scene can register a **proxy** of its geometry (per-mesh AABBs, ADR 0014) so t
 dashboard's 3D heatmap draws hotspots against a recognizable backdrop. The proxy is
 produced client-side by `scanSceneProxy(scene, { sceneId })` (`@uptimizr/babylon`,
 `@uptimizr/three`, `@uptimizr/playcanvas`) and `PUT` under the matching `sceneId`.
-Writes use the same project API key as reads.
+Writes use a `query`-capable project API key, the same as reads.
 
 Each proxy mesh may also carry two optional fields used for **rigid subtree
 reconstruction** (ADR 0033). When a mesh has a fully-named ancestor chain,
@@ -2122,8 +2249,8 @@ worth re-asking with the answer it got. Three small, project-scoped tables
 | `glossary`       | What a name means **in this project** — a mesh name, a scene id, a custom event, a shorthand. |
 | `saved_analyses` | A titled question plus the conclusion drawn from it, so it need not be re-derived.            |
 
-**These are the only rows a client can write besides events, and they are not
-events.** Nothing on this path can write, alter or delete an analytics event —
+**These rows, like panels, subscriptions, scene regions and proxies, are project
+metadata, not events.** Nothing on this path can write, alter or delete an analytics event —
 the analytics API stays read-only and aggregate-only (ADR 0051 §9). Every write
 needs a key holding [`annotate`](#api-keys-capabilities-rate-limits-and-the-audit-log);
 reads need `query`. Every write is recorded in the agent audit log.
@@ -2313,7 +2440,7 @@ curl -H "x-api-key: $KEY" \
 An agent that has never seen your project knows the _shape_ of this API (from the
 metric registry) but nothing about _your_ project: what the scenes are called,
 which regions have names, which capture channels are on, what your application
-calls its own events, whether raw retention is enabled, or how fresh the data is.
+calls its own events, whether raw session reads are enabled, or how fresh the data is.
 Every one of those is something it would otherwise guess.
 
 `GET /api/v1/context` answers all of it in one read (ADR 0051 §5). It needs a
@@ -2389,7 +2516,7 @@ Read it like this:
   unseen. They return empty because the channel is off — say so, rather than
   reporting the zero as a finding.
 - **`dataQuality.retention.rawSessions: false`** means the session timeline /
-  replay endpoint is unavailable by design, not broken.
+  replay endpoint is unavailable by design, not broken. The events are still stored.
 
 Bounds: at most 40 scenes (20 regions each), 25 custom events (40 prop keys
 each), 10 top meshes, 25 input actions, 10 annotations, 50 glossary entries.
@@ -2405,21 +2532,38 @@ The vocabulary block above is also a registry metric of its own, so it is a
 generated agent tool (`custom_event_vocabulary`) and takes the usual
 `since` / `until` / `scene` / `limit` / `format` parameters:
 
-````bash
+```bash
 curl -H "x-api-key: $KEY" \
   "https://collect.example.com/api/v1/vocabulary/custom-events?since=…&limit=50"
-### Insights (`/api/v1/insights/*`) — baselines and movers (ADR 0051 §4)
-### Insights (`/api/v1/insights/*`) — baselines, movers and anomalies (ADR 0051 §4)
-### Insights (`/api/v1/insights/*`) — baselines, movers, significance and health (ADR 0051 §4)
+```
 
-Four questions come up on every look at a dashboard, and none is answerable from
-a single metric: **"is this number normal here?"**, **"what changed?"**, **"is
-that change real?"** and **"which scene should I look at first?"**
-Both used to be re-derived by hand (or by a model, from raw rows, differently
-every time). They are now registry metrics of their own, so they are also
+```json
+[
+  {
+    "name": "add_to_cart",
+    "count": 311,
+    "sessions": 180,
+    "props": { "sku": "string", "qty": "number" }
+  }
+]
+```
+
+`count` and `sessions` are exact over the range. `props` is discovered from the
+**20 most recent events per name**, so it is a vocabulary hint rather than a
+schema: a key that stopped being sent long ago will be absent, and a rarely-sent
+optional key can be missed. A key seen with more than one JSON kind is reported
+as `"mixed"`; `"null"` means every sampled value was null.
+
+### Insights (`/api/v1/insights/*`) — baselines, movers, anomalies, significance and health (ADR 0051 §4)
+
+Five questions come up on every look at a dashboard, and none is answerable from
+a single metric: **"is this number normal here?"**, **"what changed?"**, **"when
+did it go wrong?"**, **"is that change real?"** and **"which scene should I look
+at first?"** All five used to be re-derived by hand (or by a model, from raw rows,
+differently every time). They are now registry metrics of their own, so they are also
 agent tools, OpenAPI operations and `format=summary` answers like any other read.
 
-All four are computed the same way: one **portable bucket series** — a comparable
+All five are computed the same way: one **portable bucket series** — a comparable
 metric's headline column, aggregated per day or per hour — and then pure
 TypeScript over it, p-values and confidence intervals included. No statistics run in SQL, so DuckDB, ClickHouse, Postgres and
 SQL Server cannot disagree about what "the median" or "the MAD" means.
@@ -2445,15 +2589,11 @@ One row: `{ metric, scene, sampleSize, buckets, mean, median, mad, p10, p90, slo
 ```bash
 curl -H "x-api-key: $KEY" \
   "https://collect.example.com/api/v1/insights/baseline?metric=perf_summary&scene=lobby&window=28"
-````
+```
 
 ```json
 [
   {
-    "name": "add_to_cart",
-    "count": 311,
-    "sessions": 180,
-    "props": { "sku": "string", "qty": "number" }
     "metric": "perf_summary",
     "scene": "lobby",
     "sampleSize": 18420,
@@ -2468,62 +2608,6 @@ curl -H "x-api-key: $KEY" \
 ]
 ```
 
-`count` and `sessions` are exact over the range. `props` is discovered from the
-**20 most recent events per name**, so it is a vocabulary hint rather than a
-schema: a key that stopped being sent long ago will be absent, and a rarely-sent
-optional key can be missed. A key seen with more than one JSON kind is reported
-as `"mixed"`; `"null"` means every sampled value was null.
-
-### Scheduled agent reports (`uptimizr agent report`)
-
-A weekly digest should not need someone to open a chat. `uptimizr agent report`
-runs the headless agent loop **once**, from your shell, against this same query
-API, and writes Markdown to a file, stdout or a signed webhook (ADR 0051 §6):
-
-```bash
-# A read-only key is all it needs
-uptimizr new-key <projectId> --capabilities query --label "weekly-report"
-
-export UPTIMIZR_COLLECTOR_URL=https://collect.example.com
-export UPTIMIZR_API_KEY=utk_…            # the query-only key
-export UPTIMIZR_AGENT_API_KEY=sk-ant-…   # your own provider key
-
-uptimizr agent report --skill weekly_scene_health --scene lobby --window 7d \
-  --out report.md --json report.json --webhook https://hooks.example.com/uptimizr
-```
-
-| Flag                | Meaning                                                                                                                                                                                                                     |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--skill <name>`    | The investigation to run (required): `attention_hotspots`, `conversion_investigation`, `performance_regression_triage`, `weekly_scene_health`, `xr_comfort_audit`. `--list-skills` prints them with the metrics each reads. |
-| `--scene <id>`      | Scope the report to one scene (required by `attention_hotspots`).                                                                                                                                                           |
-| `--window <NdNhNw>` | Window counting back from now (`24h`, `7d` default, `2w`), or `--since`/`--until` in epoch ms.                                                                                                                              |
-| `--out <file\|->`   | Markdown destination; default `-` (stdout).                                                                                                                                                                                 |
-| `--json <file\|->`  | Structured report: every tool call with arguments, duration and outcome, plus token usage when the provider reports it.                                                                                                     |
-| `--webhook <url>`   | `POST {markdown, report}` to an `http(s)` URL.                                                                                                                                                                              |
-| `--max-steps <n>`   | Cap on provider turns (default `8`).                                                                                                                                                                                        |
-| `--dry-run`         | Print the exact prompt and tool list; call no provider.                                                                                                                                                                     |
-
-Configuration is read from the environment only and never persisted:
-`UPTIMIZR_COLLECTOR_URL`, `UPTIMIZR_API_KEY`, `UPTIMIZR_AGENT_PROVIDER`
-(`anthropic` | `openai` | `scripted`), `UPTIMIZR_AGENT_MODEL`,
-`UPTIMIZR_AGENT_API_KEY`, `UPTIMIZR_AGENT_ENDPOINT`, `UPTIMIZR_WEBHOOK_SECRET`.
-The provider key is never logged, echoed or written into a report.
-
-The system prompt is seeded with the `/api/v1/context` document above, so the run
-uses your real scene ids and custom-event names; a collector too old to serve it
-degrades silently. Every report ends with a **Method** section listing the tool
-calls and their arguments, which is what keeps an unattended, model-written
-document auditable.
-
-Webhook deliveries carry `X-Uptimizr-Signature: sha256=<hex HMAC-SHA-256 of the
-raw body>` keyed with `UPTIMIZR_WEBHOOK_SECRET`, plus a unique
-`X-Uptimizr-Delivery` id — verify over the raw bytes, before parsing, with a
-constant-time comparison. Exit codes: `0` success, `1` usage/configuration,
-`2` provider or delivery failure, `3` report produced but incomplete.
-
-Scheduling is yours — cron, a systemd timer or a GitHub Action. A copy-pasteable
-weekly workflow is in the
-[collector deployment guide](https://www.uptimizr.com/docs/deploy/collector/#scheduled-agent-reports).
 Read `median` as the centre and `mad` as the tolerance: a later reading more than
 a few MADs away is unusual _for this scene_, one inside `p10..p90` is ordinary.
 `slope` is the drift **within** the window — a baseline with a steep slope is not
@@ -2625,38 +2709,10 @@ metric's bucket series and returns only the buckets that do not belong in it.
 One row per anomalous bucket, oldest first:
 `{ metric, scene, bucketStart, value, expected, z, kind, contributor, sampleSize }`.
 
-````bash
-curl -H "x-api-key: $KEY" \
-  "https://collect.example.com/api/v1/insights/anomalies?metric=error_heatmap&scene=lobby&window=28"
-#### `GET /api/v1/insights/significance` — is that difference real
-
-`movers` ranks changes by how unusual they are. This answers the question a
-robust z-score deliberately does not: **given how much data is behind each side,
-could the difference have come from chance alone?**
-
-| Param                   | Default                    | Meaning                                                                                           |
-| ----------------------- | -------------------------- | ------------------------------------------------------------------------------------------------- |
-| `metric`                | —                          | **Required.** The registry metric to compare. Must have a portable bucket series.                 |
-| `scene`                 | all                        | Scope to one scene.                                                                               |
-| `since` / `until`       | last 7 complete days       | The window under test.                                                                            |
-| `refSince` / `refUntil` | the equal window before it | The window it is compared with.                                                                   |
-| `bucket`                | `day`                      | Time grain. Also the unit a Welch comparison counts observations in, so a finer grain buys power. |
-
-One row:
-`{ metric, scene, a: { value, n }, b: { value, n }, effect, ci95, p, test, effectUnit, significant, powerNote }`.
-
-**The test is chosen from what the measure is, never from the caller:**
-
-| The measure is…                                                   | Test                                           | `effect`                    | `ci95`                                                   |
-| ----------------------------------------------------------------- | ---------------------------------------------- | --------------------------- | -------------------------------------------------------- |
-| a **rate** — its headline column declares a `rateOf` denominator  | two-proportion z (pooled)                      | difference of proportions   | Newcombe hybrid score, from the two **Wilson** intervals |
-| a **count** with no denominator                                   | Poisson rate test (exact conditional binomial) | difference in events/bucket | normal approximation on the rate difference              |
-| anything else — a level or a summed quantity (`fps`, `ms`, bytes) | **Welch's** t over the per-bucket values       | difference of means         | `effect ± t(0.975, ν) · SE`                              |
-
 ```bash
 curl -H "x-api-key: $KEY" \
-  "https://collect.example.com/api/v1/insights/significance?metric=dead_clicks&scene=lobby&bucket=hour"
-````
+  "https://collect.example.com/api/v1/insights/anomalies?metric=error_heatmap&scene=lobby&window=28"
+```
 
 ```json
 [
@@ -2670,17 +2726,6 @@ curl -H "x-api-key: $KEY" \
     "kind": "spike",
     "contributor": { "dimension": "event_type", "value": "graphics_diagnostic", "share": 1 },
     "sampleSize": 32
-    "metric": "dead_clicks",
-    "scene": "lobby",
-    "a": { "value": 0.166667, "n": 6 },
-    "b": { "value": 0, "n": 8 },
-    "effect": 0.166667,
-    "ci95": [-0.185333, 0.563503],
-    "p": 0.230804,
-    "test": "two_proportion_z",
-    "effectUnit": "ratio",
-    "significant": false,
-    "powerNote": "With these sample sizes the smallest difference detectable at 80% power (alpha 0.05) is about 0.4262 in the rate; a smaller true difference would usually go unnoticed here."
   }
 ]
 ```
@@ -2721,6 +2766,55 @@ carry `contributor: null`; narrow `since`/`until` around one to attribute it.
 > a new project reads "no anomalies" rather than "every day is an anomaly", and
 > buckets with no matching events are absent from the series rather than zero —
 > a gap in capture is not reported as a drop.
+
+#### `GET /api/v1/insights/significance` — is that difference real
+
+`movers` ranks changes by how unusual they are. This answers the question a
+robust z-score deliberately does not: **given how much data is behind each side,
+could the difference have come from chance alone?**
+
+| Param                   | Default                    | Meaning                                                                                           |
+| ----------------------- | -------------------------- | ------------------------------------------------------------------------------------------------- |
+| `metric`                | —                          | **Required.** The registry metric to compare. Must have a portable bucket series.                 |
+| `scene`                 | all                        | Scope to one scene.                                                                               |
+| `since` / `until`       | last 7 complete days       | The window under test.                                                                            |
+| `refSince` / `refUntil` | the equal window before it | The window it is compared with.                                                                   |
+| `bucket`                | `day`                      | Time grain. Also the unit a Welch comparison counts observations in, so a finer grain buys power. |
+
+One row:
+`{ metric, scene, a: { value, n }, b: { value, n }, effect, ci95, p, test, effectUnit, significant, powerNote }`.
+
+**The test is chosen from what the measure is, never from the caller:**
+
+| The measure is…                                                   | Test                                           | `effect`                    | `ci95`                                                   |
+| ----------------------------------------------------------------- | ---------------------------------------------- | --------------------------- | -------------------------------------------------------- |
+| a **rate** — its headline column declares a `rateOf` denominator  | two-proportion z (pooled)                      | difference of proportions   | Newcombe hybrid score, from the two **Wilson** intervals |
+| a **count** with no denominator                                   | Poisson rate test (exact conditional binomial) | difference in events/bucket | normal approximation on the rate difference              |
+| anything else — a level or a summed quantity (`fps`, `ms`, bytes) | **Welch's** t over the per-bucket values       | difference of means         | `effect ± t(0.975, ν) · SE`                              |
+
+```bash
+curl -H "x-api-key: $KEY" \
+  "https://collect.example.com/api/v1/insights/significance?metric=dead_clicks&scene=lobby&bucket=hour"
+```
+
+```json
+[
+  {
+    "metric": "dead_clicks",
+    "scene": "lobby",
+    "a": { "value": 0.166667, "n": 6 },
+    "b": { "value": 0, "n": 8 },
+    "effect": 0.166667,
+    "ci95": [-0.185333, 0.563503],
+    "p": 0.230804,
+    "test": "two_proportion_z",
+    "effectUnit": "ratio",
+    "significant": false,
+    "powerNote": "With these sample sizes the smallest difference detectable at 80% power (alpha 0.05) is about 0.4262 in the rate; a smaller true difference would usually go unnoticed here."
+  }
+]
+```
+
 > **Read `ci95` before `p`.** A narrow interval around a small effect is evidence
 > that nothing much changed; a wide interval containing 0 is evidence of nothing at
 > all, and `powerNote` tells you which of the two you are looking at — it states
@@ -2829,6 +2923,57 @@ Two more things worth knowing:
   `jank_rate` is the pooled long-frame rate, while the `jank_rate` metric's own
   endpoint reports a per-session median. Both are only ever read against the
   project's own baseline, never as absolutes.
+
+### Scheduled agent reports (`uptimizr agent report`)
+
+A weekly digest should not need someone to open a chat. `uptimizr agent report`
+runs the headless agent loop **once**, from your shell, against this same query
+API, and writes Markdown to a file, stdout or a signed webhook (ADR 0051 §6):
+
+```bash
+# A read-only key is all it needs
+uptimizr new-key <projectId> --capabilities query --label "weekly-report"
+
+export UPTIMIZR_COLLECTOR_URL=https://collect.example.com
+export UPTIMIZR_API_KEY=utk_…            # the query-only key
+export UPTIMIZR_AGENT_API_KEY=sk-ant-…   # your own provider key
+
+uptimizr agent report --skill weekly_scene_health --scene lobby --window 7d \
+  --out report.md --json report.json --webhook https://hooks.example.com/uptimizr
+```
+
+| Flag                | Meaning                                                                                                                                                                                                                     |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--skill <name>`    | The investigation to run (required): `attention_hotspots`, `conversion_investigation`, `performance_regression_triage`, `weekly_scene_health`, `xr_comfort_audit`. `--list-skills` prints them with the metrics each reads. |
+| `--scene <id>`      | Scope the report to one scene (required by `attention_hotspots`).                                                                                                                                                           |
+| `--window <NdNhNw>` | Window counting back from now (`24h`, `7d` default, `2w`), or `--since`/`--until` in epoch ms.                                                                                                                              |
+| `--out <file\|->`   | Markdown destination; default `-` (stdout).                                                                                                                                                                                 |
+| `--json <file\|->`  | Structured report: every tool call with arguments, duration and outcome, plus token usage when the provider reports it.                                                                                                     |
+| `--webhook <url>`   | `POST {markdown, report}` to an `http(s)` URL.                                                                                                                                                                              |
+| `--max-steps <n>`   | Cap on provider turns (default `8`).                                                                                                                                                                                        |
+| `--dry-run`         | Print the exact prompt and tool list; call no provider.                                                                                                                                                                     |
+
+Configuration is read from the environment only and never persisted:
+`UPTIMIZR_COLLECTOR_URL`, `UPTIMIZR_API_KEY`, `UPTIMIZR_AGENT_PROVIDER`
+(`anthropic` | `openai` | `scripted`), `UPTIMIZR_AGENT_MODEL`,
+`UPTIMIZR_AGENT_API_KEY`, `UPTIMIZR_AGENT_ENDPOINT`, `UPTIMIZR_WEBHOOK_SECRET`.
+The provider key is never logged, echoed or written into a report.
+
+The system prompt is seeded with the `/api/v1/context` document above, so the run
+uses your real scene ids and custom-event names; a collector too old to serve it
+degrades silently. Every report ends with a **Method** section listing the tool
+calls and their arguments, which is what keeps an unattended, model-written
+document auditable.
+
+Webhook deliveries carry `X-Uptimizr-Signature: sha256=<hex HMAC-SHA-256 of the
+raw body>` keyed with `UPTIMIZR_WEBHOOK_SECRET`, plus a unique
+`X-Uptimizr-Delivery` id — verify over the raw bytes, before parsing, with a
+constant-time comparison. Exit codes: `0` success, `1` usage/configuration,
+`2` provider or delivery failure, `3` report produced but incomplete.
+
+Scheduling is yours — cron, a systemd timer or a GitHub Action. A copy-pasteable
+weekly workflow is in the
+[collector deployment guide](https://www.uptimizr.com/docs/deploy/collector/#scheduled-agent-reports).
 
 ### Funnels (`/api/v1/funnel`) — caller-configured (ADR 0038, #78)
 
@@ -3095,7 +3240,7 @@ The portable `ossPanelCatalog` includes the two live surfaces (ADR 0049):
 `livePresencePanel` (overview "Live now" roster + event feed) and `sessionReplayPanel`
 (the session-surface birdview replay, Babylon-backed and exported directly as
 `SessionReplayView` from `@uptimizr/react/panels-3d`). A host that renders a catalog
-panel's view itself can pass `PanelHost`'s `exclude` prop to suppress the host-driven
+panel's view itself can pass the dashboard `PanelHost`'s `exclude` prop to suppress the host-driven
 copy. The per-session live-follow hook `useLiveSession` (with `LiveStatus` /
 `LiveSessionState`) is exported from `@uptimizr/react` for panels that drive their own tail.
 

@@ -1,7 +1,7 @@
 ---
 title: PlayCanvas analytics
 description: Add heatmaps, entity tracking, real-user FPS and session replay to a PlayCanvas app with the @uptimizr/playcanvas connector.
-lastUpdated: 2026-06-28
+lastUpdated: 2026-11-06
 ---
 
 The PlayCanvas connector. `playcanvas` is a peer dependency — the connector reads your existing
@@ -43,9 +43,9 @@ wire frame (**left-handed, y-up**) at the emission boundary; the session is attr
 ## Capture
 
 Captures camera pose, pointer move/click (with optional raycast hit), mesh picks, FPS, and
-**asset load timing** (`asset_load`, on by default — see below). Opt-in: mesh visibility and hover
-dwell. It tears down all DOM listeners, timers, `frameend` handlers, and asset-registry listeners on
-stop.
+**asset load timing** (`asset_load`, on by default — see below). Opt-in: mesh visibility, hover
+dwell, resource sample, and gaze. Frame perf carries FPS without percentiles or long-frame counts.
+It tears down all DOM listeners, timers, `frameend` handlers, and asset-registry listeners on stop.
 
 ### Asset load timing (`asset_load`)
 
@@ -65,6 +65,19 @@ viewport centre. The connector detects pointer lock and reports pointer/click ev
 for locked scenes. Read the cursor-independent gaze / floor-plan heatmaps instead; cursor
 (orbit/viewer) scenes are unaffected. See [Concepts → pointer lock](/docs/concepts/) (ADR 0034).
 
+## Raycast probes
+
+| Helper                                             | Returns                                                                              |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `createSceneRaycaster(app, cameraEntity)`          | `(ndcX, ndcY) => { point, name } \| undefined`, the default pointer probe.           |
+| `createGazeRaycaster(app, cameraEntity, options?)` | `() => { point, name } \| undefined`. Options: `maxDistance`, `meshes`, `predicate`. |
+
+`playcanvasCollector` takes a `raycast` option to replace the pointer probe. `trackScene` does not.
+
+`trackScene` also takes `cameraType` to override the detected navigation model on `session_start`:
+PlayCanvas camera entities carry no orbit-vs-free-fly distinction, so pass
+`cameraType: "arc-rotate"` for orbit viewers.
+
 ## Advanced
 
 ```ts
@@ -76,6 +89,9 @@ const client = new UptimizrClient({
   endpoint: "https://collect.example.com",
 });
 client.use(playcanvasCollector({ app, camera: cameraEntity }));
+client.start({ device: readDeviceCaps(app) });
 ```
 
-See [sdk-core (advanced)](/docs/connectors/sdk-core/) for the full client API.
+`playcanvasCollector` is also where the `meshVisibility`, `hoverDwell` and `resourceSample` options
+objects go; `trackScene` does not accept them. See
+[sdk-core (advanced)](/docs/connectors/sdk-core/) for the full client API.

@@ -1,7 +1,7 @@
 ---
 title: What is Uptimizr?
 description: Uptimizr is open-source, self-hosted analytics for 3D scenes. See what it captures, how the pieces fit together and the principles behind it.
-lastUpdated: 2026-07-08
+lastUpdated: 2026-11-06
 ---
 
 Uptimizr is a **3D-scene analytics platform** — like web analytics, but for 3D apps. It captures
@@ -34,7 +34,7 @@ and custom events from a 3D scene, and can **replay** a recorded session inside 
 
 1. A **connector** (e.g. `@uptimizr/babylon`) observes your scene and emits events.
 2. **`@uptimizr/sdk-core`** batches them and sends them over `navigator.sendBeacon`.
-3. The **collector** validates and stores them, scoped to a project by API key.
+3. The **collector** validates and stores them, scoped to a project by its public `projectId`.
 4. The **dashboard** (or the read-only MCP server, or your own code) queries aggregates back out.
 
 ## Principles
@@ -42,7 +42,8 @@ and custom events from a 3D scene, and can **replay** a recorded session inside 
 - **One source of truth for events.** Every event shape is a Zod schema in `@uptimizr/schema`.
   Events are replay-complete: ordered, timestamped, and keyed by `sessionId`.
 - **Privacy first.** No cookies, no persistent client IDs, no PII by default. The visitor ID is a
-  server-side, daily-rotating hash. Raw per-session retention is opt-in.
+  server-side, daily-rotating hash. Reading raw per-session streams through the API is opt-in;
+  events themselves are always stored, because aggregates are computed from them at query time.
 - **Self-hostable.** The OSS collector and dashboard run on your own infrastructure. Your data
   never leaves unless you send it.
 

@@ -1,7 +1,7 @@
 ---
 title: Unity WebGL analytics
 description: Add click heatmaps and FPS tracking to a Unity WebGL export with @uptimizr/unity, plus camera, picks and replay through a small bridge.
-lastUpdated: 2026-09-09
+lastUpdated: 2026-11-06
 ---
 
 The Unity (WebGL export) connector. Unity compiles to WebAssembly and renders into a
@@ -139,7 +139,8 @@ records Unity's native frame in `connector.coordinateSystem`.
 ## Capture
 
 JS-only tier: pointer move/click → screen heatmaps, FPS / long frames → performance,
-JS errors. Bridged tier: camera pose → view-direction heatmap, world-space picks →
+JS errors (on by default; see [web-export options](/docs/connectors/web-export/#options)).
+Bridged tier: camera pose → view-direction heatmap, world-space picks →
 object engagement, scene proxy, and replay.
 
 ## Privacy
