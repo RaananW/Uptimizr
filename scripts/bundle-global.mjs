@@ -36,8 +36,8 @@ const ENGINES = {
     lookup: "globalThis.THREE ?? globalThis.AFRAME?.THREE",
     optional: ["REVISION"],
     recipe:
-      "Expose your copy before calling trackScene, in a module script: " +
-      'import * as THREE from "three"; window.THREE = THREE; (A-Frame\'s script sets it for you.)',
+      "On a module page, use the ESM bundle uptimizr-three.js with an import map instead: it " +
+      "needs no global. See https://www.uptimizr.com/docs/connectors/cdn/",
   },
   playcanvas: {
     title: "PlayCanvas",
@@ -45,8 +45,8 @@ const ENGINES = {
     lookup: "globalThis.pc",
     optional: ["version"],
     recipe:
-      "Load the classic playcanvas.min.js script, or expose your copy before calling " +
-      'trackScene, in a module script: import * as pc from "playcanvas"; window.pc = pc;',
+      "Load the classic playcanvas.min.js script first. On a module page, use the ESM bundle " +
+      "uptimizr-playcanvas.js with an import map instead: it needs no global. See https://www.uptimizr.com/docs/connectors/cdn/",
   },
   "@babylonjs/lite": {
     title: "Babylon Lite",
@@ -54,8 +54,8 @@ const ENGINES = {
     lookup: "globalThis.BabylonLite",
     optional: ["VERSION"],
     recipe:
-      "Expose your copy before calling trackScene, in a module script: " +
-      'import * as BabylonLite from "@babylonjs/lite"; window.BabylonLite = BabylonLite;',
+      "Lite is ESM-only, so use the ESM bundle uptimizr-babylon-lite.js with an import map " +
+      "instead: it needs no global. See https://www.uptimizr.com/docs/connectors/cdn/",
   },
 };
 

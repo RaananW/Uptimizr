@@ -5,4 +5,4 @@
 "@uptimizr/babylon-lite": patch
 ---
 
-Fix the script-tag bundles, which threw `Dynamic require of "three" is not supported` at load and never defined their global. They now look the engine up on `window.THREE`, `window.pc` or `window.BabylonLite` when first used, and `trackScene` throws a clear error if the global is missing. The bundles still never include the engine.
+Fix the script-tag bundles, which threw `Dynamic require of "three" is not supported` at load and never defined their global. They now look the engine up on its global when first used, and `trackScene` throws a clear error if it is missing. The bundles still never include the engine. Pages with no bundler that use ES modules should use the existing ESM bundles with an import map, which needs no global. None of this affects npm and bundler users.

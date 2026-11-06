@@ -6,11 +6,17 @@ lastUpdated: 2026-11-06
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-You don't have to use npm. Every connector also ships a **standalone global (IIFE) bundle** you can
-drop onto a page with a single `<script>` tag — ideal for the Babylon Playground, CodePen, a CMS, or
-any page where you can't run a bundler. The bundle exposes a `window.Uptimizr` global and **never
-bundles the engine**: it uses the copy your page already runs, which three.js and Babylon Lite pages
-must expose as a global (see [How the bundle finds your engine](#how-the-bundle-finds-your-engine)).
+**This page is for pages with no build step.** If you use a bundler, install from npm instead (see
+the [connector overview](/docs/connectors/overview/)): your bundler connects Uptimizr to your engine,
+no globals are involved, and nothing on this page applies.
+
+Without a bundler, each connector ships two standalone files. Neither contains the engine: both use
+the copy your page already runs. Pick by how your page loads code:
+
+| Your page                                                                  | Use                                                        | Adds to `window`                |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------- |
+| ES modules (`<script type="module">`), as three.js and Babylon Lite pages are | The [ESM bundle with an import map](#es-modules-with-an-import-map) | Nothing                         |
+| Classic `<script>` tags, as Babylon.js, PlayCanvas and A-Frame pages usually are | The [global bundle](#bundles--globals)                     | `Uptimizr`, and nothing else     |
 
 :::tip
 Working in an online editor? See [Playgrounds & online editors](/docs/connectors/playgrounds/) for
@@ -51,31 +57,46 @@ The standalone bundle is just a static file, so serve it however you like:
   and point the `<script>` at it. The collector does not serve it. The local playground does, at
   `/uptimizr-babylon.global.js`.
 
-## How the bundle finds your engine
+## ES modules with an import map
 
-The bundle stays engine-free, so it looks your engine up on a global the first time it needs it:
+On a page that already uses ES modules, import Uptimizr as a module too. An import map points Uptimizr
+at the same engine your page imports, so there is one copy of the engine and nothing goes on `window`.
+
+| Connector    | ESM bundle                 | Import map entry  |
+| ------------ | -------------------------- | ----------------- |
+| three.js     | `uptimizr-three.js`        | `three`           |
+| Babylon Lite | `uptimizr-babylon-lite.js` | `@babylonjs/lite` |
+| PlayCanvas   | `uptimizr-playcanvas.js`   | `playcanvas`      |
+
+Keep one URL per engine: map it once and import it by name everywhere, or the page ends up with two
+copies. Pin the version to one the connector supports. See the three.js and Babylon Lite tabs under
+[Usage](#usage).
+
+## How the global bundle finds your engine
+
+The global bundle stays engine-free, so it looks your engine up on a global the first time it needs
+it. Classic engine scripts set that global themselves, so there is nothing for you to add:
 
 | Bundle       | Engine global                    | Who sets it                                                           |
 | ------------ | -------------------------------- | --------------------------------------------------------------------- |
 | Babylon.js   | none, it reads the `scene` you pass | nothing to do                                                         |
-| three.js     | `window.THREE`                   | **you**: three.js has no global build, so set it from a module script |
+| three.js     | `window.THREE`                   | nothing official: three.js has no global build, so use the [ESM bundle](#es-modules-with-an-import-map) |
 | A-Frame      | `window.THREE` or `AFRAME.THREE` | `aframe.min.js`                                                       |
-| PlayCanvas   | `window.pc`                      | the classic PlayCanvas script, or you if you import the module        |
-| Babylon Lite | `window.BabylonLite`             | **you**: Lite is ESM-only, so set it from a module script             |
+| PlayCanvas   | `window.pc`                      | the classic PlayCanvas script                                         |
+| Babylon Lite | `window.BabylonLite`             | nothing: Lite is ESM-only, so use the [ESM bundle](#es-modules-with-an-import-map) |
 
 **Load order doesn't matter** for that lookup. Loading the bundle never touches the engine, so it can
 come before or after the engine script, and the global only has to exist by the time you call
 `trackScene`. The exception is A-Frame: load its bundle **after** `aframe.min.js`, because the bundle
 registers the `uptimizr` component as it loads.
 
-Set the global from the same three.js or Babylon Lite module your scene imports. If it's missing,
-`trackScene` throws an error that says what to set, before any session starts. The bundle itself
-still loads, so you can set the global and call `trackScene` again.
+If the global is missing, `trackScene` throws an error saying what to do, before any session starts.
+The bundle itself still loads.
 
 ## Usage
 
-Inject the script through the DOM (this also sidesteps any TypeScript/`import` rewriting on the host
-page), then call `trackScene` once the engine scene exists:
+Call `trackScene` once the engine scene exists. On a classic page, injecting the script through the
+DOM also sidesteps any TypeScript/`import` rewriting on the host page:
 
 <Tabs syncKey="engine">
   <TabItem label="Babylon.js">
@@ -96,15 +117,16 @@ page), then call `trackScene` once the engine scene exists:
   </TabItem>
   <TabItem label="Babylon Lite">
   ```html
-  <script src="https://cdn.jsdelivr.net/npm/@uptimizr/babylon-lite/dist/uptimizr-babylon-lite.global.js"></script>
+  <script type="importmap">
+    { "imports": { "@babylonjs/lite": "https://cdn.jsdelivr.net/npm/@babylonjs/lite@1.38.1/dist/index.js" } }
+  </script>
   <script type="module">
-    import * as BabylonLite from "https://cdn.jsdelivr.net/npm/@babylonjs/lite/dist/index.js";
-    // Lite is ESM-only, so hand the bundle your copy of the module.
-    window.BabylonLite = BabylonLite;
+    import * as BabylonLite from "@babylonjs/lite";
+    import { trackScene } from "https://cdn.jsdelivr.net/npm/@uptimizr/babylon-lite/dist/uptimizr-babylon-lite.js";
 
     // ...create engine, scene and camera...
     // Lite has no active camera, so pass camera + canvas explicitly.
-    Uptimizr.trackScene(scene, camera, canvas, {
+    trackScene(scene, camera, canvas, {
       projectId: "your-project-id",
       endpoint: "https://collect.example.com",
     });
@@ -113,15 +135,16 @@ page), then call `trackScene` once the engine scene exists:
   </TabItem>
   <TabItem label="three.js">
   ```html
-  <script src="https://cdn.jsdelivr.net/npm/@uptimizr/three/dist/uptimizr-three.global.js"></script>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js" } }
+  </script>
   <script type="module">
-    import * as THREE from "https://cdn.jsdelivr.net/npm/three/build/three.module.js";
-    // three has no global build, so hand the bundle your copy of the module.
-    window.THREE = THREE;
+    import * as THREE from "three";
+    import { trackScene } from "https://cdn.jsdelivr.net/npm/@uptimizr/three/dist/uptimizr-three.js";
 
     // ...create scene, camera, renderer...
     // three has no active camera, so pass camera + renderer explicitly.
-    Uptimizr.trackScene(scene, camera, renderer, {
+    trackScene(scene, camera, renderer, {
       projectId: "your-project-id",
       endpoint: "https://collect.example.com",
     });
@@ -157,7 +180,7 @@ page), then call `trackScene` once the engine scene exists:
   </TabItem>
 </Tabs>
 
-`Uptimizr.trackScene(...)` returns the same client as the npm path, so you can read
+`trackScene(...)` returns the same client as the npm path from either bundle, so you can read
 `client.sessionId`, emit custom events with `client.track(...)`, change scenes with
 `client.setScene(...)`, and `client.stop()` — everything in the [configuration
 reference](/docs/guides/configuration/) works identically.

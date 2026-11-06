@@ -96,19 +96,18 @@ document.head.appendChild(s);
 > `pnpm playground` prints this snippet pre-filled with a local project id and a
 > tunnel/localhost endpoint. See [run-local-stack](../.github/skills/run-local-stack/SKILL.md).
 
-The other connectors ship the same kind of bundle, and none of them include the engine. They look it
-up on a global when first used, so script order doesn't matter (except that the A-Frame bundle must
-load after `aframe.min.js`). The global must exist by the time you call `trackScene`, which otherwise
-throws an error saying what to set:
+With a bundler, none of this applies: install from npm and your bundler connects Uptimizr to your
+engine. Without one, pick by how the page loads code. Neither option includes the engine.
 
-| Bundle                            | Engine global                    | Set by                                           |
-| --------------------------------- | -------------------------------- | ------------------------------------------------ |
-| `uptimizr-three.global.js`        | `window.THREE`                   | you: `import * as THREE`, `window.THREE = THREE` |
-| `uptimizr-aframe.global.js`       | `window.THREE` or `AFRAME.THREE` | `aframe.min.js`                                  |
-| `uptimizr-playcanvas.global.js`   | `window.pc`                      | the classic PlayCanvas script                    |
-| `uptimizr-babylon-lite.global.js` | `window.BabylonLite`             | you: `import * as BabylonLite`, then assign it   |
+- **A module page** (three.js, Babylon Lite): import the ESM bundle (`uptimizr-three.js`,
+  `uptimizr-babylon-lite.js`, `uptimizr-playcanvas.js`) and map the engine with an import map.
+  Nothing goes on `window`.
+- **A classic page** (PlayCanvas, A-Frame): load the global bundle. It finds the engine on the global
+  the engine's own script sets (`window.pc`, or `window.THREE` / `AFRAME.THREE`) when first used, so
+  script order doesn't matter, except that the A-Frame bundle must load after `aframe.min.js`. If the
+  global is missing, `trackScene` throws an error saying what to do.
 
-See [Install via CDN](../oss/apps/docs/src/content/docs/connectors/cdn.mdx) for the full recipes.
+See [Install via CDN](../oss/apps/docs/src/content/docs/connectors/cdn.mdx) for the recipes.
 
 ### Web-export engines (Unity / Godot / Unreal)
 

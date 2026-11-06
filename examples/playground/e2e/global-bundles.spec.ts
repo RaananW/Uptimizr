@@ -12,6 +12,9 @@ import { expect, test, type Page } from "@playwright/test";
  * bundles next to the real three.js, PlayCanvas, Babylon Lite and A-Frame builds,
  * then checks that a session really starts and that engine classes really construct.
  *
+ * The same engines also run against the ESM bundles through an import map, the recipe
+ * for module pages, which must leave nothing on `window`.
+ *
  * Nothing here talks to the suite's servers. The page lives on a fake origin answered
  * by `page.route`, so the browser never reaches the network: anything else it asks
  * for is aborted and fails the test.
@@ -36,6 +39,10 @@ const FILES: Record<string, string> = {
   "/uptimizr-aframe.global.js": `${packages}/sdk-aframe/dist/uptimizr-aframe.global.js`,
   "/uptimizr-playcanvas.global.js": `${packages}/sdk-playcanvas/dist/uptimizr-playcanvas.global.js`,
   "/uptimizr-babylon-lite.global.js": `${packages}/sdk-babylon-lite/dist/uptimizr-babylon-lite.global.js`,
+  "/uptimizr-three.js": `${packages}/sdk-three/dist/uptimizr-three.js`,
+  "/uptimizr-playcanvas.js": `${packages}/sdk-playcanvas/dist/uptimizr-playcanvas.js`,
+  "/uptimizr-babylon-lite.js": `${packages}/sdk-babylon-lite/dist/uptimizr-babylon-lite.js`,
+  "/vendor/playcanvas.mjs": `${modules}/playcanvas/build/playcanvas.mjs`,
   "/vendor/three/three.module.js": `${modules}/three/build/three.module.js`,
   "/vendor/three/three.core.js": `${modules}/three/build/three.core.js`,
   "/vendor/playcanvas.min.js": `${modules}/playcanvas/build/playcanvas.min.js`,
@@ -44,6 +51,7 @@ const FILES: Record<string, string> = {
 
 const CONTENT_TYPES: Record<string, string> = {
   ".js": "application/javascript",
+  ".mjs": "application/javascript",
   ".html": "text/html",
 };
 
@@ -91,6 +99,26 @@ const HARNESS = `<script>
 
 const CANVAS = `<canvas id="c" width="640" height="480" style="width:640px;height:480px;display:block"></canvas>`;
 
+/** Builds the three.js scene; the page provides `THREE`, `trackScene` and `scanSceneProxy`. */
+const THREE_SCENE = `
+  const canvas = document.getElementById("c");
+  const renderer = new THREE.WebGLRenderer({ canvas });
+  renderer.setSize(640, 480, false);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(50, 640 / 480, 0.1, 100);
+  camera.position.z = 5;
+  const box = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial());
+  box.name = "global-box";
+  scene.add(box);
+  renderer.render(scene, camera);
+  window.__start = () => {
+    window.__client = trackScene(scene, camera, renderer, window.__options);
+  };
+  window.__scan = () => scanSceneProxy(scene, { sceneId: "global" });
+  window.__engineVersion = () => THREE.REVISION;
+  window.__ready = true;
+`;
+
 /** The bundle comes first here, so the engine global is set after it has loaded. */
 function threePage(expose: "now" | "later"): string {
   return `<!doctype html><body style="margin:0">${CANVAS}${HARNESS}
@@ -99,22 +127,19 @@ function threePage(expose: "now" | "later"): string {
       import * as THREE from "/vendor/three/three.module.js";
       window.__expose = () => { window.THREE = THREE; };
       ${expose === "now" ? "window.__expose();" : ""}
-      const canvas = document.getElementById("c");
-      const renderer = new THREE.WebGLRenderer({ canvas });
-      renderer.setSize(640, 480, false);
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(50, 640 / 480, 0.1, 100);
-      camera.position.z = 5;
-      const box = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial());
-      box.name = "global-box";
-      scene.add(box);
-      renderer.render(scene, camera);
-      window.__start = () => {
-        window.__client = Uptimizr.trackScene(scene, camera, renderer, window.__options);
-      };
-      window.__scan = () => Uptimizr.scanSceneProxy(scene, { sceneId: "global" });
-      window.__engineVersion = () => THREE.REVISION;
-      window.__ready = true;
+      const { trackScene, scanSceneProxy } = Uptimizr;
+      ${THREE_SCENE}
+    </script>`;
+}
+
+/** The recipe for a module page: an import map, and nothing on `window`. */
+function threeEsmPage(): string {
+  return `<!doctype html><body style="margin:0">${CANVAS}${HARNESS}
+    <script type="importmap">{ "imports": { "three": "/vendor/three/three.module.js" } }</script>
+    <script type="module">
+      import * as THREE from "three";
+      import { trackScene, scanSceneProxy } from "/uptimizr-three.js";
+      ${THREE_SCENE}
     </script>`;
 }
 
@@ -149,14 +174,37 @@ function playcanvasPage(expose: "now" | "later"): string {
     </script>`;
 }
 
-/** Lite is ESM-only and WebGPU-only, so this page reports when there is no adapter. */
-function litePage(expose: "now" | "later"): string {
+/** PlayCanvas as a module, which the classic build's global is not involved in. */
+function playcanvasEsmPage(): string {
   return `<!doctype html><body style="margin:0">${CANVAS}${HARNESS}
-    <script src="/uptimizr-babylon-lite.global.js"></script>
+    <script type="importmap">{ "imports": { "playcanvas": "/vendor/playcanvas.mjs" } }</script>
     <script type="module">
-      import * as BabylonLite from "/vendor/babylon-lite.js";
-      window.__expose = () => { window.BabylonLite = BabylonLite; };
-      ${expose === "now" ? "window.__expose();" : ""}
+      import * as pc from "playcanvas";
+      import { trackScene } from "/uptimizr-playcanvas.js";
+      const canvas = document.getElementById("c");
+      const app = new pc.Application(canvas, {});
+      app.setCanvasFillMode(pc.FILLMODE_NONE);
+      const camera = new pc.Entity("camera");
+      camera.addComponent("camera", { clearColor: new pc.Color(0, 0, 0) });
+      camera.setPosition(0, 0, 5);
+      app.root.addChild(camera);
+      const box = new pc.Entity("global-box");
+      box.addComponent("render", { type: "box" });
+      box.setLocalScale(2, 2, 2);
+      app.root.addChild(box);
+      app.once("postrender", () => {
+        window.__start = () => {
+          window.__client = trackScene(app, camera, window.__options);
+        };
+        window.__engineVersion = () => pc.version;
+        window.__ready = true;
+      });
+      app.start();
+    </script>`;
+}
+
+/** Builds the Lite scene; the page provides `BabylonLite` and `trackScene`. */
+const LITE_SCENE = `
       if (!(await navigator.gpu?.requestAdapter())) {
         window.__noWebgpu = true;
         throw new Error("no WebGPU adapter");
@@ -175,10 +223,33 @@ function litePage(expose: "now" | "later"): string {
       await BabylonLite.registerScene(scene);
       await BabylonLite.startEngine(engine);
       window.__start = () => {
-        window.__client = Uptimizr.trackScene(scene, camera, canvas, window.__options);
+        window.__client = trackScene(scene, camera, canvas, window.__options);
       };
       window.__engineVersion = () => BabylonLite.VERSION;
       window.__ready = true;
+`;
+
+/** Lite is ESM-only and WebGPU-only, so this page reports when there is no adapter. */
+function litePage(expose: "now" | "later"): string {
+  return `<!doctype html><body style="margin:0">${CANVAS}${HARNESS}
+    <script src="/uptimizr-babylon-lite.global.js"></script>
+    <script type="module">
+      import * as BabylonLite from "/vendor/babylon-lite.js";
+      window.__expose = () => { window.BabylonLite = BabylonLite; };
+      ${expose === "now" ? "window.__expose();" : ""}
+      const { trackScene } = Uptimizr;
+      ${LITE_SCENE}
+    </script>`;
+}
+
+/** The recipe for a Lite page: an import map, and nothing on `window`. */
+function liteEsmPage(): string {
+  return `<!doctype html><body style="margin:0">${CANVAS}${HARNESS}
+    <script type="importmap">{ "imports": { "@babylonjs/lite": "/vendor/babylon-lite.js" } }</script>
+    <script type="module">
+      import * as BabylonLite from "@babylonjs/lite";
+      import { trackScene } from "/uptimizr-babylon-lite.js";
+      ${LITE_SCENE}
     </script>`;
 }
 
@@ -372,9 +443,9 @@ for (const [name, afterEngine] of [
 }
 
 for (const { id, page: html, message } of [
-  { id: "three", page: threePage, message: "window.THREE = THREE" },
-  { id: "playcanvas", page: playcanvasPage, message: "window.pc = pc" },
-  { id: "babylon-lite", page: litePage, message: "window.BabylonLite = BabylonLite" },
+  { id: "three", page: threePage, message: "uptimizr-three.js" },
+  { id: "playcanvas", page: playcanvasPage, message: "playcanvas.min.js" },
+  { id: "babylon-lite", page: litePage, message: "uptimizr-babylon-lite.js" },
 ]) {
   test(`[${id}] a missing global is a clear error, and setting it later recovers`, async ({
     page,
@@ -407,5 +478,36 @@ for (const { id, page: html, message } of [
       window.__start!();
     });
     expect((await sessionStart(page)).type).toBe("session_start");
+  });
+}
+
+for (const { id, page: html, global, name } of [
+  { id: "three", page: threeEsmPage, global: "THREE", name: "three" },
+  { id: "playcanvas", page: playcanvasEsmPage, global: "pc", name: "playcanvas" },
+  { id: "babylon-lite", page: liteEsmPage, global: "BabylonLite", name: "babylon-lite" },
+]) {
+  test(`[${id}] the ESM bundle runs through an import map and adds no globals`, async ({
+    page,
+  }) => {
+    const seen = await serve(page, html());
+    await page.goto(`${ORIGIN}/`);
+    test.skip(!(await sceneReady(page)), NO_WEBGPU);
+    expect(seen.pageErrors).toEqual([]);
+
+    await page.evaluate(() => window.__start!());
+    const start = await sessionStart(page);
+    expect(start.connector?.name).toBe(name);
+    expect(start.connector?.version).toBe(await page.evaluate(() => window.__engineVersion!()));
+
+    // A real pick runs the engine classes the import map resolved.
+    await clickHitsBox(page);
+
+    const leaked = await page.evaluate(
+      (engineGlobal) => [engineGlobal, "Uptimizr"].filter((key) => key in window),
+      global,
+    );
+    expect(leaked).toEqual([]);
+    expect(seen.pageErrors).toEqual([]);
+    expect(seen.refused).toEqual([]);
   });
 }
