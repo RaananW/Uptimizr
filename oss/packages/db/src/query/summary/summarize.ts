@@ -49,6 +49,7 @@ import {
   axisColumn,
   columnsOf,
   type Column,
+  gateColumn,
   gridColumns,
   labelColumn,
   measureColumn,
@@ -319,6 +320,15 @@ function baseOf(
   };
 }
 
+/** What a ranked row sorts on, biggest first. The reported value keeps its sign. */
+function rankKey(row: ResultRow, column: Column | undefined): number | null {
+  if (column == null) return null;
+  const value = numberAt(row, column[0]);
+  if (value == null) return null;
+  const { rank } = column[1];
+  return rank === "magnitude" ? Math.abs(value) : rank === "asc" ? -value : value;
+}
+
 function rankedSummary(
   metric: MetricDefinition,
   rows: readonly ResultRow[],
@@ -330,11 +340,16 @@ function rankedSummary(
   const measure = measureOf(measureCol);
   const total = measure?.additive === true ? sumColumn(rows, measureCol?.[0]) : null;
 
-  // Rank by the measure, highest first; ties fall back to the label so the order
-  // is a function of the row *set* rather than of what the store happened to emit.
+  // Rank by the measure, highest first unless the column says otherwise. A row its
+  // gate rules out never outranks one it admits, and ties fall back to the label, so
+  // the order is a function of the row *set* rather than of what the store emitted.
+  const gate = gateColumn(metric)?.[0];
   const ordered = [...rows].sort((a, b) => {
-    const left = measureCol == null ? null : numberAt(a, measureCol[0]);
-    const right = measureCol == null ? null : numberAt(b, measureCol[0]);
+    if (gate != null && (a[gate] === false) !== (b[gate] === false)) {
+      return a[gate] === false ? 1 : -1;
+    }
+    const left = rankKey(a, measureCol);
+    const right = rankKey(b, measureCol);
     if (left !== right) {
       if (left == null) return 1;
       if (right == null) return -1;

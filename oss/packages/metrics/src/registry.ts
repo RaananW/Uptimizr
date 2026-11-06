@@ -629,6 +629,22 @@ export interface ColumnSemantics {
   unit?: ColumnUnit;
   /** For summaries: the column to rank by. At most one per metric. */
   measure?: boolean;
+  /**
+   * For summaries: how a `measure` orders its rows, when highest-first would bury
+   * the rows a reader came for. Only valid on the `measure` column.
+   *
+   * - `magnitude`: largest `|value|` first, for a signed measure whose large
+   *   negatives matter as much as its large positives. The value keeps its sign.
+   * - `asc`: lowest first, for a measure where low is the finding (a health score
+   *   reads worst-first).
+   */
+  rank?: "magnitude" | "asc";
+  /**
+   * For summaries: a boolean column saying whether a row is evidence at all. Rows
+   * where it is `false` rank after every row where it is `true`, whatever their
+   * measure. At most one per metric.
+   */
+  gate?: boolean;
   /** For summaries: the column that names the row (mesh, scene, bucket…). */
   label?: boolean;
   /**
@@ -4782,6 +4798,7 @@ export const METRIC_REGISTRY = {
           "bucket series. The ranking key.",
         unit: "ratio",
         measure: true,
+        rank: "magnitude",
       },
       direction: {
         description:
@@ -4794,6 +4811,7 @@ export const METRIC_REGISTRY = {
         description:
           "Whether the current range cleared the metric's declared minimum denominator. False " +
           "means the delta is real arithmetic but not evidence.",
+        gate: true,
       },
       sampleSize: {
         description:
@@ -4808,7 +4826,8 @@ export const METRIC_REGISTRY = {
       "~3 it is worth explaining. Combine `direction` with the sign of `delta` to know whether a " +
       "move is good or bad — a rise in a `down` metric (errors, dead clicks, jank) is a " +
       "regression. Rows with `aboveMinSample: false` are sorted last and must not be reported as " +
-      "findings.",
+      "findings. `format=summary` ranks by |z| instead, so its `top` mixes the biggest risers and " +
+      "fallers; read the sign of each `value`.",
     caveats: [
       "Cost is bounded by a per-request cap on how many metrics are scanned (one grouped scan each); without a `metrics` allowlist a curated default set is used, so a move in a metric outside that set is not reported. Name it explicitly to include it.",
       "Only metrics with a portable bucket series participate. Funnels, cohort metrics and anything defined by the relationship between consecutive events are outside the scan by construction.",
@@ -4887,6 +4906,7 @@ export const METRIC_REGISTRY = {
           "than thresholds, so the two columns differ by that constant factor.",
         unit: "ratio",
         measure: true,
+        rank: "magnitude",
       },
       kind: {
         description:
@@ -4910,7 +4930,8 @@ export const METRIC_REGISTRY = {
     },
     limits: { maxRows: 200, maxSummaryRows: 8 },
     interpretation:
-      "Rows are ordered by bucket, oldest first, so the result reads as a timeline. |z| is 'how " +
+      "Rows are ordered by bucket, oldest first, so the result reads as a timeline; " +
+      "`format=summary` ranks by |z| instead, most extreme first. |z| is 'how " +
       "many typical swings out': at the default `sensitivity` of 3 nothing under 3 appears at all, " +
       "and a `shift` is usually the more important finding than a `spike` because it is still " +
       "true today. Read `contributor.share`: above ~0.8 the anomaly *is* that dimension value and " +
@@ -5081,6 +5102,7 @@ export const METRIC_REGISTRY = {
           "Weighted mean of the available factors, 0-100. 50 is exactly the project norm for the " +
           "preceding window; higher is healthier. Null when no factor could be scored.",
         measure: true,
+        rank: "asc",
       },
       factors: {
         description:

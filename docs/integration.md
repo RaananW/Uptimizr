@@ -1597,6 +1597,12 @@ of tokens as a 5-bin one. Its shape follows the metric's grain:
 | `bin`, `voxel`     | `clusters` | merged hotspots — centroid, extent, cells, weight, share                        |
 | `project`          | `record`   | the single row, plus every rate the registry declares via `rateOf`              |
 
+`ranked` rows run highest first unless the measure says otherwise. A signed measure
+(`insight_movers`, `insight_anomalies`) ranks by magnitude, so `top` holds the biggest
+moves in either direction and each `value` keeps its sign. `insight_scene_health` ranks
+lowest first, so the digest leads with the scene in the most trouble. Below-sample
+movers rank after every mover that cleared its minimum sample.
+
 ```jsonc
 // GET /api/v1/meshes/top?since=…&format=summary
 {

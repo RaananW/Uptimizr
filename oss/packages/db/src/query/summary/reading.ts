@@ -63,7 +63,13 @@ function rankedReading(metric: MetricDefinition, summary: RankedSummary): string
   }
 
   const measureName = humanizeColumn(measure[0]);
-  let text = `${metric.title}: ${formatLabel(first.label)} leads on ${measureName} with ${formatQuantity(first.value, unit)}`;
+  const standing =
+    measure[1].rank === "magnitude"
+      ? `has the largest ${measureName} by magnitude`
+      : measure[1].rank === "asc"
+        ? `is lowest on ${measureName}`
+        : `leads on ${measureName}`;
+  let text = `${metric.title}: ${formatLabel(first.label)} ${standing} with ${formatQuantity(first.value, unit)}`;
   if (first.share != null) {
     text += ` (${formatShare(first.share)} of ${formatQuantity(summary.total, unit)})`;
   }
