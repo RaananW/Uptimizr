@@ -25,6 +25,8 @@ This is the marketing site. The documentation, and the machine-readable versions
 - [Docs site](https://www.uptimizr.com/docs/): the human-readable version.
 - [What is 3D analytics?](https://www.uptimizr.com/docs/learn/): the category explained, with
   task-focused guides for three.js clicks, WebGL session replay, real-user FPS and configurators.
+- [Ask an AI agent about your 3D analytics](https://www.uptimizr.com/docs/learn/ai-agent-3d-analytics/):
+  connect an MCP client to your own collector, and what an agent can and can't do.
 - [Building agents on Uptimizr](https://www.uptimizr.com/docs/guides/agents/): the AI-first layer
   end to end — metric registry, discovery, MCP, result formats, scoped keys, evaluation.
 

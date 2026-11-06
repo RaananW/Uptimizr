@@ -17,7 +17,7 @@ Uptimizr measures 3D on the web. Native desktop, mobile, console and headset bui
 
 | Tier    | Engine code?         | What you get                                                                    |
 | ------- | -------------------- | ------------------------------------------------------------------------------- |
-| JS-only | None                 | Pointer and click heatmaps, FPS and long frames, JS errors                      |
+| JS-only | None                 | Pointer and click heatmaps, FPS and long frames, opt-in JS errors               |
 | Bridged | A small copy-in shim | Camera pose and view-direction heatmaps, world-space picks, scene proxy, replay |
 
 Start with the JS-only tier. It tells you whether people engage with the export and how it performs,
