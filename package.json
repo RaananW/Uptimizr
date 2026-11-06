@@ -27,6 +27,8 @@
     "gen:docs:check": "node scripts/gen-registry-docs.mjs --check",
     "gen:skills": "node scripts/gen-agent-skills.mjs",
     "gen:skills:check": "node scripts/gen-agent-skills.mjs --check",
+    "gen:version": "node scripts/gen-sdk-version.mjs",
+    "gen:version:check": "node scripts/gen-sdk-version.mjs --check",
     "clean": "turbo run clean && node scripts/clean-node-modules.mjs",
     "stack:up": "docker compose --env-file .env -f infra/docker/docker-compose.yml up -d",
     "stack:down": "docker compose --env-file .env -f infra/docker/docker-compose.yml down",
@@ -51,7 +53,7 @@
     "scrub-gate": "bash scripts/scrub-gate.sh",
     "license-check": "node scripts/license-check.mjs",
     "changeset": "changeset",
-    "version:packages": "changeset version",
+    "version:packages": "changeset version && pnpm gen:version",
     "release": "changeset publish"
   },
   "devDependencies": {

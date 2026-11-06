@@ -46,7 +46,7 @@ jobs:
       - name: Create or update the Version Packages PR
         uses: changesets/action@v2
         with:
-          version-script: pnpm changeset version
+          version-script: pnpm version:packages
           pr-title: "chore(release): version packages"
           commit-message: "chore(release): version packages"
           # No `publish-script` input: this workflow only maintains the version

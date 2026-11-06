@@ -20,6 +20,7 @@ import { allMetrics, type MetricDefinition } from "@uptimizr/metrics";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createMcpServer } from "../server.js";
 import { CAPABILITIES_URI } from "../resources.js";
+import { version } from "../version.js";
 
 /** What the stub collector was asked for, so a test can assert the mapping. */
 interface Recorded {
@@ -64,6 +65,13 @@ beforeEach(() => {
 
 afterAll(async () => {
   await client?.close();
+});
+
+describe("initialize", () => {
+  it("identifies the server with its real package version", () => {
+    expect(client.getServerVersion()).toMatchObject({ name: "uptimizr-mcp", version });
+    expect(version).not.toBe("unknown");
+  });
 });
 
 describe("tools/list", () => {

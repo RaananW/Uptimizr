@@ -123,6 +123,10 @@ complete.
   `@uptimizr/agent-core` and `@uptimizr/mcp` tarballs and back the MCP prompts, the
   `uptimizr agent report --skill` CLI and the assistant's starter prompts. Edit the SKILL.md, then
   run `pnpm format && pnpm gen:skills`; `pnpm gen:skills:check` is the CI gate.
+- **SDK version constant:** `SDK_VERSION` in `oss/packages/sdk-core/src/version.ts` is **generated**
+  from the package's `package.json` by `scripts/gen-sdk-version.mjs`, because browser code cannot read
+  its manifest at runtime. `pnpm version:packages` regenerates it after `changeset version`;
+  `pnpm gen:version:check` is the CI gate.
 - **Changesets:** every PR needs a changeset (CI fails without one). Use `pnpm changeset` for a
   change to a publishable `@uptimizr/*` package — it drives the release/version bump — and
   `pnpm changeset --empty` when nothing is released.
