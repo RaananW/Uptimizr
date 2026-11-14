@@ -80,7 +80,7 @@
     }
   },
   "devDependencies": {
-    "@mlc-ai/web-llm": "^0.2.87",
+    "@mlc-ai/web-llm": "^0.2.88",
     "esbuild": "^0.28.2",
     "vitest": "^5.1.0"
   },
