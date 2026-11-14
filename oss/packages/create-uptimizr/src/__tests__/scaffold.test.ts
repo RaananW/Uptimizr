@@ -56,7 +56,7 @@ describe("scaffold", () => {
     expect(pkg.scripts.start).toBe("uptimizr serve");
     // The 2.x line is the floor: it is the first collector carrying the ADR 0051
     // agent layer (OpenAPI self-description, format= envelope, capability keys).
-    expect(pkg.dependencies["@uptimizr/collector-server"]).toBe("^2.0.0");
+    expect(pkg.dependencies["@uptimizr/collector-server"]).toBe("^2.1.0");
   });
 
   it("emits a correct client snippet per engine", () => {
@@ -134,7 +134,7 @@ describe("scaffold", () => {
       expect(env, store).not.toContain("DUCKDB_PATH");
 
       const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
-      expect(pkg.dependencies["@uptimizr/collector-server"], store).toBe("^2.0.0");
+      expect(pkg.dependencies["@uptimizr/collector-server"], store).toBe("^2.1.0");
       // The store package has to track the collector major (@uptimizr/db 2.0.0
       // changed the API-key metadata contract).
       expect(pkg.dependencies[expected.pkg], store).toBe("^2.0.0");

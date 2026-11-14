@@ -4,6 +4,27 @@
 [CONTRIBUTING](../../../CONTRIBUTING.md#create-uptimizr-is-published-manually-not-via-changesets)),
 so this file is maintained by hand.
 
+## 2.1.0
+
+### Minor Changes
+
+- **The first key is an owner key.** Scaffolds now depend on `@uptimizr/collector-server`
+  `^2.1.0` (was `^2.0.0`), the first release whose `npm run setup` (`uptimizr init`) and
+  `new-project` mint the operator's key with `query`, `query:raw` and `annotate`: the dashboard,
+  session replay, the live per-session follow, scene regions and scene proxy uploads, with
+  nothing to re-mint later. `query:raw` still grants nothing on its own; replay and live follow
+  also need `ENABLE_RAW_SESSION_RETENTION` on the collector.
+
+  The generated `README.md` and the post-scaffold "Next steps" output now say this, in place of
+  the 2.0.0 advice to mint a second `query,query:raw` key for replay. Agents and MCP clients get
+  their own, narrower key:
+  `uptimizr new-key <projectId> --capabilities query --label "mcp-agent"`. See
+  [API keys and capabilities](https://www.uptimizr.com/docs/deploy/collector/#api-keys-and-capabilities).
+
+### Patch Changes
+
+- Package and generated-project links point at the canonical `www.uptimizr.com` host.
+
 ## 2.0.0
 
 ### Major Changes
@@ -26,17 +47,12 @@ so this file is maintained by hand.
     trail at `GET /api/v1/audit`.
   - **Scene regions** — name places inside a scene and drill spatial queries by `region`.
 
-  **The first key is an owner key.** `npm run setup` (`uptimizr init`) mints it with `query`,
-  `query:raw` and `annotate` — the dashboard, session replay, the live per-session follow and
-  scene regions, with nothing to re-mint later. In the 2.x collector the replay timeline
-  (`/api/v1/sessions/:id/events`) and the live follow require **both**
-  `ENABLE_RAW_SESSION_RETENTION` on the collector _and_ `query:raw` on the key, so a `query`-only
-  first key would have answered `403` the moment a self-hoster switched retention on. `query:raw`
-  grants nothing on its own — the gate needs both halves.
-
-  Agents and MCP clients get their own, narrower key —
-  `uptimizr new-key <projectId> --capabilities query --label "mcp-agent"`; `new-key` still
-  defaults to `query`. See
+  **Enabling replay needs a second key.** `npm run setup` (`uptimizr init`) still mints a
+  `query`-only key, which covers the dashboard's panels and is also all an agent or MCP client
+  needs. In the 2.x collector the replay timeline (`/api/v1/sessions/:id/events`) and the live
+  per-session follow require **both** `ENABLE_RAW_SESSION_RETENTION` on the collector _and_ the new
+  `query:raw` capability on the key, so mint a dedicated one with
+  `uptimizr new-key <projectId> --capabilities query,query:raw`. See
   [API keys and capabilities](https://uptimizr.com/docs/deploy/collector/#api-keys-and-capabilities).
 
   The generated `README.md` and the post-scaffold "Next steps" output now say this.

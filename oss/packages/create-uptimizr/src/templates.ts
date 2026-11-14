@@ -48,9 +48,11 @@ export const STORE_PACKAGE: Record<Store, string | undefined> = {
 };
 
 /**
- * `@uptimizr/collector-server` range the scaffold depends on. 2.0.0 is the floor
- * because it is the first release carrying the whole ADR 0051 agent layer a
- * fresh project should start on: the registry-generated
+ * `@uptimizr/collector-server` range the scaffold depends on. 2.1.0 is the floor
+ * because it is the first release whose `uptimizr init` / `new-project` mint the
+ * operator's first key as an owner key (`query`, `query:raw`, `annotate`), which
+ * the generated README and the "Next steps" output promise. 2.0.0 brought the
+ * whole ADR 0051 agent layer a fresh project should start on: the registry-generated
  * `GET /api/v1/openapi.json` self-description, the `format=full|table|summary`
  * envelope on every aggregate endpoint, capability-scoped API keys with per-key
  * rate limits, `GET /api/v1/whoami`, the agent audit trail, and the scene-region
@@ -58,7 +60,7 @@ export const STORE_PACKAGE: Record<Store, string | undefined> = {
  * `new-project` / `migrate` honouring `COLLECTOR_STORE`) that a non-DuckDB
  * scaffold relies on for `npm run setup`, which shipped in 1.1.0.
  */
-const COLLECTOR_SERVER_RANGE = "^2.0.0";
+const COLLECTOR_SERVER_RANGE = "^2.1.0";
 /**
  * Range for the optional `@uptimizr/db-*` store package. It has to track the
  * collector major: `@uptimizr/db` 2.0.0 is where `ApiKeyRecord` swapped the
