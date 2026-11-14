@@ -81,8 +81,8 @@ writes local-server placeholder connection settings you edit to match your
 database, and skips the `data/` folder. Start the database, then `npm run setup`
 creates the schema and mints the first project + API key there — the `uptimizr`
 CLI honours `COLLECTOR_STORE` for `init` / `new-project` / `migrate` just like
-`serve` does. The scaffold pins `@uptimizr/collector-server` and the store package
-to `^2.0.0`, and the two majors must match (`@uptimizr/db` 2.0.0 changed the API-key
+`serve` does. The scaffold pins `@uptimizr/collector-server` to `^2.1.0` (the first release
+whose `init` mints an owner key) and the store package to `^2.0.0`; the two majors must match (`@uptimizr/db` 2.0.0 changed the API-key
 metadata contract).
 
 ## Options
