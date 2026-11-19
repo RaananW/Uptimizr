@@ -40,6 +40,51 @@ function makeFakeWorker() {
   };
 }
 
+/**
+ * Boot the **real** `offloadWorker.ts` module behind a {@link WorkerLike}: the
+ * module's `self` is a stub whose `postMessage` feeds the page-side listeners
+ * and whose `fetch` answers each POST with the next scripted status (or throws
+ * for a network error), so the worker's own response handling is under test.
+ */
+async function bootRealWorker(responses: Array<number | Error>) {
+  const pageListeners: Array<(event: { data: unknown }) => void> = [];
+  const workerListeners: Array<(event: { data: unknown }) => void> = [];
+  const posted: Array<{ events: Array<{ type: string; name?: string }> }> = [];
+  let call = 0;
+
+  const fetch = vi.fn(async (_url: string, init: RequestInit) => {
+    posted.push(JSON.parse(String(init.body)) as (typeof posted)[number]);
+    const next = responses[Math.min(call++, responses.length - 1)]!;
+    if (next instanceof Error) throw next;
+    return { ok: next >= 200 && next < 300, status: next } as Response;
+  });
+
+  vi.stubGlobal("self", {
+    postMessage(message: unknown) {
+      queueMicrotask(() => {
+        for (const l of pageListeners) l({ data: message });
+      });
+    },
+    addEventListener(_type: "message", listener: (event: { data: unknown }) => void) {
+      workerListeners.push(listener);
+    },
+    fetch,
+  });
+  vi.resetModules(); // a fresh module scope (and listener) per worker
+  await import("../offloadWorker.js");
+
+  const worker: WorkerLike = {
+    postMessage(message) {
+      for (const l of workerListeners) l({ data: message });
+    },
+    addEventListener(type: "message" | "error", listener: (event: never) => void) {
+      if (type === "message") pageListeners.push(listener as (event: { data: unknown }) => void);
+    },
+    terminate: vi.fn(),
+  };
+  return { worker, fetch, posted };
+}
+
 const baseConfig = {
   projectId: "proj_demo",
   endpoint: "https://collect.test",
@@ -49,6 +94,7 @@ const baseConfig = {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("offload: worker (ADR 0031)", () => {
@@ -139,5 +185,46 @@ describe("offload: worker (ADR 0031)", () => {
     // The custom transport (main thread) handled it; the worker was bypassed.
     expect(sent).toHaveLength(1);
     expect(fake.batchMessages()).toHaveLength(0);
+  });
+});
+
+// The worker must classify a collector response exactly like the main-thread
+// transport (#274, #403): a definitive 4xx is handled and dropped, while network
+// errors, 5xx, 408 and 429 re-queue. Otherwise a rejected batch sits at the head
+// of every later batch and blocks delivery until the queue evicts it.
+describe("offload: worker response handling", () => {
+  async function flushTwice(first: number | Error) {
+    const real = await bootRealWorker([first, 202]);
+    const client = new UptimizrClient({
+      ...baseConfig,
+      offload: "worker",
+      createWorker: () => real.worker as unknown as Worker,
+    });
+    client.start();
+    client.track("first");
+    await client.flush(); // answered with `first`
+    client.track("second");
+    await client.flush(); // answered 202
+    const names = (i: number) =>
+      real.posted[i]!.events.filter((e) => e.type === "custom").map((e) => e.name);
+    return { real, names };
+  }
+
+  it("treats a definitive 4xx as handled (not re-queued)", async () => {
+    for (const status of [400, 401, 403, 413]) {
+      const { real, names } = await flushTwice(status);
+      expect(real.fetch).toHaveBeenCalledTimes(2);
+      expect(names(0)).toEqual(["first"]);
+      expect(names(1)).toEqual(["second"]); // the rejected batch was dropped
+    }
+  });
+
+  it("keeps transient failures retryable", async () => {
+    for (const failure of [408, 429, 500, 503, new Error("network down")]) {
+      const { real, names } = await flushTwice(failure);
+      expect(real.fetch).toHaveBeenCalledTimes(2);
+      expect(names(0)).toEqual(["first"]);
+      expect(names(1)).toEqual(["first", "second"]); // re-queued at the head
+    }
   });
 });

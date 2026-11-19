@@ -1,7 +1,7 @@
 ---
 title: sdk-core (advanced)
 description: Build an UptimizrClient directly for custom transports, beforeSend hooks, and multiple collectors.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-19
 ---
 
 `trackScene` is the one-call path. When you need finer control — a custom transport, a `beforeSend`
@@ -124,7 +124,9 @@ What moves to the worker when enabled:
   on the main thread (the only place engine state is reachable) and hand them to the aggregator,
   which finalizes the events in the worker.
 - **Serialization + steady-state dispatch** — `JSON.stringify` and the `fetch`/`sendBeacon` for
-  ordinary batches.
+  ordinary batches. The worker settles each response by the same rule as the default transport: a
+  2xx or a definitive 4xx (other than 408/429) is done, while a network error, 5xx, 408 or 429 is
+  re-queued for the next flush.
 
 What always stays on the main thread: reading engine state (frustum tests, bounds, gaze rays, FPS,
 pointer/keyboard observers) and the **terminal unload flush** on stop/`pagehide`, whose `sendBeacon`

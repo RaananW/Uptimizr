@@ -133,6 +133,9 @@ This is fully optional and safe by default:
   CSP, server-side rendering), the client transparently falls back to the main thread.
 - **The final flush on page unload always runs on the main thread**, where `navigator.sendBeacon`
   is reliable — so no events are lost when the tab closes.
+- **Same retry rule as the default transport.** The worker treats a 2xx or a definitive 4xx
+  (other than 408/429) as done and re-queues only network errors, 5xx, 408 and 429, so a rejected
+  batch never blocks later flushes.
 - **A custom `transport` takes precedence**: supplying one keeps delivery on the main thread
   (the worker cannot run your transport closure).
 
