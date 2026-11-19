@@ -1,7 +1,7 @@
 ---
 title: sdk-core (advanced)
 description: Build an UptimizrClient directly for custom transports, beforeSend hooks, and multiple collectors.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-19
 ---
 
 `trackScene` is the one-call path. When you need finer control — a custom transport, a `beforeSend`
@@ -86,6 +86,14 @@ the Babylon connector).
 ```ts
 client.emit({ type: "asset_load", name: "hero.glb", loadMs: 842 });
 ```
+
+`flush` sends the queue in batches of at most 1,000 events and about 60 KB of JSON, one at a time
+and in order, so a backlog fits under the browser's `sendBeacon` quota (with `offload: "worker"`,
+only the event cap applies, since the worker posts with `fetch`). Only one flush runs at a
+time; a call made while one is running joins it. When a batch fails, it stays queued in order and
+the client retries after 1 s, doubling up to 60 s, instead of on every new event. Calling `flush()`
+yourself still tries at once, and the page-exit flush ignores the backoff. A custom `transport`
+receives the same bounded batches.
 
 ## Custom collectors
 

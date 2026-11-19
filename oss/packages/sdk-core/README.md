@@ -78,6 +78,16 @@ invalid payload can never succeed and would block later flushes) — and `false`
 failures (network error, 5xx, 408, 429), which the client re-queues. Provide your own via the `transport` option to integrate a
 different delivery mechanism.
 
+A flush sends the queue as batches of at most 1,000 events (`LIMITS.maxBatchEvents`) and about
+60 KB of JSON, one at a time and in order, so each fits under the browser's `sendBeacon` quota
+(64 KiB in Chromium). With `offload: "worker"` the worker posts with `fetch`, so only the event cap
+applies. A custom transport receives the same bounded batches. Only one flush runs at a time; a
+`flush()` call made while one is running joins it. When a batch fails, it and everything after it
+stay queued in order, and the client retries after 1 s, doubling up to 60 s, instead of on every
+new event. The batch-size and interval triggers wait the backoff out; an explicit `flush()` still
+tries at once, and the page-exit flush (`visibilitychange` → hidden, `pagehide`, `stop()`) ignores
+the backoff and hands every batch to `sendBeacon` straight away.
+
 ## Registering scene regions
 
 `registerRegions(sceneId, regions, options)` declares the named places inside a scene — the

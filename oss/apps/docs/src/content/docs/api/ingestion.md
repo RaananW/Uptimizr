@@ -1,7 +1,7 @@
 ---
 title: Ingestion
 description: The collector's batched event ingestion endpoint.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-19
 ---
 
 The SDK delivers events to a single ingestion endpoint. You normally never call this directly — a
@@ -43,6 +43,12 @@ The ingest budget is per client, separate from the read budget:
   after `flushIntervalMs` (default `5000`).
 - **Beacon first.** Sends use `navigator.sendBeacon` so events survive page unload, falling back to
   `fetch({ keepalive: true })`.
+- **Bounded batches.** A flush is split into batches of at most 1,000 events and about 60 KB of
+  JSON, sent one at a time and in order, so each one fits under the browser's beacon quota (64 KiB
+  in Chromium) and the collector's batch limit. With `offload: "worker"` the worker posts with
+  `fetch`, which has no beacon quota, so only the event cap applies there.
+- **Retries back off.** A failed batch stays queued in order and is retried after 1 s, doubling up
+  to 60 s, not on every new event. The page-exit flush ignores the backoff.
 - **Privacy.** No cookies and no persistent client id; the `sessionId` is in-memory only.
 
 ## Scene registry (write)
