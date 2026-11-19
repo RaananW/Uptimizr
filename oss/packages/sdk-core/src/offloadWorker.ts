@@ -1,4 +1,5 @@
 import { createAggregator, type Aggregator } from "./aggregation/aggregator.js";
+import { isCollectResponseHandled } from "./collectResponse.js";
 import type { EventInput } from "./types.js";
 import type {
   WorkerEventsMessage,
@@ -96,7 +97,9 @@ async function dispatch(id: number, batch: unknown): Promise<void> {
         // `keepalive` has a ~64 KB browser cap; only request it under the limit.
         keepalive: body.length < 64_000,
       });
-      ok = res.ok;
+      // Same rule as the main-thread transport: 2xx and definitive 4xx are
+      // handled (a rejected batch must not re-queue), 5xx/408/429 retry.
+      ok = isCollectResponseHandled(res);
     }
   } catch {
     ok = false;
