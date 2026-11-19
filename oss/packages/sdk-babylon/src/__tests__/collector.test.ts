@@ -113,6 +113,40 @@ function makeCtx(now = { value: 1000 }, config: Record<string, unknown> = {}) {
   return { ctx, events, now, state };
 }
 
+/**
+ * Pointer-move harness (#404, #405). The connector resolves moves with its own
+ * `scene.pick`, so the hit is whatever `state.under` holds when it picks. Each
+ * move's `pickInfo` is a counting getter standing in for Babylon's lazy move pick
+ * (reading it is what makes Babylon pick), so tests can assert it is never read.
+ */
+function pointerHarness(scene: Scene, onPointerObservable: FakeObservable<unknown>) {
+  const state: { under: unknown; lazyPickReads: number } = { under: null, lazyPickReads: 0 };
+  const pick = vi.fn((..._args: unknown[]) => state.under);
+  (scene as unknown as { pick: unknown }).pick = pick;
+  const move = (pointerType?: string) =>
+    onPointerObservable.trigger({
+      type: POINTER_MOVE,
+      event: pointerType ? { pointerType } : {},
+      get pickInfo() {
+        state.lazyPickReads++;
+        return null;
+      },
+    });
+  return { state, pick, move };
+}
+
+/** Run `body` with `document.pointerLockElement` set to `canvas` (ADR 0034). */
+function withPointerLock(canvas: unknown, body: () => void): void {
+  const prevDoc = (globalThis as { document?: unknown }).document;
+  (globalThis as { document?: unknown }).document = { pointerLockElement: canvas };
+  try {
+    body();
+  } finally {
+    if (prevDoc === undefined) delete (globalThis as { document?: unknown }).document;
+    else (globalThis as { document?: unknown }).document = prevDoc;
+  }
+}
+
 describe("babylonCollector", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -296,21 +330,167 @@ describe("babylonCollector", () => {
     const now = { value: 1000 };
     const { ctx, events } = makeCtx(now);
     const handle = babylonCollector({ scene, pointerMoveThrottleMs: 250 }).start(ctx)!;
+    const { state, move } = pointerHarness(scene, onPointerObservable);
+    state.under = { hit: true, pickedPoint: { x: 4, y: 5, z: 6 }, pickedMesh: { name: "Cube" } };
 
-    const move = {
-      type: POINTER_MOVE,
-      event: {},
-      pickInfo: { hit: true, pickedPoint: { x: 4, y: 5, z: 6 }, pickedMesh: { name: "Cube" } },
-    };
-    onPointerObservable.trigger(move);
-    onPointerObservable.trigger(move); // within throttle window → dropped
+    move();
+    move(); // within throttle window → dropped
     now.value = 1300;
-    onPointerObservable.trigger(move); // after window → emitted
+    move(); // after window → emitted
 
     const moves = events.filter((e) => e.type === "pointer_move");
     expect(moves).toHaveLength(2);
     expect(moves[0]).toMatchObject({ screen: [0.5, 0.5], hitMesh: "Cube", hitPoint: [4, 5, 6] });
     handle.stop();
+  });
+
+  it("picks only the moves that emit, never Babylon's lazy move pick (#404)", () => {
+    const { scene, onPointerObservable } = makeScene();
+    const now = { value: 1000 };
+    const { ctx, events } = makeCtx(now);
+    const handle = babylonCollector({
+      scene,
+      pointerMoveThrottleMs: 250,
+      capture: { camera: false, perf: false },
+    }).start(ctx)!;
+    const { state, pick, move } = pointerHarness(scene, onPointerObservable);
+
+    // 20 moves 20 ms apart span 400 ms: the 250 ms throttle admits two of them.
+    for (let i = 0; i < 20; i++) {
+      move();
+      now.value += 20;
+    }
+
+    expect(events.filter((e) => e.type === "pointer_move")).toHaveLength(2);
+    expect(pick).toHaveBeenCalledTimes(2);
+    expect(state.lazyPickReads).toBe(0);
+    handle.stop();
+  });
+
+  it("does not pick on moves when neither pointer_move nor hover_dwell is captured (#404)", () => {
+    const { scene, onPointerObservable } = makeScene();
+    const { ctx } = makeCtx();
+    const handle = babylonCollector({
+      scene,
+      capture: { camera: false, perf: false, pointerMove: false },
+    }).start(ctx)!;
+    const { state, pick, move } = pointerHarness(scene, onPointerObservable);
+
+    for (let i = 0; i < 5; i++) move();
+    // Wheel events carry nothing the connector records, so they never pick either.
+    onPointerObservable.trigger({
+      type: 0x08,
+      event: {},
+      get pickInfo() {
+        state.lazyPickReads++;
+        return null;
+      },
+    });
+
+    expect(pick).not.toHaveBeenCalled();
+    expect(state.lazyPickReads).toBe(0);
+    handle.stop();
+  });
+
+  it("move picks admit ordinary meshes, at the pointer, without changing the scene (#405)", () => {
+    const { scene, onPointerObservable } = makeScene();
+    const { ctx, events } = makeCtx();
+    const handle = babylonCollector({ scene, capture: { camera: false, perf: false } }).start(ctx)!;
+    const { state, pick, move } = pointerHarness(scene, onPointerObservable);
+    state.under = { hit: true, pickedPoint: { x: 0, y: 1, z: 0 }, pickedMesh: { name: "Box" } };
+
+    move();
+
+    expect(events.find((e) => e.type === "pointer_move")).toMatchObject({ hitMesh: "Box" });
+    const [x, y, predicate] = pick.mock.calls[0] as [number, number, (m: unknown) => boolean];
+    expect([x, y]).toEqual([400, 300]);
+    // A plain mesh: no action manager, no `enablePointerMoveEvents`. Babylon's own
+    // move predicate rejects it; the connector's admits it like a click would.
+    const mesh = (over: Record<string, unknown> = {}) => ({
+      isPickable: true,
+      isVisible: true,
+      isReady: () => true,
+      isEnabled: () => true,
+      layerMask: 0x0fffffff,
+      enablePointerMoveEvents: false,
+      ...over,
+    });
+    expect(predicate(mesh())).toBe(true);
+    expect(predicate(mesh({ isPickable: false }))).toBe(false);
+    expect(predicate(mesh({ isVisible: false }))).toBe(false);
+    expect(predicate(mesh({ isEnabled: () => false }))).toBe(false);
+    // A host click predicate, when set, decides instead (hover matches clicks).
+    (scene as unknown as { pointerDownPredicate: unknown }).pointerDownPredicate = () => false;
+    expect(predicate(mesh())).toBe(false);
+    // The host's own move-picking settings are left untouched.
+    expect(scene).not.toHaveProperty("pointerMovePredicate");
+    expect(scene).not.toHaveProperty("constantlyUpdateMeshUnderPointer");
+    handle.stop();
+  });
+
+  it("reuses one centre pick per frame for moves while pointer-locked (#404)", () => {
+    const { scene, onPointerObservable, engine } = makeScene();
+    const canvas = { id: "render-canvas" };
+    const eng = engine as unknown as { getRenderingCanvas: () => unknown; frameId: number };
+    eng.getRenderingCanvas = () => canvas;
+    eng.frameId = 7;
+    const { ctx, events } = makeCtx();
+    withPointerLock(canvas, () => {
+      // Every move emits ("frame" cadence) and hover is on, so nothing is throttled:
+      // only the per-frame reuse bounds the picks.
+      const handle = babylonCollector({
+        scene,
+        sampling: { pointerMove: "frame" },
+        capture: { camera: false, perf: false, hoverDwell: true },
+      }).start(ctx)!;
+      const { state, pick, move } = pointerHarness(scene, onPointerObservable);
+      state.under = {
+        hit: true,
+        pickedPoint: { x: 1, y: 1, z: 1 },
+        pickedMesh: { name: "Exhibit" },
+      };
+
+      for (let i = 0; i < 5; i++) move();
+      expect(pick).toHaveBeenCalledTimes(1);
+      expect(pick).toHaveBeenCalledWith(400, 300);
+      eng.frameId = 8;
+      for (let i = 0; i < 5; i++) move();
+      expect(pick).toHaveBeenCalledTimes(2);
+
+      const moves = events.filter((e) => e.type === "pointer_move");
+      expect(moves).toHaveLength(10);
+      expect(moves[9]).toMatchObject({ screen: [0.5, 0.5], hitMesh: "Exhibit" });
+      expect(state.lazyPickReads).toBe(0);
+      handle.stop();
+    });
+  });
+
+  it("re-picks the centre for each discrete event while pointer-locked (ADR 0034)", () => {
+    const { scene, onPointerObservable, engine } = makeScene();
+    const canvas = { id: "render-canvas" };
+    const eng = engine as unknown as { getRenderingCanvas: () => unknown; frameId: number };
+    eng.getRenderingCanvas = () => canvas;
+    eng.frameId = 3;
+    const { ctx, events } = makeCtx();
+    withPointerLock(canvas, () => {
+      const handle = babylonCollector({ scene, capture: { camera: false, perf: false } }).start(
+        ctx,
+      )!;
+      const { state, pick } = pointerHarness(scene, onPointerObservable);
+      state.under = {
+        hit: true,
+        pickedPoint: { x: 1, y: 1, z: 1 },
+        pickedMesh: { name: "Exhibit" },
+      };
+
+      onPointerObservable.trigger({ type: POINTER_DOWN, event: { button: 0 }, pickInfo: null });
+      onPointerObservable.trigger({ type: POINTER_UP, event: { button: 0 }, pickInfo: null });
+      onPointerObservable.trigger({ type: POINTER_TAP, event: { button: 0 }, pickInfo: null });
+
+      expect(pick).toHaveBeenCalledTimes(3);
+      expect(events.find((e) => e.type === "pointer_click")).toMatchObject({ hitMesh: "Exhibit" });
+      handle.stop();
+    });
   });
 
   it("emits pointer_click on tap with button", () => {
@@ -933,15 +1113,15 @@ describe("babylonCollector", () => {
       hoverDwell: { minDwellMs: 500 },
     }).start(ctx)!;
 
-    const over = (name: string) => ({
-      type: POINTER_MOVE,
-      event: { pointerType: "mouse" },
-      pickInfo: { hit: true, pickedMesh: { name } },
-    });
+    const { state, move } = pointerHarness(scene, onPointerObservable);
+    const over = (name: string) => {
+      state.under = { hit: true, pickedMesh: { name } };
+      move("mouse");
+    };
     // Hover onto "Cube" at T0, linger, then move onto "Sphere" at T0+800ms.
-    onPointerObservable.trigger(over("Cube"));
+    over("Cube");
     now.value = 1800;
-    onPointerObservable.trigger(over("Sphere"));
+    over("Sphere");
 
     const hovers = events.filter((e) => e.type === "hover_dwell");
     expect(hovers).toHaveLength(1);
@@ -964,17 +1144,17 @@ describe("babylonCollector", () => {
       hoverDwell: { minDwellMs: 500 },
     }).start(ctx)!;
 
-    const over = (name: string, uv: { x: number; y: number }) => ({
-      type: POINTER_MOVE,
-      event: { pointerType: "mouse" },
-      pickInfo: { hit: true, pickedMesh: { name }, getTextureCoordinates: () => uv },
-    });
-    onPointerObservable.trigger(over("Cube", { x: 0.4, y: 0.6 }));
+    const { state, move } = pointerHarness(scene, onPointerObservable);
+    const over = (name: string, uv: { x: number; y: number }) => {
+      state.under = { hit: true, pickedMesh: { name }, getTextureCoordinates: () => uv };
+      move("mouse");
+    };
+    over("Cube", { x: 0.4, y: 0.6 });
     now.value = 1400;
     // Still on Cube — the latest UV should win.
-    onPointerObservable.trigger(over("Cube", { x: 0.45, y: 0.55 }));
+    over("Cube", { x: 0.45, y: 0.55 });
     now.value = 1800;
-    onPointerObservable.trigger(over("Sphere", { x: 0.1, y: 0.1 }));
+    over("Sphere", { x: 0.1, y: 0.1 });
 
     const hovers = events.filter((e) => e.type === "hover_dwell");
     expect(hovers).toHaveLength(1);
@@ -992,13 +1172,16 @@ describe("babylonCollector", () => {
       hoverDwell: { minDwellMs: 500 },
     }).start(ctx)!;
 
+    const { state, move } = pointerHarness(scene, onPointerObservable);
     const cube = { hit: true, pickedMesh: { name: "Cube" } };
-    onPointerObservable.trigger({ type: POINTER_MOVE, event: {}, pickInfo: cube });
+    state.under = cube;
+    move();
     now.value = 1800;
     // A click on the hovered object marks it as an action, not hesitation.
     onPointerObservable.trigger({ type: POINTER_TAP, event: { button: 0 }, pickInfo: cube });
     now.value = 2000;
-    onPointerObservable.trigger({ type: POINTER_MOVE, event: {}, pickInfo: { hit: false } });
+    state.under = { hit: false };
+    move();
 
     expect(events.some((e) => e.type === "hover_dwell")).toBe(false);
     handle.stop();
@@ -1014,19 +1197,87 @@ describe("babylonCollector", () => {
       hoverDwell: { minDwellMs: 500 },
     }).start(ctx)!;
 
-    onPointerObservable.trigger({
-      type: POINTER_MOVE,
-      event: {},
-      pickInfo: { hit: true, pickedMesh: { name: "Cube" } },
-    });
+    const { state, move } = pointerHarness(scene, onPointerObservable);
+    state.under = { hit: true, pickedMesh: { name: "Cube" } };
+    move();
     now.value = 1200; // only 200ms < 500ms threshold
-    onPointerObservable.trigger({
-      type: POINTER_MOVE,
-      event: {},
-      pickInfo: { hit: true, pickedMesh: { name: "Sphere" } },
-    });
+    state.under = { hit: true, pickedMesh: { name: "Sphere" } };
+    move();
 
     expect(events.some((e) => e.type === "hover_dwell")).toBe(false);
+    handle.stop();
+  });
+
+  it("bounds hover picks to one per pickIntervalMs and resolves a resting pointer next frame (#404)", () => {
+    const { scene, onPointerObservable, onBeforeRenderObservable } = makeScene();
+    const now = { value: 1000 };
+    const { ctx, events } = makeCtx(now);
+    const handle = babylonCollector({
+      scene,
+      // pointer_move off: hover is the only reason to pick.
+      capture: { camera: false, perf: false, pointerMove: false, hoverDwell: true },
+      hoverDwell: { minDwellMs: 500, pickIntervalMs: 100 },
+    }).start(ctx)!;
+    const { state, pick, move } = pointerHarness(scene, onPointerObservable);
+
+    // 30 moves 10 ms apart over Cube: one pick per 100 ms window, not one per move.
+    state.under = { hit: true, pickedMesh: { name: "Cube" } };
+    for (let i = 0; i < 30; i++) {
+      move("mouse");
+      now.value += 10;
+    }
+    expect(pick).toHaveBeenCalledTimes(3);
+    expect(state.lazyPickReads).toBe(0);
+
+    // The pointer slides onto Sphere with a move the interval skips, then rests:
+    // no further moves arrive, so the pending pick must run on a later frame.
+    now.value = 1300;
+    move("mouse"); // picked (Cube)
+    now.value = 1350;
+    state.under = { hit: true, pickedMesh: { name: "Sphere" } };
+    move("mouse"); // within the interval → pending, not picked
+    expect(pick).toHaveBeenCalledTimes(4);
+    onBeforeRenderObservable.trigger({}); // 1350: interval not yet elapsed
+    expect(pick).toHaveBeenCalledTimes(4);
+    now.value = 1400;
+    onBeforeRenderObservable.trigger({}); // pending pick runs → Sphere
+    expect(pick).toHaveBeenCalledTimes(5);
+    onBeforeRenderObservable.trigger({}); // nothing pending → no pick
+    expect(pick).toHaveBeenCalledTimes(5);
+
+    // Cube's episode (1000 → 1400) closed when Sphere was picked, under the
+    // 500 ms threshold, so it is not reported.
+    expect(events.some((e) => e.type === "hover_dwell")).toBe(false);
+    now.value = 2100;
+    handle.stop(); // flushes the resting Sphere episode (700 ms)
+    const hovers = events.filter((e) => e.type === "hover_dwell");
+    expect(hovers).toHaveLength(1);
+    expect(hovers[0]).toMatchObject({ mesh: "Sphere", dwellMs: 700, source: "mouse" });
+  });
+
+  it("respects hoverMeshAllowlist on the connector's own hover pick (#48)", () => {
+    const { scene, onPointerObservable } = makeScene();
+    const now = { value: 1000 };
+    const { ctx, events } = makeCtx(now);
+    const handle = babylonCollector({
+      scene,
+      capture: { camera: false, perf: false, hoverDwell: true },
+      hoverDwell: { minDwellMs: 500, meshes: ["Exhibit"] },
+    }).start(ctx)!;
+    const { state, move } = pointerHarness(scene, onPointerObservable);
+
+    state.under = { hit: true, pickedMesh: { name: "Wall" } };
+    move();
+    now.value = 2000;
+    state.under = { hit: true, pickedMesh: { name: "Exhibit" } };
+    move();
+    now.value = 3000;
+    state.under = { hit: false };
+    move();
+
+    const hovers = events.filter((e) => e.type === "hover_dwell");
+    expect(hovers).toHaveLength(1);
+    expect(hovers[0]).toMatchObject({ mesh: "Exhibit", dwellMs: 1000 });
     handle.stop();
   });
 
@@ -1035,14 +1286,13 @@ describe("babylonCollector", () => {
     const now = { value: 1000 };
     const { ctx, events } = makeCtx(now);
     const handle = babylonCollector({ scene, capture: { camera: false, perf: false } }).start(ctx)!;
+    const { state, move } = pointerHarness(scene, onPointerObservable);
 
-    onPointerObservable.trigger({
-      type: POINTER_MOVE,
-      event: {},
-      pickInfo: { hit: true, pickedMesh: { name: "Cube" } },
-    });
+    state.under = { hit: true, pickedMesh: { name: "Cube" } };
+    move();
     now.value = 3000;
-    onPointerObservable.trigger({ type: POINTER_MOVE, event: {}, pickInfo: { hit: false } });
+    state.under = { hit: false };
+    move();
 
     expect(events.some((e) => e.type === "hover_dwell")).toBe(false);
     handle.stop();

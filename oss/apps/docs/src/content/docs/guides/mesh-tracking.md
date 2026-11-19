@@ -1,7 +1,7 @@
 ---
 title: Track 3D object interactions
 description: Measure which meshes people click, look at and hesitate over, and find the objects nobody notices.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-19
 ---
 
 Uptimizr can attribute interaction and attention to the **objects** in your scene, not just to screen
@@ -108,6 +108,7 @@ client.use(
     hoverDwell: {
       minDwellMs: 500, // ignore pass-overs shorter than this (default)
       meshes: ["product-hero"], // allowlist; omit to track every hovered mesh
+      pickIntervalMs: 100, // Babylon: min gap between hover picks (default)
     },
   }),
 );
@@ -117,6 +118,12 @@ One **bucketed** `hover_dwell` summary is emitted per hover _episode_ (never per
 when the pointer moves to a different object (or off all geometry), and is **suppressed if the object
 was clicked** during the hover — a click is an action, not hesitation. Each event carries `mesh`,
 `dwellMs`, and the originating input `source`.
+
+On Babylon, hover works on **any mesh a click can pick** (pickable, visible and enabled, or whatever
+your `scene.pointerDownPredicate` admits). You don't need `enablePointerMoveEvents`, an action manager
+or `scene.constantlyUpdateMeshUnderPointer`: the connector runs its own read-only pick and never
+changes those settings. It picks at most once per `pickIntervalMs` while the pointer moves, plus once on
+the next frame after the pointer comes to rest, so `dwellMs` is accurate to about `pickIntervalMs`.
 
 ## Blind spots — never-noticed meshes
 
