@@ -323,6 +323,23 @@ await client.stop("manual");
 `"manual"`) and is recorded on `session_end` alongside `durationMs`. After `stop`
 the client emits nothing further; call `trackScene` again to begin a new session.
 
+### Delivery and retries
+
+A flush sends the queue as one or more batches, one at a time and in order. Each
+batch holds at most 1,000 events (`LIMITS.maxBatchEvents`) and about 60 KB of
+JSON, so it fits under the browser's `sendBeacon` quota (64 KiB in Chromium). With
+`offload: "worker"` the worker posts with `fetch`, which has no such quota, so only
+the event cap applies there. A custom `transport` receives the same bounded batches.
+
+Only one flush runs at a time; a `flush()` call made while one is running joins it.
+When a batch fails, it and everything queued after it stay queued in order, and the
+client retries after 1 s, then 2 s, 4 s and so on up to 60 s, rather than on every
+new event. The batch-size and interval triggers wait the backoff out; calling
+`client.flush()` yourself still tries at once. The page-exit flush
+(`visibilitychange` → hidden, `pagehide`, `stop()`) ignores the backoff and hands
+every batch to `sendBeacon` straight away. If the queue passes `maxQueueSize`
+during an outage, the oldest events are dropped.
+
 ### Browser & engine lifecycle events
 
 So the timeline reflects everything happening around the scene — not just camera

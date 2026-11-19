@@ -87,6 +87,14 @@ the Babylon connector).
 client.emit({ type: "asset_load", name: "hero.glb", loadMs: 842 });
 ```
 
+`flush` sends the queue in batches of at most 1,000 events and about 60 KB of JSON, one at a time
+and in order, so a backlog fits under the browser's `sendBeacon` quota (with `offload: "worker"`,
+only the event cap applies, since the worker posts with `fetch`). Only one flush runs at a
+time; a call made while one is running joins it. When a batch fails, it stays queued in order and
+the client retries after 1 s, doubling up to 60 s, instead of on every new event. Calling `flush()`
+yourself still tries at once, and the page-exit flush ignores the backoff. A custom `transport`
+receives the same bounded batches.
+
 ## Custom collectors
 
 A `Collector` is the extension point every connector is built on: a `name` plus a `start(ctx)` that

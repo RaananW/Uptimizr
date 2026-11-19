@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { anyEventSchema, SCHEMA_VERSION } from "@uptimizr/schema";
+import { anyEventSchema, LIMITS, SCHEMA_VERSION, type CollectRequest } from "@uptimizr/schema";
 import { UptimizrClient } from "../client.js";
 import type { WorkerLike } from "../processor.js";
 
@@ -143,6 +143,34 @@ describe("offload: worker (ADR 0031)", () => {
     for (const event of batch.events) {
       expect(anyEventSchema.safeParse(event).success).toBe(true);
     }
+  });
+
+  it("never hands the worker a batch above LIMITS.maxBatchEvents (#402)", async () => {
+    const fake = makeFakeWorker();
+    const client = new UptimizrClient({
+      ...baseConfig,
+      maxQueueSize: 2500,
+      batchSize: 5000, // no size-based auto-flush: one explicit drain of the backlog
+      offload: "worker",
+      createWorker: () => fake.worker as unknown as Worker,
+    });
+
+    client.start();
+    for (let i = 0; i < 2400; i++) client.track(`e${i}`);
+    await client.flush();
+
+    const batches = fake.batchMessages().map((p) => (p.message as { batch: CollectRequest }).batch);
+    // Count-bounded only: the worker posts with `fetch` (no beacon quota), so the
+    // steady-state path is not split by bytes and stays off the main thread.
+    expect(batches.map((b) => b.events.length)).toEqual([
+      LIMITS.maxBatchEvents,
+      LIMITS.maxBatchEvents,
+      401,
+    ]);
+    const names = batches
+      .flatMap((b) => b.events)
+      .map((e) => (e.type === "custom" ? e.name : e.type));
+    expect(names).toEqual(["session_start", ...Array.from({ length: 2400 }, (_, i) => `e${i}`)]);
   });
 
   it("falls back to the main-thread processor when the worker cannot be constructed", async () => {

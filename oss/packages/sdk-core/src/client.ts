@@ -1,7 +1,7 @@
-import { SCHEMA_VERSION, DEFAULT_SCENE_ID, sceneIdSchema } from "@uptimizr/schema";
-import type { AnyEvent, CollectRequest, CustomPropValue, Vec3 } from "@uptimizr/schema";
+import { SCHEMA_VERSION, DEFAULT_SCENE_ID, LIMITS, sceneIdSchema } from "@uptimizr/schema";
+import type { AnyEvent, CustomPropValue, Vec3 } from "@uptimizr/schema";
 
-import { EventQueue } from "./queue.js";
+import { EventQueue, type TakenEvents } from "./queue.js";
 import { randomId } from "./idgen.js";
 import { createBeaconTransport } from "./transport.js";
 import {
@@ -37,6 +37,17 @@ const DEFAULTS = {
   maxQueueSize: 1000,
   resizeDebounceMs: 250,
 } as const;
+
+/**
+ * Largest serialized batch body, in UTF-8 bytes. `navigator.sendBeacon` refuses a
+ * body over the browser's keepalive quota (64 KiB in Chromium, shared by the
+ * beacons in flight), so a bigger batch could never be delivered (#402).
+ */
+const MAX_BATCH_BYTES = 60_000;
+/** Delay before the first retry of a failed flush; it doubles per consecutive failure. */
+const RETRY_BASE_MS = 1000;
+/** Longest delay between retries of a failed flush. */
+const RETRY_MAX_MS = 60_000;
 
 function resolveConfig(config: UptimizrConfig): ResolvedConfig {
   return {
@@ -88,6 +99,20 @@ export class UptimizrClient {
   private currentScene: string = DEFAULT_SCENE_ID;
   private pageMeta?: AnyEvent["pageMeta"];
   private flushTimer: ReturnType<typeof setInterval> | undefined;
+  /** The running steady-state flush, if any. At most one runs at a time. */
+  private flushing: Promise<void> | undefined;
+  /** Set by each `flush()` call; the running flush does another round while it is set. */
+  private flushRequested = false;
+  /** Consecutive failed steady-state sends; sets the backoff delay. */
+  private failedSends = 0;
+  /** Pending backoff retry. While it is set, the batch-size and interval triggers hold off. */
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * Byte cap for a steady-state batch. The worker processor posts with `fetch`
+   * (no beacon quota) and sizing would serialize on the main thread, which is
+   * what offload exists to avoid (ADR 0031), so it lifts the cap.
+   */
+  private steadyStateMaxBytes = MAX_BATCH_BYTES;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private errorCount = 0;
   private lastErrorKey: string | undefined;
@@ -161,7 +186,7 @@ export class UptimizrClient {
     });
 
     if (this.config.flushIntervalMs > 0) {
-      this.flushTimer = setInterval(() => void this.flush(), this.config.flushIntervalMs);
+      this.flushTimer = setInterval(() => this.autoFlush(), this.config.flushIntervalMs);
     }
     this.bindLifecycle();
 
@@ -247,6 +272,17 @@ export class UptimizrClient {
 
     this.queue.enqueue(finalEvent);
     if (this.queue.size >= this.config.batchSize) {
+      this.autoFlush();
+    }
+  }
+
+  /**
+   * A flush the client starts on its own (batch size reached, interval tick).
+   * Held back while a failed flush waits out its backoff, so an outage costs one
+   * attempt per backoff step instead of one per emitted event (#402).
+   */
+  private autoFlush(): void {
+    if (this.retryTimer === undefined) {
       void this.flush();
     }
   }
@@ -335,21 +371,137 @@ export class UptimizrClient {
     } as EventInput);
   }
 
-  /** Send all queued events. On failure, events are re-queued for the next attempt. */
-  async flush(opts?: { unload?: boolean }): Promise<void> {
-    const events = this.queue.drain();
-    if (events.length === 0) {
-      return;
+  /**
+   * Send the queued events, split into batches of at most `LIMITS.maxBatchEvents`
+   * events and (except on the worker path) at most `MAX_BATCH_BYTES` serialized,
+   * so a backlog never outgrows what `sendBeacon` accepts.
+   *
+   * Single-flight: a call made while a flush is running joins it, and if that
+   * flush succeeds one more round sends what was queued in the meantime. Batches
+   * go one at a time, in order; the first failure re-queues that batch (everything
+   * after it stays queued) and schedules a retry on an exponential backoff (1s,
+   * doubling, capped at 60s). A direct call attempts at once, backoff or not; the
+   * batch-size and interval triggers wait the backoff out.
+   *
+   * `unload: true` is the page-exit path: it never waits on a running flush or a
+   * backoff (see {@link flushUnload}).
+   */
+  flush(opts?: { unload?: boolean }): Promise<void> {
+    if (opts?.unload) {
+      return this.flushUnload();
     }
-    const batch: CollectRequest = { schemaVersion: SCHEMA_VERSION, events };
-    // Steady-state batches may be offloaded to a worker; the terminal unload
-    // flush always runs on the main thread for delivery reliability (ADR 0031).
-    const ok = await (opts?.unload
-      ? this.processor.processUnload(batch)
-      : this.processor.process(batch));
-    if (!ok) {
-      this.queue.prepend(events);
-      this.log("flush failed; re-queued", events.length);
+    this.flushRequested = true;
+    this.flushing ??= this.runFlushRounds();
+    return this.flushing;
+  }
+
+  /** Drive {@link flush} rounds until no further round was requested or one fails. */
+  private async runFlushRounds(): Promise<void> {
+    try {
+      while (this.flushRequested) {
+        this.flushRequested = false;
+        if (!(await this.sendQueued())) {
+          return;
+        }
+      }
+    } finally {
+      this.flushing = undefined;
+    }
+  }
+
+  /**
+   * Send what is queued when the round starts, one bounded batch at a time.
+   * Steady-state batches may be offloaded to a worker (ADR 0031). Resolves
+   * `false` after the first failed batch, which is re-queued in order.
+   */
+  private async sendQueued(): Promise<boolean> {
+    let remaining = this.queue.size;
+    while (remaining > 0 && this.queue.size > 0) {
+      const taken = this.queue.take(
+        Math.min(remaining, LIMITS.maxBatchEvents),
+        this.steadyStateMaxBytes,
+      );
+      remaining -= taken.events.length;
+      const ok = await this.processor.process({
+        schemaVersion: SCHEMA_VERSION,
+        events: taken.events,
+      });
+      if (!ok) {
+        this.queue.requeue(taken);
+        this.log("flush failed; re-queued", taken.events.length);
+        this.scheduleRetry();
+        return false;
+      }
+      this.endBackoff();
+    }
+    return true;
+  }
+
+  /**
+   * The page-exit flush (`visibilitychange: hidden`, `stop()`). It hands every
+   * batch to the main-thread unload path in the current task, without awaiting
+   * one before the next, because the page may be gone once the handler returns
+   * (ADR 0006, ADR 0031 §5). It ignores the backoff and does not wait for a
+   * running steady-state flush. Batches stay under `MAX_BATCH_BYTES` so each one
+   * fits the beacon quota; the ones the browser refuses are re-queued in order.
+   */
+  private async flushUnload(): Promise<void> {
+    const sends: Array<{ taken: TakenEvents; result: Promise<boolean> }> = [];
+    let remaining = this.queue.size;
+    while (remaining > 0 && this.queue.size > 0) {
+      const taken = this.queue.take(Math.min(remaining, LIMITS.maxBatchEvents), MAX_BATCH_BYTES);
+      remaining -= taken.events.length;
+      let result: Promise<boolean>;
+      try {
+        result = this.processor.processUnload({
+          schemaVersion: SCHEMA_VERSION,
+          events: taken.events,
+        });
+      } catch (err) {
+        result = Promise.reject(err);
+      }
+      sends.push({ taken, result });
+    }
+    const outcomes = await Promise.allSettled(sends.map((send) => send.result));
+    let rejection: PromiseRejectedResult | undefined;
+    outcomes.forEach((outcome, i) => {
+      if (outcome.status === "rejected") {
+        rejection ??= outcome;
+      } else if (!outcome.value) {
+        const { taken } = sends[i]!;
+        this.queue.requeue(taken);
+        this.log("unload flush refused; re-queued", taken.events.length);
+      }
+    });
+    if (rejection) {
+      throw rejection.reason;
+    }
+  }
+
+  /** After a failed steady-state send, schedule the next attempt on the backoff. */
+  private scheduleRetry(): void {
+    this.failedSends += 1;
+    this.clearRetryTimer();
+    if (!this.started) {
+      return; // stopped: the unload flush was the last attempt
+    }
+    const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** (this.failedSends - 1));
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = undefined;
+      void this.flush();
+    }, delay);
+  }
+
+  /** A batch got through: reset the backoff and cancel a pending retry. */
+  private endBackoff(): void {
+    this.failedSends = 0;
+    this.clearRetryTimer();
+  }
+
+  private clearRetryTimer(): void {
+    if (this.retryTimer !== undefined) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = undefined;
     }
   }
 
@@ -382,6 +534,7 @@ export class UptimizrClient {
     }
 
     this.started = false;
+    this.clearRetryTimer();
     // Terminal flush on the main thread (beacon-reliable), then release the
     // worker(s) if any were running (ADR 0031).
     await this.flush({ unload: true });
@@ -416,6 +569,7 @@ export class UptimizrClient {
             : {}),
         });
         if (worker) {
+          this.steadyStateMaxBytes = Infinity;
           return worker;
         }
         this.log("worker offload unavailable; falling back to main-thread processor");

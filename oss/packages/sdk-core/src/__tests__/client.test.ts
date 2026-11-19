@@ -1,7 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import { anyEventSchema, type CollectRequest } from "@uptimizr/schema";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { anyEventSchema, LIMITS, type CollectRequest } from "@uptimizr/schema";
 import { UptimizrClient } from "../client.js";
-import type { Collector, Transport } from "../types.js";
+import type { Collector, EventInput, Transport } from "../types.js";
 
 function mockTransport() {
   const batches: CollectRequest[] = [];
@@ -293,49 +293,49 @@ describe("UptimizrClient", () => {
   });
 });
 
-describe("UptimizrClient lifecycle capture", () => {
-  /** Install a minimal window/document on globalThis and return controls. */
-  function installFakeWindow(visibility: "visible" | "hidden" = "visible") {
-    const listeners = new Map<string, Set<() => void>>();
-    const g = globalThis as Record<string, unknown>;
-    const saved = {
-      addEventListener: g.addEventListener,
-      removeEventListener: g.removeEventListener,
-      document: g.document,
-      innerWidth: g.innerWidth,
-      innerHeight: g.innerHeight,
-      devicePixelRatio: g.devicePixelRatio,
-    };
-    g.addEventListener = (type: string, cb: () => void) => {
-      if (!listeners.has(type)) listeners.set(type, new Set());
-      listeners.get(type)!.add(cb);
-    };
-    g.removeEventListener = (type: string, cb: () => void) => {
-      listeners.get(type)?.delete(cb);
-    };
-    const doc = {
-      visibilityState: visibility,
-      addEventListener: g.addEventListener,
-      removeEventListener: g.removeEventListener,
-    };
-    g.document = doc;
-    g.innerWidth = 1280;
-    g.innerHeight = 720;
-    g.devicePixelRatio = 2;
-    return {
-      doc,
-      counts: () => Object.fromEntries([...listeners].map(([k, v]) => [k, v.size])),
-      fire: (type: string, event?: unknown) =>
-        listeners.get(type)?.forEach((cb) => (cb as (e: unknown) => void)(event)),
-      restore: () => {
-        for (const [k, v] of Object.entries(saved)) {
-          if (v === undefined) delete g[k];
-          else g[k] = v;
-        }
-      },
-    };
-  }
+/** Install a minimal window/document on globalThis and return controls. */
+function installFakeWindow(visibility: "visible" | "hidden" = "visible") {
+  const listeners = new Map<string, Set<() => void>>();
+  const g = globalThis as Record<string, unknown>;
+  const saved = {
+    addEventListener: g.addEventListener,
+    removeEventListener: g.removeEventListener,
+    document: g.document,
+    innerWidth: g.innerWidth,
+    innerHeight: g.innerHeight,
+    devicePixelRatio: g.devicePixelRatio,
+  };
+  g.addEventListener = (type: string, cb: () => void) => {
+    if (!listeners.has(type)) listeners.set(type, new Set());
+    listeners.get(type)!.add(cb);
+  };
+  g.removeEventListener = (type: string, cb: () => void) => {
+    listeners.get(type)?.delete(cb);
+  };
+  const doc = {
+    visibilityState: visibility,
+    addEventListener: g.addEventListener,
+    removeEventListener: g.removeEventListener,
+  };
+  g.document = doc;
+  g.innerWidth = 1280;
+  g.innerHeight = 720;
+  g.devicePixelRatio = 2;
+  return {
+    doc,
+    counts: () => Object.fromEntries([...listeners].map(([k, v]) => [k, v.size])),
+    fire: (type: string, event?: unknown) =>
+      listeners.get(type)?.forEach((cb) => (cb as (e: unknown) => void)(event)),
+    restore: () => {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete g[k];
+        else g[k] = v;
+      }
+    },
+  };
+}
 
+describe("UptimizrClient lifecycle capture", () => {
   it("emits an initial viewport_resize and tracks focus/blur and visibility", async () => {
     vi.useFakeTimers();
     const win = installFakeWindow();
@@ -620,5 +620,362 @@ describe("position enrichment (#154)", () => {
     const diag = m.batches.flatMap((b) => b.events).find((e) => e.type === "graphics_diagnostic")!;
     expect(diag).toBeDefined();
     expect((diag as { position?: number[] }).position).toBeUndefined();
+  });
+});
+
+describe("flush delivery under failure (#402)", () => {
+  /** A transport whose sends stay pending until the test settles them. */
+  function deferredTransport() {
+    const calls: Array<{ batch: CollectRequest; settle: (ok: boolean) => void }> = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const transport: Transport = {
+      send: (batch) =>
+        new Promise<boolean>((resolve) => {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          calls.push({
+            batch,
+            settle: (ok) => {
+              inFlight -= 1;
+              resolve(ok);
+            },
+          });
+        }),
+    };
+    return { transport, calls, maxInFlight: () => maxInFlight };
+  }
+
+  /** Readable label per event: the custom name, or the event type. */
+  const label = (e: CollectRequest["events"][number]) =>
+    e.type === "custom" ? (e as { name: string }).name : e.type;
+
+  /** Stub `navigator.sendBeacon` with Chromium's 64 KiB keepalive quota. */
+  function stubBeacon(quota = 64 * 1024) {
+    const accepted: Blob[] = [];
+    const refused: number[] = [];
+    vi.stubGlobal("navigator", {
+      sendBeacon: (_url: string, data: Blob) => {
+        if (data.size > quota) {
+          refused.push(data.size);
+          return false;
+        }
+        accepted.push(data);
+        return true;
+      },
+    });
+    return { accepted, refused };
+  }
+
+  const parseBlobs = (blobs: Blob[]) =>
+    Promise.all(blobs.map(async (b) => JSON.parse(await b.text()) as CollectRequest));
+
+  /** A ~4.3 KB `runtime_error`, the shape the issue's repro uses. */
+  const bigError = (i: number): EventInput => ({
+    type: "runtime_error",
+    kind: "error",
+    message: `boom ${i}`,
+    stack: "x".repeat(4096),
+  });
+
+  const message = (e: CollectRequest["events"][number]) =>
+    e.type === "runtime_error" ? e.message : e.type;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("keeps at most one flush in flight; concurrent calls coalesce", async () => {
+    const d = deferredTransport();
+    const client = new UptimizrClient(baseConfig(d.transport));
+    client.start();
+
+    const first = client.flush();
+    client.track("a");
+    client.track("b");
+    const second = client.flush();
+    const third = client.flush();
+    expect(d.calls).toHaveLength(1);
+
+    d.calls[0]!.settle(true);
+    await vi.waitFor(() => expect(d.calls).toHaveLength(2));
+    d.calls[1]!.settle(true);
+    await Promise.all([first, second, third]);
+
+    expect(d.maxInFlight()).toBe(1);
+    // Every event sent exactly once, in emit order.
+    expect(d.calls.flatMap((c) => c.batch.events.map(label))).toEqual(["session_start", "a", "b"]);
+  });
+
+  it("does not start a second flush from emit while one is in flight", async () => {
+    const d = deferredTransport();
+    const client = new UptimizrClient({ ...baseConfig(d.transport), batchSize: 2 });
+    client.start();
+    client.track("a"); // reaches batchSize -> flush starts
+    for (let i = 0; i < 5; i++) client.track(`e${i}`);
+    expect(d.calls).toHaveLength(1);
+
+    // When the in-flight send lands, the events queued meanwhile go next.
+    d.calls[0]!.settle(true);
+    await vi.waitFor(() => expect(d.calls).toHaveLength(2));
+    d.calls[1]!.settle(true);
+    await client.flush();
+    expect(d.maxInFlight()).toBe(1);
+    expect(d.calls.flatMap((c) => c.batch.events.map(label))).toEqual([
+      "session_start",
+      "a",
+      "e0",
+      "e1",
+      "e2",
+      "e3",
+      "e4",
+    ]);
+  });
+
+  it("does not retry a failed flush on every later emit", async () => {
+    vi.useFakeTimers();
+    const m = mockTransport();
+    m.setOk(false);
+    const client = new UptimizrClient({ ...baseConfig(m.transport), batchSize: 2 });
+    client.start();
+    client.track("first"); // reaches batchSize -> flush -> fails
+    await vi.advanceTimersByTimeAsync(0);
+    expect(m.batches).toHaveLength(1);
+
+    // One event per frame, each after the previous attempt has re-queued.
+    for (let i = 0; i < 10; i++) {
+      client.track(`e${i}`);
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    expect(m.batches).toHaveLength(1);
+  });
+
+  it("retries a failed flush on an exponential backoff, then resumes normal flushing", async () => {
+    vi.useFakeTimers();
+    const m = mockTransport();
+    m.setOk(false);
+    const client = new UptimizrClient({ ...baseConfig(m.transport), batchSize: 2 });
+    client.start();
+    client.track("first"); // flush #1 fails at t=0
+    await vi.advanceTimersByTimeAsync(0);
+    expect(m.batches).toHaveLength(1);
+
+    // First retry after 1s, then 2s, then 4s.
+    await vi.advanceTimersByTimeAsync(999);
+    expect(m.batches).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(m.batches).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(m.batches).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(m.batches).toHaveLength(3);
+
+    client.track("during-outage");
+    m.setOk(true);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(m.batches).toHaveLength(4);
+    // The recovered send carries the whole backlog, still in order.
+    expect(m.batches[3]!.events.map(label)).toEqual(["session_start", "first", "during-outage"]);
+
+    // Healthy again: the batch-size trigger fires on emit with no delay.
+    client.track("x");
+    client.track("y");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(m.batches).toHaveLength(5);
+    expect(m.batches[4]!.events.map(label)).toEqual(["x", "y"]);
+  });
+
+  it("does not let the interval timer defeat the backoff", async () => {
+    vi.useFakeTimers();
+    const m = mockTransport();
+    m.setOk(false);
+    const client = new UptimizrClient({ ...baseConfig(m.transport), flushIntervalMs: 100 });
+    client.start();
+    await vi.advanceTimersByTimeAsync(100); // timer flush fails at t=100
+    expect(m.batches).toHaveLength(1);
+    // Backoff of 1s: the 100ms timer ticks in between must not send.
+    await vi.advanceTimersByTimeAsync(900);
+    expect(m.batches).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(m.batches).toHaveLength(2);
+    await client.stop();
+  });
+
+  it("caps the backoff delay at 60s", async () => {
+    vi.useFakeTimers();
+    const m = mockTransport();
+    m.setOk(false);
+    const client = new UptimizrClient(baseConfig(m.transport));
+    client.start();
+    await client.flush();
+    // 1+2+4+8+16+32 = 63s for six retries, then one every 60s.
+    await vi.advanceTimersByTimeAsync(63_000);
+    expect(m.batches).toHaveLength(7);
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(m.batches).toHaveLength(7);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(m.batches).toHaveLength(8);
+    await client.stop();
+  });
+
+  it("an explicit flush() still attempts immediately while backing off", async () => {
+    vi.useFakeTimers();
+    const m = mockTransport();
+    m.setOk(false);
+    const client = new UptimizrClient(baseConfig(m.transport));
+    client.start();
+    await client.flush();
+    expect(m.batches).toHaveLength(1);
+    m.setOk(true);
+    await client.flush();
+    expect(m.batches).toHaveLength(2);
+    // Success cancels the pending retry: nothing more is sent.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(m.batches).toHaveLength(2);
+  });
+
+  it("stops retrying once the client is stopped", async () => {
+    vi.useFakeTimers();
+    const m = mockTransport();
+    m.setOk(false);
+    const client = new UptimizrClient(baseConfig(m.transport));
+    client.start();
+    await client.flush(); // fails -> retry scheduled
+    await client.stop(); // unload flush also fails
+    const after = m.batches.length;
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(m.batches).toHaveLength(after);
+  });
+
+  it("splits a backlog into chunks under the beacon quota so it can drain", async () => {
+    const beacon = stubBeacon();
+    const client = new UptimizrClient({
+      projectId: "proj_demo",
+      endpoint: "https://collect.test",
+      flushIntervalMs: 0,
+      batchSize: 1000,
+    });
+    client.start();
+    for (let i = 0; i < 20; i++) client.emit(bigError(i)); // ~90 KB serialized
+    await client.flush();
+
+    expect(beacon.refused).toEqual([]);
+    expect(beacon.accepted.length).toBeGreaterThan(1);
+    for (const blob of beacon.accepted) expect(blob.size).toBeLessThanOrEqual(60_000);
+    const bodies = await parseBlobs(beacon.accepted);
+    // Every event delivered exactly once, in emit order.
+    expect(bodies.flatMap((b) => b.events).map(message)).toEqual([
+      "session_start",
+      ...Array.from({ length: 20 }, (_, i) => `boom ${i}`),
+    ]);
+    for (const b of bodies) expect(b.events.length).toBeLessThanOrEqual(LIMITS.maxBatchEvents);
+  });
+
+  it("re-queues only the chunk that failed, keeping event order", async () => {
+    const sent: CollectRequest[] = [];
+    let failNext = false;
+    const transport: Transport = {
+      send: async (batch) => {
+        if (failNext) {
+          failNext = false;
+          return false;
+        }
+        sent.push(batch);
+        return true;
+      },
+    };
+    const client = new UptimizrClient(baseConfig(transport));
+    client.start();
+    for (let i = 0; i < 20; i++) client.emit(bigError(i));
+    await client.flush(); // drains in several chunks
+    expect(sent.length).toBeGreaterThan(1);
+
+    sent.length = 0;
+    for (let i = 20; i < 40; i++) client.emit(bigError(i));
+    failNext = true; // the first chunk of the next drain fails
+    await client.flush();
+    expect(sent).toHaveLength(0); // the drain stops at the first failure
+    await client.flush();
+    expect(sent.flatMap((b) => b.events).map(message)).toEqual(
+      Array.from({ length: 20 }, (_, i) => `boom ${i + 20}`),
+    );
+    await client.stop();
+  });
+
+  it("hands every chunk to sendBeacon inside the pagehide handler, ignoring the backoff", async () => {
+    vi.useFakeTimers();
+    const win = installFakeWindow();
+    try {
+      let beaconOk = false;
+      const accepted: Blob[] = [];
+      vi.stubGlobal("navigator", {
+        sendBeacon: (_url: string, data: Blob) => {
+          if (!beaconOk || data.size > 64 * 1024) return false;
+          accepted.push(data);
+          return true;
+        },
+      });
+      const client = new UptimizrClient({
+        projectId: "proj_demo",
+        endpoint: "https://collect.test",
+        flushIntervalMs: 0,
+        batchSize: 1000,
+      });
+      client.start();
+      for (let i = 0; i < 20; i++) client.emit(bigError(i));
+      await client.flush(); // collector unreachable -> backing off
+      beaconOk = true;
+
+      win.fire("pagehide");
+      // Synchronously, before any timer or task: the whole queue reached sendBeacon.
+      expect(accepted.length).toBeGreaterThan(1);
+      const types = (await parseBlobs(accepted)).flatMap((b) => b.events.map((e) => e.type));
+      expect(types[0]).toBe("session_start");
+      expect(types.at(-1)).toBe("session_end");
+      expect(types.filter((t) => t === "runtime_error")).toHaveLength(20);
+    } finally {
+      win.restore();
+    }
+  });
+
+  it("flushes on visibilitychange: hidden while backing off", async () => {
+    vi.useFakeTimers();
+    const win = installFakeWindow();
+    try {
+      const m = mockTransport();
+      m.setOk(false);
+      const client = new UptimizrClient(baseConfig(m.transport));
+      client.start();
+      await client.flush(); // fails -> backing off
+      const before = m.batches.length;
+      m.setOk(true);
+      win.doc.visibilityState = "hidden";
+      win.fire("visibilitychange");
+      expect(m.batches).toHaveLength(before + 1);
+      expect(m.batches.at(-1)!.events.map((e) => e.type)).toEqual([
+        "session_start",
+        "viewport_resize",
+        "visibility_change",
+      ]);
+      await client.stop();
+    } finally {
+      win.restore();
+    }
+  });
+
+  it("does not wait for an in-flight flush before the unload flush", async () => {
+    const d = deferredTransport();
+    const client = new UptimizrClient(baseConfig(d.transport));
+    client.start();
+    void client.flush(); // session_start in flight, not settled yet
+    client.track("late");
+    const stopped = client.stop("hidden");
+    // The unload send went out while the steady-state one is still pending.
+    expect(d.calls).toHaveLength(2);
+    expect(d.calls[1]!.batch.events.map(label)).toEqual(["late", "session_end"]);
+    d.calls[0]!.settle(true);
+    d.calls[1]!.settle(true);
+    await stopped;
   });
 });
