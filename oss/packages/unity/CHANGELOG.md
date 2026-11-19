@@ -1,5 +1,14 @@
 # @uptimizr/unity
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [63fd90b]
+- Updated dependencies [d49401d]
+  - @uptimizr/sdk-core@1.1.4
+  - @uptimizr/web-export@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes

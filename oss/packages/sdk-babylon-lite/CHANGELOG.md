@@ -1,5 +1,13 @@
 # @uptimizr/babylon-lite
 
+## 1.0.7
+
+### Patch Changes
+
+- Updated dependencies [63fd90b]
+- Updated dependencies [d49401d]
+  - @uptimizr/sdk-core@1.1.4
+
 ## 1.0.6
 
 ### Patch Changes

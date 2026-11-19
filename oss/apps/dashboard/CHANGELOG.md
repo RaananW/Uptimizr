@@ -1,5 +1,12 @@
 # @uptimizr/dashboard
 
+## 1.2.5
+
+### Patch Changes
+
+- @uptimizr/replay@1.0.6
+  - @uptimizr/react@1.3.4
+
 ## 1.2.4
 
 ### Patch Changes

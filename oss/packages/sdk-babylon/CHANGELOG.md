@@ -1,5 +1,17 @@
 # @uptimizr/babylon
 
+## 1.1.0
+
+### Minor Changes
+
+- 004866b: Pick pointer moves with the connector's own bounded `scene.pick` instead of Babylon's lazy move pick, so `hover_dwell` and `pointer_move.hitMesh` work on ordinary meshes and throttled moves no longer cost a ray cast; adds `hoverDwell.pickIntervalMs` (default 100).
+
+### Patch Changes
+
+- Updated dependencies [63fd90b]
+- Updated dependencies [d49401d]
+  - @uptimizr/sdk-core@1.1.4
+
 ## 1.0.5
 
 ### Patch Changes

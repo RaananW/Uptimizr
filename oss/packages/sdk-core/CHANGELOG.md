@@ -1,5 +1,12 @@
 # @uptimizr/sdk-core
 
+## 1.1.4
+
+### Patch Changes
+
+- 63fd90b: Keep a backlog deliverable: `flush` is single-flight, sends the queue in ordered batches of at most 1,000 events and about 60 KB (under the `sendBeacon` quota), and retries a failed batch on an exponential backoff (1 s up to 60 s) instead of on every emitted event. The page-exit flush ignores the backoff.
+- d49401d: Fix `offload: "worker"` re-queueing a batch the collector rejected with a definitive 4xx: the worker now classifies responses with the same shared rule as the default transport, so only network errors, 5xx, 408 and 429 are retried and a rejected batch no longer rides at the head of every later flush.
+
 ## 1.1.3
 
 ### Patch Changes
