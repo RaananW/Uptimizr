@@ -3,6 +3,7 @@ import type {
   Camera,
   KeyboardInfo,
   Observer,
+  PickingInfo,
   PointerInfo,
   Scene,
   TransformNode,
@@ -359,6 +360,15 @@ export interface HoverDwellOptions {
    * `mesh` cardinality meaningful on big scenes.
    */
   meshes?: string[];
+  /**
+   * Minimum gap in ms between the connector's own hover picks (#404). The
+   * connector resolves the mesh under the pointer itself, at most once per
+   * interval, instead of picking on every pointer move; when moves arrive faster,
+   * the latest pointer position is picked on the next frame once the interval has
+   * elapsed, so a pointer that comes to rest is always resolved. Lower values
+   * time hover episodes more finely at the cost of more ray casts. Default 100.
+   */
+  pickIntervalMs?: number;
 }
 
 /** World-space gaze raycast options (`camera_sample.hitPoint`/`hitMesh`, ADR 0030). */
@@ -453,6 +463,42 @@ function pickUv(pick: unknown): [number, number] | undefined {
   if (typeof getUv !== "function") return undefined;
   const uv = getUv.call(pick);
   return uv && typeof uv.x === "number" && typeof uv.y === "number" ? toVec2(uv) : undefined;
+}
+
+/**
+ * Structural view of the scene members the connector's own pointer picks read
+ * (#404, #405). `pick` is optional because Babylon only installs a working one
+ * when its ray module is loaded; without it the move pick reports no hit.
+ */
+interface PointerPickScene {
+  pick?: (
+    x: number,
+    y: number,
+    predicate?: (mesh: AbstractMesh) => boolean,
+    fastCheck?: boolean,
+    camera?: Camera | null,
+  ) => PickingInfo | null;
+  pointerDownPredicate?: ((mesh: AbstractMesh) => boolean) | null;
+  cameraToUseForPointers?: Camera | null;
+}
+
+/**
+ * Mesh filter for the connector's pointer-move picks (#405): the meshes a click
+ * can pick. Babylon's own move pick (`scene.pointerMovePredicate`) only admits
+ * meshes that opted into pointer-move events, so ordinary meshes would never be
+ * hovered. This defers to the host's `scene.pointerDownPredicate` when one is set
+ * (Babylon installs its default there on the first press); until then it mirrors
+ * that default: pickable, visible, ready, enabled, and on a layer the pointer
+ * camera renders. It only reads the scene, never changes it.
+ */
+function movePickPredicate(scene: PointerPickScene): (mesh: AbstractMesh) => boolean {
+  return (mesh) => {
+    const hostPredicate = scene.pointerDownPredicate;
+    if (typeof hostPredicate === "function") return hostPredicate(mesh);
+    if (!mesh.isPickable || !mesh.isVisible || !mesh.isReady() || !mesh.isEnabled()) return false;
+    const cam = scene.cameraToUseForPointers;
+    return !cam || (cam.layerMask & mesh.layerMask) !== 0;
+  };
 }
 
 /**
@@ -826,6 +872,12 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
   const hoverMinDwellMs = hoverOpts.minDwellMs ?? 500;
   const hoverMeshAllowlist =
     hoverOpts.meshes && hoverOpts.meshes.length > 0 ? new Set(hoverOpts.meshes) : null;
+  const hoverPickIntervalMs =
+    typeof hoverOpts.pickIntervalMs === "number" &&
+    Number.isFinite(hoverOpts.pickIntervalMs) &&
+    hoverOpts.pickIntervalMs >= 0
+      ? hoverOpts.pickIntervalMs
+      : 100;
 
   // Gaze raycast (ADR 0030) configuration. Capture is opt-in (ADR 0003); the pick
   // rides the camera cadence (one per emitted pose), never frame-rate. The
@@ -995,6 +1047,12 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
       // Texture-space UV where the current hover episode last sat (#149), when the
       // connector can resolve it from the pick; emitted with the hover_dwell summary.
       let hoverUv: [number, number] | undefined;
+      // Hover pick cadence (#404): when the last hover pick ran, and whether a
+      // pointer move since then still awaits one (resolved on the next frame once
+      // the interval elapses), with that move's input source.
+      let lastHoverPick = Number.NEGATIVE_INFINITY;
+      let hoverPickPending = false;
+      let pendingHoverSource: InputSource | undefined;
       let lastPose: CameraPose | undefined;
       // Per-window frame-time samples for jank percentiles (#41). Filled every
       // render tick (see the perf frame observer below) and drained each perf
@@ -1357,11 +1415,112 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
         // Flush a trailing hover on stop so the last episode isn't dropped.
         if (want.hoverDwell) renderObservers.push(() => flushHover(ctx.now()));
 
+        // Pointer picking (#404, #405). Babylon picks lazily on pointer move:
+        // reading `PointerInfo.pickInfo` is what runs that pick, and it filters
+        // with `scene.pointerMovePredicate`, which skips meshes that have not opted
+        // into move events. So the connector never reads `info.pickInfo` on a move.
+        // It runs its own read-only `scene.pick` with `isMovePickable`, and only
+        // when the move will emit a `pointer_move` or a hover pick is due.
+        const pickScene = scene as unknown as PointerPickScene;
+        const isMovePickable = movePickPredicate(pickScene);
+        // Pointer Lock (ADR 0034): the crosshair is the viewport centre. Moves reuse
+        // one centre pick per rendered frame; discrete events always re-pick.
+        let centrePick: { frame: number; pick: PickingInfo | null } | null = null;
+        const pickAtCentre = (reuse: boolean): PickingInfo | null => {
+          const engine = scene.getEngine();
+          const frame = (engine as unknown as { frameId?: unknown }).frameId;
+          if (reuse && typeof frame === "number" && centrePick?.frame === frame) {
+            return centrePick.pick;
+          }
+          const pick =
+            typeof pickScene.pick === "function"
+              ? pickScene.pick(engine.getRenderWidth() / 2, engine.getRenderHeight() / 2)
+              : null;
+          if (typeof frame === "number") centrePick = { frame, pick };
+          return pick;
+        };
+        const pickForMove = (locked: boolean): PickingInfo | null => {
+          if (locked) return pickAtCentre(true);
+          if (typeof pickScene.pick !== "function") return null;
+          return pickScene.pick(
+            scene.pointerX,
+            scene.pointerY,
+            isMovePickable,
+            false,
+            pickScene.cameraToUseForPointers ?? null,
+          );
+        };
+
+        // Hover hesitation (#48): track the object under the pointer from a move
+        // pick. A click on it marks the episode as an action, not hesitation.
+        const updateHover = (pick: PickingInfo | null, source: InputSource | undefined) => {
+          const now = ctx.now();
+          lastHoverPick = now;
+          hoverPickPending = false;
+          const hitMesh = pick?.hit && pick.pickedMesh ? pick.pickedMesh.name : undefined;
+          const target =
+            hitMesh != null && (hoverMeshAllowlist == null || hoverMeshAllowlist.has(hitMesh))
+              ? hitMesh
+              : null;
+          if (target !== hoverMesh) {
+            flushHover(now);
+            if (target != null) {
+              hoverMesh = target;
+              hoverStartMs = now;
+              hoverActed = false;
+              hoverSource = source;
+              hoverUv = pickUv(pick);
+            }
+          } else if (target != null) {
+            // Still hovering the same mesh — keep the latest resolvable UV so the
+            // dwell summary points at where the pointer settled (#149).
+            const uv = pickUv(pick);
+            if (uv) hoverUv = uv;
+          }
+        };
+
+        // A move that arrives before the hover pick interval has elapsed only marks
+        // a pick as pending; it is resolved here on the next frame once the interval
+        // allows, so a pointer that comes to rest is always picked (#404).
+        if (want.hoverDwell) {
+          const beforeRender = (
+            scene as unknown as {
+              onBeforeRenderObservable?: {
+                add(cb: () => void): unknown;
+                remove(o: unknown): unknown;
+              };
+            }
+          ).onBeforeRenderObservable;
+          if (beforeRender) {
+            const hoverObs = beforeRender.add(() => {
+              if (!hoverPickPending || ctx.now() - lastHoverPick < hoverPickIntervalMs) return;
+              const engine = scene.getEngine();
+              const locked = isPointerLocked(() => engine.getRenderingCanvas());
+              updateHover(pickForMove(locked), pendingHoverSource);
+            });
+            renderObservers.push(() => beforeRender.remove(hoverObs));
+          }
+        }
+
         pointerObserver = scene.onPointerObservable.add((info) => {
+          const isMove = info.type === POINTER.MOVE;
+          // Only these event types carry anything the connector records. Wheel and
+          // double-tap return before touching the scene, so they never cost a pick.
+          if (
+            !isMove &&
+            info.type !== POINTER.DOWN &&
+            info.type !== POINTER.UP &&
+            info.type !== POINTER.TAP &&
+            info.type !== POINTER.PICK
+          ) {
+            return;
+          }
+          if (isMove && !want.pointerMove && !want.hoverDwell) return;
+
           const engine = scene.getEngine();
           // Pointer Lock (ADR 0034): the OS cursor is frozen and the crosshair is
-          // the viewport centre, so report centre and re-pick there instead of
-          // using Babylon's cursor-position `info.pickInfo`.
+          // the viewport centre, so report centre and pick there instead of at
+          // Babylon's cursor position.
           const locked = isPointerLocked(() => engine.getRenderingCanvas());
           const screen: [number, number] = locked
             ? [0.5, 0.5]
@@ -1369,44 +1528,54 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
                 clamp01(scene.pointerX / engine.getRenderWidth()),
                 clamp01(scene.pointerY / engine.getRenderHeight()),
               ];
-          const pick = locked
-            ? scene.pick(engine.getRenderWidth() / 2, engine.getRenderHeight() / 2)
-            : info.pickInfo;
+          const source = pointerSource(info);
+
+          if (isMove) {
+            // Pick budget (#404): a move that will neither emit a `pointer_move`
+            // (throttled) nor run a due hover pick does not pick at all.
+            const now = ctx.now();
+            const emitMove = want.pointerMove && now - lastPointerMove >= pointerThrottleMs;
+            const hoverDue = want.hoverDwell && now - lastHoverPick >= hoverPickIntervalMs;
+            if (!emitMove && !hoverDue) {
+              if (want.hoverDwell) {
+                hoverPickPending = true;
+                pendingHoverSource = source;
+              }
+              return;
+            }
+            const pick = pickForMove(locked);
+            // Any move pick also serves hover, even when only the move was due.
+            if (want.hoverDwell) updateHover(pick, source);
+            if (emitMove) {
+              lastPointerMove = now;
+              const hitPoint = pick?.hit && pick.pickedPoint ? toVec3(pick.pickedPoint) : undefined;
+              const hitMesh = pick?.hit && pick.pickedMesh ? pick.pickedMesh.name : undefined;
+              ctx.emit({
+                type: "pointer_move",
+                screen,
+                ...(hitPoint ? { hitPoint } : {}),
+                ...(hitMesh ? { hitMesh } : {}),
+                ...(source ? { source } : {}),
+              });
+            }
+            return;
+          }
+
+          // Discrete events: Babylon has already picked them with its regular
+          // (click) predicate, so `info.pickInfo` is used as is.
+          const pick = locked ? pickAtCentre(false) : info.pickInfo;
           const hitPoint = pick?.hit && pick.pickedPoint ? toVec3(pick.pickedPoint) : undefined;
           const hitMesh = pick?.hit && pick.pickedMesh ? pick.pickedMesh.name : undefined;
           // Texture-space UV at the hit (#149): only meaningful when a mesh was hit.
           const uv = pick?.hit && pick.pickedMesh ? pickUv(pick) : undefined;
-          const source = pointerSource(info);
 
-          // Hover hesitation (#48): track the object under the pointer across
-          // moves; a click on it marks the episode as an action, not hesitation.
-          if (want.hoverDwell) {
-            if (info.type === POINTER.MOVE) {
-              const target =
-                hitMesh != null && (hoverMeshAllowlist == null || hoverMeshAllowlist.has(hitMesh))
-                  ? hitMesh
-                  : null;
-              if (target !== hoverMesh) {
-                flushHover(ctx.now());
-                if (target != null) {
-                  hoverMesh = target;
-                  hoverStartMs = ctx.now();
-                  hoverActed = false;
-                  hoverSource = source;
-                  hoverUv = uv;
-                }
-              } else if (target != null && uv) {
-                // Still hovering the same mesh — keep the latest resolvable UV so
-                // the dwell summary points at where the pointer settled (#149).
-                hoverUv = uv;
-              }
-            } else if (
-              (info.type === POINTER.TAP || info.type === POINTER.DOWN) &&
-              hoverMesh != null &&
-              hitMesh === hoverMesh
-            ) {
-              hoverActed = true;
-            }
+          if (
+            want.hoverDwell &&
+            (info.type === POINTER.TAP || info.type === POINTER.DOWN) &&
+            hoverMesh != null &&
+            hitMesh === hoverMesh
+          ) {
+            hoverActed = true;
           }
 
           // Camera-navigation gesture (ADR 0025): bracket the press, snapshot the
@@ -1437,20 +1606,6 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
                 });
               }
             }
-          }
-
-          if (info.type === POINTER.MOVE && want.pointerMove) {
-            const now = ctx.now();
-            if (now - lastPointerMove < pointerThrottleMs) return;
-            lastPointerMove = now;
-            ctx.emit({
-              type: "pointer_move",
-              screen,
-              ...(hitPoint ? { hitPoint } : {}),
-              ...(hitMesh ? { hitMesh } : {}),
-              ...(source ? { source } : {}),
-            });
-            return;
           }
 
           if ((info.type === POINTER.DOWN || info.type === POINTER.UP) && want.buttons) {

@@ -769,6 +769,10 @@ matching one):
 | `samplePerfMs`          | `2000`  | Perf (FPS) sampling interval.               |
 | `pointerMoveThrottleMs` | `250`   | Minimum gap between `pointer_move` samples. |
 
+On Babylon, a pointer move the throttle drops costs no ray cast: the connector
+picks only for the moves it records (and for hover, when `hoverDwell` is on), and
+while the pointer is locked it reuses one viewport-centre pick per frame.
+
 ### Idle suppression & dedupe
 
 | Option                    | Default | Effect                                                                                                                                    |
@@ -881,6 +885,7 @@ client.use(
     hoverDwell: {
       minDwellMs: 500, // ignore pass-overs shorter than this (default)
       meshes: ["product-hero"], // allowlist; omit to track every hovered mesh
+      pickIntervalMs: 100, // Babylon: min gap between hover picks (default)
     },
   }),
 );
@@ -888,6 +893,16 @@ client.use(
 
 Each `hover_dwell` event carries `mesh`, `dwellMs`, and the originating input
 `source` (ADR 0011).
+
+The Babylon connector finds the object under the pointer with its own read-only
+`scene.pick`, so hover works on **any mesh a click can pick**: pickable, visible
+and enabled, or whatever your `scene.pointerDownPredicate` admits. You do not
+need `mesh.enablePointerMoveEvents`, an action manager, or
+`scene.constantlyUpdateMeshUnderPointer` (Babylon's own pointer-move pick skips
+meshes without one of those), and the connector never changes them. Hover picks
+are bounded: at most one per `pickIntervalMs` while the pointer moves, plus one on
+the next frame once it comes to rest, so `dwellMs` is timed to within about
+`pickIntervalMs`. The same pick fills `pointer_move.hitMesh` / `hitPoint`.
 
 ### GPU / memory footprint (`resourceSample`) — opt-in
 

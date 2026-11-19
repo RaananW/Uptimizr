@@ -1,7 +1,7 @@
 ---
 title: Babylon.js analytics
 description: Add heatmaps, mesh tracking, real-user FPS and session replay to a Babylon.js scene with the @uptimizr/babylon connector.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-19
 ---
 
 The Babylon.js connector. `@babylonjs/core` is a peer dependency — the connector reads your
@@ -101,7 +101,9 @@ trackScene(scene, {
 
 - `capture.meshVisibility` — per-object dwell summaries (`mesh_visibility`), tuned by the
   `meshVisibility` options.
-- `capture.hoverDwell` — hover hesitation episodes (`hover_dwell`).
+- `capture.hoverDwell` — hover hesitation episodes (`hover_dwell`). Works on any mesh a click can
+  pick; the connector runs its own bounded, read-only pick for it, so meshes don't need
+  `enablePointerMoveEvents`, an action manager or `scene.constantlyUpdateMeshUnderPointer`.
 - `capture.resourceSample` — GPU/memory footprint (`resource_sample`).
 - `capture.gaze` — world-space gaze hit points (`camera_sample.hitPoint`).
 

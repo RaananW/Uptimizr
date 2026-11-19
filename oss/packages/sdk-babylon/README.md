@@ -121,7 +121,32 @@ at the lock point. The connector detects this and reports `pointer_move` /
 height/2)`) — the crosshair the visitor actually aims with. The 2D pointer heatmap
 therefore clusters at the centre for locked scenes; read the cursor-independent
 gaze/floor-plan heatmaps and trajectories instead. Cursor (orbit/viewer) scenes are
-unaffected.
+unaffected. Pointer moves reuse one centre pick per rendered frame.
+
+### Pointer-move picking and hover dwell
+
+On a pointer move the connector does **not** read Babylon's lazy `PointerInfo.pickInfo`:
+reading it is what makes Babylon pick, and that pick only admits meshes with
+`enablePointerMoveEvents`, an action manager, or `scene.constantlyUpdateMeshUnderPointer`.
+Instead the connector runs its own read-only `scene.pick` over the meshes a click can pick
+(pickable, visible and enabled, or your `scene.pointerDownPredicate`), and only when the move
+is recorded:
+
+- a `pointer_move` that the throttle drops costs no pick; one that is emitted carries
+  `hitMesh` / `hitPoint` for ordinary meshes;
+- with `capture.hoverDwell` on, hover picks run at most once per `hoverDwell.pickIntervalMs`
+  (default `100`), plus once on the next frame after the pointer comes to rest.
+
+The connector never sets `pointerMovePredicate`, `constantlyUpdateMeshUnderPointer` or
+`enablePointerMoveEvents`, so your scene's own picking and cursor behaviour are unchanged.
+
+```ts
+babylonCollector({
+  scene,
+  capture: { hoverDwell: true },
+  hoverDwell: { minDwellMs: 500, pickIntervalMs: 100 },
+});
+```
 
 ### Capability changes (`capability_change`, #49)
 

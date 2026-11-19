@@ -51,7 +51,8 @@ client.start({ device: readDeviceCaps(scene) });
 
 ## Capture knobs
 
-`sampleCameraMs`, `samplePerfMs`, `pointerMoveThrottleMs`, and a `capture` toggle map. The
+`sampleCameraMs`, `samplePerfMs`, `pointerMoveThrottleMs`, `hoverDwell` (`minDwellMs`,
+`meshes`, `pickIntervalMs`), and a `capture` toggle map. The
 `sampling` profile sets per-channel fidelity in Hz (`0` = off, `"frame"` = every tick) for
 continuous channels only — camera, pointer move, perf (ADR 0012). Discrete events (clicks, picks,
 custom) are always captured.
@@ -61,6 +62,11 @@ custom) are always captured.
 - Treat `@babylonjs/core` as a peer dependency; keep Babylon imports **type-only**.
 - Emit only `@uptimizr/schema` events; do not redefine event shapes.
 - Pointer/mesh events carry an input `source` (`mouse`/`touch`/`pen`, ADR 0011) — do not strip it.
+- Never read `PointerInfo.pickInfo` on a pointer move: it triggers Babylon's lazy move pick,
+  whose predicate skips ordinary meshes. The connector picks moves itself with `scene.pick`,
+  only for moves it records (throttled `pointer_move`, `hoverDwell.pickIntervalMs` for hover,
+  one centre pick per frame under pointer lock), and never sets `pointerMovePredicate`,
+  `constantlyUpdateMeshUnderPointer` or `enablePointerMoveEvents` on the host scene.
 - To support another engine, create a sibling package depending only on `@uptimizr/sdk-core` and
   `@uptimizr/schema`; see the repo `add-connector` skill.
 
