@@ -115,7 +115,8 @@ well and the page is indexable:
 - **JSON-LD** `WebApplication` structured data (free, web-based developer tool, part of Uptimizr).
 - **Apple/PWA icons** (`apple-touch-icon.png`, `icon-192.png`, `icon-512.png`) + `site.webmanifest`.
 - **`robots.txt`** (the `/playground/` and `/dashboard/` iframe embeds are disallowed so they don't
-  compete with the canonical page) and a one-URL **`sitemap.xml`**.
+  compete with the canonical page) and a one-URL **`sitemap.xml`**. Bump its `<lastmod>` when
+  the demo's content changes, not for dependency or release bumps.
 - A **`<noscript>`** fallback and visible links pointing to **[www.uptimizr.com](https://www.uptimizr.com)**
   as the project's home for docs and downloads.
 

@@ -116,7 +116,9 @@ complete.
 - **Docs page dates:** every page under `oss/apps/docs/src/content/docs` carries a `lastUpdated`
   frontmatter date, which drives the visible date and the sitemap's `lastmod`. Bump it when you
   change what a page says, not for formatting or typo fixes. `git log` isn't used because shallow
-  clones would report the wrong date.
+  clones would report the wrong date. The same rule covers the other sitemaps: the marketing site's
+  dates live in `LAST_UPDATED_BY_PATH` in `oss/apps/web/astro.config.mjs`, and the demo's in the
+  `<lastmod>` of `oss/apps/demo/public/sitemap.xml`.
 - **Generated metric tables:** the endpoint/tool tables in `docs/integration.md`, the docs-site
   `api/query` page and the packaged `README`/`AGENTS.md`/`llms.txt` of `@uptimizr/mcp` and
   `@uptimizr/agent-core` are **generated** from the metric registry (ADR 0051) by
