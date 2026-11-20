@@ -42,6 +42,7 @@ interface Operation {
   operationId: string;
   tags: string[];
   parameters?: { name: string; in: string; required?: boolean; schema?: unknown }[];
+  requestBody?: { content: Record<string, { schema: unknown }> };
   responses: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -214,23 +215,141 @@ describe("GET /api/v1/openapi.json", () => {
     }
   });
 
-  it("does not describe ingestion, the raw event stream or the live surface", () => {
-    expect(Object.keys(paths)).not.toContain("/api/v1/collect");
-    expect(Object.keys(paths)).not.toContain("/api/v1/sessions/{id}/events");
-    expect(Object.keys(paths).filter((path) => path.startsWith("/api/v1/live"))).toEqual([]);
+  describe("the non-metric agent routes (#343)", () => {
+    // path → method → [tag, capability]; `null` capability means none applies.
+    const EXPECTED: Record<string, Record<string, [string, string | null]>> = {
+      "/api/v1/whoami": { get: ["identity", "query"] },
+      "/api/v1/audit": { get: ["identity", "query"] },
+      "/api/v1/scene-regions": { get: ["scene-registry", "query"] },
+      "/api/v1/scenes/{sceneId}/regions": {
+        get: ["scene-registry", "query"],
+        put: ["scene-registry", "annotate"],
+      },
+      "/api/v1/scenes/{sceneId}/representation": { put: ["scene-registry", "annotate"] },
+      "/api/v1/sessions/{id}/events": { get: ["raw", "query:raw"] },
+      "/api/v1/live/token": { post: ["live", "query"] },
+      "/api/v1/live/presence": { get: ["live", "query"] },
+      "/api/v1/live/stream": { get: ["live", "query"] },
+      "/api/v1/live/sessions/{id}": { get: ["live", "query:raw"] },
+      "/api/v1/collect": { post: ["ingest", null] },
+    };
+
+    it("lists each route, tagged, with the capability it requires", () => {
+      for (const [path, methods] of Object.entries(EXPECTED)) {
+        for (const [method, [tag, capability]] of Object.entries(methods)) {
+          const operation = paths[path]?.[method];
+          expect(operation, `${method.toUpperCase()} ${path}`).toBeDefined();
+          expect(operation!.tags, path).toEqual([tag]);
+          if (capability) expect(operation!["x-uptimizr-capability"], path).toBe(capability);
+          else expect(operation!["x-uptimizr-capability"], path).toBeUndefined();
+        }
+      }
+    });
+
+    it("declares each new tag with a description", () => {
+      const tags = document.tags as { name: string; description?: string }[];
+      for (const name of ["identity", "scene-registry", "raw", "live", "ingest"]) {
+        const tag = tags.find((t) => t.name === name);
+        expect(tag, name).toBeDefined();
+        expect(tag!.description, name).toBeTruthy();
+      }
+    });
+
+    it("takes no API key for ingestion, and a live token for the SSE routes", () => {
+      expect(paths["/api/v1/collect"]!.post!.security).toEqual([]);
+      for (const path of [
+        "/api/v1/live/presence",
+        "/api/v1/live/stream",
+        "/api/v1/live/sessions/{id}",
+      ]) {
+        const operation = paths[path]!.get!;
+        expect(operation.security, path).toEqual([]);
+        const token = operation.parameters?.find((p) => p.name === "token");
+        expect(token, path).toMatchObject({ in: "query", required: true });
+        expect(String((token as { description?: string }).description), path).toContain(
+          "/api/v1/live/token",
+        );
+        const ok = operation.responses["200"] as { content: Record<string, unknown> };
+        expect(Object.keys(ok.content), path).toEqual(["text/event-stream"]);
+      }
+      expect(String(paths["/api/v1/live/presence"]!.get!.description)).toContain("`presence`");
+      expect(String(paths["/api/v1/live/stream"]!.get!.description)).toContain("`event`");
+      // The token exchange itself is an ordinary keyed call.
+      expect(paths["/api/v1/live/token"]!.post!.security).toBeUndefined();
+    });
+
+    it("states both halves of the raw gate and lists the 403 cases", () => {
+      for (const path of ["/api/v1/sessions/{id}/events", "/api/v1/live/sessions/{id}"]) {
+        const operation = paths[path]!.get!;
+        const description = String(operation.description);
+        expect(description, path).toContain("query:raw");
+        expect(description, path).toContain("ENABLE_RAW_SESSION_RETENTION");
+        const forbidden = String(
+          (operation.responses["403"] as { description: string }).description,
+        );
+        expect(forbidden, path).toContain("raw session retention is disabled");
+        expect(forbidden, path).toContain("api key not permitted to read raw session data");
+      }
+    });
+
+    it("offers the raw event timeline as JSON and NDJSON", () => {
+      const ok = paths["/api/v1/sessions/{id}/events"]!.get!.responses["200"] as {
+        content: Record<string, unknown>;
+      };
+      expect(Object.keys(ok.content).sort()).toEqual(["application/json", "application/x-ndjson"]);
+      const query = paths["/api/v1/sessions/{id}/events"]!.get!.parameters!.filter(
+        (p) => p.in === "query",
+      );
+      expect(query.map((p) => p.name)).toEqual(["format"]);
+    });
+
+    it("derives the audit, region and ingestion schemas from the Zod validators", () => {
+      const audit = paths["/api/v1/audit"]!.get!.parameters!;
+      expect(audit.map((p) => p.name).sort()).toEqual(["limit", "since", "until"]);
+      expect(audit.find((p) => p.name === "limit")!.schema).toMatchObject({ maximum: 1000 });
+
+      const putRegions = paths["/api/v1/scenes/{sceneId}/regions"]!.put!;
+      const regionsBody = putRegions.requestBody!.content["application/json"]!.schema as {
+        properties: { regions: { type: string; maxItems?: number } };
+      };
+      expect(regionsBody.properties.regions.type).toBe("array");
+      expect(regionsBody.properties.regions.maxItems).toBeTypeOf("number");
+      expect(putRegions.parameters!.map((p) => p.name)).toEqual(["sceneId"]);
+
+      const collect = paths["/api/v1/collect"]!.post!;
+      const body = collect.requestBody!.content["application/json"]!.schema as {
+        properties: Record<string, unknown>;
+        required?: string[];
+      };
+      expect(Object.keys(body.properties).sort()).toEqual(["events", "meta", "schemaVersion"]);
+      expect(body.required).toContain("events");
+      const ok = collect.responses["200"] as {
+        content: { "application/json": { schema: { properties: Record<string, unknown> } } };
+      };
+      const response = ok.content["application/json"].schema;
+      expect(Object.keys(response.properties).sort()).toEqual(["accepted", "rejected"]);
+    });
+
+    it("declares the response components the routes refer to", () => {
+      const schemas = (document.components as { schemas: Record<string, unknown> }).schemas;
+      for (const name of ["WhoAmI", "AuditEntry", "SceneRegion", "SceneRegionListing"]) {
+        expect(schemas[name], name).toBeDefined();
+      }
+    });
   });
 
-  it("describes a write only where one really exists (#310, #311, #315)", () => {
-    // The document was GET-only until three changes gave it genuine writes: the
+  it("describes a write only where one really exists (#310, #311, #315, #343)", () => {
+    // The document was GET-only until changes gave it genuine writes: the
     // `annotate`-gated metadata group (ADR 0051 §5/§9); conditional
     // subscriptions, a CRUD resource rather than a query and the one place a
-    // caller needs a written contract for a request *body*; and the panel specs
+    // caller needs a written contract for a request *body*; the panel specs
     // an agent pins to the dashboard (§7), which are metadata written on the
-    // same gate. There is also one read-only exception: the query DSL accepts
-    // `POST /api/v1/query`, because a query is a JSON document rather than a
-    // querystring (ADR 0051 §3) — same `query` capability, same aggregations,
-    // nothing written. Ingestion is deliberately not described at all, and
-    // nothing else may grow a write method without a deliberate change here.
+    // same gate; and (#343) the scene-registry writes on that gate too, plus
+    // ingestion, the browser SDK's endpoint. There are also two non-writing
+    // POSTs: the query DSL accepts `POST /api/v1/query`, because a query is a
+    // JSON document rather than a querystring (ADR 0051 §3), and
+    // `POST /api/v1/live/token` mints a short-lived token from a key. Nothing
+    // else may grow a write method without a deliberate change here.
     const METADATA_WRITES = [
       "/api/v1/analyses",
       "/api/v1/analyses/{id}",
@@ -239,6 +358,11 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/glossary/{term}",
     ];
     const PANEL_WRITES = ["/api/v1/panels", "/api/v1/panels/{id}"];
+    const SCENE_WRITES = [
+      "/api/v1/scenes/{sceneId}/regions",
+      "/api/v1/scenes/{sceneId}/representation",
+    ];
+    const INGEST_WRITES = ["/api/v1/collect"];
     const written = Object.entries(paths)
       .filter(([, methods]) => Object.keys(methods).some((method) => method !== "get"))
       .map(([path]) => path)
@@ -246,14 +370,27 @@ describe("GET /api/v1/openapi.json", () => {
     for (const path of written) {
       expect(
         path === "/api/v1/query" ||
+          path === "/api/v1/live/token" ||
           METADATA_WRITES.includes(path) ||
           PANEL_WRITES.includes(path) ||
+          SCENE_WRITES.includes(path) ||
+          INGEST_WRITES.includes(path) ||
           path.startsWith("/api/v1/subscriptions"),
         `${path} grew a write method`,
       ).toBe(true);
     }
     expect(written.filter((path) => METADATA_WRITES.includes(path))).toEqual(METADATA_WRITES);
     expect(written.filter((path) => PANEL_WRITES.includes(path))).toEqual(PANEL_WRITES);
+    expect(written.filter((path) => SCENE_WRITES.includes(path))).toEqual(SCENE_WRITES);
+    expect(written.filter((path) => INGEST_WRITES.includes(path))).toEqual(INGEST_WRITES);
+    // Each new write has exactly the one write method the collector serves.
+    expect(Object.keys(paths["/api/v1/scenes/{sceneId}/regions"]!).sort()).toEqual(["get", "put"]);
+    expect(Object.keys(paths["/api/v1/scenes/{sceneId}/representation"]!).sort()).toEqual([
+      "get",
+      "put",
+    ]);
+    expect(Object.keys(paths["/api/v1/collect"]!)).toEqual(["post"]);
+    expect(Object.keys(paths["/api/v1/live/token"]!)).toEqual(["post"]);
 
     // The DSL's POST is a read; the two writable groups are tagged as such.
     expect(Object.keys(paths["/api/v1/query"]!).sort()).toEqual(["get", "post"]);
@@ -279,9 +416,8 @@ describe("GET /api/v1/openapi.json", () => {
       "get",
       "patch",
     ]);
-    // The subscriptions SSE stream is omitted for the same reason the live ones
-    // are: a hijacked `text/event-stream` response is not honestly describable
-    // as a JSON operation.
+    // The subscriptions SSE stream is still not described; the live streams
+    // are (#343), as `text/event-stream` responses.
     expect(Object.keys(paths)).not.toContain("/api/v1/subscriptions/stream");
   });
 });
