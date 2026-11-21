@@ -447,10 +447,13 @@ describe("OpenAPI describes the metadata group", () => {
     expect(doc.components.schemas.GlossaryEntry).toBeDefined();
     expect(doc.components.schemas.SavedAnalysis).toBeDefined();
     expect(doc.components.responses.Conflict).toBeDefined();
-    // The read API's promise is unchanged; the metadata group is one of the two
-    // exceptions the document now names (the other is `session_narrative`).
-    expect(doc.info.description).toMatch(/read-only/);
+    // The analytics reads stay aggregate-only; the document names the metadata
+    // group as part of its `annotate`-gated writable surface. It no longer calls
+    // itself read-only, since it also describes the scene-registry writes and
+    // ingestion (#343).
+    expect(doc.info.description).not.toMatch(/read-only/);
     expect(doc.info.description).toMatch(/aggregate-only/);
+    expect(doc.info.description).toMatch(/annotate/);
     expect(doc.info.description).toMatch(/metadata/);
   });
 });

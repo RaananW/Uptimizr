@@ -21,36 +21,38 @@
  * under the same global rate limit as every other route (`app.register(rateLimit)`
  * in `app.ts`).
  *
- * Routes that are not registry metrics are described only when they are trivial
- * and honest to describe (`/health`, this route, the scene-representation
- * listing, and the `metadata` group of #310 — annotations, glossary, saved
- * analyses — whose bodies are converted from the Zod contracts that validate
- * them). Ingestion (`POST /api/v1/collect`), the scene-proxy write
- * (`PUT …/representation`), the retention-gated raw event stream and the live
- * SSE surface are deliberately omitted rather than half-described.
- * listing, and the conditional-subscription resource). Ingestion
- * (`POST /api/v1/collect`), the scene-proxy write (`PUT …/representation`), the
- * retention-gated raw event stream and every SSE surface — the live endpoints
- * and `GET /api/v1/subscriptions/stream` alike — are deliberately omitted rather
- * than half-described: a hijacked `text/event-stream` response is not an
- * operation with a JSON body, and pretending otherwise misleads a generated
- * client.
+ * Routes that are not registry metrics are described by hand, next to each
+ * other below: `/health` and this route, the project context, the
+ * scene-representation listing, the `metadata` and `panels` groups, the
+ * conditional-subscription resource, and the routes an agent needs besides the
+ * metrics (#343) — key identity and the audit trail (`identity`), the scene
+ * registry writes and region reads (`scene-registry`), the retention-gated raw
+ * event stream (`raw`), the live surface (`live`) and ingestion (`ingest`).
+ * Wherever a Zod schema validates a body, querystring or path parameter, the
+ * JSON Schema is converted from it rather than restated.
  *
- * Conditional subscriptions (#311) are the one **write** surface described here.
- * They earn it: they are a CRUD resource rather than a query, and the only place
- * a caller needs a written contract for a request *body* — a closed Zod union
- * that cannot be inferred from a querystring.
+ * The live routes are `text/event-stream` responses on a hijacked socket. They
+ * are described as such — a `text/event-stream` body whose event names are given
+ * in prose — rather than as JSON operations, so a generated client is not misled
+ * into expecting one JSON body. The conditional-subscription stream
+ * (`GET /api/v1/subscriptions/stream`) is still left out.
  */
 
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { API_KEY_CAPABILITIES } from "@uptimizr/db";
 import {
   LIMITS,
   SCHEMA_VERSION,
+  aabbSchema,
   annotationSchema,
+  collectRequestSchema,
+  collectResponseSchema,
   panelSpecV1Schema,
   queryV1Schema,
   savedAnalysisSchema,
+  sceneProxySchema,
+  sceneRegionsSchema,
 } from "@uptimizr/schema";
 import { projectContextSchema } from "./context.js";
 import {
@@ -918,6 +920,565 @@ function panelPaths(): Record<string, unknown> {
   };
 }
 
+/** Looks up the captured GET route for a Fastify path. */
+type RouteLookup = (fastifyPath: string) => RouteSchemaEntry | undefined;
+
+/**
+ * The parameters of a hand-described operation, converted from the Zod params
+ * and querystring schemas the captured route validates with — so their *types*
+ * have one source, as they do for the metric paths. `descriptions` supplies the
+ * meaning; `required` marks a query parameter the handler refuses without even
+ * though its schema leaves it optional (the live `token`, which answers 401).
+ */
+function capturedParameters(
+  fastifyPath: string,
+  route: RouteSchemaEntry | undefined,
+  descriptions: Readonly<Record<string, string>> = {},
+  required: readonly string[] = [],
+): unknown[] {
+  const parameters: unknown[] = [];
+  const paramsJson = route?.params ? toJsonSchema(route.params, "input") : undefined;
+  const paramsProperties = (paramsJson?.properties ?? {}) as Record<string, JsonSchema>;
+  for (const name of pathParamNames(fastifyPath)) {
+    parameters.push({
+      name,
+      in: "path",
+      required: true,
+      ...(descriptions[name] ? { description: descriptions[name] } : {}),
+      schema: paramsProperties[name] ?? { type: "string" },
+    });
+  }
+  if (route?.querystring) {
+    const json = toJsonSchema(route.querystring, "input");
+    const properties = (json.properties ?? {}) as Record<string, JsonSchema>;
+    const declared = new Set([...((json.required as string[] | undefined) ?? []), ...required]);
+    for (const [name, schema] of Object.entries(properties)) {
+      parameters.push({
+        name,
+        in: "query",
+        required: declared.has(name),
+        ...(descriptions[name] ? { description: descriptions[name] } : {}),
+        schema,
+      });
+    }
+  }
+  return parameters;
+}
+
+/** The two 403 cases of the doubly-gated raw routes, in words. */
+const RAW_GATE =
+  "Raw per-session data needs **both** halves of the gate (ADR 0003, ADR 0051 §7): the key " +
+  "must hold `query:raw`, and the collector must have been started with " +
+  "`ENABLE_RAW_SESSION_RETENTION`.";
+
+/**
+ * Key **identity** and the agent **audit** trail (#309, ADR 0051 §7). `whoami`
+ * is the call an agent makes first, to learn what its key may do.
+ */
+function identityPaths(route: RouteLookup): Record<string, unknown> {
+  return {
+    "/api/v1/whoami": {
+      get: {
+        operationId: "whoami",
+        summary: "What this API key may do",
+        description:
+          "Reports the calling key's project, its id (never the key itself), its capability set, its label and the rate-limit budget it is held to. Agent clients call it first, so that they offer only the operations their capabilities permit — compare the capabilities with each operation's `x-uptimizr-capability`. Requires the `query` capability.",
+        tags: ["identity"],
+        parameters: [],
+        responses: {
+          "200": {
+            description: "The calling key's identity.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/WhoAmI" } } },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+        "x-uptimizr-capability": "query",
+      },
+    },
+    "/api/v1/audit": {
+      get: {
+        operationId: "list_audit",
+        summary: "Agent audit trail",
+        description:
+          "What every agent key of this project has asked for, newest first: the surface, the path or tool, bounded and redacted parameters, the row count, the duration and the status. Rows carry no key material. Requests from the dashboard's own session are not recorded unless the collector is configured to record them. Requires the `query` capability.",
+        tags: ["identity"],
+        parameters: capturedParameters("/api/v1/audit", route("/api/v1/audit"), {
+          since: "Inclusive lower bound, epoch milliseconds.",
+          until: "Exclusive upper bound, epoch milliseconds.",
+          limit: "Row cap (at most 1000).",
+        }),
+        responses: {
+          "200": {
+            description: "Audit rows, newest first.",
+            content: {
+              "application/json": {
+                schema: { type: "array", items: { $ref: "#/components/schemas/AuditEntry" } },
+              },
+            },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+        "x-uptimizr-capability": "query",
+      },
+    },
+  };
+}
+
+/**
+ * The **scene registry** writes and the region reads (ADR 0010/0014, ADR 0051
+ * §2). The registry's two resource reads (`scene_representation`, the listing)
+ * are described elsewhere; this adds what an agent writes and the region
+ * vocabulary it reads back.
+ */
+function scenePaths(route: RouteLookup): Record<string, unknown> {
+  const regionsRoute = route("/api/v1/scenes/:sceneId/regions");
+  const sceneIdDescription = {
+    sceneId: "Developer-assigned scene id (ADR 0010).",
+  };
+  const regionRows = {
+    "application/json": {
+      schema: { type: "array", items: { $ref: "#/components/schemas/SceneRegion" } },
+    },
+  };
+  const regionsBody = {
+    type: "object",
+    title: "Scene regions",
+    properties: { regions: toJsonSchema(sceneRegionsSchema, "input") },
+    required: ["regions"],
+  };
+  const representationBody = {
+    type: "object",
+    title: "Scene representation",
+    properties: {
+      proxy: toJsonSchema(sceneProxySchema, "input"),
+      label: { type: "string", maxLength: 200, description: "Optional display label." },
+    },
+    required: ["proxy"],
+  };
+  // The PUTs validate the same `sceneId` params schema as the GET beside them.
+  const representationParams = capturedParameters(
+    "/api/v1/scenes/:sceneId/representation",
+    route("/api/v1/scenes/:sceneId/representation"),
+    sceneIdDescription,
+  );
+  const regionsParams = capturedParameters(
+    "/api/v1/scenes/:sceneId/regions",
+    regionsRoute,
+    sceneIdDescription,
+  );
+
+  return {
+    "/api/v1/scene-regions": {
+      get: {
+        operationId: "list_scene_regions",
+        summary: "Every declared region, across scenes",
+        description:
+          "The project's whole spatial vocabulary in one read: one row per declared region, names only — no boxes. The sibling of `/api/v1/scene-representations`. Requires the `query` capability.",
+        tags: ["scene-registry"],
+        parameters: [],
+        responses: {
+          "200": {
+            description: "One row per region, across every scene.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/SceneRegionListing" },
+                },
+              },
+            },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+        "x-uptimizr-capability": "query",
+      },
+    },
+    "/api/v1/scenes/{sceneId}/regions": {
+      get: {
+        operationId: "get_scene_regions",
+        summary: "One scene's regions",
+        description:
+          "The named, labelled boxes declared for one scene. A scene with no regions — or one never registered — answers an empty array, not 404. Requires the `query` capability.",
+        tags: ["scene-registry"],
+        parameters: regionsParams,
+        responses: {
+          "200": { description: "The scene's regions.", content: regionRows },
+          ...AUTHENTICATED_ERRORS,
+        },
+        "x-uptimizr-capability": "query",
+      },
+      put: {
+        operationId: "put_scene_regions",
+        summary: "Declare a scene's regions",
+        description:
+          "Replaces the scene's whole region set; an empty array clears it. Region ids must be unique within the scene, `max` must be at least `min` on every axis, and the count is bounded. A declared region can then be named in `?region=<id>` on the spatial reads. Requires the **`annotate`** capability.",
+        tags: ["scene-registry"],
+        parameters: regionsParams,
+        requestBody: { required: true, content: { "application/json": { schema: regionsBody } } },
+        responses: {
+          "200": { description: "The scene's regions as stored.", content: regionRows },
+          ...AUTHENTICATED_ERRORS,
+        },
+        "x-uptimizr-capability": "annotate",
+      },
+    },
+    "/api/v1/scenes/{sceneId}/representation": {
+      put: {
+        operationId: "put_scene_representation",
+        summary: "Register or replace a scene's proxy geometry",
+        description:
+          "Stores the scene proxy (ADR 0014) the dashboard and spatial summaries draw on, with an optional display label. The proxy's own `sceneId` must match the path, or the request is a 400. Requires the **`annotate`** capability, so a read-only key cannot replace the geometry.",
+        tags: ["scene-registry"],
+        parameters: representationParams,
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: representationBody } },
+        },
+        responses: {
+          "200": {
+            description: "The stored scene representation.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/scene_representation" },
+              },
+            },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+        "x-uptimizr-capability": "annotate",
+      },
+    },
+  };
+}
+
+/** The **raw** session event stream (ADR 0003, ADR 0015) — doubly gated. */
+function rawPaths(route: RouteLookup): Record<string, unknown> {
+  const eventsArray = { type: "array", items: { type: "object" } };
+  return {
+    "/api/v1/sessions/{id}/events": {
+      get: {
+        operationId: "session_events",
+        summary: "One session's raw event timeline",
+        description:
+          "The ordered events of one session, for replay. The default is one JSON array. Ask for `application/x-ndjson` — with an `Accept` header or `?format=ndjson` — to stream one event per line with bounded server memory.\n\n" +
+          RAW_GATE +
+          " A plain `query` key is still authenticated, so an unknown key answers 401, but it is refused the events.",
+        tags: ["raw"],
+        parameters: capturedParameters(
+          "/api/v1/sessions/:id/events",
+          route("/api/v1/sessions/:id/events"),
+          {
+            id: "Session id.",
+            format: "`ndjson` streams one event per line; `json` (the default) is one array.",
+          },
+        ),
+        responses: {
+          "200": {
+            description: "The session's events, in order.",
+            content: {
+              "application/json": { schema: eventsArray },
+              "application/x-ndjson": {
+                schema: {
+                  type: "string",
+                  description: "One JSON event object per line.",
+                },
+              },
+            },
+          },
+          ...AUTHENTICATED_ERRORS,
+          "403": {
+            description:
+              "Refused: the key lacks `query` (`api key not permitted to read`), the collector was started without `ENABLE_RAW_SESSION_RETENTION` (`raw session retention is disabled`), or the key lacks `query:raw` (`api key not permitted to read raw session data`).",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+        },
+        "x-uptimizr-capability": "query:raw",
+      },
+    },
+  };
+}
+
+/**
+ * The **live** surface (ADR 0032): a token exchange, then three SSE streams.
+ * `EventSource` cannot send `x-api-key`, so the streams take a short-lived
+ * `?token=` minted from a key instead; the token carries the minting key's
+ * capability set.
+ */
+function livePaths(route: RouteLookup): Record<string, unknown> {
+  const tokenDescription =
+    "Short-lived live token from `POST /api/v1/live/token`. Required: a missing, invalid or expired token answers 401.";
+  const sseResponse = (description: string): unknown => ({
+    description,
+    content: {
+      "text/event-stream": {
+        schema: {
+          type: "string",
+          description:
+            "A server-sent event stream. Each `data:` line is one JSON object; comment lines are heartbeats.",
+        },
+      },
+    },
+  });
+  const tokenErrors = {
+    "400": { $ref: "#/components/responses/BadRequest" },
+    "401": {
+      description: "The `token` is missing, invalid or expired.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+    },
+    "429": { $ref: "#/components/responses/TooManyRequests" },
+    "503": {
+      description: "The collector's live connection limit has been reached. Retry later.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+    },
+  };
+  const tokenAuth =
+    "Authenticated by the `token` query parameter, not by `x-api-key`: mint one with `POST /api/v1/live/token`.";
+
+  return {
+    "/api/v1/live/token": {
+      post: {
+        operationId: "live_token",
+        summary: "Exchange an API key for a live token",
+        description:
+          "Server-to-server: mints a short-lived token for the live streams, because a browser `EventSource` cannot send `x-api-key`. The token carries the key's project and its whole capability set, so the per-session follow can still enforce `query:raw`. Requires the `query` capability.",
+        tags: ["live"],
+        responses: {
+          "200": {
+            description: "The token and when it expires.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    token: { type: "string", description: "Pass as `?token=` to a live stream." },
+                    expiresAt: {
+                      type: "integer",
+                      description: "When the token expires, epoch milliseconds.",
+                    },
+                  },
+                  required: ["token", "expiresAt"],
+                },
+              },
+            },
+          },
+          ...AUTHENTICATED_ERRORS,
+        },
+        "x-uptimizr-capability": "query",
+      },
+    },
+    "/api/v1/live/presence": {
+      get: {
+        operationId: "live_presence",
+        summary: "Live presence (SSE)",
+        description:
+          "An aggregate snapshot of who is in the project right now, sent at once and then on an interval that doubles as the heartbeat, as `presence` events. Aggregate, so it is not gated by raw-session retention. " +
+          tokenAuth,
+        tags: ["live"],
+        security: [],
+        parameters: capturedParameters(
+          "/api/v1/live/presence",
+          route("/api/v1/live/presence"),
+          { token: tokenDescription },
+          ["token"],
+        ),
+        responses: {
+          "200": sseResponse("A stream of `presence` events."),
+          ...tokenErrors,
+        },
+        "x-uptimizr-capability": "query",
+      },
+    },
+    "/api/v1/live/stream": {
+      get: {
+        operationId: "live_stream",
+        summary: "Live project event stream (SSE)",
+        description:
+          "Every event arriving for the project, as `event` events, optionally narrowed to a list of event types. Drives the dashboard's in-place updates. " +
+          tokenAuth,
+        tags: ["live"],
+        security: [],
+        parameters: capturedParameters(
+          "/api/v1/live/stream",
+          route("/api/v1/live/stream"),
+          {
+            token: tokenDescription,
+            types: "Comma-separated event types to keep; all types when omitted.",
+          },
+          ["token"],
+        ),
+        responses: {
+          "200": sseResponse("A stream of `event` events."),
+          ...tokenErrors,
+        },
+        "x-uptimizr-capability": "query",
+      },
+    },
+    "/api/v1/live/sessions/{id}": {
+      get: {
+        operationId: "live_session",
+        summary: "Follow one session live (SSE)",
+        description:
+          "The recent events of one session, then each new one as it arrives, as `event` events — live replay. " +
+          RAW_GATE +
+          " Here `query:raw` is read from the capabilities of the key that minted the token. " +
+          tokenAuth,
+        tags: ["live"],
+        security: [],
+        parameters: capturedParameters(
+          "/api/v1/live/sessions/:id",
+          route("/api/v1/live/sessions/:id"),
+          { id: "Session id.", token: tokenDescription },
+          ["token"],
+        ),
+        responses: {
+          "200": sseResponse("A stream of `event` events for the session."),
+          ...tokenErrors,
+          "403": {
+            description:
+              "Refused: the collector was started without `ENABLE_RAW_SESSION_RETENTION` (`raw session retention is disabled`), or the key that minted the token lacks `query:raw` (`api key not permitted to read raw session data`).",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+        },
+        "x-uptimizr-capability": "query:raw",
+      },
+    },
+  };
+}
+
+/**
+ * **Ingestion** (`POST /api/v1/collect`): the browser SDK's endpoint, not an
+ * agent's. Described for completeness; the body and response are the very Zod
+ * contracts that validate and serialise them.
+ */
+function ingestPaths(): Record<string, unknown> {
+  const errorContent = { "application/json": { schema: { $ref: "#/components/schemas/Error" } } };
+  return {
+    "/api/v1/collect": {
+      post: {
+        operationId: "collect",
+        summary: "Ingest a batch of events",
+        description:
+          "The browser SDK's ingestion endpoint. It takes no API key: a beacon cannot send a secret header, so the public `projectId` in each event is the credential. Every event in a batch must share one `projectId`, and a project that does not exist is refused. The collector adds a cookieless daily visitor id; the raw IP is never stored. Bounded by a dedicated ingest rate limit and the CORS allow-list.",
+        tags: ["ingest"],
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: toJsonSchema(collectRequestSchema, "input") },
+          },
+        },
+        responses: {
+          "200": {
+            description: "How many events were accepted.",
+            content: {
+              "application/json": { schema: toJsonSchema(collectResponseSchema, "output") },
+            },
+          },
+          "400": {
+            description:
+              "The batch failed validation, or its events name more than one `projectId`.",
+            content: errorContent,
+          },
+          "401": { description: "The `projectId` names no known project.", content: errorContent },
+          "429": { $ref: "#/components/responses/TooManyRequests" },
+        },
+      },
+    },
+  };
+}
+
+/** The response schemas of the identity and scene-registry routes. */
+function agentSchemas(): Record<string, unknown> {
+  return {
+    WhoAmI: {
+      type: "object",
+      title: "API key identity",
+      properties: {
+        projectId: { type: "string", description: "The project the key resolves to." },
+        keyId: { type: "string", description: "The key row's id — never the key or its hash." },
+        capabilities: {
+          type: "array",
+          items: { type: "string", enum: [...API_KEY_CAPABILITIES] },
+          description: "What the key may do.",
+        },
+        label: { type: ["string", "null"], description: "Operator-supplied name of the key." },
+        rateLimit: {
+          type: "object",
+          properties: {
+            max: { type: "integer", description: "Requests allowed per window." },
+            windowMs: { type: "integer", description: "Window length, milliseconds." },
+          },
+          required: ["max", "windowMs"],
+        },
+        rateLimitSource: {
+          type: "string",
+          enum: ["key", "default"],
+          description: "Whether `rateLimit` is the key's own budget or the collector default.",
+        },
+      },
+      required: ["projectId", "keyId", "capabilities", "label", "rateLimit", "rateLimitSource"],
+    },
+    AuditEntry: {
+      type: "object",
+      title: "Agent audit entry",
+      properties: {
+        id: { type: "string" },
+        projectId: { type: "string" },
+        keyId: { type: "string", description: "The key row's id — never the key or its hash." },
+        at: { type: "string", format: "date-time", description: "When the request was made." },
+        surface: { type: "string", enum: ["http", "mcp-http", "mcp-stdio", "assistant"] },
+        toolOrPath: { type: "string", description: "Endpoint path (`http`) or tool name." },
+        params: { type: "string", description: "Bounded, redacted JSON of the parameters." },
+        rowCount: {
+          type: ["integer", "null"],
+          description: "Rows returned, when the result was countable.",
+        },
+        durationMs: { type: "number" },
+        status: { type: "integer", description: "HTTP status, or its equivalent." },
+      },
+      required: [
+        "id",
+        "projectId",
+        "keyId",
+        "at",
+        "surface",
+        "toolOrPath",
+        "params",
+        "rowCount",
+        "durationMs",
+        "status",
+      ],
+    },
+    SceneRegion: {
+      type: "object",
+      title: "Scene region",
+      properties: {
+        projectId: { type: "string" },
+        sceneId: { type: "string" },
+        regionId: { type: "string", description: "Stable region id, unique within the scene." },
+        label: { type: "string" },
+        description: { type: ["string", "null"] },
+        bounds: {
+          ...toJsonSchema(aabbSchema, "output"),
+          description: "World-space box `[minX,minY,minZ,maxX,maxY,maxZ]`.",
+        },
+        updatedAt: { type: "string", description: "When the region was last written." },
+      },
+      required: ["projectId", "sceneId", "regionId", "label", "description", "bounds", "updatedAt"],
+    },
+    SceneRegionListing: {
+      type: "object",
+      title: "Scene region listing row",
+      properties: {
+        sceneId: { type: "string" },
+        regionId: { type: "string" },
+        label: { type: "string" },
+      },
+      required: ["sceneId", "regionId", "label"],
+    },
+  };
+}
+
 /** The stored-row schemas of the three metadata tables. */
 function metadataSchemas(): Record<string, unknown> {
   const author = {
@@ -1043,6 +1604,7 @@ function componentsFor(metrics: readonly MetricDefinition[]): Record<string, unk
       required: ["sceneId", "kind", "updatedAt"],
     },
     ...metadataSchemas(),
+    ...agentSchemas(),
     Subscription: {
       type: "object",
       title: "Conditional subscription",
@@ -1144,6 +1706,7 @@ export function buildOpenApiDocument(
   const byPath = new Map<string, RouteSchemaEntry>(
     routeSchemas.filter((route) => route.method === "GET").map((route) => [route.path, route]),
   );
+  const route: RouteLookup = (fastifyPath) => byPath.get(fastifyPath);
   const metrics = allMetrics();
   const served = metrics.filter((metric) => metric.endpoint != null);
 
@@ -1152,6 +1715,11 @@ export function buildOpenApiDocument(
     ...queryDslPath(),
     ...metadataPaths(),
     ...panelPaths(),
+    ...identityPaths(route),
+    ...scenePaths(route),
+    ...rawPaths(route),
+    ...livePaths(route),
+    ...ingestPaths(),
   } as Record<string, Record<string, unknown>>;
   for (const metric of served) {
     const path = toOpenApiPath(metric.endpoint!.path);
@@ -1169,21 +1737,23 @@ export function buildOpenApiDocument(
       version: API_DOCUMENT_VERSION,
       summary: "Privacy-first, aggregate-only analytics for 3D scenes.",
       description:
-        "Every path below is generated from the Uptimizr **semantic metric registry**, so this " +
-        "document lists exactly the aggregations the collector can compute — no more and no " +
-        "less. Each operation carries `x-uptimizr-*` extensions describing what one row is " +
-        "(`grain`), what its columns mean (`units`), the capture channels that must be enabled " +
-        "for it to have data (`source-channels`), how far to trust it (`caveats`) and how to " +
-        "read it (`interpretation`).\n\n" +
-        "The analytics API is **read-only**: no endpoint here ingests, mutates or returns " +
-        "personal data, and nothing can write, alter or delete an event (ADR 0003, " +
-        "ADR 0051 §9). It is aggregate-only with exactly one, doubly-gated exception — " +
-        "`session_narrative`, a bounded compaction of one session, which requires both a " +
-        "`query:raw` key and `ENABLE_RAW_SESSION_RETENTION`. The writable surface is the " +
-        "`metadata` group — annotations, the glossary and saved analyses — together with " +
-        "`panels`, the declarative specs pinned to the dashboard. Both store what a project's " +
-        "own people and agents write, require the `annotate` capability, and are audited. " +
-        "Check each operation's `x-uptimizr-capability`.",
+        "Every metric path below is generated from the Uptimizr **semantic metric registry**, " +
+        "so this document lists exactly the aggregations the collector can compute — no more " +
+        "and no less. Each metric operation carries `x-uptimizr-*` extensions describing what " +
+        "one row is (`grain`), what its columns mean (`units`), the capture channels that must " +
+        "be enabled for it to have data (`source-channels`), how far to trust it (`caveats`) " +
+        "and how to read it (`interpretation`).\n\n" +
+        "The analytics reads are **aggregate-only**, and nothing here can alter or delete a " +
+        "stored event (ADR 0003, ADR 0051 §9). Raw per-session data is reachable only through " +
+        "the doubly-gated `query:raw` operations — `session_narrative`, the raw event " +
+        "timeline (`raw`) and the live per-session follow (`live`) — each of which needs both " +
+        "a `query:raw` key and a collector started with `ENABLE_RAW_SESSION_RETENTION`. " +
+        "The writable surface is project metadata — the `metadata` and `panels` groups, " +
+        "conditional `subscriptions` and the `scene-registry` writes — which needs the " +
+        "`annotate` capability and is audited; and ingestion (`ingest`), the browser SDK's " +
+        "endpoint, which takes no API key because the public project id is its credential. " +
+        "Start with `GET /api/v1/whoami` to learn what a key may do, and check each " +
+        "operation's `x-uptimizr-capability`.",
       license: { name: "Apache-2.0", identifier: "Apache-2.0" },
       contact: { name: "Uptimizr", url: "https://www.uptimizr.com/docs/" },
     },
@@ -1209,6 +1779,31 @@ export function buildOpenApiDocument(
         name: "subscriptions",
         description:
           "Conditional subscriptions: standing predicates over a metric, delivered over SSE and signed webhooks (ADR 0051 §6).",
+      },
+      {
+        name: "identity",
+        description:
+          "Who the calling key is and what it may do (`whoami`), and the project's agent audit trail. Both need `query`.",
+      },
+      {
+        name: "scene-registry",
+        description:
+          "The scene registry (ADR 0014) and its named regions (ADR 0051 §2): the vocabulary for *where*. Reads need `query`; writes need `annotate`.",
+      },
+      {
+        name: "raw",
+        description:
+          "Raw per-session data, gated twice: a `query:raw` key and a collector started with `ENABLE_RAW_SESSION_RETENTION` (ADR 0003).",
+      },
+      {
+        name: "live",
+        description:
+          "Live server-sent event streams (ADR 0032). Exchange a `query` key for a short-lived token with `POST /api/v1/live/token`, then pass it as `?token=`; the per-session follow also needs `query:raw` and raw-session retention.",
+      },
+      {
+        name: "ingest",
+        description:
+          "Event ingestion from the browser SDK. Unauthenticated by API key: the public project id in each event is the credential.",
       },
     ],
     paths,
