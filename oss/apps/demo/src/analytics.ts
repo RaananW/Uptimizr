@@ -32,6 +32,11 @@ export function trackReset(): void {
   track("demo_reset");
 }
 
+/** Visitor turned the demo guide on or off (top-bar button, close, or Done). */
+export function trackGuideToggled(enabled: boolean): void {
+  track("demo_guide_toggled", { enabled });
+}
+
 /** The embedded playground switched scene/engine (announced via postMessage). */
 export function trackSceneChanged(sceneId: string, engineId: string): void {
   track("demo_scene_changed", { sceneId, engineId });

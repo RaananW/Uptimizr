@@ -14,6 +14,7 @@ import type {
   VisibilityMeshObservation,
 } from "@uptimizr/sdk-core";
 import {
+  createClickGuard,
   poseUnchanged,
   resolveCadence,
   toCanonicalDirection,
@@ -1516,8 +1517,12 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
         });
       };
 
+      // The DOM fires `click` after an orbit/pan drag too; a release that moved
+      // past the drag threshold is camera navigation, not a click (or a pick).
+      const clickGuard = createClickGuard();
       const onClick = (raw: unknown) => {
         const ev = raw as PointerEventView;
+        if (clickGuard.isDrag(ev)) return;
         const { screen, hitPoint, hitMesh, source, hit } = buildBase(ev);
         // A click on the hovered object marks the episode as acted-on (suppressed).
         if (want.hoverDwell && hitMesh !== undefined && hitMesh === hoverMesh) {
@@ -1551,7 +1556,10 @@ export function threeCollector(options: ThreeCollectorOptions): Collector {
       if (want.buttons) {
         addListener("pointerup", (e) => emitButton("pointer_up", e));
       }
-      if (want.clicks || want.meshPicks || want.hoverDwell) addListener("click", onClick);
+      if (want.clicks || want.meshPicks || want.hoverDwell) {
+        addListener("pointerdown", (e) => clickGuard.press(e as PointerEventView));
+        addListener("click", onClick);
+      }
 
       // camera_gesture (ADR 0025): bracket the press and classify the viewpoint
       // change between down and up. No raycast and no mesh — a navigation gesture

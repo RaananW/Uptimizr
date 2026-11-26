@@ -1,7 +1,7 @@
 ---
 title: Babylon Lite analytics
 description: Add heatmaps, mesh tracking, real-user FPS and session replay to a Babylon Lite scene with the @uptimizr/babylon-lite connector.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-26
 ---
 
 The **Babylon Lite** connector. Babylon Lite is a functional / data-oriented, WebGPU-only Babylon
@@ -70,6 +70,10 @@ camera gestures, mesh picks via GPU picking (`mesh_interaction`), and frame perf
 `capture.meshVisibility`, `capture.hoverDwell`, `capture.resourceSample` and `capture.gaze`. It has
 no named-bone API, so scene-actor capture is Tier 1 (node/root transforms) only. Frame perf carries
 FPS without percentiles or long-frame counts, and there is no `keyBindings` or `capture.contextLoss`.
+
+A press and release within 10 CSS px is a click; a release further away ends an orbit or pan
+drag, so it records no `pointer_click` or mesh pick. The drag is still captured as a
+`camera_gesture`. This matches Babylon's `Scene.DragMovementThreshold`.
 
 ## Lite-specific options
 

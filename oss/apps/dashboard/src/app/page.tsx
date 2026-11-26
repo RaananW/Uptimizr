@@ -55,6 +55,12 @@ const LIVE_FEED_MAX = 30;
 /** Minimum gap between live-triggered aggregate refetches (ms). */
 const LIVE_REFETCH_THROTTLE_MS = 5_000;
 /**
+ * How often an open session checks whether new events arrived for it (ms). The
+ * session panels refetch only on a tick that follows new events, so an idle
+ * session issues no queries at all.
+ */
+const SESSION_REFRESH_MS = 2_000;
+/**
  * Per-session drill-down. The shell keeps only the session's identity and
  * metadata; every analytics panel scopes itself to the session through the
  * panel context (`sessionId` / `session`).
@@ -95,12 +101,15 @@ export default function Page() {
   // Bumped on a throttled live refetch so registry panels (ADR 0036) refresh and
   // relative time windows advance without a filter change.
   const [liveRevision, setLiveRevision] = useState(0);
-  // Bumped by the per-second live-session poll so the OPEN session's registry
-  // panels (ADR 0036, `surface: "session"`) refetch while the session is live.
-  // `liveRevision` is intentionally frozen while a drill-down is open (so the
-  // aggregate view isn't reset under the user), which otherwise left the session
-  // panels stale until you navigated away and back.
+  // Bumped when new events arrived for the OPEN session, so its registry panels
+  // (ADR 0036, `surface: "session"`) refetch while it is live. `liveRevision` is
+  // intentionally frozen while a drill-down is open (so the aggregate view isn't
+  // reset under the user), which otherwise left the session panels stale until
+  // you navigated away and back.
   const [sessionRevision, setSessionRevision] = useState(0);
+  // Set by the firehose when an event for the open session lands; cleared when
+  // the session panels refresh. Keeps an idle session from querying anything.
+  const sessionDirtyRef = useRef(false);
   // Live scene auto-follow (ADR 0040): the section the live avatar is currently
   // in, tracked from the firehose so the 3D backdrop swaps to it. Kept in a ref
   // too for the event handler's change check without re-subscribing.
@@ -280,6 +289,10 @@ export default function Page() {
       setLiveFeed((prev) => [event, ...prev].slice(0, LIVE_FEED_MAX));
       // Fan the event out to any registry panels that subscribed (ADR 0036).
       liveSubscribersRef.current.forEach((handler) => handler(event));
+      // New data for the open session: its panels refresh on the next tick.
+      if (detailOpenRef.current && event.sessionId === detailRef.current?.id) {
+        sessionDirtyRef.current = true;
+      }
       // Live area tracking (ADR 0040): note the section the live avatar is in.
       // The backdrop shows the whole building, so we no longer swap geometry per
       // section; but on a real section change (rare, at boundary crossings) bump
@@ -473,6 +486,15 @@ export default function Page() {
   // every render.
   const panelApi = useMemo(() => new CollectorApi(baseUrl, apiKey), [baseUrl, apiKey]);
   const panelParams = useMemo(() => toQueryParams(filters), [filters, liveRevision]);
+  // The session surface resolves its own window: a relative preset ("Last hour")
+  // becomes absolute `since`/`until` bounds, and `liveRevision` is frozen while a
+  // session is open, so reusing `panelParams` would pin `until` to the moment
+  // the session was opened and every refresh would re-read that same past
+  // window. Re-resolving on each session refresh moves `until` up to now.
+  const sessionParams = useMemo(
+    () => toQueryParams(filters),
+    [filters, liveRevision, sessionRevision],
+  );
   const subscribeLive = useCallback((handler: (event: LiveEvent) => void) => {
     const set = liveSubscribersRef.current;
     set.add(handler);
@@ -510,7 +532,13 @@ export default function Page() {
   };
   const overviewCtx: PanelContext = { ...panelBase, surface: "overview" };
   const sessionCtx: PanelContext | null = detail
-    ? { ...panelBase, surface: "session", sessionId: detail.id, session: detail.meta }
+    ? {
+        ...panelBase,
+        params: sessionParams,
+        surface: "session",
+        sessionId: detail.id,
+        session: detail.meta,
+      }
     : null;
 
   // Runtime / remote panels (ADR 0041): discover and load panels from a
@@ -561,15 +589,23 @@ export default function Page() {
   }, [detailIsLive, detailStatus]);
 
   // While the open session is live, its panels would otherwise stay frozen at
-  // the values fetched when it opened. Bump the session revision once a second
-  // so they refetch and visibly update as events stream in. The live replay
-  // tails over its own SSE channel and is unaffected (its props — sessionId /
-  // isLive — don't change here).
+  // the values fetched when it opened. Every two seconds, if the firehose delivered
+  // events for this session since the last refresh, bump the session revision
+  // so the panels refetch and visibly update. No new events, no queries: the
+  // refresh follows the SDK's batches rather than polling every panel blindly.
+  // The live replay tails over its own SSE channel and is unaffected (its props
+  // — sessionId / isLive — don't change here).
+  const openSessionId = detail?.id;
   useEffect(() => {
-    if (!detailIsLive || detailStatus !== "ready") return;
-    const timer = setInterval(() => setSessionRevision((r) => r + 1), 1_000);
+    if (!openSessionId || detailStatus !== "ready") return;
+    sessionDirtyRef.current = false;
+    const timer = setInterval(() => {
+      if (!sessionDirtyRef.current) return;
+      sessionDirtyRef.current = false;
+      setSessionRevision((r) => r + 1);
+    }, SESSION_REFRESH_MS);
     return () => clearInterval(timer);
-  }, [detailIsLive, detailStatus]);
+  }, [openSessionId, detailStatus]);
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
@@ -714,6 +750,7 @@ export default function Page() {
               baseUrl={baseUrl}
               apiKey={apiKey}
               sessionId={detail.id}
+              revision={sessionRevision}
               hiddenTypes={hiddenTypes}
               onToggleType={toggleHiddenType}
               onSetAllHidden={setAllHidden}

@@ -1,5 +1,5 @@
 import type { CollectorContext } from "@uptimizr/sdk-core";
-import { percentileAsc } from "@uptimizr/sdk-core";
+import { createClickGuard, percentileAsc } from "@uptimizr/sdk-core";
 
 /** Max `runtime_error` events emitted per session (ADR 0013 storm control). */
 const MAX_ERRORS_PER_SESSION = 50;
@@ -135,8 +135,13 @@ export function startJsOnlyCapture(options: JsOnlyOptions): () => void {
     }
 
     if (want.clicks) {
+      // The engine owns its camera, so an orbit/pan drag inside the export also
+      // ends in a DOM `click`; a release past the drag threshold is not a click.
+      const clickGuard = createClickGuard();
+      addListener("pointerdown", (raw) => clickGuard.press(raw as PointerEventView));
       addListener("click", (raw) => {
         const ev = raw as PointerEventView;
+        if (clickGuard.isDrag(ev)) return;
         ctx.emit({
           type: "pointer_click",
           screen: screenOf(ev),

@@ -1055,6 +1055,16 @@ when your loader finishes. See
 [Connectors → asset-load capture](/docs/connectors/overview/#asset-load-capture-asset_load)
 for the per-engine parity table.
 
+### Clicks versus camera drags
+
+A press and release within **10 CSS px** of each other is a click; a release further away ends
+an orbit or pan drag. Babylon applies this rule itself (`Scene.DragMovementThreshold`), and the
+three.js, react-three-fiber, A-Frame, PlayCanvas, Babylon Lite and web-export connectors apply the
+same rule to the DOM `click` event, which the browser fires after a drag too. A drag records no
+`pointer_click` and no `mesh_interaction` pick; it is still captured as a `camera_gesture` (and
+as `pointer_down` / `pointer_up` when `capture.buttons` is on). A custom collector that captures
+DOM clicks can reuse the rule with `createClickGuard()` from `@uptimizr/sdk-core`.
+
 ### Pointer lock (first-person / FPS scenes)
 
 First-person / walkable scenes (ADR 0026) navigate with the browser **Pointer
