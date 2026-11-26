@@ -197,8 +197,8 @@ body {
   font-size: 0.85rem;
 }
 
+.split__guide,
 .split__reset {
-  margin-left: auto;
   appearance: none;
   border: 1px solid var(--border);
   background: transparent;
@@ -209,8 +209,25 @@ body {
   cursor: pointer;
 }
 
+.split__guide {
+  margin-left: auto;
+}
+
+.split__guide[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.split__guide:hover,
 .split__reset:hover:not(:disabled) {
   border-color: var(--brand);
+}
+
+.split__guide:focus-visible,
+.split__reset:focus-visible,
+.guide button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .split__panes {
@@ -221,9 +238,20 @@ body {
 }
 
 .split__pane {
+  position: relative;
   min-width: 0;
   min-height: 0;
   border-right: 1px solid var(--border);
+}
+
+/* The pane the current guide step is about. An overlay, because the iframe
+   would cover an inset outline; it never takes pointer events. */
+.split__pane--guided::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--accent);
+  pointer-events: none;
 }
 
 .split__pane:last-child {
@@ -246,5 +274,115 @@ body {
   .split__pane {
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+}
+
+/* --- Guide ---------------------------------------------------------------- */
+
+.guide {
+  position: fixed;
+  bottom: 1.25rem;
+  z-index: 10;
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 1rem 1.1rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.guide--playground {
+  left: 1.25rem;
+}
+
+.guide--dashboard {
+  right: 1.25rem;
+}
+
+.guide--both {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.guide__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.guide__count {
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.guide__close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0.1rem 0.35rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.guide__close:hover {
+  color: var(--ink);
+}
+
+.guide__title {
+  margin: 0.35rem 0 0.4rem;
+  font-size: 1rem;
+}
+
+.guide__body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.guide__nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+
+.guide__btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  border-radius: 8px;
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+}
+
+.guide__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.guide__btn--primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-ink);
+}
+
+@media (max-width: 900px) {
+  .guide,
+  .guide--playground,
+  .guide--dashboard,
+  .guide--both {
+    left: 1rem;
+    right: auto;
+    bottom: 1rem;
+    transform: none;
   }
 }

@@ -296,6 +296,34 @@ describe("liteCollector — pointer/picking", () => {
     handle.stop();
   });
 
+  it("does not record a click (or a pick) for a release that ended a camera drag", async () => {
+    const canvas = makeCanvas();
+    const picker = makePicker({ point: [2, 0, -1], mesh: "box-3" });
+    const { ctx, events } = makeCtx();
+    const handle = liteCollector({
+      scene: emptyScene,
+      camera: makeCamera(),
+      canvas: canvas as unknown as HTMLCanvasElement,
+      picker,
+      capture: { camera: false, perf: false, pointerMove: false, clicks: true, meshPicks: true },
+    }).start(ctx);
+    const clicks = () =>
+      events.filter((e) => e.type === "pointer_click" || e.type === "mesh_interaction");
+
+    // An orbit drag: pressed, moved 200px, released. The DOM still fires click.
+    canvas.dispatch("pointerdown", { clientX: 400, clientY: 300, button: 0 });
+    canvas.dispatch("click", { clientX: 600, clientY: 300, button: 0 });
+    await flush();
+    expect(clicks()).toHaveLength(0);
+
+    // A press with a few pixels of jitter is still a click.
+    canvas.dispatch("pointerdown", { clientX: 400, clientY: 300, button: 0 });
+    canvas.dispatch("click", { clientX: 404, clientY: 303, button: 0 });
+    await flush();
+    expect(clicks().map((e) => e.type)).toEqual(["pointer_click", "mesh_interaction"]);
+    handle.stop();
+  });
+
   it("disposes a connector-owned picker and detaches listeners on stop", () => {
     const canvas = makeCanvas();
     const picker = makePicker();

@@ -11,6 +11,7 @@ import {
   type OrbitFocusCamera,
   type OrbitHome,
 } from "../lib/orbitZoom";
+import { PANEL_ENGINE_OPTIONS } from "../lib/engineOptions";
 import { attachMeshHover, type HoverTip } from "../lib/sceneHover";
 import { HeatLegend } from "../views/HeatLegend";
 import { ZoomButtons } from "../views/ZoomButtons";
@@ -180,7 +181,7 @@ export function ClickRays3DView({
           }
         }
 
-        const engine = new Engine(canvas, true, { preserveDrawingBuffer: false });
+        const engine = new Engine(canvas, true, PANEL_ENGINE_OPTIONS);
         const scene = new Scene(engine);
         scene.clearColor = new Color4(0.04, 0.05, 0.07, 1);
 

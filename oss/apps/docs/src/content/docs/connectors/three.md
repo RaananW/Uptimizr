@@ -1,7 +1,7 @@
 ---
 title: three.js analytics
 description: Add heatmaps, object click tracking, real-user FPS and session replay to a three.js scene with the @uptimizr/three connector.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-26
 ---
 
 The three.js connector. `three` is a peer dependency — the connector reads your existing three.js
@@ -46,6 +46,10 @@ Captures camera pose → view-direction heatmap, pointer move/click (with option
 screen heatmaps, mesh picks → object engagement, and FPS → performance. Opt-in: mesh visibility,
 hover dwell, resource sample, and gaze. Frame perf carries FPS without percentiles or long-frame
 counts.
+
+A press and release within 10 CSS px is a click; a release further away ends an orbit or pan
+drag (`OrbitControls` and the like), so it records no `pointer_click` or mesh pick. The drag is still captured as a
+`camera_gesture`. This matches Babylon's `Scene.DragMovementThreshold`.
 
 ## First-person scenes (pointer lock)
 

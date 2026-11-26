@@ -1,7 +1,7 @@
 ---
 title: Web exports (Unity, Godot, Unreal)
 description: Instrument WebAssembly engine exports with the @uptimizr/web-export foundation and its two capture tiers.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-26
 ---
 
 Unity, Godot, and Unreal compile to **WebAssembly** and render into a `<canvas>`, so
@@ -100,13 +100,13 @@ set without `name` and `frame`.
 | `transport`             | beacon → fetch        | Custom transport object.                                                                |
 | `disabled`, `debug`     | `false`               | Collect nothing / console debug logs.                                                   |
 
-| `capture` key | Default | Channel                                                  |
-| ------------- | ------- | -------------------------------------------------------- |
-| `pointerMove` | `true`  | `pointer_move`.                                          |
-| `clicks`      | `true`  | `pointer_click`.                                         |
-| `buttons`     | `false` | `pointer_down` / `pointer_up`.                           |
-| `perf`        | `true`  | rAF `frame_perf`. Turn off if the shim calls `pushPerf`. |
-| `errors`      | `false` | `window` error + unhandled rejection → `runtime_error`.  |
+| `capture` key | Default | Channel                                                                       |
+| ------------- | ------- | ----------------------------------------------------------------------------- |
+| `pointerMove` | `true`  | `pointer_move`.                                                               |
+| `clicks`      | `true`  | `pointer_click` (a release over 10 px from its press is a drag, not a click). |
+| `buttons`     | `false` | `pointer_down` / `pointer_up`.                                                |
+| `perf`        | `true`  | rAF `frame_perf`. Turn off if the shim calls `pushPerf`.                      |
+| `errors`      | `false` | `window` error + unhandled rejection → `runtime_error`.                       |
 
 `runtime_error` capture is **off by default**, as on every other connector, because error text can
 carry PII (ADR 0013). Opt in with `capture: { errors: true }`. Consecutive identical errors are

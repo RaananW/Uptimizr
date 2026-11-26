@@ -59,6 +59,8 @@ export type {
   NodeSample,
 } from "./aggregation/index.js";
 export { xrSource, xrHandedness } from "./xrInput.js";
+export { createClickGuard, CLICK_DRAG_THRESHOLD_PX } from "./clickGuard.js";
+export type { ClickGuard, ClickGuardEventLike } from "./clickGuard.js";
 export {
   wireGpuDeviceLost,
   wireGpuUncapturedError,

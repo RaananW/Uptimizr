@@ -8,6 +8,7 @@ import type { SceneBackdrop } from "@uptimizr/replay/babylon";
 import type { CollectorApi, SceneProxyMesh } from "../../api";
 import type { LiveEvent } from "../../live";
 import { useSessionTail } from "../../live-hooks";
+import { PANEL_ENGINE_OPTIONS } from "../lib/engineOptions";
 import { mergeSceneProxies, proxyMeshKey } from "../lib/sceneProxies";
 import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "../lib/orbitZoom";
 import { ZoomButtons } from "../views/ZoomButtons";
@@ -514,7 +515,7 @@ export function SessionReplayView({
           return;
         }
 
-        const engine = new Engine(canvas, true, { preserveDrawingBuffer: false });
+        const engine = new Engine(canvas, true, PANEL_ENGINE_OPTIONS);
         const scene = new Scene(engine);
         scene.clearColor = new Color4(0.04, 0.05, 0.07, 1);
         sceneRef.current = scene;

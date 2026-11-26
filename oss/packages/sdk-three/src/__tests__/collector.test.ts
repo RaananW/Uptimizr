@@ -320,7 +320,8 @@ describe("threeCollector", () => {
 
     expect(canvas.count("pointermove")).toBe(1);
     // Two pointerdown/up listeners: one for buttons, one for camera_gesture (ADR 0025).
-    expect(canvas.count("pointerdown")).toBe(2);
+    // buttons + camera_gesture + the click guard's press tracking
+    expect(canvas.count("pointerdown")).toBe(3);
     expect(canvas.count("pointerup")).toBe(2);
     expect(canvas.count("click")).toBe(1);
     expect(canvas.count("webglcontextlost")).toBe(1);
@@ -373,6 +374,32 @@ describe("threeCollector", () => {
       point: [4, 5, 6],
       source: "mouse",
     });
+    handle.stop();
+  });
+
+  it("does not record a click (or a pick) for a release that ended a camera drag", () => {
+    const canvas = makeCanvas();
+    const raycast: RaycastProbe = () => ({ point: [4, 5, -6], name: "Cube" });
+    const { ctx, events } = makeCtx();
+    const handle = threeCollector({
+      scene: emptyScene,
+      camera: makeCamera(),
+      renderer: makeRenderer(canvas),
+      capture: { camera: false, perf: false },
+      raycast,
+    }).start(ctx)!;
+    const clicks = () =>
+      events.filter((e) => e.type === "pointer_click" || e.type === "mesh_interaction");
+
+    // An orbit drag: pressed, moved 200px, released. The DOM still fires click.
+    canvas.dispatch("pointerdown", { clientX: 400, clientY: 300, button: 0 });
+    canvas.dispatch("click", { clientX: 600, clientY: 300, button: 0 });
+    expect(clicks()).toHaveLength(0);
+
+    // A press with a few pixels of jitter is still a click.
+    canvas.dispatch("pointerdown", { clientX: 400, clientY: 300, button: 0 });
+    canvas.dispatch("click", { clientX: 404, clientY: 303, button: 0 });
+    expect(clicks().map((e) => e.type)).toEqual(["pointer_click", "mesh_interaction"]);
     handle.stop();
   });
 

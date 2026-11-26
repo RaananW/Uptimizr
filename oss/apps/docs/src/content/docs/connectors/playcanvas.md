@@ -1,7 +1,7 @@
 ---
 title: PlayCanvas analytics
 description: Add heatmaps, entity tracking, real-user FPS and session replay to a PlayCanvas app with the @uptimizr/playcanvas connector.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-26
 ---
 
 The PlayCanvas connector. `playcanvas` is a peer dependency — the connector reads your existing
@@ -46,6 +46,10 @@ Captures camera pose, pointer move/click (with optional raycast hit), mesh picks
 **asset load timing** (`asset_load`, on by default — see below). Opt-in: mesh visibility, hover
 dwell, resource sample, and gaze. Frame perf carries FPS without percentiles or long-frame counts.
 It tears down all DOM listeners, timers, `frameend` handlers, and asset-registry listeners on stop.
+
+A press and release within 10 CSS px is a click; a release further away ends an orbit or pan
+drag, so it records no `pointer_click` or mesh pick. The drag is still captured as a
+`camera_gesture`. This matches Babylon's `Scene.DragMovementThreshold`.
 
 ### Asset load timing (`asset_load`)
 

@@ -20,6 +20,7 @@ import type {
   VisibilityMeshObservation,
 } from "@uptimizr/sdk-core";
 import {
+  createClickGuard,
   poseUnchanged,
   resolveCadence,
   toCanonicalDirection,
@@ -1208,9 +1209,13 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
         });
       };
 
+      // The DOM fires `click` after an orbit/pan drag too; a release that moved
+      // past the drag threshold is camera navigation, not a click (or a pick).
+      const clickGuard = createClickGuard();
       const onClick = (raw: unknown) => {
         if (!(want.clicks || want.meshPicks || want.hoverDwell)) return;
         const ev = raw as PointerEventView;
+        if (clickGuard.isDrag(ev)) return;
         const screen = screenOf(ev);
         const source = pointerSource(ev);
         const button = typeof ev.button === "number" ? ev.button : undefined;
@@ -1252,7 +1257,10 @@ export function liteCollector(options: LiteCollectorOptions): Collector {
         addListener("pointerdown", onGestureDown);
         addListener("pointerup", onGestureUp);
       }
-      if (want.clicks || want.meshPicks || want.hoverDwell) addListener("click", onClick);
+      if (want.clicks || want.meshPicks || want.hoverDwell) {
+        addListener("pointerdown", (e) => clickGuard.press(e as PointerEventView));
+        addListener("click", onClick);
+      }
 
       // Trailing flush: report an in-progress hover episode on stop.
       if (want.hoverDwell) stopCallbacks.push(() => flushHover(ctx.now()));

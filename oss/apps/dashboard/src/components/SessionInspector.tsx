@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchSessionEvents } from "@uptimizr/replay";
 import { Panel } from "./Panel";
 
@@ -64,6 +64,7 @@ export function SessionInspector({
   baseUrl,
   apiKey,
   sessionId,
+  revision = 0,
   hiddenTypes,
   onToggleType,
   onSetAllHidden,
@@ -71,6 +72,8 @@ export function SessionInspector({
   baseUrl: string;
   apiKey: string;
   sessionId: string;
+  /** Bump to re-read the session in place (new live events) without a loading flash. */
+  revision?: number;
   hiddenTypes: ReadonlySet<string>;
   onToggleType: (type: string) => void;
   onSetAllHidden: (hidden: boolean, types: string[]) => void;
@@ -102,6 +105,34 @@ export function SessionInspector({
       cancelled = true;
     };
   }, [baseUrl, apiKey, sessionId]);
+
+  // Live refresh: re-read the session when the host bumps `revision`, keeping
+  // the current breakdown (and expanded rows) on screen until the new one lands.
+  // A bump that arrives while a refresh is still running is dropped; the next
+  // bump picks up whatever arrived meanwhile.
+  const refreshingRef = useRef(false);
+  const seenRevisionRef = useRef(revision);
+  const identityRef = useRef(`${baseUrl}|${sessionId}`);
+  identityRef.current = `${baseUrl}|${sessionId}`;
+  useEffect(() => {
+    if (revision === seenRevisionRef.current || refreshingRef.current) return;
+    seenRevisionRef.current = revision;
+    const identity = identityRef.current;
+    refreshingRef.current = true;
+    void fetchSessionEvents({ endpoint: baseUrl, apiKey, sessionId })
+      .then((ev) => {
+        if (identityRef.current !== identity || ev.length === 0) return;
+        setEvents(ev);
+        setPhase("ready");
+      })
+      .catch(() => {
+        /* keep the last good breakdown; the next bump retries */
+      })
+      .finally(() => {
+        refreshingRef.current = false;
+      });
+    // Only a revision bump triggers a refresh; identity changes reload above.
+  }, [revision]);
 
   const { meta, byType, allTypes, sorted } = useMemo(() => {
     const s = [...events].sort((a, b) => a.ts - b.ts);

@@ -77,6 +77,21 @@ rebuilding them — much faster for iterating on the shell or store.
   (app + WASM bundles) — it holds **no visitor data** and is cleared like any site cache.
 - No accounts, no API keys, no PII. Consistent with [ADR 0003](../../../docs/adr/0003-privacy-model.md).
 
+## The guide
+
+The split view opens with a short guide ([src/guide.ts](src/guide.ts),
+[src/components/DemoGuide.tsx](src/components/DemoGuide.tsx)) that explains what the visitor is
+looking at: the instrumented scene, the dashboard, switching engines, live presence, the heatmaps,
+the session view, the assistant and **Clear data**. Each step outlines the pane it describes. It is
+non-modal, so both panes stay usable while it is open.
+
+- The **Guide** button in the top bar turns it on and off; closing the card (or **Done**) turns it
+  off too. The choice and the current step are kept in this browser's `localStorage` (guarded, so
+  a blocked store just falls back to "on, step 1").
+- While it is open, the shell reads the dashboard iframe's pathname once a second; when the visitor
+  opens a session it jumps forward to the step that explains the session view.
+- Edit the steps in `GUIDE_STEPS`; nothing else needs to change.
+
 ## Usage analytics (Vercel)
 
 To understand how visitors use the demo, the **shell only** is instrumented with
@@ -90,6 +105,7 @@ To understand how visitors use the demo, the **shell only** is instrumented with
 | `demo_prepare_error`   | Bootstrap failed (truncated message)      |
 | `demo_reset`           | Visitor clears the collected data         |
 | `demo_scene_changed`   | Embedded playground switches scene/engine |
+| `demo_guide_toggled`   | Visitor turns the guide on or off         |
 
 This runs in the **top frame only** — the embedded playground and dashboard iframes are
 **unchanged**, so no Uptimizr/Babylon internals are sent to Vercel. Web Analytics is cookieless and
@@ -98,8 +114,9 @@ unaffected). Custom events only report on a Vercel Pro/Team plan.
 
 ## Known v1 limitations
 
-- **No live presence / SSE** — the request/response Service-Worker bridge can't stream SSE, so the
-  dashboard's live tab degrades gracefully (“reconnecting…”, “0 visitors”). Expected, not a bug.
+- **Live presence is in-worker** — the Service Worker serves the live SSE routes itself from the
+  batches that pass through it (see the live bus in [public/sw.js](public/sw.js)). Its roster lives
+  in the worker, so it resets if the browser stops an idle worker.
 - **Minimal replay / scene-representation** endpoints (documented no-ops).
 - Dashboard sections that need manual 3D interaction (mesh/pointer/first-person/resources) stay empty
   until the visitor interacts.
