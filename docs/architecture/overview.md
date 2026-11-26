@@ -168,7 +168,7 @@ flowchart TD
   Caps["<b>uptimizr://capabilities</b><br/>event types · tool catalog · parameter glossary · the whole registry"]
   Docs["docs tables + packaged AGENTS.md / llms.txt<br/>(pnpm gen:docs, CI-checked)"]
   Mcp["<b>@uptimizr/mcp</b><br/>MCP server (stdio, or /mcp on the collector)"]
-  Asst["<b>in-browser assistant</b><br/>user's own local or hosted model"]
+  Asst["<b>in-browser assistant</b><br/>user's own provider + API key"]
   Fmt["result envelopes<br/>full | table | <b>summary</b>"]
   Keys["scoped API keys<br/>query · query:raw · annotate · ingest<br/>per-key rate limits · agent_audit log"]
   Eval["<b>@uptimizr/agent-eval</b> (private)<br/>84 questions × real collector × fixtures<br/>tool choice · arguments · accuracy vs a baseline"]
@@ -203,7 +203,7 @@ flowchart TD
   the packaged `AGENTS.md` / `llms.txt`, and `pnpm gen:docs:check` fails when any of them drift.
 - **Three clients, one catalog.** `@uptimizr/mcp` is an MCP server over stdio, and the collector
   hosts the same server at `/mcp` when `COLLECTOR_MCP_HTTP=1`; the dashboard's in-browser assistant
-  runs the user's **own** model (WebLLM locally, or a hosted backend with their own key); and
+  runs the user's **own** model provider, connected with their own API key (ADR 0053); and
   `uptimizr agent report` runs one read-only agent pass from the CLI. All consume
   `@uptimizr/agent-core`, so the agent surface is defined once and cannot drift. None exposes
   ingestion or can write an event. Project-metadata write tools are offered only to a key holding

@@ -3,7 +3,7 @@
 // AssistantDrawer — the dashboard's entry point to the in-browser analytics
 // assistant (ADR 0050 §1, ADR 0047). It is a collapsed toggle until the user
 // opens it; only then is `@uptimizr/react/assistant` pulled in, via a lazy
-// `import()`. That keeps the assistant + `@mlc-ai/web-llm` runtime out of the
+// `import()`. That keeps the assistant and its provider code out of the
 // dashboard's main bundle entirely — a user who never opens the assistant pays
 // nothing for it (guarded by `app/__tests__/entryPurity.test.ts`). The panel
 // reads through the SAME read-only collector connection the panels use, so it
@@ -15,9 +15,9 @@ import { useState } from "react";
 import { annotationTargetFor, type FilterState } from "@uptimizr/react";
 
 // The `import()` here is the code-split seam: the panel and everything it pulls
-// (agent-core, and — lazily inside it — the WebLLM runtime) land in an on-demand
+// (agent-core and the provider adapter) land in an on-demand
 // chunk, never the main bundle. `ssr: false` because the assistant is a
-// browser-only, WebGPU/localStorage-driven surface.
+// browser-only, localStorage-driven surface.
 const AssistantPanel = dynamic(
   () => import("@uptimizr/react/assistant").then((m) => m.AssistantPanel),
   {
@@ -60,9 +60,9 @@ export function AssistantDrawer({ collectorUrl, apiKey, filters, onPinned }: Ass
         <div>
           <h2 className="font-display text-base font-semibold text-fg-hi">Analytics assistant</h2>
           <p className="text-xs text-fg-muted">
-            Ask natural-language questions of this project&apos;s analytics. Runs in your browser
-            against a local or bring-your-own model — read-only, aggregate, no data egress by
-            default.
+            Ask natural-language questions of this project&apos;s analytics with your own model
+            provider and API key. Read-only: it sees aggregates, never raw events, and sends them
+            only to the provider you connect.
           </p>
         </div>
         <button

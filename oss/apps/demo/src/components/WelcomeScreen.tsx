@@ -38,7 +38,8 @@ export function WelcomeScreen({ state, progress, error, onPrepare }: WelcomeScre
         </p>
         <p className="welcome__lede">
           There is <strong>no backend and no database server</strong>. Every event is stored in an
-          in-browser DuckDB database and queried locally. Nothing you do here leaves your device.
+          in-browser DuckDB database and queried locally. Nothing you do here leaves your device
+          unless you connect the optional assistant to a model provider of your own.
         </p>
 
         <div className="welcome__prepare">

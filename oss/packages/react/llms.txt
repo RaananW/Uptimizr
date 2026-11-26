@@ -38,6 +38,6 @@
 
 ## Optional peers
 
-`@babylonjs/core`, `@babylonjs/loaders` (3D panels) and `@mlc-ai/web-llm` (the local assistant
-backend) are declared **optional** and loaded lazily — add them only if you render a 3D panel or
-run a local model.
+`@babylonjs/core`, `@babylonjs/loaders` (3D panels) and `@mlc-ai/web-llm` (the deprecated local
+assistant backend) are declared **optional** and loaded lazily — add them only if you render a 3D
+panel or still run a local model through `useAssistant`.

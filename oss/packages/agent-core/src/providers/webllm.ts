@@ -11,6 +11,11 @@
  * stays cached: loading a model evicts the other curated models' weights so
  * switching never stacks multiple ~4 GB caches (see {@link WebLlmCachePolicy}),
  * and {@link clearCachedModels} reclaims everything on demand.
+ *
+ * @deprecated The local WebLLM backend is no longer offered by the Uptimizr assistant
+ * (ADR 0053): small in-browser models could not drive the tool catalog reliably. It
+ * keeps working for existing callers and will be removed in the next major release.
+ * Use `createHostedProvider` from `@uptimizr/agent-core/providers/hosted`.
  */
 
 import type { AgentMessage, LlmProvider, ProviderRequest, ProviderResponse } from "../provider.js";
@@ -80,6 +85,11 @@ const STORAGE_HEADROOM_BYTES = Math.round(0.5 * BYTES_PER_GIB);
  * pre-select) is the best tool-caller, which most reliably answers even simple
  * single-step questions on a 4-bit local model. Sizes are approximate (sourced
  * from WebLLM's `prebuiltAppConfig`) and shown to the user before any download.
+ *
+ * @deprecated The local WebLLM backend is no longer offered by the Uptimizr assistant
+ * (ADR 0053): small in-browser models could not drive the tool catalog reliably. It
+ * keeps working for existing callers and will be removed in the next major release.
+ * Use `createHostedProvider` from `@uptimizr/agent-core/providers/hosted`.
  */
 export const CURATED_MODELS: readonly CuratedModel[] = [
   {
@@ -559,6 +569,11 @@ async function evictCachedModels(
  *
  * Loads the runtime lazily via `import("@mlc-ai/web-llm")` (or the injected
  * `loadRuntime`); a runtime without the cache APIs resolves to `[]`.
+ *
+ * @deprecated The local WebLLM backend is no longer offered by the Uptimizr assistant
+ * (ADR 0053): small in-browser models could not drive the tool catalog reliably. It
+ * keeps working for existing callers and will be removed in the next major release.
+ * Use `createHostedProvider` from `@uptimizr/agent-core/providers/hosted`.
  */
 export async function clearCachedModels(options: ClearCachedModelsOptions = {}): Promise<string[]> {
   const runtime = await (options.loadRuntime ?? defaultLoadRuntime)();
@@ -570,6 +585,11 @@ export async function clearCachedModels(options: ClearCachedModelsOptions = {}):
  * the first {@link LlmProvider.complete} call — construction is cheap and has no
  * side effects, so it is safe to build eagerly and feature-detect via
  * {@link isWebGpuAvailable} before offering the local option.
+ *
+ * @deprecated The local WebLLM backend is no longer offered by the Uptimizr assistant
+ * (ADR 0053): small in-browser models could not drive the tool catalog reliably. It
+ * keeps working for existing callers and will be removed in the next major release.
+ * Use `createHostedProvider` from `@uptimizr/agent-core/providers/hosted`.
  */
 export function createWebLlmProvider(options: WebLlmProviderOptions = {}): WebLlmProvider {
   const model = resolveModel(options.model);

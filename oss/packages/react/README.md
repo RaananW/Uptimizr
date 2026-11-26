@@ -142,7 +142,8 @@ headless `useAssistant()` hook that let anyone ask natural-language questions of
 their 3D analytics — the agent loop runs **entirely in the browser** against the
 same query API the panels use (ADR 0050) — reading only, and writing project
 metadata when the key allows it (see below). It ships **no model and no
-key**: the user picks a local WebGPU model or a bring-your-own hosted provider.
+key**: the user connects their own OpenAI-compatible or Anthropic provider with an API key
+(ADR 0053).
 
 ```tsx
 import { AssistantPanel } from "@uptimizr/react/assistant";
@@ -159,17 +160,19 @@ import { useAssistant } from "@uptimizr/react/assistant";
 const { messages, send, status, setBackend, backend } = useAssistant({
   collectorUrl: "http://localhost:4318",
   apiKey: "proj_…",
-  // Optional: pin the read tools this assistant may call. Omit to let the hook
-  // choose — the local (WebGPU) backend gets agent-core's focused core subset,
-  // a hosted backend the full ~77-tool catalog.
+  // Optional: pin the read tools this assistant may call. Omit and the hook
+  // hands the provider the full ~77-tool catalog.
   tools: ["perf_summary", "jank_rate", "perf_by_device"],
 });
 ```
 
-Like `panels-3d`, the LLM runtime is **optional and code-split**: importing the
-core `@uptimizr/react` barrel pulls **no** assistant or LLM code, and even the
-assistant loads `@mlc-ai/web-llm` (an optional peer) lazily, only when a local
-model actually runs. See the [assistant guide](https://www.uptimizr.com/docs/guides/assistant/).
+Like `panels-3d`, the assistant is **optional and code-split**: importing the
+core `@uptimizr/react` barrel pulls **no** assistant or LLM code, and the
+assistant imports its provider adapter only on the first turn. The local WebLLM
+backend is no longer offered by `<AssistantPanel>`; its hook options
+(`confirmDownload`, `cachePolicy`, `onCacheEvicted`) and results
+(`initProgress`, `webGpuAvailable`, `models`, `clearCachedModels`) are
+deprecated and will be removed in the next major release. See the [assistant guide](https://www.uptimizr.com/docs/guides/assistant/).
 
 ## License
 

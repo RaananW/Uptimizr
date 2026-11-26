@@ -1,7 +1,7 @@
 ---
 title: Building agents on Uptimizr
 description: The AI-first analytics layer end to end — the semantic metric registry, capability discovery, OpenAPI, the MCP server, the in-browser assistant, agent-shaped result formats, scoped keys and the evaluation harness.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-26
 ---
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
@@ -139,9 +139,11 @@ land in the audit log as `surface: mcp-http`. See
 
 ### In-browser assistant
 
-The same tool catalog, in the dashboard, against a model the **user** supplies — WebLLM running
-locally in the browser, or a hosted backend with their own key. Nothing about it is Uptimizr-operated
-([ADR 0050](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0050-in-browser-analytics-assistant.md)).
+The same tool catalog, in the dashboard, against a model the **user** supplies: their own
+OpenAI-compatible or Anthropic provider, connected with their own API key. Nothing about it is
+Uptimizr-operated
+([ADR 0050](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0050-in-browser-analytics-assistant.md),
+[ADR 0053](https://github.com/RaananW/Uptimizr/blob/main/docs/adr/0053-assistant-api-key-providers-only.md)).
 The catalog lives in `@uptimizr/agent-core`, which is framework-agnostic and browser-safe, so the MCP
 server, the dashboard assistant and the demo assistant cannot drift apart. See the
 [assistant guide](/docs/guides/assistant/).
@@ -172,8 +174,8 @@ key at all. See [Scheduled agent reports](/docs/deploy/collector/#scheduled-agen
 For your own agent loop — a Node service, a bot, a browser UI — depend on the framework-agnostic
 package directly. It ships no model and no key: you supply an `LlmProvider`, either your own
 (`complete({ messages, tools, signal, onToken })` resolving to `{ kind: "tool_calls", toolCalls }`
-or `{ kind: "final", content }`) or an adapter from `@uptimizr/agent-core/providers/hosted` or
-`/providers/webllm`.
+or `{ kind: "final", content }`) or the adapter from `@uptimizr/agent-core/providers/hosted`. (The
+`/providers/webllm` adapter is deprecated and will be removed in the next major release.)
 
 ```ts
 import { createCollectorClient, renderAgentSkill, runAgent } from "@uptimizr/agent-core";
@@ -216,7 +218,7 @@ It resolves to `{ content, messages, steps, stoppedOnMaxSteps }`, and issues col
 
 | Export                                                        | What it is                                                       |
 | ------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `readTools`, `coreReadTools`                                  | The full `query` catalog, and the small subset for local models. |
+| `readTools`, `coreReadTools`                                  | The full `query` catalog, and a small subset for small models.   |
 | `selectReadTools("core" \| "full")`, `filterReadTools(names)` | Pick a catalog, or narrow it by name.                            |
 | `rawTools`                                                    | The `query:raw` tools. Register only for a key holding it.       |
 | `writeTools`                                                  | The `annotate` metadata tools. Not part of `runAgent`'s catalog. |
@@ -294,7 +296,7 @@ what _would_ have worked, with the accepted values as data:
 That is the property worth designing for: a wrong guess is a correction, never an empty result the
 agent would report as "no interactions".
 
-The per-metric tools stay — they are excellent for discovery, and a small local model does better
+The per-metric tools stay — they are excellent for discovery, and a small model does better
 with a narrow, obvious tool than with a schema it has to compose. Reach for `query` when a question
 needs a filter the canned tool does not expose, or when `format: "table"` (the DSL's default, unlike
 the canned endpoints') is what you want anyway.

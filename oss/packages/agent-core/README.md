@@ -13,9 +13,9 @@ It owns four things:
    their three read siblings (ADR 0051 §5). A deliberately **separate** export, never folded into
    `readTools`, so an integration's read-only stance stays inspectable at a glance.
 3. **A headless LLM provider-adapter interface** (`LlmProvider`) — send messages + tool schemas,
-   receive tool calls or a final answer. The core ships **no model and no key**; adapters
-   (WebLLM/WebGPU, an OpenAI-compatible or Anthropic endpoint) are user-selected and
-   user-controlled (ADR 0050 §4).
+   receive tool calls or a final answer. The core ships **no model and no key**; the adapter
+   for an OpenAI-compatible or Anthropic endpoint is user-configured and user-controlled
+   (ADR 0050 §4, ADR 0053).
 4. **The headless tool-calling loop** (`runAgent`) — drives the LLM ↔ tools ↔ collector round trip,
    framework-agnostic and runnable in a browser, a Node service, a CLI, or a bot.
 
@@ -146,22 +146,21 @@ templates and `uptimizr agent report --skill` runs headlessly. Each is an Agent 
 
 ## API
 
-| Export                         | Purpose                                                              |
-| ------------------------------ | -------------------------------------------------------------------- |
-| `readTools`                    | The read-only analytics catalog (one entry per query endpoint).      |
-| `writeTools`                   | The `annotate`-gated project-metadata tools (ADR 0051 §5).           |
-| `coreReadTools`                | Focused subset for small local models (a filtered view, not a copy). |
-| `selectReadTools(kind)`        | Pick `"core"` or `"full"`.                                           |
-| `filterReadTools(names)`       | Narrow the catalog to specific tool names, in catalog order.         |
-| `registryToTools(metrics?)`    | Generate the catalog from metric-registry definitions.               |
-| `createCollectorClient(cfg)`   | Thin `GET`-only collector client (`fetch`-based, injectable).        |
-| `toToolSchemas(tools?)`        | Convert catalog tools to JSON-Schema tool descriptors for an LLM.    |
-| `runAgent(options)`            | The headless tool-calling loop.                                      |
-| `LlmProvider` / `AgentMessage` | The provider-adapter interface and message types.                    |
+| Export                         | Purpose                                                           |
+| ------------------------------ | ----------------------------------------------------------------- |
+| `readTools`                    | The read-only analytics catalog (one entry per query endpoint).   |
+| `writeTools`                   | The `annotate`-gated project-metadata tools (ADR 0051 §5).        |
+| `coreReadTools`                | Focused subset for small models (a filtered view, not a copy).    |
+| `selectReadTools(kind)`        | Pick `"core"` or `"full"`.                                        |
+| `filterReadTools(names)`       | Narrow the catalog to specific tool names, in catalog order.      |
+| `registryToTools(metrics?)`    | Generate the catalog from metric-registry definitions.            |
+| `createCollectorClient(cfg)`   | Thin `GET`-only collector client (`fetch`-based, injectable).     |
+| `toToolSchemas(tools?)`        | Convert catalog tools to JSON-Schema tool descriptors for an LLM. |
+| `runAgent(options)`            | The headless tool-calling loop.                                   |
+| `LlmProvider` / `AgentMessage` | The provider-adapter interface and message types.                 |
 
-A 69-tool catalog is more than a small local model can hold in its function-calling prompt — use
-`coreReadTools` (what the `@uptimizr/react` assistant sends the WebLLM backend) or
-`filterReadTools([...])` to hand a run a deliberate subset.
+A 69-tool catalog is more than a small model can hold in its function-calling prompt — use
+`coreReadTools` or `filterReadTools([...])` to hand a run a deliberate subset.
 
 The loop stops when the provider returns a final answer or after `maxSteps` turns
 (`DEFAULT_MAX_STEPS`, default 8). Unknown tools and invalid arguments are surfaced back to the model
@@ -185,7 +184,9 @@ import {
 } from "@uptimizr/agent-core/providers";
 ```
 
-- **`createWebLlmProvider`** — local, in-browser inference on WebGPU via
+- **`createWebLlmProvider`** — **deprecated** (ADR 0053; removed in the next major release, along
+  with `CURATED_MODELS`, `clearCachedModels`, `BackendKind` `"local"`, `isWebGpuAvailable` and
+  `defaultBackendKind`). Local, in-browser inference on WebGPU via
   [`@mlc-ai/web-llm`](https://github.com/mlc-ai/web-llm). The runtime is an **optional** dependency
   loaded with a lazy `import()` only on first use; model weights download behind an explicit consent
   gate and are cached in the browser's Cache Storage (never precached). **Zero data egress.** By
@@ -232,7 +233,7 @@ scans only — no regex over model output), and the WebLLM adapter streams the t
 (with tools present WebLLM's Hermes grammar forces a JSON tool-call array as the output, so there is
 no user text to stream there).
 
-Install the WebLLM runtime alongside the assistant if you use the local backend:
+Install the WebLLM runtime only if you still use the deprecated local backend:
 
 ```bash
 npm install @mlc-ai/web-llm

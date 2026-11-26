@@ -4,14 +4,16 @@
 // tool-calling loop (ADR 0050 §2/§3, ADR 0047).
 //
 // It owns the conversation history, per-turn state, the user-selected LLM
-// backend (persisted via agent-core's config helpers), live tool-call progress,
-// and WebLLM download/init progress. The loop runs entirely client-side against
+// backend (persisted via agent-core's config helpers) and live tool-call
+// progress. The backend is the user's own provider, connected by API key
+// (ADR 0053); the local WebLLM path still works when a host passes it
+// explicitly, but is deprecated. The loop runs entirely client-side against
 // the SAME read-only collector client the panels use (react's `CollectorApi`) —
 // no new Uptimizr server component.
 //
 // The provider FACTORIES are `import()`-ed from agent-core's code-split subpaths
-// on first send, and `@mlc-ai/web-llm` stays lazy inside agent-core, so a
-// consumer who never opens the assistant pays nothing for the LLM runtime.
+// on first send, so a consumer who never opens the assistant pays nothing for
+// them.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -105,9 +107,10 @@ export interface UseAssistantOptions {
   api?: CollectorApi;
   /**
    * Explicit backend selection. When omitted, the hook loads the persisted
-   * choice; if there is none it stays `null` (unselected) so the UI can present
-   * an explicit first-run chooser instead of auto-picking a backend. Nothing is
-   * loaded or downloaded until the user chooses (ADR 0050 §4, amended).
+   * provider; if there is none it stays `null` (unselected) so the UI can ask
+   * for one. A persisted **local** (WebLLM) choice is not restored (ADR 0053):
+   * the user is asked to connect a provider instead. Passing a local backend
+   * here explicitly still works but is deprecated.
    */
   backend?: AssistantBackendConfig;
   /** System prompt priming the assistant. Defaults to {@link DEFAULT_SYSTEM_PROMPT}. */
@@ -120,9 +123,9 @@ export interface UseAssistantOptions {
    *
    * The catalog is generated from the metric registry (ADR 0051 §1) and is
    * ~70 tools — every schema is folded into the model's function-calling prompt,
-   * which a small local model cannot carry. By default the hook picks for you:
-   * the **local** (WebLLM) backend gets agent-core's `coreReadTools` subset and
-   * a **hosted** backend gets the full catalog. Pass an explicit list to narrow
+   * which a small model cannot carry. By default the hook picks for you: a
+   * provider backend gets the full catalog, and the deprecated **local** (WebLLM)
+   * backend gets agent-core's `coreReadTools` subset. Pass an explicit list to narrow
    * the surface deliberately — for a focused panel, a token budget, or a model
    * that does better with fewer choices. Names that are not in the catalog are
    * ignored; an empty array falls back to the default selection rather than
@@ -132,6 +135,8 @@ export interface UseAssistantOptions {
   /**
    * Consent gate for the local (WebLLM) backend, invoked once before weights
    * download. Return `false` to abort — nothing is downloaded.
+   *
+   * @deprecated The local (WebLLM) backend is no longer offered by `<AssistantPanel>` (ADR 0053) and will be removed in the next major release. Connect a provider by API key.
    */
   confirmDownload?: (model: CuratedModel) => boolean | Promise<boolean>;
   /**
@@ -140,11 +145,15 @@ export interface UseAssistantOptions {
    * evicts the previous model's ~4 GB cache so caches never stack up in the
    * origin's storage. Pass `"keep-all"` to keep every downloaded model for fast
    * switching at the cost of disk. See `WebLlmCachePolicy` in agent-core.
+   *
+   * @deprecated The local (WebLLM) backend is no longer offered by `<AssistantPanel>` (ADR 0053) and will be removed in the next major release. Connect a provider by API key.
    */
   cachePolicy?: WebLlmCachePolicy;
   /**
    * Called after a local model load evicted other models' cached weights (under
    * `"active-only"`), with the ids actually removed — possibly empty.
+   *
+   * @deprecated The local (WebLLM) backend is no longer offered by `<AssistantPanel>` (ADR 0053) and will be removed in the next major release. Connect a provider by API key.
    */
   onCacheEvicted?: (modelIds: readonly string[]) => void;
   /** Persist backend changes to `localStorage`. Defaults to `true`. */
@@ -169,7 +178,11 @@ export interface UseAssistantResult {
   error: Error | null;
   /** Tool calls made during the current/last turn, with live status. */
   toolActivity: AssistantToolActivity[];
-  /** WebLLM download/init progress while a local model loads, else `null`. */
+  /**
+   * WebLLM download/init progress while a local model loads, else `null`.
+   *
+   * @deprecated The local (WebLLM) backend is no longer offered by `<AssistantPanel>` (ADR 0053) and will be removed in the next major release. Connect a provider by API key.
+   */
   initProgress: InitProgress | null;
   /**
    * The answer being streamed for the in-flight turn — the accumulated text so
@@ -190,9 +203,17 @@ export interface UseAssistantResult {
   notice: AssistantNotice | null;
   /** The active backend selection, or `null` until one is configured. */
   backend: AssistantBackendConfig | null;
-  /** Whether this browser can run the local (WebGPU) backend. */
+  /**
+   * Whether this browser can run the local (WebGPU) backend.
+   *
+   * @deprecated The local (WebLLM) backend is no longer offered by `<AssistantPanel>` (ADR 0053) and will be removed in the next major release. Connect a provider by API key.
+   */
   webGpuAvailable: boolean;
-  /** The curated local models available for selection. */
+  /**
+   * The curated local models available for selection.
+   *
+   * @deprecated The local (WebLLM) backend is no longer offered by `<AssistantPanel>` (ADR 0053) and will be removed in the next major release. Connect a provider by API key.
+   */
   models: readonly CuratedModel[];
   /**
    * The project context document this collector served (ADR 0051 §5), or `null`
@@ -221,6 +242,8 @@ export interface UseAssistantResult {
    * origin. A currently loaded model keeps running from GPU memory; the next
    * page load re-downloads behind consent. Rejects if the Cache API fails, and
    * needs the optional `@mlc-ai/web-llm` peer to be installed.
+   *
+   * @deprecated The local (WebLLM) backend is no longer offered by `<AssistantPanel>` (ADR 0053) and will be removed in the next major release. Connect a provider by API key.
    */
   clearCachedModels: () => Promise<string[]>;
   /**
@@ -376,11 +399,13 @@ export function useAssistant(options: UseAssistantOptions = {}): UseAssistantRes
 
   const [webGpuAvailable] = useState<boolean>(() => isWebGpuAvailable());
   const [backend, setBackendState] = useState<AssistantBackendConfig | null>(() => {
-    // Explicit selection wins; otherwise restore a previously persisted choice.
-    // With neither, stay unselected (`null`) so the UI presents a first-run
-    // chooser and NOTHING loads until the user picks (ADR 0050 §4, amended).
+    // Explicit selection wins; otherwise restore a previously persisted
+    // provider. With neither, stay unselected (`null`) so the UI asks for one
+    // and nothing is sent until the user connects it. A persisted local (WebLLM)
+    // choice from before ADR 0053 is not restored: the user connects a provider.
     if (options.backend) return options.backend;
-    return loadBackendConfig();
+    const saved = loadBackendConfig();
+    return saved?.backend === "hosted" ? saved : null;
   });
 
   /**

@@ -9,13 +9,24 @@
  * static export where `localStorage`/`navigator` may be absent.
  */
 
-/** The two user-controlled backends (ADR 0050 §4). */
+/**
+ * The user-controlled backends (ADR 0050 §4). `"local"` (WebLLM) is deprecated
+ * (ADR 0053) and will be removed in the next major release; the assistant
+ * connects a `"hosted"` provider by API key.
+ */
 export type BackendKind = "local" | "hosted";
 
 /** Wire format of a bring-your-own hosted provider. */
 export type HostedApi = "openai" | "anthropic";
 
-/** Persisted parameters for the local (WebLLM/WebGPU) backend. */
+/**
+ * Persisted parameters for the local (WebLLM/WebGPU) backend.
+ *
+ * @deprecated The local WebLLM backend is no longer offered by the Uptimizr assistant
+ * (ADR 0053): small in-browser models could not drive the tool catalog reliably. It
+ * keeps working for existing callers and will be removed in the next major release.
+ * Use `createHostedProvider` from `@uptimizr/agent-core/providers/hosted`.
+ */
 export interface WebLlmBackendConfig {
   /** Curated model id to load (see `CURATED_MODELS`). */
   model: string;
@@ -69,6 +80,11 @@ function defaultStorage(): KeyValueStorage | undefined {
 /**
  * Feature-detect WebGPU. The local backend is only offered when this returns
  * `true`; callers should hide/disable the local option otherwise (ADR 0050 §4).
+ *
+ * @deprecated The local WebLLM backend is no longer offered by the Uptimizr assistant
+ * (ADR 0053): small in-browser models could not drive the tool catalog reliably. It
+ * keeps working for existing callers and will be removed in the next major release.
+ * Use `createHostedProvider` from `@uptimizr/agent-core/providers/hosted`.
  */
 export function isWebGpuAvailable(nav: Navigator | undefined = globalThis.navigator): boolean {
   return Boolean(nav && "gpu" in nav && (nav as { gpu?: unknown }).gpu);
@@ -77,6 +93,11 @@ export function isWebGpuAvailable(nav: Navigator | undefined = globalThis.naviga
 /**
  * The privacy-preserving default backend: local (zero egress) when WebGPU is
  * present, otherwise hosted (ADR 0050 §4/§5).
+ *
+ * @deprecated The local WebLLM backend is no longer offered by the Uptimizr assistant
+ * (ADR 0053): small in-browser models could not drive the tool catalog reliably. It
+ * keeps working for existing callers and will be removed in the next major release.
+ * Use `createHostedProvider` from `@uptimizr/agent-core/providers/hosted`.
  */
 export function defaultBackendKind(nav?: Navigator): BackendKind {
   return isWebGpuAvailable(nav) ? "local" : "hosted";

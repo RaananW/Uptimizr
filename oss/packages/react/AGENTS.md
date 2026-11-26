@@ -147,8 +147,9 @@ const { panels, errors, rows } = await loadSpecPanels(api);
 `@uptimizr/react/assistant` ships a drop-in `<AssistantPanel>` and a headless `useAssistant()`
 hook. The agent loop runs **entirely in the browser** against the same query API the panels use, and
 it **reads only**: every tool call is a `GET`, and no event can be written, altered or deleted
-(ADR 0051 §9). It ships **no model and no key**: the user picks a local WebGPU model
-(`@mlc-ai/web-llm`, an optional peer, loaded lazily) or a bring-your-own hosted provider.
+(ADR 0051 §9). It ships **no model and no key**: the user connects their own OpenAI-compatible
+or Anthropic provider with an API key (ADR 0053). The local WebLLM backend is no longer offered by
+`<AssistantPanel>`, and a persisted local choice is not restored.
 
 Two **metadata** actions sit under each answer (ADR 0051 §5): "Annotate this" stores the answer as a
 project note, "Save this analysis" stores the turn as a titled record. They appear only when the key
@@ -177,21 +178,21 @@ import { useAssistant } from "@uptimizr/react/assistant";
 const { messages, send, status, setBackend, backend } = useAssistant({
   collectorUrl: "http://localhost:4318",
   apiKey: "utk_…",
-  // Optional: pin the read tools this assistant may call. Omit and the hook chooses —
-  // the local (WebGPU) backend gets agent-core's focused core subset, a hosted backend
-  // the full ~77-tool catalog. Unknown names are ignored; `[]` falls back to the default.
+  // Optional: pin the read tools this assistant may call. Omit and the hook hands the
+  // provider the full ~77-tool catalog. Unknown names are ignored; `[]` falls back to the default.
   tools: ["perf_summary", "jank_rate", "perf_by_device"],
-  // systemPrompt, maxSteps, confirmDownload, cachePolicy, persistBackend, now …
+  // systemPrompt, maxSteps, persistBackend, now …
 });
 ```
 
 Other `UseAssistantOptions`: `api` (reuse a built `CollectorApi`), `backend` (omit and the hook
-loads the persisted choice; with none it stays `null` so the UI can show an explicit first-run
-chooser — nothing downloads until the user picks), `systemPrompt` (defaults to
+loads the persisted provider; with none it stays `null` so the UI can ask for one — nothing is
+sent until the user connects it), `systemPrompt` (defaults to
 `DEFAULT_SYSTEM_PROMPT`; `composeSystemPrompt` / `refreshSystemPrompt` build and re-stamp it),
-`maxSteps` (`DEFAULT_ASSISTANT_MAX_STEPS`, 12), `confirmDownload`, `cachePolicy`
-(`"active-only"` default — switching models evicts the previous ~4 GB cache), `onCacheEvicted`,
-`persistBackend`, `now`. `<AssistantPanel>` additionally takes `annotationTarget`.
+`maxSteps` (`DEFAULT_ASSISTANT_MAX_STEPS`, 12), `persistBackend`, `now`. `<AssistantPanel>`
+additionally takes `annotationTarget`. **Deprecated** (local WebLLM backend, ADR 0053; removed in
+the next major): `confirmDownload`, `cachePolicy`, `onCacheEvicted`, and the `initProgress`,
+`webGpuAvailable`, `models` and `clearCachedModels` results.
 
 ## Rules for agents
 
@@ -206,8 +207,10 @@ chooser — nothing downloads until the user picks), `systemPrompt` (defaults to
   `@mlc-ai/web-llm` are **optional** peers — a static import of any of them from the core barrel
   is a regression (ADR 0047 / 0050).
 - **Keep the assistant and the LLM runtime code-split.** Importing `@uptimizr/react` must pull no
-  assistant or LLM code; the assistant itself loads `@mlc-ai/web-llm` lazily, only when a local
-  model actually runs.
+  assistant or LLM code; the assistant imports its provider adapter on the first turn, and the
+  deprecated local path still loads `@mlc-ai/web-llm` lazily.
+- **Don't reintroduce a local-model option in `<AssistantPanel>`** (ADR 0053). Providers connect by
+  API key.
 - **Never ship a key into a public bundle.** The `apiKey` a panel uses is the viewer's; treat it
   as a credential and keep it out of committed source.
 - Privacy (ADR 0003): panels render aggregates. Raw per-session views (replay, live-follow) need a

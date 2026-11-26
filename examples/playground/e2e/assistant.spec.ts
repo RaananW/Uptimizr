@@ -17,9 +17,8 @@ import {
  * drawer, and runs one grounded turn: browser → `<AssistantPanel>` → the shared
  * read-only tool contract → the real collector → a grounded answer.
  *
- * The LLM is mocked deterministically so CI never downloads WebLLM weights and the
- * test is fast + hermetic. We configure the panel's **bring-your-own hosted**
- * (OpenAI-compatible) backend pointed at a **same-origin** dashboard URL
+ * The LLM is mocked deterministically so the test is fast + hermetic. We connect
+ * the panel's provider form (OpenAI-compatible, ADR 0053) to a **same-origin** dashboard URL
  * (`/mock-llm`, so there is no cross-origin preflight) and fulfil it with
  * Playwright routing:
  *   - Turn 1 (no tool result yet) → reply with an OpenAI `tool_calls` message
@@ -217,18 +216,14 @@ test("assistant answers a grounded question end to end", async ({ page, request 
   await expect(page.getByText("Top meshes")).toBeVisible({ timeout: 20_000 });
   const expectedTopMesh = await settledTopMesh(request);
 
-  // 4) Open the assistant and configure the (mocked) hosted backend. On first
-  //    open the panel presents an explicit backend chooser (no auto-preselect),
-  //    so we assert BOTH options are offered, then pick bring-your-own hosted.
+  // 4) Open the assistant and connect the (mocked) provider. On first open the
+  //    panel asks for a provider by API key and offers nothing else (ADR 0053):
+  //    no local model, no download.
   await page.getByRole("button", { name: "Ask the assistant" }).click();
   const assistant = page.getByRole("region", { name: "Analytics assistant" });
 
-  await expect(assistant.getByRole("heading", { name: "Local (in-browser)" })).toBeVisible();
-  await expect(assistant.getByRole("heading", { name: "Bring your own hosted key" })).toBeVisible();
-
-  // Choose the bring-your-own hosted path (WebGPU is typically unavailable in CI,
-  // so the local option is disabled; hosted is the reliable, weight-free route).
-  await assistant.getByRole("button", { name: "Use hosted key" }).click();
+  await expect(assistant.getByText(/sent to that provider/i)).toBeVisible();
+  await expect(assistant.getByText(/WebLLM|Use local|in-browser\)/)).toHaveCount(0);
   await assistant.getByLabel("Endpoint").fill(MOCK_LLM_ENDPOINT);
   await assistant.getByLabel("API key").fill("mock-key");
   await assistant.getByLabel("Hosted model").fill("mock-model");
@@ -261,27 +256,22 @@ test("assistant answers a grounded question end to end", async ({ page, request 
   // 7a) Once the turn completes the working indicator clears (idle, no spinner).
   await expect(assistant.getByRole("status")).toHaveText("");
 
-  // 8) The backend selection stage is reachable at any time: "Change backend"
-  //    reopens the side-by-side chooser cards (both options), and the escape
-  //    hatch returns to chat with the backend unchanged (ADR 0050). WebGPU is
-  //    typically unavailable in CI, so the local↔hosted *switch* itself is
-  //    covered by the AssistantPanel component tests; here we assert the
-  //    discoverable affordance + escape round-trip.
-  await assistant.getByRole("button", { name: "Change backend" }).click();
-  await expect(assistant.getByRole("heading", { name: "Local (in-browser)" })).toBeVisible();
-  await expect(assistant.getByRole("heading", { name: "Bring your own hosted key" })).toBeVisible();
+  // 8) The provider form is reachable at any time: "Change provider" reopens it
+  //    pre-filled, and the escape hatch returns to chat with the provider unchanged.
+  await assistant.getByRole("button", { name: "Change provider" }).click();
+  await expect(assistant.getByLabel("Endpoint")).toHaveValue(MOCK_LLM_ENDPOINT);
   await assistant.getByRole("button", { name: /Back to chat/i }).click();
   await expect(assistant.getByLabel("Message")).toBeVisible();
 });
 
 /**
  * Regression E2E for the "model gathered data but never wrote an answer" bug: a
- * small local model returns an EMPTY `final` even after a tool ran, so the user
+ * model returns an EMPTY `final` even after a tool ran, so the user
  * saw nothing. The fix is `runAgent`'s forced, tools-disabled synthesis pass —
  * when a turn ends empty, the loop makes ONE more `provider.complete()` with no
  * tools, forcing a plain-text answer from the tool results already gathered.
  *
- * We reproduce it with the same mocked hosted backend (no weights): while tools
+ * We reproduce it with the same mocked provider: while tools
  * are offered the mock first calls `top_meshes`, then returns an EMPTY final; on
  * the forced call (the loop sends NO `tools`) it returns a grounded answer. The
  * rendered reply must name the real top mesh — proving the forced pass recovered
@@ -351,7 +341,6 @@ test("assistant recovers an empty answer via the forced final pass", async ({ pa
   // 4) Configure the mocked hosted backend.
   await page.getByRole("button", { name: "Ask the assistant" }).click();
   const assistant = page.getByRole("region", { name: "Analytics assistant" });
-  await assistant.getByRole("button", { name: "Use hosted key" }).click();
   await assistant.getByLabel("Endpoint").fill(MOCK_LLM_ENDPOINT);
   await assistant.getByLabel("API key").fill("mock-key");
   await assistant.getByLabel("Hosted model").fill("mock-model");
@@ -371,12 +360,10 @@ test("assistant recovers an empty answer via the forced final pass", async ({ pa
 
 /**
  * Guided-prompt round trip: the empty conversation offers labelled starter
- * questions, each mapping to a SINGLE core tool — the reliable first-run path for
- * a small local model. Clicking one must send it and run one grounded turn. We
- * reuse the same mocked hosted backend (no weights): turn 1 calls `top_meshes`,
- * turn 2 grounds the answer in the real collector rows. Real WebLLM answer
- * quality can only be verified in a WebGPU browser (WebLLM can't run in CI/Node),
- * so — like the other assistant specs — this uses the deterministic mock.
+ * questions, each mapping to a SINGLE core tool — a reliable first-run path.
+ * Clicking one must send it and run one grounded turn. We reuse the same mocked
+ * provider: turn 1 calls `top_meshes`, turn 2 grounds the answer in the real
+ * collector rows.
  */
 test("assistant sends a guided example prompt and answers it end to end", async ({
   page,
@@ -430,7 +417,6 @@ test("assistant sends a guided example prompt and answers it end to end", async 
 
   await page.getByRole("button", { name: "Ask the assistant" }).click();
   const assistant = page.getByRole("region", { name: "Analytics assistant" });
-  await assistant.getByRole("button", { name: "Use hosted key" }).click();
   await assistant.getByLabel("Endpoint").fill(MOCK_LLM_ENDPOINT);
   await assistant.getByLabel("API key").fill("mock-key");
   await assistant.getByLabel("Hosted model").fill("mock-model");
@@ -517,7 +503,6 @@ test("tool-activity list never overlaps the message column (layout regression)",
 
   await page.getByRole("button", { name: "Ask the assistant" }).click();
   const assistant = page.getByRole("region", { name: "Analytics assistant" });
-  await assistant.getByRole("button", { name: "Use hosted key" }).click();
   await assistant.getByLabel("Endpoint").fill(MOCK_LLM_ENDPOINT);
   await assistant.getByLabel("API key").fill("mock-key");
   await assistant.getByLabel("Hosted model").fill("mock-model");
@@ -710,7 +695,6 @@ test("assistant streams the answer incrementally (hosted SSE)", async ({ page, r
 
     await page.getByRole("button", { name: "Ask the assistant" }).click();
     const assistant = page.getByRole("region", { name: "Analytics assistant" });
-    await assistant.getByRole("button", { name: "Use hosted key" }).click();
     await assistant.getByLabel("Endpoint").fill(llm.endpoint);
     await assistant.getByLabel("API key").fill("mock-key");
     await assistant.getByLabel("Hosted model").fill("mock-model");
