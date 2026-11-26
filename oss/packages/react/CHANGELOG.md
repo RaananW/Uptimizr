@@ -1,5 +1,19 @@
 # @uptimizr/react
 
+## 1.4.0
+
+### Minor Changes
+
+- 5ab5206: The assistant now connects your own model provider by API key only (ADR 0053). `<AssistantPanel>` shows one form (an OpenAI-compatible or Anthropic endpoint, an API key and a model) and no longer offers the local WebLLM backend, its model picker, download consent, progress bar, storage-quota error or cache controls; the small in-browser models could not drive the tool catalog reliably. A local choice saved by an earlier release is not restored, so the panel asks for a provider instead of starting a download. The local APIs keep working for existing callers and are marked `@deprecated` until the next major release: `@uptimizr/agent-core/providers/webllm` (`createWebLlmProvider`, `CURATED_MODELS`, `clearCachedModels`, …), `BackendKind` `"local"`, `WebLlmBackendConfig`, `isWebGpuAvailable`, `defaultBackendKind`, and `useAssistant`'s `confirmDownload`, `cachePolicy`, `onCacheEvicted`, `initProgress`, `webGpuAvailable`, `models` and `clearCachedModels`.
+
+### Patch Changes
+
+- 47b3a31: Make click rays visible in first-person and live replays. The session replay now draws interaction rays, hit markers and the hit glow on top of the camera's view cone and scales the hit markers to the scene, so a pointer-lock click, which fires straight down the view direction, is no longer hidden inside the cone. While following a live session, a click's ray plays from when it arrives: events reach the dashboard in batches, and a batched click used to arrive after its fade window had already passed and was never drawn.
+- cd217b8: Keep an open live session's panels current, and cheaper to refresh. The session view reused the overview's time window, whose `until` froze when the session opened, so its once-a-second refetches re-read the same past window and nothing changed until you left and came back. The session surface now moves its window forward on each refresh, refreshes only when new events for that session arrive (at most every 2 s, instead of refetching every panel every second), and also refreshes the session data inspector. `usePanelData` coalesces a refresh that lands while a load is in flight instead of aborting it, and every 3D panel releases its WebGL context on unmount (`loseContextOnDispose`), so switching between the overview and a session no longer exhausts the browser's context limit and kills a live canvas.
+- Updated dependencies [5ab5206]
+  - @uptimizr/agent-core@1.3.0
+  - @uptimizr/replay@1.0.7
+
 ## 1.3.4
 
 ### Patch Changes

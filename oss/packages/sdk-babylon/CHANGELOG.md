@@ -1,5 +1,12 @@
 # @uptimizr/babylon
 
+## 1.1.1
+
+### Patch Changes
+
+- Updated dependencies [cd217b8]
+  - @uptimizr/sdk-core@1.2.0
+
 ## 1.1.0
 
 ### Minor Changes

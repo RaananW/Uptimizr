@@ -1,5 +1,11 @@
 # @uptimizr/sdk-core
 
+## 1.2.0
+
+### Minor Changes
+
+- cd217b8: Stop recording a camera drag as a click. The browser fires `click` after any press and release, so an orbit or pan drag ended in a `pointer_click` (and a `mesh_interaction` pick) on three.js, react-three-fiber, A-Frame, PlayCanvas, Babylon Lite and web exports. A release more than 10 CSS px from its press is now a drag, matching Babylon's `Scene.DragMovementThreshold`. `@uptimizr/sdk-core` exports the rule as `createClickGuard()` and `CLICK_DRAG_THRESHOLD_PX` for custom collectors.
+
 ## 1.1.4
 
 ### Patch Changes
