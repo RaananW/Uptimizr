@@ -2,8 +2,9 @@
  * User-controlled LLM provider adapters for `@uptimizr/agent-core` (ADR 0050 §4).
  *
  * Import from the specific subpaths to keep the local runtime code-split:
- *   - `@uptimizr/agent-core/providers/webllm` — local WebGPU backend
- *   - `@uptimizr/agent-core/providers/hosted` — bring-your-own hosted backend
+ *   - `@uptimizr/agent-core/providers/hosted` — the user's own provider, by API key
+ *   - `@uptimizr/agent-core/providers/webllm` — local WebGPU backend, deprecated
+ *     (ADR 0053) and removed in the next major release
  *
  * This barrel re-exports both plus the shared backend-selection/persistence
  * helpers for consumers who want everything from one entry point. Importing the

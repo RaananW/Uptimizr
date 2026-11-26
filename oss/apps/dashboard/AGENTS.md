@@ -73,7 +73,9 @@ put a secret there beyond a local-dev key.
 assistant and the `@mlc-ai/web-llm` runtime out of the main bundle entirely — a user who never
 opens it pays nothing. `app/__tests__/entryPurity.test.ts` guards that seam. The assistant reads
 through the **same read-only collector connection** the panels use (ADR 0050), so it works against
-a real collector and, unchanged, against the demo's in-browser DuckDB-Wasm layer.
+a real collector and, unchanged, against the demo's in-browser DuckDB-Wasm layer. It talks to the user's
+own model provider, connected with their own API key; the local WebLLM backend is no longer offered
+(ADR 0053).
 
 ## Rules for agents
 

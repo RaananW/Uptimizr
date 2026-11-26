@@ -123,7 +123,6 @@ async function connectDashboard(page: Page, apiKey: string): Promise<void> {
 async function openAssistant(page: Page) {
   await page.getByRole("button", { name: "Ask the assistant" }).click();
   const assistant = page.getByRole("region", { name: "Analytics assistant" });
-  await assistant.getByRole("button", { name: "Use hosted key" }).click();
   await assistant.getByLabel("Endpoint").fill(MOCK_LLM_ENDPOINT);
   await assistant.getByLabel("API key").fill("mock-key");
   await assistant.getByLabel("Hosted model").fill("mock-model");

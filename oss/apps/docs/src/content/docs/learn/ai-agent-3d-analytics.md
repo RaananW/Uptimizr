@@ -1,7 +1,7 @@
 ---
 title: Ask an AI agent about your 3D analytics
 description: Connect Claude or another MCP client to your own 3D analytics and ask questions in plain English, with answers grounded in real metrics, units and caveats.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-26
 ---
 
 You can ask an AI agent questions about your 3D scene in plain English, such as "which objects do
@@ -111,14 +111,13 @@ report that lists every tool call it made.
 The MCP server only talks to your collector, and Uptimizr runs no service in between. The model you
 use is a separate matter: whichever model the agent runs on sees the results it's given.
 
-| How you connect                                              | What leaves your infrastructure                            |
-| ------------------------------------------------------------ | ---------------------------------------------------------- |
-| MCP with a hosted model, such as Claude                      | Your prompts and the results, sent to that provider        |
-| [In-browser assistant](/docs/guides/assistant/), local model | Nothing: the model runs on your GPU in the browser         |
-| In-browser assistant, your own hosted key                    | Your prompts and aggregated results, sent to that provider |
+| How you connect                                           | What leaves your infrastructure                            |
+| --------------------------------------------------------- | ---------------------------------------------------------- |
+| MCP with a hosted model, such as Claude                   | Your prompts and the results, sent to that provider        |
+| [In-browser assistant](/docs/guides/assistant/), your key | Your prompts and aggregated results, sent to that provider |
 
-Check your provider's data terms before you connect production analytics. Use the local option if
-nothing may leave the browser.
+Check your provider's data terms before you connect production analytics. If nothing may leave
+your infrastructure, point an MCP client at a model you host yourself.
 
 ## Other ways to connect
 

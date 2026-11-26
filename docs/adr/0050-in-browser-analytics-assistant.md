@@ -1,6 +1,6 @@
 # ADR 0050: In-browser, user-controlled analytics assistant (client-side agent)
 
-- **Status:** Proposed (amended 2026-07-15 — see [Amendment](#amendment-2026-07-15-explicit-first-run-backend-chooser))
+- **Status:** Proposed (amended 2026-07-15 — see [Amendment](#amendment-2026-07-15-explicit-first-run-backend-chooser)). The local (WebLLM) backend of §4–§6 and the amendment are superseded by [ADR 0053](./0053-assistant-api-key-providers-only.md)
 - **Date:** 2026-07-14
 - **Deciders:** RaananW
 - **Extends:** [ADR 0017](./0017-consumer-facing-agents.md) (consumer-facing agent strategy)
