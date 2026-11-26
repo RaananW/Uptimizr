@@ -21,6 +21,13 @@ const TRAIL_MS = 2200;
 /** Window around the playhead in which an event "glows" (bright pulse). */
 const GLOW_MS = 900;
 
+/**
+ * Babylon rendering group for the click/pick overlays (rays, hit crosses, glow,
+ * persistent marks). Group 1 renders after the scene with depth cleared, so the
+ * overlays are never hidden by the camera's gaze cone or the scene proxy.
+ */
+const OVERLAY_GROUP = 1;
+
 /** Shared empty set so a missing `hiddenTypes` prop is referentially stable. */
 const EMPTY_HIDDEN: ReadonlySet<string> = new Set<string>();
 
@@ -46,6 +53,14 @@ interface InteractionRay {
   hit: [number, number, number];
   /** Name of the mesh the ray hit, when known — drives the HTML label highlight. */
   mesh?: string;
+  /**
+   * Live only: the playhead time the event ARRIVED at. Events land in batches
+   * (an SDK flushes every few seconds), so by the time a click arrives the live
+   * playhead is already past `at + TRAIL_MS` and its ray would never be drawn.
+   * While following live, the ray's pulse and fade start here instead; the
+   * timeline and scrubbing still use `at`.
+   */
+  arrivedAt?: number;
 }
 
 /** A timestamped world-space position of a tracked scene actor (`node_transform`). */
@@ -853,6 +868,12 @@ export function SessionReplayView({
             scene,
           );
           mesh.isPickable = false;
+          // Interaction overlays draw on top of the scene and the camera's gaze
+          // cone. A crosshair click (pointer lock) always fires straight down the
+          // view direction, so its ray lies inside the cone and on the frustum
+          // line; in the same rendering group it was hidden under them. Group 1
+          // clears depth, so the ray stays visible.
+          mesh.renderingGroupId = OVERLAY_GROUP;
           return mesh;
         };
 
@@ -867,7 +888,9 @@ export function SessionReplayView({
           const hidden = hiddenRef.current;
           const lines: InstanceType<typeof Vector3>[][] = [];
           const colors: InstanceType<typeof Color4>[][] = [];
-          const s = 0.1;
+          // Scaled to the scene like the camera marker, so marks stay legible in
+          // a large world instead of shrinking to a speck.
+          const s = 0.1 * markerScale * 0.8;
           for (const r of rays) {
             if (hidden.has(r.type)) continue;
             const [x, y, z] = r.hit;
@@ -898,6 +921,7 @@ export function SessionReplayView({
         glowOrb.material = glowMat;
         glowOrb.isPickable = false;
         glowOrb.isVisible = false;
+        glowOrb.renderingGroupId = OVERLAY_GROUP;
 
         const safeRadius = (value: number) => (Number.isFinite(value) ? Math.max(8, value) : 12);
 
@@ -961,6 +985,8 @@ export function SessionReplayView({
           markerScale = markerDiameter / 0.35;
           coneReach = Math.max(span * 0.16, markerDiameter * 3.2, 1.4);
           currentCam.scaling.setAll(markerScale);
+          // The persistent hit marks were built before the scale was known.
+          buildPersistentMarks();
         }
 
         const findCameraAt = (elapsed: number): CameraSample | null => {
@@ -1051,16 +1077,23 @@ export function SessionReplayView({
             a.mesh.position.set(pos[0], pos[1], pos[2]);
           }
 
-          const active = rays.filter(
-            (r) => !hidden.has(r.type) && r.at <= elapsed && r.at >= elapsed - TRAIL_MS,
-          );
+          // Following live, a ray pulses from when it arrived (see `arrivedAt`);
+          // scrubbing (or a historical replay) places it at its own timestamp.
+          const liveFollow = isLive && followingRef.current;
+          const shownAt = (r: InteractionRay): number =>
+            liveFollow && r.arrivedAt !== undefined ? r.arrivedAt : r.at;
+          const active = rays.filter((r) => {
+            if (hidden.has(r.type)) return false;
+            const t0 = shownAt(r);
+            return t0 <= elapsed && t0 >= elapsed - TRAIL_MS;
+          });
           const rayLines: InstanceType<typeof Vector3>[][] = [];
           const rayColors: InstanceType<typeof Color4>[][] = [];
           const hitCrosses: InstanceType<typeof Vector3>[][] = [];
           const hitColors: InstanceType<typeof Color4>[][] = [];
           let glow: { hit: [number, number, number]; t: number } | null = null;
           for (const r of active) {
-            const age = elapsed - r.at;
+            const age = elapsed - shownAt(r);
             const t = Math.max(0, Math.min(1, 1 - age / TRAIL_MS));
             const color = new Color4(1, 0.62, 0.2, 0.18 + 0.72 * t);
             const origin = new Vector3(r.origin[0], r.origin[1], r.origin[2]);
@@ -1068,7 +1101,7 @@ export function SessionReplayView({
             rayLines.push([origin, hit]);
             rayColors.push([color, color]);
 
-            const s = 0.12 + 0.08 * t;
+            const s = (0.12 + 0.08 * t) * markerScale * 0.8;
             hitCrosses.push([
               new Vector3(hit.x - s, hit.y, hit.z),
               new Vector3(hit.x + s, hit.y, hit.z),
@@ -1092,7 +1125,7 @@ export function SessionReplayView({
           }
 
           if (glow) {
-            const scale = 0.25 + 0.9 * glow.t;
+            const scale = (0.25 + 0.9 * glow.t) * markerScale * 0.6;
             glowOrb.isVisible = true;
             glowOrb.scaling.set(scale, scale, scale);
             glowOrb.position.set(glow.hit[0], glow.hit[1], glow.hit[2]);
@@ -1107,8 +1140,8 @@ export function SessionReplayView({
           let activeMesh: string | null = null;
           let activeMeshAt = -Infinity;
           for (const r of active) {
-            if (r.mesh && r.at > activeMeshAt) {
-              activeMeshAt = r.at;
+            if (r.mesh && shownAt(r) > activeMeshAt) {
+              activeMeshAt = shownAt(r);
               activeMesh = r.mesh;
             }
           }
@@ -1171,6 +1204,7 @@ export function SessionReplayView({
               const hitMesh = typeof ev.hitMesh === "string" ? ev.hitMesh : undefined;
               rays.push({
                 at,
+                arrivedAt: Math.max(at, progressRef.current),
                 type: "pointer_click",
                 origin: [origin[0]!, origin[1]!, origin[2]!],
                 hit: [hit[0]!, hit[1]!, hit[2]!],
@@ -1185,6 +1219,7 @@ export function SessionReplayView({
               const mesh = typeof ev.mesh === "string" ? ev.mesh : undefined;
               rays.push({
                 at,
+                arrivedAt: Math.max(at, progressRef.current),
                 type: "mesh_interaction",
                 origin: [latestCamera[0], latestCamera[1], latestCamera[2]],
                 hit: [point[0]!, point[1]!, point[2]!],

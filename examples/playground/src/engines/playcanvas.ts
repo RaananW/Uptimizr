@@ -4,6 +4,7 @@
 
 import * as pc from "playcanvas";
 
+import { createClickGuard } from "@uptimizr/sdk-core";
 import { createSceneRaycaster, scanSceneProxy, trackScene } from "@uptimizr/playcanvas";
 
 import {
@@ -323,7 +324,12 @@ export function createPlayCanvasEngineModule(options: PlayCanvasEngineOptions): 
     });
 
     let clickCount = 0;
+    // A release that ended an orbit/pan drag is camera navigation, not a pick:
+    // the DOM fires `click` after a drag too. Same rule as the connector.
+    const clickGuard = createClickGuard();
+    canvas.addEventListener("pointerdown", (e) => clickGuard.press(e));
     canvas.addEventListener("click", (e) => {
+      if (clickGuard.isDrag(e)) return;
       const name = pickAt(e.clientX, e.clientY);
       if (!name) return;
       flashMesh(name);
