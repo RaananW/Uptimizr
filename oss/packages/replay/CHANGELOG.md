@@ -1,5 +1,12 @@
 # @uptimizr/replay
 
+## 1.0.7
+
+### Patch Changes
+
+- Updated dependencies [cd217b8]
+  - @uptimizr/sdk-core@1.2.0
+
 ## 1.0.6
 
 ### Patch Changes

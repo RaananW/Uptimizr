@@ -1,5 +1,13 @@
 # @uptimizr/unreal
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [cd217b8]
+  - @uptimizr/sdk-core@1.2.0
+  - @uptimizr/web-export@0.3.2
+
 ## 0.3.1
 
 ### Patch Changes
