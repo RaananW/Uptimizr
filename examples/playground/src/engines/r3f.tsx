@@ -3,6 +3,7 @@
 // and starts the `@uptimizr/r3f` connector via its hook. Replay / heatmap / scene
 // proxy are not wired for R3F, matching the connector's current surface.
 
+import { CLICK_DRAG_THRESHOLD_PX } from "@uptimizr/sdk-core";
 import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
@@ -93,6 +94,9 @@ function Box({
 
   const handleClick = (e: ThreeEvent<MouseEvent>): void => {
     e.stopPropagation();
+    // R3F fires onClick after an orbit drag too; `delta` is the press-to-release
+    // distance in px. Past the connector's drag threshold it is not a pick.
+    if (e.delta > CLICK_DRAG_THRESHOLD_PX) return;
     onPick(name);
   };
 

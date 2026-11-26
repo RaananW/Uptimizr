@@ -20,6 +20,7 @@ import {
 import type { Object3D } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
+import { createClickGuard } from "@uptimizr/sdk-core";
 import { scanSceneProxy, trackScene } from "@uptimizr/three";
 
 import {
@@ -298,7 +299,12 @@ export function createThreeEngineModule(options: ThreeEngineOptions): EngineModu
     });
 
     let clickCount = 0;
+    // A release that ended an orbit/pan drag is camera navigation, not a pick:
+    // the DOM fires `click` after a drag too. Same rule as the connector.
+    const clickGuard = createClickGuard();
+    canvas.addEventListener("pointerdown", (e) => clickGuard.press(e));
     canvas.addEventListener("click", (e) => {
+      if (clickGuard.isDrag(e)) return;
       const name = pickAt(e.clientX, e.clientY);
       if (!name) return;
       flashMesh(name);

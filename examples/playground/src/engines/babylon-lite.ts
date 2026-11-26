@@ -26,6 +26,7 @@ import {
 } from "@babylonjs/lite";
 import type { ArcRotateCamera, EngineContext, Mesh, SceneContext } from "@babylonjs/lite";
 
+import { createClickGuard } from "@uptimizr/sdk-core";
 import { createScenePicker, scanSceneProxy, trackSceneAsync } from "@uptimizr/babylon-lite";
 import { showWorldHeatmap } from "@uptimizr/heatmap/babylon-lite";
 
@@ -144,7 +145,12 @@ async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
   // picking is GPU-based and async, so this uses the same probe the connector does.
   const demoPicker = createScenePicker(scene);
   let clickCount = 0;
+  // A release that ended an orbit/pan drag is camera navigation, not a pick:
+  // the DOM fires `click` after a drag too. Same rule as the connector.
+  const clickGuard = createClickGuard();
+  const onPress = (e: PointerEvent): void => clickGuard.press(e);
   const onClick = (e: MouseEvent): void => {
+    if (clickGuard.isDrag(e)) return;
     const rect = canvas.getBoundingClientRect();
     const ratio = window.devicePixelRatio;
     void demoPicker
@@ -158,6 +164,7 @@ async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
         client.track("box_picked", { box: name, totalPicks: clickCount });
       });
   };
+  canvas.addEventListener("pointerdown", onPress);
   canvas.addEventListener("click", onClick);
 
   // The Lite replay driver is imported lazily so it only ships when replay runs.
@@ -208,6 +215,7 @@ async function mount(ctx: EngineMountContext): Promise<EngineInstance> {
     },
     dispose() {
       window.removeEventListener("resize", onResize);
+      canvas.removeEventListener("pointerdown", onPress);
       canvas.removeEventListener("click", onClick);
       demoPicker.dispose();
       void client.stop("manual");
