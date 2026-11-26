@@ -78,7 +78,8 @@ export const GUIDE_STEPS: readonly GuideStep[] = [
     title: "Ask the assistant",
     body:
       "On the overview, Ask the assistant answers questions about this data in plain language. " +
-      "The model runs in your browser and only downloads if you agree to it.",
+      "It reads the same numbers the panels show, and its setup explains exactly what it sends " +
+      "and where.",
     target: "dashboard",
   },
   {
