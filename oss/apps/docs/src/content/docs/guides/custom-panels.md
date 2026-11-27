@@ -480,3 +480,8 @@ Tailwind v4 skips `node_modules`, so point it at the package or they render unst
 
 `@babylonjs/core` and `@babylonjs/loaders` are optional peers, needed only when a 3D panel renders.
 To compose a 3D view outside the catalog, import it from `@uptimizr/react/panels-3d`.
+
+The 3D views render only when something changed: the camera moved, the viewer pointed, scrolled
+or typed at the panel, it was resized, or its data repainted. They also render while the scene is
+still loading and once every half second regardless. A view repaints only when an array prop's
+items change, so passing a freshly built array with the same items on every render costs nothing.

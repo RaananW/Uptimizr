@@ -21,6 +21,8 @@ import {
   type OrbitHome,
 } from "../lib/orbitZoom";
 import { PANEL_ENGINE_OPTIONS } from "../lib/engineOptions";
+import { renderOnDemand } from "../lib/renderOnDemand";
+import { useStableArray } from "../lib/stableArray";
 import { attachMeshHover, type HoverTip } from "../lib/sceneHover";
 import { HeatLegend } from "../views/HeatLegend";
 import { ZoomButtons } from "../views/ZoomButtons";
@@ -873,7 +875,14 @@ export function FlowSankey3DView({
           sync();
         }
 
-        engine.runRenderLoop(() => scene.render());
+        // Render only when something changed (see `renderOnDemand`); a data
+        // repaint through `syncRef` asks for frames itself.
+        const rendering = renderOnDemand(engine, scene, canvas.parentElement ?? canvas);
+        const syncData = syncRef.current;
+        syncRef.current = () => {
+          syncData?.();
+          rendering.invalidate();
+        };
         const onResize = () => engine.resize();
         window.addEventListener("resize", onResize);
         const detachHover = attachMeshHover(scene, canvas, setTip);
@@ -890,6 +899,7 @@ export function FlowSankey3DView({
           homeRef.current = null;
           clearContent();
           scene.dispose();
+          rendering.dispose();
           engine.dispose();
         };
       } catch (err) {
@@ -907,9 +917,21 @@ export function FlowSankey3DView({
 
   // Repaint the data-driven content in place when the links / focus filters
   // change — this never rebuilds the engine or reframes the camera.
+  // Content-stable inputs (see `useStableArray`): a host that rebuilds an array
+  // prop on every render must not repaint the scene each time.
+  const stableVisible = useStableArray(visible);
+  const stableProxyMeshes = useStableArray(proxyMeshes);
   useEffect(() => {
     syncRef.current?.();
-  }, [visible, twoStage, proxyMeshes, meshFocus, sourceFocus, standpointFocus, selectedStandpoint]);
+  }, [
+    stableVisible,
+    twoStage,
+    stableProxyMeshes,
+    meshFocus,
+    sourceFocus,
+    standpointFocus,
+    selectedStandpoint,
+  ]);
 
   return (
     <div className="relative">
