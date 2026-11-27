@@ -333,6 +333,13 @@ export interface EngineInstance {
    * (floor height, walls) apply from the next frame.
    */
   teleportCamera?(x: number, y: number, z: number): void;
+  /**
+   * Turn the camera to look at a world point, keeping where it stands. For tests,
+   * like {@link teleportCamera}: a spec that needs a click to hit something aims
+   * first, rather than relying on where the camera happens to face. Not on
+   * PlayCanvas, whose first-person controllers own their yaw and pitch.
+   */
+  aimCamera?(x: number, y: number, z: number): void;
   /** Tear down the scene + connector. */
   dispose(): void;
 }
@@ -350,6 +357,8 @@ export interface PlaygroundTestControl {
   pointerLocked(): boolean;
   /** {@link EngineInstance.teleportCamera}. */
   teleportCamera(x: number, y: number, z: number): void;
+  /** {@link EngineInstance.aimCamera}. Throws when the engine can't aim its camera. */
+  aimCamera(x: number, y: number, z: number): void;
   /**
    * Stand in the middle of a section: its box's centre on the ground plan, at
    * eye height above the box's floor. Throws for an unknown section, or when the

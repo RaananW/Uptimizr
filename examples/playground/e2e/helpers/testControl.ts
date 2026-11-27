@@ -24,6 +24,17 @@ export async function enterSection(page: Page, sectionId: string): Promise<void>
   await expect.poll(() => currentScene(page), { timeout: 5_000 }).toBe(sectionId);
 }
 
+/**
+ * Point the camera at a world point. A spec whose clicks must hit something (a
+ * replay draws a ray only for a click with a hit point) aims first.
+ */
+export async function aimAt(page: Page, [x, y, z]: [number, number, number]): Promise<void> {
+  await page.evaluate(
+    ([px, py, pz]) => (window as unknown as Control).__playgroundTest!.aimCamera(px, py, pz),
+    [x, y, z] as const,
+  );
+}
+
 /** Move the camera to a world point and wait until the playground tracks `expectScene`. */
 export async function teleportTo(
   page: Page,

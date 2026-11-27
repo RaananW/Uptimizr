@@ -308,6 +308,12 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
       teleportCamera(x, y, z) {
         camera.position.set(x, y, z);
       },
+      aimCamera(x, y, z) {
+        // Every Babylon camera the playground uses has `setTarget` (an orbit
+        // camera re-centres its orbit on the point).
+        const target = camera as Camera & { setTarget?: (point: Vector3) => void };
+        target.setTarget?.(new Vector3(x, y, z));
+      },
       createReplayDriver(hooks) {
         return createBabylonReplayDriver({
           scene,

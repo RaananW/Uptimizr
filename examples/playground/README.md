@@ -158,7 +158,8 @@ scene it builds (the nightly CI run does).
 
 **Test control (`?e2e=1`).** Opened with `?e2e=1` (as every spec's `bootEngine` does), the
 playground exposes `window.__playgroundTest`: the scene's sections, the tracked area, whether the
-pointer is locked, and `teleportCamera(x, y, z)` / `enterSection(id)`. Key presses don't reach a
+pointer is locked, `teleportCamera(x, y, z)` / `enterSection(id)`, and `aimCamera(x, y, z)`
+(three.js and Babylon) for a click that must hit something. Key presses don't reach a
 page under Pointer Lock in a headless browser, so specs move the first-person camera with it
 (`e2e/helpers/testControl.ts`) instead of walking. Nothing reads it without the flag.
 

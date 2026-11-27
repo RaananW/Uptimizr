@@ -343,6 +343,10 @@ function createTestControl(
     currentScene,
     pointerLocked: () => document.pointerLockElement != null,
     teleportCamera: teleport,
+    aimCamera(x, y, z) {
+      if (!instance.aimCamera) throw new Error("this engine can't aim its camera");
+      instance.aimCamera(x, y, z);
+    },
     enterSection(sectionId) {
       const section = (instance.sections ?? []).find((s) => s.id === sectionId);
       if (!section) throw new Error(`no section "${sectionId}" in this scene`);

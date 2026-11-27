@@ -369,6 +369,9 @@ export function createThreeEngineModule(options: ThreeEngineOptions): EngineModu
       teleportCamera(x, y, z) {
         camera.position.set(x, y, z);
       },
+      aimCamera(x, y, z) {
+        camera.lookAt(x, y, z);
+      },
       createReplayDriver(hooks) {
         return createThreeReplayDriver({
           // The driver's `scene` is a loose structural type (it only reads/writes the

@@ -8,6 +8,10 @@ import {
   waitForEventTypes,
   type CapturedEvent,
 } from "./helpers/capture.js";
+import { aimAt } from "./helpers/testControl.js";
+
+/** A point on the atrium floor, 8 m ahead of the spawn point (0, 1.8, -24). */
+const FLOOR_AHEAD: [number, number, number] = [0, 0, -16];
 
 /**
  * Every click of a live session plays in the dashboard's replay, each in turn.
@@ -78,6 +82,11 @@ test("[three · atrium · locked] each live click plays its own ray in the repla
   const cy = Math.round(height / 2);
   await page.mouse.click(cx, cy); // the overlay takes this one and engages the lock
   await expect.poll(() => pointerLocked(page), { timeout: 5_000 }).toBe(true);
+  // A ray is drawn only for a click that hits something, so aim at the floor a
+  // few metres ahead of the spawn point rather than wherever the camera ended up
+  // facing when the lock engaged (on CI that was sometimes the open sky).
+  await page.waitForTimeout(300);
+  await aimAt(page, FLOOR_AHEAD);
   let release!: () => void;
   const held = new Promise<void>((resolve) => (release = resolve));
   await page.route("**/api/v1/collect", async (route) => {
