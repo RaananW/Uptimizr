@@ -58,7 +58,8 @@ export async function bootEngine(
   sceneId?: string,
   offload?: "main" | "worker",
 ): Promise<string> {
-  const params = new URLSearchParams({ engine: engineId });
+  // `e2e=1` exposes `window.__playgroundTest` (camera control for specs); nothing else reads it.
+  const params = new URLSearchParams({ engine: engineId, e2e: "1" });
   if (sceneId) params.set("scene", sceneId);
   if (offload) params.set("offload", offload);
   await page.goto(`/?${params.toString()}`);

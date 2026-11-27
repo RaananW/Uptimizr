@@ -388,6 +388,10 @@ export function createPlayCanvasEngineModule(options: PlayCanvasEngineOptions): 
     return {
       client,
       flashMesh,
+      ...(setup.sections ? { sections: setup.sections } : {}),
+      teleportCamera(x, y, z) {
+        camera.setPosition(x, y, z);
+      },
       createReplayDriver(hooks) {
         return createPlayCanvasReplayDriver({
           camera,

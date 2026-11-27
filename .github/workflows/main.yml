@@ -345,6 +345,58 @@ jobs:
           echo "shards: ${{ needs.e2e-shard.result }}"
           test "${{ needs.e2e-shard.result }}" = "success"
 
+  demo-e2e:
+    name: Demo E2E (Playwright)
+    runs-on: ubuntu-latest
+    # Cap every job well above its normal run time so a hung process fails the job
+    # in minutes instead of GitHub's 6 h default.
+    timeout-minutes: 20
+    # Smoke-tests the built in-browser demo (oss/apps/demo): playground → service-
+    # worker collector → DuckDB-Wasm → dashboard. The demo's collector is a separate
+    # implementation from the server the `e2e` shards drive, so it gets its own job.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
+      - name: Build workspace packages
+        run: pnpm build
+
+      - name: Install Playwright browser
+        run: pnpm --filter @uptimizr/demo test:e2e:install
+
+      - name: Run demo E2E tests
+        run: pnpm test:e2e:demo
+
+      - name: Upload Playwright artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-demo
+          path: |
+            oss/apps/demo/playwright-report
+            oss/apps/demo/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
   godot-export-e2e:
     name: Godot export E2E (Playwright)
     runs-on: ubuntu-latest

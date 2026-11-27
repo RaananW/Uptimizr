@@ -323,8 +323,48 @@ export interface EngineInstance {
    * Only present on scenes that declare sections.
    */
   registerSceneProxies?(): Promise<Array<{ sceneId: string; meshCount: number }>>;
+  /** The scene's named sub-areas (ADR 0040 §5), in the engine's world frame, if it declares any. */
+  readonly sections?: readonly SceneSection[];
+  /**
+   * Move the camera to a world point, keeping where it looks. For tests
+   * (`window.__playgroundTest`, `?e2e=1`): the key presses that walk a
+   * first-person camera don't reach a page under Pointer Lock in a headless
+   * browser, so a spec moves the camera directly. The scene's own walking rules
+   * (floor height, walls) apply from the next frame.
+   */
+  teleportCamera?(x: number, y: number, z: number): void;
+  /**
+   * Turn the camera to look at a world point, keeping where it stands. For tests,
+   * like {@link teleportCamera}: a spec that needs a click to hit something aims
+   * first, rather than relying on where the camera happens to face. Not on
+   * PlayCanvas, whose first-person controllers own their yaw and pitch.
+   */
+  aimCamera?(x: number, y: number, z: number): void;
   /** Tear down the scene + connector. */
   dispose(): void;
+}
+
+/**
+ * The test-only control the shell exposes as `window.__playgroundTest` when the
+ * page is opened with `?e2e=1`. Nothing reads it otherwise.
+ */
+export interface PlaygroundTestControl {
+  /** The scene's named sub-areas, as {@link EngineInstance.sections}. */
+  sections(): readonly SceneSection[];
+  /** The tracked area the HUD shows (a section id, or the scene id). */
+  currentScene(): string;
+  /** Whether the page holds a Pointer Lock. */
+  pointerLocked(): boolean;
+  /** {@link EngineInstance.teleportCamera}. */
+  teleportCamera(x: number, y: number, z: number): void;
+  /** {@link EngineInstance.aimCamera}. Throws when the engine can't aim its camera. */
+  aimCamera(x: number, y: number, z: number): void;
+  /**
+   * Stand in the middle of a section: its box's centre on the ground plan, at
+   * eye height above the box's floor. Throws for an unknown section, or when the
+   * engine can't move its camera.
+   */
+  enterSection(sectionId: string): void;
 }
 
 /** The shape each `src/engines/<id>.ts` module exports as `engine`. */

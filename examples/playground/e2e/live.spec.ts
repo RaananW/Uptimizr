@@ -30,8 +30,8 @@ import {
  * and supports the live birdview replay driver).
  */
 test("live presence, feed, and follow surface a running session in the dashboard", async ({
+  browser,
   page,
-  context,
   request,
 }) => {
   // Two pages + a Babylon live-replay viewer is a lot of work for one test.
@@ -41,9 +41,14 @@ test("live presence, feed, and follow surface a running session in the dashboard
   await enableAllCapture(page, "babylon");
   const sessionId = await bootEngine(page, "babylon");
 
-  // 2) Open the dashboard in a second tab and connect it to the same collector,
-  //    so its live SSE connections (presence + firehose) open before traffic.
-  const dash = await context.newPage();
+  // 2) Open the dashboard and connect it to the same collector, so its live SSE
+  //    connections (presence + firehose) open before traffic. It gets its own
+  //    browser context: a second tab of the same context can share the
+  //    playground's renderer process, and on a slow runner the dashboard's 3D
+  //    panels re-rendering for live traffic stalled the playground until its
+  //    mouse moves timed out.
+  const dashContext = await browser.newContext();
+  const dash = await dashContext.newPage();
   await dash.goto(DASHBOARD_URL);
   await dash.getByPlaceholder("http://localhost:4318").fill(COLLECTOR_URL);
   await dash.getByPlaceholder("utk_…").fill(API_KEY);
@@ -101,4 +106,5 @@ test("live presence, feed, and follow surface a running session in the dashboard
   await dash.bringToFront();
 
   await expect(dash.getByText("● LIVE")).toBeVisible({ timeout: 30_000 });
+  await dashContext.close();
 });
