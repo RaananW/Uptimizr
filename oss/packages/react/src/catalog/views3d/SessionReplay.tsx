@@ -9,6 +9,7 @@ import type { CollectorApi, SceneProxyMesh } from "../../api";
 import type { LiveEvent } from "../../live";
 import { useSessionTail } from "../../live-hooks";
 import { PANEL_ENGINE_OPTIONS } from "../lib/engineOptions";
+import { liveEventKey } from "../lib/liveEventKey";
 import { mergeSceneProxies, proxyMeshKey } from "../lib/sceneProxies";
 import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "../lib/orbitZoom";
 import { ZoomButtons } from "../views/ZoomButtons";
@@ -54,11 +55,11 @@ interface InteractionRay {
   /** Name of the mesh the ray hit, when known — drives the HTML label highlight. */
   mesh?: string;
   /**
-   * Live only: the playhead time the event ARRIVED at. Events land in batches
+   * Live only: when the ray plays while following live. Events land in batches
    * (an SDK flushes every few seconds), so by the time a click arrives the live
    * playhead is already past `at + TRAIL_MS` and its ray would never be drawn.
-   * While following live, the ray's pulse and fade start here instead; the
-   * timeline and scrubbing still use `at`.
+   * Clicks that arrive together keep their real spacing; the timeline and
+   * scrubbing still use `at`.
    */
   arrivedAt?: number;
 }
@@ -1161,6 +1162,15 @@ export function SessionReplayView({
         let durationMs = sorted.length > 0 ? sorted[sorted.length - 1]!.ts - baseTs : 0;
         let lastEventAt = durationMs;
         let frontierTs = sorted.length > 0 ? sorted[sorted.length - 1]!.ts : -Infinity;
+        // Events already seen AT `frontierTs`. One action emits several events in
+        // the same millisecond (a click is pointer_down, pointer_up, pointer_click
+        // and mesh_interaction, all with one `ts`), so deduping on the timestamp
+        // alone dropped every event after the first one in that millisecond, and
+        // usually the click itself. Dedupe on the event's identity instead.
+        let frontierSeen = new Set<string>();
+        for (let i = sorted.length - 1; i >= 0 && sorted[i]!.ts === frontierTs; i--) {
+          frontierSeen.add(liveEventKey(sorted[i] as unknown as LiveEvent));
+        }
         const timelineEvents: { type: string; ts: number }[] = sorted.map((e) => ({
           type: e.type,
           ts: e.ts,
@@ -1170,11 +1180,34 @@ export function SessionReplayView({
         // Append one streamed event to the visualization, mirroring the historical
         // precompute switch. `frontierTs` dedupes the connect-time backfill overlap;
         // brand-new tracked actors get a marker on demand.
+        // Live events arrive in SDK batches, seconds after they happened, so a
+        // click is played when it arrives rather than at its own (already past)
+        // time. Several clicks in one batch would then all pulse at once — their
+        // rays overlapping under one glow — so each click plays at the later of
+        // "now" and the previous click's play time plus their real gap. Clicks
+        // in a batch keep their spacing, and the schedule never falls behind the
+        // live edge.
+        let lastRay: { at: number; playAt: number } | null = null;
+        const rayArrival = (at: number): number => {
+          const now = progressRef.current;
+          const playAt =
+            lastRay && at >= lastRay.at ? Math.max(now, lastRay.playAt + (at - lastRay.at)) : now;
+          lastRay = { at, playAt };
+          return Math.max(at, playAt);
+        };
+
         const ingestLive = (ev: LiveEvent): void => {
           if (disposed) return;
           const ts = typeof ev.ts === "number" ? ev.ts : NaN;
-          if (!Number.isFinite(ts) || ts <= frontierTs) return;
-          frontierTs = ts;
+          if (!Number.isFinite(ts) || ts < frontierTs) return;
+          const key = liveEventKey(ev);
+          if (ts === frontierTs) {
+            if (frontierSeen.has(key)) return;
+          } else {
+            frontierTs = ts;
+            frontierSeen = new Set();
+          }
+          frontierSeen.add(key);
           const at = ts - baseTs;
           if (at > lastEventAt) lastEventAt = at;
           if (at > durationMs) durationMs = at;
@@ -1204,7 +1237,7 @@ export function SessionReplayView({
               const hitMesh = typeof ev.hitMesh === "string" ? ev.hitMesh : undefined;
               rays.push({
                 at,
-                arrivedAt: Math.max(at, progressRef.current),
+                arrivedAt: rayArrival(at),
                 type: "pointer_click",
                 origin: [origin[0]!, origin[1]!, origin[2]!],
                 hit: [hit[0]!, hit[1]!, hit[2]!],
@@ -1219,7 +1252,10 @@ export function SessionReplayView({
               const mesh = typeof ev.mesh === "string" ? ev.mesh : undefined;
               rays.push({
                 at,
-                arrivedAt: Math.max(at, progressRef.current),
+                arrivedAt:
+                  rays[rays.length - 1]?.at === at
+                    ? rays[rays.length - 1]!.arrivedAt
+                    : rayArrival(at),
                 type: "mesh_interaction",
                 origin: [latestCamera[0], latestCamera[1], latestCamera[2]],
                 hit: [point[0]!, point[1]!, point[2]!],

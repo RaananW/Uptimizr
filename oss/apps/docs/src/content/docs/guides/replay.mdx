@@ -1,7 +1,7 @@
 ---
 title: Session replay for 3D scenes
 description: Replay a visitor's session inside your own 3D scene with @uptimizr/replay, using recorded camera, pointer and mesh events instead of video.
-lastUpdated: 2026-11-26
+lastUpdated: 2026-11-27
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -249,7 +249,10 @@ When the session is **live right now** (it has produced an event within the acti
 same window switches to **live follow**: new camera moves and interactions stream in and the timeline
 grows in real time. Events reach the dashboard in batches (an SDK flushes every few seconds), so while
 following live a click's ray and glow play from the moment it arrives rather than from its own
-timestamp, which may already be a few seconds in the past; scrubbing back shows it at its own time. A **● LIVE** control pins the playhead to the live edge; scrub back (or press Play)
+timestamp, which may already be a few seconds in the past. Clicks that arrive in the same batch keep
+their real spacing, so each one pulses in turn. Scrubbing back shows every click at its own time.
+Every event of a click is kept, even when several share one millisecond (a click is a press, a
+release, the click and the pick, often all with the same timestamp). A **● LIVE** control pins the playhead to the live edge; scrub back (or press Play)
 to review what already happened, then press **● LIVE** to jump back to the edge. Live follow uses the
 same gate as replay — with `ENABLE_RAW_SESSION_RETENTION` off, the window shows nothing to follow.
 

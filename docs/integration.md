@@ -1065,6 +1065,9 @@ same rule to the DOM `click` event, which the browser fires after a drag too. A 
 as `pointer_down` / `pointer_up` when `capture.buttons` is on). A custom collector that captures
 DOM clicks can reuse the rule with `createClickGuard()` from `@uptimizr/sdk-core`.
 
+Under Pointer Lock the rule is off and every click counts: there is no cursor to drag, the click
+is aimed with the crosshair, and moving the mouse while the button is held is looking around.
+
 ### Pointer lock (first-person / FPS scenes)
 
 First-person / walkable scenes (ADR 0026) navigate with the browser **Pointer

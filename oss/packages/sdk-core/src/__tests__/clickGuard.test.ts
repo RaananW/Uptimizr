@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CLICK_DRAG_THRESHOLD_PX, createClickGuard } from "../clickGuard.js";
 
 describe("createClickGuard", () => {
@@ -28,6 +28,18 @@ describe("createClickGuard", () => {
     expect(guard.isDrag({ clientX: 900, clientY: 900 })).toBe(false);
     guard.press({ clientX: 0, clientY: 0 });
     expect(guard.isDrag({})).toBe(false);
+  });
+
+  it("never treats a click as a drag under Pointer Lock", () => {
+    vi.stubGlobal("document", { pointerLockElement: {} });
+    try {
+      const guard = createClickGuard();
+      // Turning with the button held: even if the coordinates drifted, it is a click.
+      guard.press({ clientX: 100, clientY: 100 });
+      expect(guard.isDrag({ clientX: 400, clientY: 100 })).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("honours a custom threshold", () => {

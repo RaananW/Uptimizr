@@ -1,7 +1,7 @@
 ---
 title: sdk-core (advanced)
 description: Build an UptimizrClient directly for custom transports, beforeSend hooks, and multiple collectors.
-lastUpdated: 2026-11-26
+lastUpdated: 2026-11-27
 ---
 
 `trackScene` is the one-call path. When you need finer control — a custom transport, a `beforeSend`
@@ -119,7 +119,9 @@ client.use(heartbeat);
 A collector that records clicks from the DOM `click` event should drop the click that ends a
 camera drag, because the browser fires `click` after any press and release on the same element.
 `createClickGuard()` applies the rule the built-in connectors use (a release more than
-`CLICK_DRAG_THRESHOLD_PX`, 10 CSS px, from its press is a drag):
+`CLICK_DRAG_THRESHOLD_PX`, 10 CSS px, from its press is a drag). Under Pointer Lock every click
+passes: the click is aimed with the crosshair, and moving the mouse while the button is held is
+looking around, not a drag:
 
 ```ts
 import { createClickGuard } from "@uptimizr/sdk-core";
