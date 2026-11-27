@@ -63,6 +63,12 @@ jobs:
       - name: License compliance
         run: pnpm license-check
 
+      # A changeset naming a package `changeset version` will not bump (private
+      # with `privatePackages.version` off, ignored, misspelled) is never consumed,
+      # and the Release workflow skips every release while one is pending.
+      - name: Changesets are consumable
+        run: pnpm changeset:check
+
   build:
     name: Lint, typecheck, build, test
     runs-on: ubuntu-latest

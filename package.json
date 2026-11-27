@@ -54,6 +54,7 @@
     "scrub-gate": "bash scripts/scrub-gate.sh",
     "license-check": "node scripts/license-check.mjs",
     "changeset": "changeset",
+    "changeset:check": "node scripts/check-changesets.mjs",
     "version:packages": "changeset version && pnpm gen:version",
     "release": "changeset publish"
   },
