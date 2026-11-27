@@ -13,7 +13,8 @@ export default defineConfig({
   testDir: "./e2e",
   // `*.e2e.ts`, so the demo's Vitest run (which matches `*.spec.ts`) leaves them alone.
   testMatch: "**/*.e2e.ts",
-  timeout: 120_000,
+  // A CI runner renders both iframes on SwiftShader; a locked case took 1.8 min there.
+  timeout: 180_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
