@@ -90,10 +90,13 @@ test("[three · atrium · locked] each live click plays its own ray in the repla
     await route.continue();
   });
   for (let i = 0; i < 3; i++) {
-    // Re-aim each time: on a starved CI runner the camera still turned between
-    // clicks now and then, and one click of three hit nothing.
+    // Aim, then press and release in place. `mouse.click(x, y)` moves to the
+    // point first, and under Pointer Lock a move turns the camera: on CI it
+    // turned it off the floor between the aim and the press, so the click hit
+    // nothing. `down()`/`up()` send no move.
     await aimAt(page, FLOOR_AHEAD);
-    await page.mouse.click(cx, cy);
+    await page.mouse.down();
+    await page.mouse.up();
     if (i < 2) await page.waitForTimeout(900);
   }
   // The route stays in place, passing everything through from here on:
