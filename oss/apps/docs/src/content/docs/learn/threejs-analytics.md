@@ -197,9 +197,10 @@ one of those.
 **Does this work with React Three Fiber?** Yes. `@uptimizr/r3f` is a thin layer over the three.js
 connector. See [Analytics for React Three Fiber apps](/docs/learn/react-three-fiber-analytics/).
 
-**Does it work with WebGPU?** Yes. The connector detects a `WebGPURenderer` at runtime and also
-reports WebGPU device loss as a diagnostic. The `renderer` parameter is typed as `WebGLRenderer`,
-so in TypeScript you need a cast when you pass a `WebGPURenderer`.
+**Does it work with WebGPU?** Yes. Pass a `WebGPURenderer` from `three/webgpu` the same way you'd
+pass a `WebGLRenderer`. The session reports WebGPU as its graphics API, and the connector also
+reports WebGPU device loss as a diagnostic. Older `@uptimizr/three` releases typed `renderer` as
+`WebGLRenderer`, so on those, TypeScript needs a cast.
 
 **Do I need a server?** Yes, a collector, which you run yourself. It's a single Node process with
 an embedded database. To try the reports first, open the [live demo](https://demo.uptimizr.com),
