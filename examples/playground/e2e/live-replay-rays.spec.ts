@@ -94,6 +94,9 @@ test("[three · atrium · locked] each live click plays its own ray in the repla
     await route.continue();
   });
   for (let i = 0; i < 3; i++) {
+    // Re-aim each time: on a starved CI runner the camera still turned between
+    // clicks now and then, and one click of three hit nothing.
+    await aimAt(page, FLOOR_AHEAD);
     await page.mouse.click(cx, cy);
     if (i < 2) await page.waitForTimeout(900);
   }

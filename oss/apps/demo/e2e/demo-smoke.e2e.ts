@@ -127,6 +127,28 @@ async function expectSessionViewFollows(
   await reread;
 }
 
+/**
+ * Click the playground's "click to explore" overlay until the pointer is locked.
+ * On a slow runner the first click sometimes did not take within 5 s. Clicking
+ * the overlay again is safe: the overlay keeps its click off the canvas, so it is
+ * never recorded.
+ */
+async function engageLock(page: Page, frame: Frame, at: Point): Promise<void> {
+  const locked = (): Promise<boolean> => frame.evaluate(() => document.pointerLockElement != null);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (await frame.locator(".lock-overlay:not(.lock-overlay--hidden)").isVisible()) {
+      await page.mouse.click(at.x, at.y);
+    }
+    try {
+      await expect.poll(locked, { timeout: 10_000 }).toBe(true);
+      return;
+    } catch {
+      /* try the overlay again */
+    }
+  }
+  throw new Error("the pointer lock never engaged");
+}
+
 for (const engine of ["three", "babylon"] as const) {
   test(`[${engine} · lobby] clicks are stored, drags are not, the session view follows`, async ({
     page,
@@ -154,10 +176,7 @@ test("[three · atrium · locked] every locked click is stored", async ({ page }
   const centre = await inPlayground(page, 0.5, 0.5);
   const frame = playgroundFrame(page);
 
-  await page.mouse.click(centre.x, centre.y); // the overlay engages the lock
-  await expect
-    .poll(() => frame.evaluate(() => document.pointerLockElement != null), { timeout: 5_000 })
-    .toBe(true);
+  await engageLock(page, frame, centre);
   for (let i = 0; i < 3; i++) {
     await page.mouse.click(centre.x, centre.y);
     await page.waitForTimeout(300);
