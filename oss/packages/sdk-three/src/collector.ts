@@ -1,4 +1,4 @@
-import type { Camera, Scene, WebGLRenderer } from "three";
+import type { Camera, Scene } from "three";
 import type {
   AggregatorConfig,
   CameraGestureSample,
@@ -36,6 +36,7 @@ import type {
 } from "@uptimizr/sdk-core";
 import type { Aabb, InputSource, Vec3 } from "@uptimizr/schema";
 import { isWebGpu, lacksGlContext } from "./renderer.js";
+import type { ThreeRenderer } from "./renderer.js";
 import { clamp01 } from "./vec.js";
 import { createGazeRaycaster, createSceneRaycaster } from "./raycast.js";
 import type { GazeProbe, GazeProbeOptions, RaycastHit, RaycastProbe } from "./raycast.js";
@@ -764,8 +765,11 @@ export interface ThreeCollectorOptions {
    * `scene.activeCamera`, so the camera the viewer flies must be passed explicitly.
    */
   camera: Camera;
-  /** The renderer driving the scene — its canvas (`domElement`) and `info` are read. */
-  renderer: WebGLRenderer;
+  /**
+   * The renderer driving the scene, a `WebGLRenderer` or `WebGPURenderer`. Its canvas
+   * (`domElement`) and `info` are read.
+   */
+  renderer: ThreeRenderer;
   /** Camera-pose sampling interval in ms. Default 1000. */
   sampleCameraMs?: number;
   /** Performance (FPS) sampling interval in ms. Default 2000. */

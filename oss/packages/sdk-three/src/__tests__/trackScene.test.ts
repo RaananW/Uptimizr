@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Camera, Scene, WebGLRenderer } from "three";
+import type { CollectRequest } from "@uptimizr/schema";
 import { trackScene } from "../trackScene.js";
 
 function makeCanvas() {
@@ -88,5 +89,37 @@ describe("trackScene", () => {
 
     // start() is a no-op when disabled, so no listener is registered.
     expect(canvas.count("pointermove")).toBe(0);
+  });
+
+  it("accepts a WebGPURenderer and reports the session as WebGPU", async () => {
+    const canvas = makeCanvas();
+    // The shape of three's `WebGPURenderer`: a canvas and frame info, but no `getContext()`.
+    // Passed without a cast, because `trackScene` takes the structural `ThreeRenderer`.
+    const renderer = {
+      isWebGPURenderer: true,
+      domElement: canvas as unknown as HTMLCanvasElement,
+      info: { render: { frame: 0 } },
+    };
+    const batches: CollectRequest[] = [];
+
+    const client = trackScene(makeScene(), makeCamera(), renderer, {
+      projectId: "proj_demo",
+      endpoint: "http://localhost:4318",
+      flushIntervalMs: 0,
+      transport: {
+        send: (batch) => {
+          batches.push(batch);
+          return Promise.resolve(true);
+        },
+      },
+    });
+    await client.flush();
+
+    expect(canvas.count("pointermove")).toBeGreaterThan(0);
+    const start = batches.flatMap((b) => b.events).find((e) => e.type === "session_start");
+    expect(start).toMatchObject({
+      device: { engine: "webgpu" },
+      graphics: { api: "webgpu", shadingLanguage: "wgsl" },
+    });
   });
 });

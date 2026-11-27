@@ -1,6 +1,6 @@
-import type { WebGLRenderer } from "three";
 import type { Graphics, GraphicsApi, GraphicsBackend, ShadingLanguage } from "@uptimizr/schema";
 import { isWebGl2, isWebGpu, readGlInfo } from "./renderer.js";
+import type { ThreeRenderer } from "./renderer.js";
 
 /**
  * Best-effort mapping of an unmasked renderer string to the real backend behind
@@ -35,7 +35,7 @@ function backendFromRenderer(renderer: string | undefined): GraphicsBackend | un
  * Pass the result to `client.start({ graphics })` so it rides along on the
  * `session_start` event. `trackScene` does this automatically.
  */
-export function readGraphics(renderer: WebGLRenderer): Graphics {
+export function readGraphics(renderer: ThreeRenderer): Graphics {
   const webgpu = isWebGpu(renderer);
   const glInfo = readGlInfo(renderer);
 

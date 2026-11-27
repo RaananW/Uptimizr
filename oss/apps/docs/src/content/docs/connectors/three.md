@@ -39,6 +39,29 @@ await client.stop("manual");
 session. It returns the `@uptimizr/sdk-core` `UptimizrClient`, so you can read `client.sessionId`,
 emit custom events, or stop it.
 
+## WebGPU
+
+`renderer` can be a `WebGLRenderer` or a `WebGPURenderer`, passed the same way:
+
+```ts
+import { WebGPURenderer } from "three/webgpu";
+import { trackScene } from "@uptimizr/three";
+
+const renderer = new WebGPURenderer({ antialias: true });
+await renderer.init();
+
+const client = trackScene(scene, camera, renderer, {
+  projectId: "your-project",
+  endpoint: "https://collect.example.com",
+});
+```
+
+The session reports `webgpu` as its graphics API and `wgsl` as its shading language, and the
+connector reports WebGPU device loss as a `graphics_diagnostic`. The parameter type is
+`ThreeRenderer`, a structural type both renderers satisfy, so no cast is needed. Older releases
+typed `renderer` as `WebGLRenderer`; on those, pass a `WebGPURenderer` as
+`renderer as unknown as WebGLRenderer`.
+
 ## Coordinate frame
 
 World-space data is normalized from three's native **right-handed, y-up** frame to the canonical

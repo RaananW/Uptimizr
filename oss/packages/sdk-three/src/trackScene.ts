@@ -1,7 +1,7 @@
 import { UptimizrClient } from "@uptimizr/sdk-core";
 import type { StartMeta, Transport, SamplingProfile } from "@uptimizr/sdk-core";
 import type { CameraKind, SessionUser } from "@uptimizr/schema";
-import type { Camera, Scene, WebGLRenderer } from "three";
+import type { Camera, Scene } from "three";
 
 import { threeCollector } from "./collector.js";
 import type { ThreeActor, ThreeCaptureOptions, ThreeGazeOptions } from "./collector.js";
@@ -11,6 +11,7 @@ import { readDeviceCaps } from "./device.js";
 import { readGraphics } from "./graphics.js";
 import { readConnector } from "./connector.js";
 import { readSceneMeta } from "./scene.js";
+import type { ThreeRenderer } from "./renderer.js";
 import type { XrCaptureOptions, XrRayProbe } from "@uptimizr/sdk-core";
 
 /**
@@ -147,7 +148,7 @@ export interface TrackSceneOptions {
 export function trackScene(
   scene: Scene,
   camera: Camera,
-  renderer: WebGLRenderer,
+  renderer: ThreeRenderer,
   options: TrackSceneOptions,
 ): UptimizrClient {
   const client = new UptimizrClient({

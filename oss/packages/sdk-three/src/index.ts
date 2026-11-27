@@ -25,6 +25,7 @@ export type {
   ResourceSampleOptions,
   ThreeGazeOptions,
 } from "./collector.js";
+export type { ThreeRenderer } from "./renderer.js";
 export { readDeviceCaps } from "./device.js";
 export { readGraphics } from "./graphics.js";
 export { readConnector } from "./connector.js";
