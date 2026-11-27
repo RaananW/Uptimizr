@@ -60,9 +60,14 @@ pnpm typecheck   # tsc --noEmit per package
 pnpm test        # unit/integration tests
 pnpm test:e2e    # Playwright end-to-end tests (playground → collector → dashboard/replay)
 E2E_MATRIX=full pnpm test:e2e  # …with the interaction matrix over every engine and scene
+pnpm test:e2e:demo  # Playwright smoke tests of the built in-browser demo (after pnpm build)
 pnpm format      # prettier --write
 pnpm gen:docs    # re-render the generated metric tables (see below)
 ```
+
+CI runs the playground E2E suite as two parallel shards, plus the demo smoke tests. The nightly
+workflow (`.github/workflows/nightly.yml`) runs the same suite with `E2E_MATRIX=full`, and can be
+started by hand from the Actions tab.
 
 ### Generated metric tables — don't edit them by hand
 

@@ -304,6 +304,10 @@ export function createBabylonEngineModule(options: BabylonEngineOptions): Engine
     return {
       client,
       flashMesh,
+      ...(setup.sections ? { sections: setup.sections } : {}),
+      teleportCamera(x, y, z) {
+        camera.position.set(x, y, z);
+      },
       createReplayDriver(hooks) {
         return createBabylonReplayDriver({
           scene,

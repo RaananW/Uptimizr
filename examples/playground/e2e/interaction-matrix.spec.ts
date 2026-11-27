@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { serveAframeFromCache } from "./helpers/aframe.js";
 import { bootEngine, enableAllCapture, readSessionEvents } from "./helpers/capture.js";
+import { enterSection, teleportTo } from "./helpers/testControl.js";
 
 /**
  * Every click counts, and nothing else does: engine × camera mode × gesture.
@@ -25,6 +26,10 @@ import { bootEngine, enableAllCapture, readSessionEvents } from "./helpers/captu
  *   held is looking around, so it is still a click.
  * - **drag-look** — Babylon's first-person camera, which looks by dragging
  *   without a lock: a drag is not a click.
+ *
+ * In the large `expanse` scene each case also moves into another section and
+ * back (through the playground's test control, `?e2e=1`), and each click there
+ * must count and be tagged with the section it was made in.
  *
  * Pull requests run a subset; `E2E_MATRIX=full` runs every engine in every
  * scene it builds. Babylon Lite is WebGPU-only and headless Chromium has no
@@ -81,6 +86,8 @@ interface Gesture {
   name: string;
   /** How many `pointer_click`s the gesture must record. */
   clicks: number;
+  /** The area those clicks must be tagged with (`sceneId`), when it matters. */
+  scene?: string;
   run(ctx: GestureContext): Promise<void>;
 }
 
@@ -232,6 +239,44 @@ const DRAG_LOOK_GESTURES: Gesture[] = [
   },
 ];
 
+/**
+ * Large scenes: move to another section and click there, then back. The click
+ * must count, and must be tagged with the section it was made in. The camera
+ * moves through the playground's test control, because key presses don't reach a
+ * page under Pointer Lock in a headless browser.
+ */
+const EXPANSE_SPAWN: [number, number, number] = [0, 1.8, -260];
+const SECTION_GESTURES: Gesture[] = [
+  {
+    name: "walk into the gardens",
+    clicks: 0,
+    run: ({ page }) => enterSection(page, "expanse-gardens"),
+  },
+  {
+    name: "click in the gardens",
+    clicks: 1,
+    scene: "expanse-gardens",
+    run: async ({ page, at }) => {
+      const c = at(0.5, 0.5);
+      await page.mouse.click(c.x, c.y);
+    },
+  },
+  {
+    name: "walk back to the plaza",
+    clicks: 0,
+    run: ({ page }) => teleportTo(page, EXPANSE_SPAWN, "expanse-plaza"),
+  },
+  {
+    name: "click in the plaza",
+    clicks: 1,
+    scene: "expanse-plaza",
+    run: async ({ page, at }) => {
+      const c = at(0.5, 0.5);
+      await page.mouse.click(c.x, c.y);
+    },
+  },
+];
+
 const GESTURES: Record<Mode, Gesture[]> = {
   orbit: ORBIT_GESTURES,
   locked: LOCKED_GESTURES,
@@ -282,7 +327,8 @@ for (const c of CASES) {
 
     // Run each gesture, stamping its window on the page's clock (the SDK's).
     const windows: { gesture: Gesture; from: number; to: number }[] = [];
-    for (const gesture of GESTURES[c.mode]) {
+    const gestures = [...GESTURES[c.mode], ...(c.scene === "expanse" ? SECTION_GESTURES : [])];
+    for (const gesture of gestures) {
       const from = await page.evaluate(() => Date.now());
       await gesture.run(ctx);
       const to = await page.evaluate(() => Date.now());
@@ -339,6 +385,16 @@ for (const c of CASES) {
     // Every batch must get through: the SDK paces its sends to stay under the
     // collector's default ingest rate limit, which this harness keeps.
     expect(refused, "no batch refused by the collector").toBe("");
+    // A click is tagged with the area it was made in.
+    for (const w of windows) {
+      if (!w.gesture.scene) continue;
+      const scenes = events
+        .filter((e) => e.type === "pointer_click" && e.ts >= w.from && e.ts <= w.to)
+        .map((e) => e.sceneId);
+      expect(scenes, `"${w.gesture.name}" clicks should be tagged with their area`).toEqual(
+        scenes.map(() => w.gesture.scene),
+      );
+    }
     // A gesture that made no click makes no pick either.
     for (const [i, a] of actual.entries()) {
       if (windows[i]!.gesture.clicks === 0) {
