@@ -1,7 +1,13 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { API_KEY, COLLECTOR_URL, DASHBOARD_URL } from "./constants.js";
-import { bootEngine, enableAllCapture, waitForEventTypes } from "./helpers/capture.js";
+import {
+  bootEngine,
+  enableAllCapture,
+  readSessionEvents,
+  waitForEventTypes,
+  type CapturedEvent,
+} from "./helpers/capture.js";
 
 /**
  * Every click of a live session plays in the dashboard's replay, each in turn.
@@ -87,19 +93,39 @@ test("[three · atrium · locked] each live click plays its own ray in the repla
   release();
   await page.evaluate(() => document.exitPointerLock());
 
-  // 4) The replay draws three rays, as three separate pulses.
-  await expect
-    .poll(() => readCount(canvas, "data-click-rays-shown"), {
-      timeout: 30_000,
-      message: "every click should start a ray",
-    })
-    .toBe(raysBefore + 3);
-  await expect
-    .poll(() => readCount(canvas, "data-click-pulses-shown"), {
-      timeout: 5_000,
-      message: "each click should pulse on its own",
-    })
-    .toBe(pulsesBefore + 3);
-
-  await dashContext.close();
+  // 4) The replay draws three rays, as three separate pulses. On a failure the
+  //    message says whether the clicks were stored (with the hit point a ray
+  //    needs), so a lost ray can be told apart from a lost click.
+  const diagnose = async (): Promise<string> => {
+    const clicks = (await readSessionEvents(request, sessionId)).filter(
+      (e) => e.type === "pointer_click",
+    ) as (CapturedEvent & { hitPoint?: unknown })[];
+    const withHit = clicks.filter((e) => Array.isArray(e.hitPoint)).length;
+    const live =
+      (await dash
+        .getByText(/● LIVE|reconnecting|connecting/)
+        .first()
+        .textContent()) ?? "";
+    return (
+      `stored pointer_click: ${clicks.length} (${withHit} with a hit point); ` +
+      `canvas: ${await readCount(canvas, "data-click-rays-shown")} rays, ` +
+      `${await readCount(canvas, "data-click-pulses-shown")} pulses (before: ${raysBefore} / ` +
+      `${pulsesBefore}); live status: "${live.trim()}"`
+    );
+  };
+  try {
+    await expect
+      .poll(() => readCount(canvas, "data-click-rays-shown"), { timeout: 30_000 })
+      .toBe(raysBefore + 3);
+    await expect
+      .poll(() => readCount(canvas, "data-click-pulses-shown"), { timeout: 5_000 })
+      .toBe(pulsesBefore + 3);
+  } catch (err) {
+    throw new Error(
+      `each click should start its own ray: ${await diagnose()}\n${(err as Error).message}`,
+      { cause: err },
+    );
+  } finally {
+    await dashContext.close();
+  }
 });
