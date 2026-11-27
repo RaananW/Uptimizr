@@ -51,6 +51,8 @@ A collector that records clicks from the DOM `click` event should use `createCli
 browser fires `click` after an orbit or pan drag too, and the guard reports a release more than
 `CLICK_DRAG_THRESHOLD_PX` (10 CSS px, Babylon's `Scene.DragMovementThreshold`) from its press as a
 drag. Call `guard.press(e)` on `pointerdown` and skip the click when `guard.isDrag(e)` is true.
+Under Pointer Lock `isDrag` is always false: a crosshair click counts even if the mouse moved while
+the button was held.
 
 ## Configuration
 

@@ -35,10 +35,22 @@ export interface ClickGuard {
   isDrag(ev: ClickGuardEventLike): boolean;
 }
 
+/** Whether the document currently holds a Pointer Lock (false outside a browser). */
+function pointerLocked(): boolean {
+  try {
+    return typeof document !== "undefined" && document.pointerLockElement != null;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Create a press-to-release distance guard for DOM `click` capture. Under
- * Pointer Lock the cursor is frozen, so press and release share a position and
- * every click passes, which is what a crosshair click should do.
+ * Create a press-to-release distance guard for DOM `click` capture.
+ *
+ * Under Pointer Lock every click passes. There is no cursor to drag: the click
+ * is aimed with the crosshair, and moving the mouse while the button is held is
+ * looking around, not a camera drag. Browsers are meant to freeze `clientX/Y`
+ * while locked, but the guard does not rely on it.
  */
 export function createClickGuard(thresholdPx: number = CLICK_DRAG_THRESHOLD_PX): ClickGuard {
   let pressed: { x: number; y: number } | null = null;
@@ -52,6 +64,7 @@ export function createClickGuard(thresholdPx: number = CLICK_DRAG_THRESHOLD_PX):
     isDrag(ev) {
       const start = pressed;
       pressed = null;
+      if (pointerLocked()) return false;
       if (!start || typeof ev.clientX !== "number" || typeof ev.clientY !== "number") {
         return false;
       }
