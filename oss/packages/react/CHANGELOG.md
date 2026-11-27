@@ -1,5 +1,31 @@
 # @uptimizr/react
 
+## 1.5.0
+
+### Minor Changes
+
+- 7c3f420: The session replay canvas now publishes what it has drawn, for tests and embedders that can't
+  read WebGL: `data-click-rays-shown` counts the click rays that have started to play, and
+  `data-click-pulses-shown` how many separate pulses they made. The live replay's de-duplication
+  and click timing move into a rendering-free module with unit tests over whole event streams; the
+  behaviour is unchanged.
+
+### Patch Changes
+
+- 5ca7b98: The 3D panels render only when something changed, instead of 60 times a second. The camera dome,
+  click rays, flow, gaze/click divergence and world, perf and error heatmaps redrew every frame
+  while nothing moved, and repainted their whole scene whenever the host re-rendered with a freshly
+  built array prop (the hover labels, a `= []` default), several times a second. They now render
+  when the camera moves, the viewer points, scrolls or types at the panel, it is resized or its data
+  changes, plus once every 500 ms. An idle overview with live data used about a quarter of the GPU
+  CPU time on a software renderer (8 CPU-seconds per 5 s, from 37).
+- f465bbd: Stop the 3D panels re-fetching every scene's backdrop on each refresh. While a session is open
+  the panels refresh every 2 s, and each 3D panel listed the scenes and fetched every scene's
+  representation, about five requests a second with one live session. `CollectorApi` now shares a
+  GET that is already in flight (each caller gets its own copy of the result) and keeps a scene's
+  representation for 60 s (a missing one for 5 s), which brings that to under one request a second.
+- @uptimizr/replay@1.0.9
+
 ## 1.4.1
 
 ### Patch Changes
