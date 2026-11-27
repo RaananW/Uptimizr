@@ -64,6 +64,7 @@ SKIP_EMBEDS=1 pnpm --filter @uptimizr/demo dev
 | `typecheck`      | `tsc --noEmit`                                                          |
 | `lint`           | ESLint                                                                  |
 | `test`           | Vitest unit tests                                                       |
+| `test:e2e`       | Playwright smoke tests of the built demo (`pnpm build` first)           |
 | `clean`          | Remove `dist/` and the staged embeds                                    |
 
 `SKIP_EMBEDS=1` makes `predev`/`prebuild` reuse already-staged embeds (or placeholders) instead of

@@ -89,6 +89,31 @@ async function findHost() {
   );
 }
 
+/** How long a request waits for the page host before the worker answers for it. */
+const HOST_TIMEOUT_MS = 15000;
+
+/**
+ * The reply when the host has not answered in time. A read gets a 504. A
+ * `POST /api/v1/collect` gets 202 Accepted: the host already holds the batch and
+ * applies it in order when its main thread frees up (it shares that thread with
+ * the playground and dashboard iframes, which a busy scene can starve). A 504
+ * there made the SDK retry a batch the host then stored twice. If the host page
+ * goes away before applying it, the in-browser store goes with it.
+ */
+function hostTimeoutReply(payload) {
+  const url = new URL(payload.url);
+  if (payload.method === "POST" && url.pathname === "/api/v1/collect") {
+    let accepted = 0;
+    try {
+      accepted = JSON.parse(payload.body ?? "{}").events?.length ?? 0;
+    } catch {
+      /* the host will reject a malformed batch; nothing more to say here */
+    }
+    return { status: 202, body: { accepted, rejected: 0 } };
+  }
+  return { status: 504, body: { error: "store timeout" } };
+}
+
 /** Forward a collector request to the page host and await its JSON reply. */
 async function delegateToHost(request) {
   const host = await findHost();
@@ -98,12 +123,13 @@ async function delegateToHost(request) {
       headers: { "content-type": "application/json" },
     });
   }
-  const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.text();
+  const body =
+    request.method === "GET" || request.method === "HEAD" ? undefined : await request.text();
   const payload = { method: request.method, url: request.url, body };
 
   const reply = await new Promise((resolve) => {
     const channel = new MessageChannel();
-    const timer = setTimeout(() => resolve({ status: 504, body: { error: "store timeout" } }), 15000);
+    const timer = setTimeout(() => resolve(hostTimeoutReply(payload)), HOST_TIMEOUT_MS);
     channel.port1.onmessage = (e) => {
       clearTimeout(timer);
       resolve(e.data);

@@ -16,6 +16,7 @@ import {
   type EngineId,
   type EngineInstance,
   type EngineModule,
+  type PlaygroundTestControl,
   type PointerKind,
 } from "./engine.js";
 import sceneProjectBindings from "virtual:uptimizr-scene-projects";
@@ -313,6 +314,48 @@ function createReportingTransport(endpoint: string): Transport {
   };
 }
 
+// --- Test control (`?e2e=1`) -------------------------------------------------
+declare global {
+  interface Window {
+    /** Present only with `?e2e=1`: see {@link PlaygroundTestControl}. */
+    __playgroundTest?: PlaygroundTestControl;
+  }
+}
+
+/** Eye height the walkable scenes stand the visitor at (matches their `EYE_HEIGHT`). */
+const TEST_EYE_HEIGHT = 1.8;
+
+/**
+ * The control a spec drives the playground with. Key presses don't reach a page
+ * under Pointer Lock in a headless browser, so a spec that needs the visitor in
+ * another section of a large scene moves the camera through this instead.
+ */
+function createTestControl(
+  instance: EngineInstance,
+  currentScene: () => string,
+): PlaygroundTestControl {
+  const teleport = (x: number, y: number, z: number): void => {
+    if (!instance.teleportCamera) throw new Error("this engine can't move its camera");
+    instance.teleportCamera(x, y, z);
+  };
+  return {
+    sections: () => instance.sections ?? [],
+    currentScene,
+    pointerLocked: () => document.pointerLockElement != null,
+    teleportCamera: teleport,
+    aimCamera(x, y, z) {
+      if (!instance.aimCamera) throw new Error("this engine can't aim its camera");
+      instance.aimCamera(x, y, z);
+    },
+    enterSection(sectionId) {
+      const section = (instance.sections ?? []).find((s) => s.id === sectionId);
+      if (!section) throw new Error(`no section "${sectionId}" in this scene`);
+      const [minX, minY, minZ, maxX, , maxZ] = section.aabb;
+      teleport((minX + maxX) / 2, Math.max(minY, 0) + TEST_EYE_HEIGHT, (minZ + maxZ) / 2);
+    },
+  };
+}
+
 // --- On-canvas cursor overlay ------------------------------------------------
 function makeCursorOverlay(canvas: HTMLCanvasElement): {
   showReplayCursor(screen: [number, number], type: PointerKind): void;
@@ -571,6 +614,10 @@ export async function runPlayground(engine: EngineModule, scene: SceneDefinition
   } catch (err) {
     status.textContent = err instanceof Error ? err.message : "Failed to start the engine.";
     return;
+  }
+
+  if (new URLSearchParams(window.location.search).has("e2e")) {
+    window.__playgroundTest = createTestControl(instance, () => currentScene);
   }
 
   const client = instance.client;

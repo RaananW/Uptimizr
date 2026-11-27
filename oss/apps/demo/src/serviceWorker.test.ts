@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Behavior guards for the demo service worker's GET caching (`public/sw.js`).
@@ -39,6 +39,8 @@ interface SwState {
   cacheKeys: string[];
   deleted: string[];
   fetchCount: number;
+  /** Window clients `matchAll` returns (the demo page hosts the store). */
+  clients: unknown[];
 }
 
 function loadServiceWorker() {
@@ -48,6 +50,7 @@ function loadServiceWorker() {
     cacheKeys: [],
     deleted: [],
     fetchCount: 0,
+    clients: [],
   };
   const handlers: Record<string, (event: unknown) => void> = {};
 
@@ -56,7 +59,7 @@ function loadServiceWorker() {
       handlers[type] = fn;
     },
     skipWaiting: () => {},
-    clients: { claim: async () => {}, matchAll: async () => [] },
+    clients: { claim: async () => {}, matchAll: async () => state.clients },
     location: { origin: ORIGIN },
   };
 
@@ -228,5 +231,44 @@ describe("demo service worker — cache version + eviction", () => {
     expect(sw.state.deleted).toContain("uptimizr-demo-v3");
     expect(sw.state.deleted).toContain("some-other-cache");
     expect(sw.state.deleted).not.toContain("uptimizr-demo-v4");
+  });
+});
+
+describe("demo service worker — a host that answers late", () => {
+  let sw: ReturnType<typeof loadServiceWorker>;
+  const posted: unknown[] = [];
+  beforeEach(() => {
+    vi.useFakeTimers();
+    sw = loadServiceWorker();
+    posted.length = 0;
+    // The demo page holds the store; this one takes requests and never answers,
+    // as when its main thread is starved by the playground and dashboard.
+    sw.state.clients = [{ url: `${ORIGIN}/`, postMessage: (m: unknown) => posted.push(m) }];
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("accepts a collect batch the host holds but has not confirmed, instead of a 504", async () => {
+    const batch = {
+      schemaVersion: "1.0",
+      events: [{ type: "pointer_click" }, { type: "pointer_up" }],
+    };
+    const pending = sw.dispatchFetch(`${ORIGIN}/api/v1/collect`, {
+      method: "POST",
+      body: JSON.stringify(batch),
+    });
+    await vi.advanceTimersByTimeAsync(15_001);
+    const res = (await pending)!;
+    // A 504 made the SDK retry a batch the host then stored twice.
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ accepted: 2, rejected: 0 });
+    expect(posted).toHaveLength(1);
+  });
+
+  it("still answers a read the host has not served with a 504", async () => {
+    const pending = sw.dispatchFetch(`${ORIGIN}/api/v1/sessions`);
+    await vi.advanceTimersByTimeAsync(15_001);
+    expect((await pending)!.status).toBe(504);
   });
 });
