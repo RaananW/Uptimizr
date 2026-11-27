@@ -1,7 +1,7 @@
 ---
 title: Custom dashboard panels
 description: Write your own dashboard panels with the @uptimizr/react panel contract and register them in the dashboard.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-27
 ---
 
 The dashboard is built from **panels** — self-contained widgets like the pointer heatmap, the
@@ -461,6 +461,12 @@ The key reaches the browser, so give an embed a read-only `query` key of its own
 
 `client` sets the `x-uptimizr-client` header, which is what the
 [audit log](/docs/api/overview/#agent-audit-log) skips for `"dashboard"`.
+
+A `CollectorApi` shares a GET that is already in flight: panels that ask for the same URL on
+the same refresh get one request, each with its own copy of the result. It also keeps each
+scene's representation (`sceneRepresentation`, the 3D backdrop) for 60 s, and a missing one
+for 5 s, because every 3D panel asks for every scene's on each refresh. Build one client per
+connection and share it, as the provider does, so panels share these too.
 
 To render the whole set, iterate `ossPanelCatalog` with your own chrome: each entry has `id`, `title`,
 `span` and `surfaces`, and you call `panel.load(ctx)` and `panel.render({ data, ctx })` with a

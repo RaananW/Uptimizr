@@ -589,3 +589,80 @@ describe("CollectorApi against a current collector (numbers on the wire)", () =>
     for (const value of Object.values(rows[0]!)) expect(typeof value).toBe("number");
   });
 });
+
+describe("CollectorApi request sharing and the representation cache", () => {
+  const calls = (f: typeof fetch) => (f as unknown as ReturnType<typeof vi.fn>).mock.calls;
+
+  it("sends one request for identical GETs made at the same time", async () => {
+    const fetchMock = mockFetch([{ scene_id: "lobby", events: 3 }]);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+
+    // Every 3D panel lists the scenes on the same refresh.
+    const results = await Promise.all([
+      api.scenes({ since: 1 }),
+      api.scenes({ since: 1 }),
+      api.scenes({ since: 1 }),
+    ]);
+    expect(calls(fetchMock)).toHaveLength(1);
+    expect(results.every((r) => r[0]?.scene_id === "lobby")).toBe(true);
+    // Each caller gets its own copy.
+    expect(results[0]).not.toBe(results[1]);
+
+    // Once it has landed, the next GET is a new request.
+    await api.scenes({ since: 1 });
+    expect(calls(fetchMock)).toHaveLength(2);
+  });
+
+  it("reuses a fetched representation instead of asking again on every refresh", async () => {
+    vi.useFakeTimers();
+    try {
+      const rep = {
+        sceneId: "atrium",
+        proxy: { meshes: [{ name: "wall", aabb: [0, 0, 0, 1, 1, 1] }] },
+      };
+      const fetchMock = mockFetch(rep);
+      vi.stubGlobal("fetch", fetchMock);
+      const api = new CollectorApi("http://localhost:4318", "k");
+
+      const first = await api.sceneRepresentation("atrium");
+      first!.proxy!.meshes.length = 0; // a caller changing its copy
+      const second = await api.sceneRepresentation("atrium");
+      expect(calls(fetchMock)).toHaveLength(1);
+      expect(second?.proxy?.meshes).toHaveLength(1);
+
+      vi.advanceTimersByTime(61_000);
+      await api.sceneRepresentation("atrium");
+      expect(calls(fetchMock)).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("asks again soon for a scene that had no representation yet", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = mockFetch({ error: "not found" }, false, 404);
+      vi.stubGlobal("fetch", fetchMock);
+      const api = new CollectorApi("http://localhost:4318", "k");
+
+      expect(await api.sceneRepresentation("new-wing")).toBeNull();
+      expect(await api.sceneRepresentation("new-wing")).toBeNull();
+      expect(calls(fetchMock)).toHaveLength(1);
+      vi.advanceTimersByTime(6_000);
+      await api.sceneRepresentation("new-wing");
+      expect(calls(fetchMock)).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not cache a failed request", async () => {
+    const fetchMock = mockFetch({ error: "boom" }, false, 500);
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new CollectorApi("http://localhost:4318", "k");
+    await expect(api.sceneRepresentation("atrium")).rejects.toBeInstanceOf(ApiError);
+    await expect(api.sceneRepresentation("atrium")).rejects.toBeInstanceOf(ApiError);
+    expect(calls(fetchMock)).toHaveLength(2);
+  });
+});

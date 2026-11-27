@@ -3283,6 +3283,12 @@ methods, `CollectorApi` exposes two seams for session replay:
   implementation owns its own connection details (auth, `withCredentials`), so a host tails
   however its transport works.
 
+A `CollectorApi` shares a GET that is already in flight: panels that ask for the same URL on
+the same refresh get one request, each with its own copy of the result. It also keeps each
+scene's representation (`sceneRepresentation`, the 3D backdrop) for 60 s, and a missing one
+for 5 s, because every 3D panel asks for every scene's on each refresh. Build one client per
+connection and share it, as the provider does, so panels share these too.
+
 ### Per-panel settings & visibility (ADR 0039)
 
 A panel can declare typed `settings` that a viewer tunes at runtime from the panel's

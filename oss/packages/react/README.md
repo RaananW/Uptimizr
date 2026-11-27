@@ -9,6 +9,12 @@ Panels read the collector's **query API** through a shared client (browser →
 query API only; never the database). This is the same `CollectorApi` the
 standalone dashboard uses, so there is one implementation of each panel.
 
+A `CollectorApi` shares a GET that is already in flight: panels that ask for the same URL on
+the same refresh get one request, each with its own copy of the result. It also keeps each
+scene's representation (`sceneRepresentation`, the 3D backdrop) for 60 s, and a missing one
+for 5 s, because every 3D panel asks for every scene's on each refresh. Build one client per
+connection and share it, as the provider does, so panels share these too.
+
 ## Install
 
 ```bash
