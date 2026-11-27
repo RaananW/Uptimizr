@@ -1,5 +1,12 @@
 # @uptimizr/aframe
 
+## 1.0.11
+
+### Patch Changes
+
+- Updated dependencies [6c2a947]
+  - @uptimizr/three@1.0.11
+
 ## 1.0.10
 
 ### Patch Changes
