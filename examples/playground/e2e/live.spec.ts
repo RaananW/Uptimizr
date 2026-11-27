@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-import { API_KEY, COLLECTOR_URL, DASHBOARD_URL } from "./constants.js";
 import {
   bootEngine,
   driveInteractions,
   enableAllCapture,
   waitForEventTypes,
 } from "./helpers/capture.js";
+import { openDashboardBrowser } from "./helpers/dashboardBrowser.js";
 
 /**
  * Live layer (ADR 0032) end to end. A running playground session must surface in
@@ -30,7 +30,6 @@ import {
  * and supports the live birdview replay driver).
  */
 test("live presence, feed, and follow surface a running session in the dashboard", async ({
-  browser,
   page,
   request,
 }) => {
@@ -42,17 +41,11 @@ test("live presence, feed, and follow surface a running session in the dashboard
   const sessionId = await bootEngine(page, "babylon");
 
   // 2) Open the dashboard and connect it to the same collector, so its live SSE
-  //    connections (presence + firehose) open before traffic. It gets its own
-  //    browser context: a second tab of the same context can share the
-  //    playground's renderer process, and on a slow runner the dashboard's 3D
-  //    panels re-rendering for live traffic stalled the playground until its
-  //    mouse moves timed out.
-  const dashContext = await browser.newContext();
-  const dash = await dashContext.newPage();
-  await dash.goto(DASHBOARD_URL);
-  await dash.getByPlaceholder("http://localhost:4318").fill(COLLECTOR_URL);
-  await dash.getByPlaceholder("utk_…").fill(API_KEY);
-  await dash.getByRole("button", { name: /load/i }).click();
+  //    connections (presence + firehose) open before traffic. It runs in its own
+  //    browser, so its WebGL never queues the playground's (see
+  //    `openDashboardBrowser`).
+  const dashboard = await openDashboardBrowser();
+  const dash = dashboard.page;
 
   // The real-time presence panel renders (only in the non-detail dashboard view).
   const livePanel = dash.locator("section", { hasText: "Live now" }).first();
@@ -106,5 +99,5 @@ test("live presence, feed, and follow surface a running session in the dashboard
   await dash.bringToFront();
 
   await expect(dash.getByText("● LIVE")).toBeVisible({ timeout: 30_000 });
-  await dashContext.close();
+  await dashboard.close();
 });

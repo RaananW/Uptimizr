@@ -371,6 +371,9 @@ export function createThreeEngineModule(options: ThreeEngineOptions): EngineModu
       },
       aimCamera(x, y, z) {
         camera.lookAt(x, y, z);
+        // Picking reads the world matrix, which a render would refresh; a click
+        // straight after aiming (no frame in between) must already use it.
+        camera.updateMatrixWorld();
       },
       createReplayDriver(hooks) {
         return createThreeReplayDriver({
