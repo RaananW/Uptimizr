@@ -8,6 +8,16 @@
  * dependency on `three`).
  */
 
+/**
+ * The renderer the connector reads: a three `WebGLRenderer` or `WebGPURenderer`. Only the canvas
+ * is required; everything else (`info`, `xr`, `getContext()`, `backend`) is read defensively.
+ * It is structural rather than a union of the two classes because `WebGPURenderer` is exported
+ * from `three/webgpu`, which the older three releases in the peer range don't have.
+ */
+export interface ThreeRenderer {
+  readonly domElement: HTMLCanvasElement;
+}
+
 /** Minimal view of the WebGL context fields we read for GPU introspection. */
 interface GlParamView {
   VENDOR: number;

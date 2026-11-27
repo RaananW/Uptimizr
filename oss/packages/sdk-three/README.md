@@ -44,6 +44,9 @@ const client = trackScene(scene, camera, renderer, {
 await client.stop("manual");
 ```
 
+`renderer` can be a `WebGLRenderer` or a `WebGPURenderer` (from `three/webgpu`), with no cast: the
+parameter is the structural `ThreeRenderer` type, which both satisfy.
+
 `trackScene` creates the client, registers the collector, reads device/GPU caps,
 and starts the session. It returns the [`@uptimizr/sdk-core`](../sdk-core)
 `UptimizrClient`, so you can read `client.sessionId`, emit custom events, or stop it.

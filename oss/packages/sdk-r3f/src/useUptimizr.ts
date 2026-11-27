@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 import { trackScene } from "@uptimizr/three";
 import type { UptimizrClient } from "@uptimizr/sdk-core";
-import type { WebGLRenderer } from "three";
 
 import type { UptimizrOptions } from "./options.js";
 
@@ -69,7 +68,7 @@ export function useUptimizr(options: UptimizrOptions): UptimizrClientRef {
     if (disabled) return;
 
     const opts = optionsRef.current;
-    const client = trackScene(scene, camera, gl as unknown as WebGLRenderer, {
+    const client = trackScene(scene, camera, gl, {
       ...opts,
       // Attribute the session to the R3F connector while inheriting three's frame.
       connector: { name: "r3f", ...opts.connector },

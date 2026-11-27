@@ -20,7 +20,8 @@ optional developer tool you run in your own environment; it never emits analytic
 The examples below use the Babylon connector; the three.js connector mirrors the
 same API (`trackScene` + options) — see its
 [README](../oss/packages/sdk-three/README.md) for the few three-specific
-arguments (`camera`, `renderer`).
+arguments (`camera`, `renderer`). `renderer` takes a `WebGLRenderer` or a
+`WebGPURenderer` without a cast (the structural `ThreeRenderer` type).
 
 > **Web-export engines (Unity, Godot, Unreal).** Engines that compile to WebAssembly
 > and render into a `<canvas>` have no live JS scene to read, so they don't use

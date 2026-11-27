@@ -1,6 +1,6 @@
-import type { WebGLRenderer } from "three";
 import type { Device } from "@uptimizr/schema";
 import { isWebGl2, isWebGpu, maxTextureSize, readGlInfo } from "./renderer.js";
+import type { ThreeRenderer } from "./renderer.js";
 
 interface NavigatorView {
   hardwareConcurrency?: number;
@@ -21,7 +21,7 @@ interface NavigatorView {
  * `session_start` event (the SDK emits that before collectors start, so this is a
  * standalone helper rather than part of the collector).
  */
-export function readDeviceCaps(renderer: WebGLRenderer): Device {
+export function readDeviceCaps(renderer: ThreeRenderer): Device {
   const glInfo = readGlInfo(renderer);
   const nav: NavigatorView | undefined =
     typeof navigator !== "undefined" ? (navigator as NavigatorView) : undefined;
