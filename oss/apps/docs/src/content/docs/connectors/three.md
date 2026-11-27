@@ -1,11 +1,16 @@
 ---
 title: three.js analytics
 description: Add heatmaps, object click tracking, real-user FPS and session replay to a three.js scene with the @uptimizr/three connector.
-lastUpdated: 2026-11-26
+lastUpdated: 2026-11-27
 ---
 
 The three.js connector. `three` is a peer dependency — the connector reads your existing three.js
 instance and never bundles or mutates it.
+
+New to analytics in three.js? Start with
+[the complete guide to analytics for three.js apps](/docs/learn/threejs-analytics/) for what to
+measure, and [heatmaps for three.js scenes](/docs/learn/threejs-heatmaps/) for reading the results.
+This page is the reference for every option.
 
 ## Install
 

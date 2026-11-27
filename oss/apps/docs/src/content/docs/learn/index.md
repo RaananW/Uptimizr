@@ -1,7 +1,7 @@
 ---
 title: What is 3D analytics?
 description: 3D analytics measures what people look at, click and ignore inside a WebGL, WebGPU or WebXR scene, and how well that scene runs on their devices.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-27
 ---
 
 **3D analytics measures how people behave inside a 3D scene**: where they look, which objects they
@@ -30,6 +30,12 @@ but not that they orbited the product twice and never found the engraving on the
 
 - [Ask an AI agent about your 3D analytics](/docs/learn/ai-agent-3d-analytics/): connect Claude or
   another MCP client and ask questions in plain English.
+- [The complete guide to analytics for three.js apps](/docs/learn/threejs-analytics/): what to
+  measure in a three.js scene, how to capture it and how to read it.
+- [Analytics for React Three Fiber apps](/docs/learn/react-three-fiber-analytics/): one component
+  inside `<Canvas>`, plus custom events, consent and Next.js.
+- [Heatmaps for three.js scenes](/docs/learn/threejs-heatmaps/): click, view-direction, gaze and
+  floor-plan heatmaps, and drawing one in your own scene.
 - [Track which objects users click in three.js](/docs/learn/track-object-clicks-threejs/): build it
   with a raycaster, or use a connector.
 - [Why Google Analytics can't see inside a 3D scene](/docs/learn/google-analytics-3d-scenes/): what
@@ -43,6 +49,8 @@ but not that they orbited the product twice and never found the engraving on the
 - [Analytics for Unity, Godot and Unreal web exports](/docs/learn/unity-godot-unreal-web-analytics/):
   what you can capture with and without engine code.
 - [Uptimizr vs Cognitive3D](/docs/learn/cognitive3d-alternative/): how to choose between them.
+- [Uptimizr vs PostHog and Mixpanel](/docs/learn/posthog-mixpanel-3d-analytics/): what product
+  analytics sees inside a canvas, and how to use both.
 
 ## Try it
 
