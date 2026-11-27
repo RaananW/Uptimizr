@@ -154,6 +154,9 @@ export default defineConfig({
           items: [
             { label: "What is 3D analytics?", slug: "learn" },
             { label: "Ask an AI agent", slug: "learn/ai-agent-3d-analytics" },
+            { label: "Analytics for three.js", slug: "learn/threejs-analytics" },
+            { label: "React Three Fiber analytics", slug: "learn/react-three-fiber-analytics" },
+            { label: "Heatmaps for three.js", slug: "learn/threejs-heatmaps" },
             { label: "Track object clicks in three.js", slug: "learn/track-object-clicks-threejs" },
             { label: "Google Analytics and 3D scenes", slug: "learn/google-analytics-3d-scenes" },
             { label: "Session replay for WebGL", slug: "learn/webgl-session-replay" },
@@ -161,6 +164,7 @@ export default defineConfig({
             { label: "Product configurators", slug: "learn/3d-product-configurator-analytics" },
             { label: "Unity, Godot and Unreal", slug: "learn/unity-godot-unreal-web-analytics" },
             { label: "Uptimizr vs Cognitive3D", slug: "learn/cognitive3d-alternative" },
+            { label: "Uptimizr vs PostHog and Mixpanel", slug: "learn/posthog-mixpanel-3d-analytics" },
           ],
         },
         {

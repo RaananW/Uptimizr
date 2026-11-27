@@ -117,5 +117,7 @@ const client = trackScene(scene, camera, renderer, {
 ## Next steps
 
 - Follow the [Quickstart](/docs/quickstart/) to run a collector and see your first heatmap.
+- Read [The complete guide to analytics for three.js apps](/docs/learn/threejs-analytics/) for the
+  other signals worth measuring.
 - Read [Track 3D object interactions](/docs/guides/mesh-tracking/) for every capture option.
 - Try the [live demo](https://demo.uptimizr.com) to explore the reports without installing anything.

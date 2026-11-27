@@ -21,10 +21,12 @@ interface ThreeReplayCamera {
   fov?: number;
   updateProjectionMatrix?: () => void;
 }
-interface ThreeReplayScene {
-  /** three exposes the active camera per-render, not on the scene; pass it explicitly. */
-  [key: string]: unknown;
-}
+/**
+ * The three.js `Scene` being replayed into. The driver never reads it (three exposes the active
+ * camera per render, not on the scene, so the camera is passed separately), so any object is
+ * accepted. An index signature here would reject a real `THREE.Scene`, which has none.
+ */
+type ThreeReplayScene = object;
 
 /** A three.js node a replay can drive (an `Object3D` — mesh, group, etc.). */
 export type ThreeReplayNode = object;

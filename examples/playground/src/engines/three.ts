@@ -377,9 +377,7 @@ export function createThreeEngineModule(options: ThreeEngineOptions): EngineModu
       },
       createReplayDriver(hooks) {
         return createThreeReplayDriver({
-          // The driver's `scene` is a loose structural type (it only reads/writes the
-          // camera); three's `Scene` has no index signature, so cast at the boundary.
-          scene: scene as unknown as Record<string, unknown>,
+          scene,
           camera,
           onPointer: (screen, _hitPoint, hitMesh, type) => {
             if (screen) hooks.showCursor(screen, type);

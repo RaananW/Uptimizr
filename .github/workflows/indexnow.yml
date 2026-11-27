@@ -1,0 +1,78 @@
+name: indexnow
+
+# After Vercel finishes a production deploy of uptimizr.com, tell IndexNow search engines (Bing and
+# others, which also feed ChatGPT search and Copilot) which pages changed since the last successful
+# production deploy, so they're recrawled within hours. See scripts/indexnow.mjs.
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      all:
+        description: Submit every URL in the live sitemaps instead of only changed pages
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  deployments: read
+
+concurrency:
+  group: indexnow
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    name: Submit changed pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Vercel posts one deployment per project. Only the marketing site, which also serves /docs,
+    # is on www.uptimizr.com.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.environment == 'Production – uptimizr-web')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Submit every sitemap URL
+        if: github.event_name == 'workflow_dispatch' && inputs.all
+        run: node scripts/indexnow.mjs --all
+
+      - name: Submit pages changed since the last successful production deploy
+        if: github.event_name == 'deployment_status'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEPLOY_ID: ${{ github.event.deployment.id }}
+          DEPLOY_SHA: ${{ github.event.deployment.sha }}
+          DEPLOY_ENV: ${{ github.event.deployment.environment }}
+        run: |
+          prev=""
+          for row in $(gh api -X GET "repos/$REPO/deployments" -f environment="$DEPLOY_ENV" -F per_page=30 \
+              --jq ".[] | select(.id < $DEPLOY_ID) | \"\(.id),\(.sha)\""); do
+            id="${row%,*}"
+            sha="${row#*,}"
+            state="$(gh api "repos/$REPO/deployments/$id/statuses" --jq '.[0].state // ""')"
+            if [ "$state" = "success" ]; then
+              prev="$sha"
+              break
+            fi
+          done
+          if [ -z "$prev" ]; then
+            echo "No earlier successful production deploy found; run this workflow by hand with 'all'."
+            exit 0
+          fi
+          if [ "$prev" = "$DEPLOY_SHA" ]; then
+            echo "Redeploy of $DEPLOY_SHA; nothing changed."
+            exit 0
+          fi
+          node scripts/indexnow.mjs --from "$prev" --to "$DEPLOY_SHA"
