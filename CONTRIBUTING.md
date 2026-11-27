@@ -59,6 +59,7 @@ pnpm lint        # eslint
 pnpm typecheck   # tsc --noEmit per package
 pnpm test        # unit/integration tests
 pnpm test:e2e    # Playwright end-to-end tests (playground → collector → dashboard/replay)
+E2E_MATRIX=full pnpm test:e2e  # …with the interaction matrix over every engine and scene
 pnpm format      # prettier --write
 pnpm gen:docs    # re-render the generated metric tables (see below)
 ```

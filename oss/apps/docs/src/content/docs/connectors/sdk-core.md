@@ -37,9 +37,9 @@ await client.stop("manual");
 | ---------------------------- | -------------- | ----------------------------------------------------------------------------- |
 | `projectId`                  | —              | Your project id (required).                                                   |
 | `endpoint`                   | —              | Collector base URL (required).                                                |
-| `batchSize`                  | `20`           | Events queued before an early flush.                                          |
+| `batchSize`                  | `20`           | Events queued before an early flush (at most one early flush a second).       |
 | `flushIntervalMs`            | `5000`         | Max time between flushes (`0` disables the timer).                            |
-| `maxQueueSize`               | `1000`         | Events retained while offline before the oldest are dropped.                  |
+| `maxQueueSize`               | `1000`         | Events retained while offline. Past it, the oldest samples are dropped first. |
 | `beforeSend`                 | —              | Per-event hook; return `null` to drop. Runs after the envelope is filled in.  |
 | `transport`                  | beacon → fetch | Custom transport object: `{ send(batch) }`. Resolve `false` to re-queue.      |
 | `offload`                    | `main`         | Run aggregation + batching on the main thread or an opt-in worker.            |

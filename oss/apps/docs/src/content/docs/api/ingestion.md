@@ -1,7 +1,7 @@
 ---
 title: Ingestion
 description: The collector's batched event ingestion endpoint.
-lastUpdated: 2026-11-19
+lastUpdated: 2026-11-27
 ---
 
 The SDK delivers events to a single ingestion endpoint. You normally never call this directly — a
@@ -40,7 +40,9 @@ The ingest budget is per client, separate from the read budget:
 ## Delivery behavior
 
 - **Batching.** `@uptimizr/sdk-core` flushes when the batch reaches `batchSize` (default `20`) or
-  after `flushIntervalMs` (default `5000`).
+  after `flushIntervalMs` (default `5000`). The batch-size trigger starts at most one flush a
+  second, so a busy scene sends about one request per 60 KB of data and stays under the ingest
+  budget.
 - **Beacon first.** Sends use `navigator.sendBeacon` so events survive page unload, falling back to
   `fetch({ keepalive: true })`.
 - **Bounded batches.** A flush is split into batches of at most 1,000 events and about 60 KB of
@@ -49,6 +51,9 @@ The ingest budget is per client, separate from the read budget:
   `fetch`, which has no beacon quota, so only the event cap applies there.
 - **Retries back off.** A failed batch stays queued in order and is retried after 1 s, doubling up
   to 60 s, not on every new event. The page-exit flush ignores the backoff.
+- **Samples are dropped first.** If the queue passes `maxQueueSize` (default `1000`) during an
+  outage, the oldest samples (`camera_sample`, `pointer_move`, `frame_perf`, `node_transform`,
+  `resource_sample`) are dropped first, and other events only once no sample is left.
 - **Privacy.** No cookies and no persistent client id; the `sessionId` is in-memory only.
 
 ## Scene registry (write)

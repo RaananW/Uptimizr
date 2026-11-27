@@ -252,7 +252,10 @@ following live a click's ray and glow play from the moment it arrives rather tha
 timestamp, which may already be a few seconds in the past. Clicks that arrive in the same batch keep
 their real spacing, so each one pulses in turn. Scrubbing back shows every click at its own time.
 Every event of a click is kept, even when several share one millisecond (a click is a press, a
-release, the click and the pick, often all with the same timestamp). A **● LIVE** control pins the playhead to the live edge; scrub back (or press Play)
+release, the click and the pick, often all with the same timestamp). The replay canvas carries
+what it has drawn for tests and embedders that can't read WebGL: `data-click-rays-shown` counts
+the click rays that have started to play, and `data-click-pulses-shown` how many separate pulses
+they made. A **● LIVE** control pins the playhead to the live edge; scrub back (or press Play)
 to review what already happened, then press **● LIVE** to jump back to the edge. Live follow uses the
 same gate as replay — with `ENABLE_RAW_SESSION_RETENTION` off, the window shows nothing to follow.
 

@@ -48,6 +48,12 @@ const MAX_BATCH_BYTES = 60_000;
 const RETRY_BASE_MS = 1000;
 /** Longest delay between retries of a failed flush. */
 const RETRY_MAX_MS = 60_000;
+/**
+ * Shortest gap between two flushes started by the batch-size trigger. One flush
+ * a second, each sending up to `MAX_BATCH_BYTES` per request, keeps even a busy
+ * scene well under the collector's default ingest limit (300 requests a minute).
+ */
+const MIN_BATCH_FLUSH_GAP_MS = 1000;
 
 function resolveConfig(config: UptimizrConfig): ResolvedConfig {
   return {
@@ -107,6 +113,10 @@ export class UptimizrClient {
   private failedSends = 0;
   /** Pending backoff retry. While it is set, the batch-size and interval triggers hold off. */
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
+  /** When the batch-size trigger last started a flush (see {@link flushForBatchSize}). */
+  private lastBatchFlushAt = -Infinity;
+  /** A batch-size flush waiting out {@link MIN_BATCH_FLUSH_GAP_MS}. */
+  private batchFlushTimer: ReturnType<typeof setTimeout> | undefined;
   /**
    * Byte cap for a steady-state batch. The worker processor posts with `fetch`
    * (no beacon quota) and sizing would serialize on the main thread, which is
@@ -272,8 +282,34 @@ export class UptimizrClient {
 
     this.queue.enqueue(finalEvent);
     if (this.queue.size >= this.config.batchSize) {
-      this.autoFlush();
+      this.flushForBatchSize();
     }
+  }
+
+  /**
+   * The batch-size trigger, paced to one flush per {@link MIN_BATCH_FLUSH_GAP_MS}.
+   * Unpaced, a scene emitting faster than `batchSize` events per round trip
+   * (an animated character's `node_transform` stream, say) sent a request per
+   * round trip, ten a second on a fast network, past the collector's ingest
+   * rate limit. Every refused batch then waited in a queue that overflowed. A
+   * paced flush sends everything queued, in byte-bounded batches, so the
+   * request rate follows the data volume instead of the event count.
+   */
+  private flushForBatchSize(): void {
+    if (this.batchFlushTimer !== undefined) {
+      return; // a paced flush is already due
+    }
+    const wait = this.lastBatchFlushAt + MIN_BATCH_FLUSH_GAP_MS - this.now();
+    if (wait <= 0) {
+      this.lastBatchFlushAt = this.now();
+      this.autoFlush();
+      return;
+    }
+    this.batchFlushTimer = setTimeout(() => {
+      this.batchFlushTimer = undefined;
+      this.lastBatchFlushAt = this.now();
+      this.autoFlush();
+    }, wait);
   }
 
   /**
@@ -519,6 +555,10 @@ export class UptimizrClient {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.flushTimer = undefined;
+    }
+    if (this.batchFlushTimer !== undefined) {
+      clearTimeout(this.batchFlushTimer);
+      this.batchFlushTimer = undefined;
     }
     this.unbindLifecycle();
     for (const handle of this.handles.splice(0)) {

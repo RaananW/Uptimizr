@@ -1,7 +1,7 @@
 ---
 title: Configuration reference
 description: Every SDK option and where it goes (trackScene, the connector collector, or UptimizrClient) — camera, sampling, idle suppression, channel toggles, delivery, privacy.
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-27
 ---
 
 SDK options live on three layers. `trackScene(scene, options)` is the one-call path: it forwards a
@@ -148,15 +148,16 @@ These are `UptimizrClient` options, set by
 | `captureGraphicsDiagnostics` | `false` | Opt-in engine `graphics_diagnostic` capture (GPU health); **not** auto-redacted. Captures WebGPU `device.lost`, WebGPU `uncapturederror` (rate-limited rollup), WebGL/WebGPU context-creation failure, shader compile/link failures, and sampled WebGL `gl.getError()` (Babylon + three). `context_lost` / `context_restored` stay always-on. |
 | `captureShaderSource`        | `false` | Sub-opt-in to `captureGraphicsDiagnostics`: include raw shader source in shader-compile diagnostics. Off by default — shader source is application IP; even with diagnostics on, source is stripped unless this is set. Length-capped + `beforeSend`.                                                                                         |
 
-| `batchSize` | `20` | Events buffered before an early network flush. |
-| `maxQueueSize` | `1000` | Events retained while offline before the oldest are dropped. |
+| `batchSize` | `20` | Events buffered before an early network flush (at most one early flush a second). |
+| `maxQueueSize` | `1000` | Events retained while offline. Past it, the oldest samples (camera, pointer move, perf, node transforms) are dropped first. |
 | `offload` | `main` | `"worker"` moves aggregation and serialization off the render thread. See [sdk-core](/docs/connectors/sdk-core/#worker-offload-opt-in). |
 | `createWorker` | — | Construct the offload worker yourself, for bundlers that miss the default `new URL(…)` pattern. |
 | `sdkVersion` | package value | Override the reported SDK version. |
 
 **How often events are sent.** Every connector batches all event types into one request and
 flushes on whichever comes first: the queue reaching `batchSize`, or `flushIntervalMs` elapsing
-(plus an immediate flush on page unload). Raise `flushIntervalMs` to send fewer, larger requests;
+(plus an immediate flush on page unload). The batch-size trigger starts at most one flush a second,
+so a scene that emits hundreds of events a second still sends about one request per 60 KB. Raise `flushIntervalMs` to send fewer, larger requests;
 lower it for fresher data (e.g. live dashboards). `trackScene` forwards `flushIntervalMs` on every
 connector; `batchSize` stays at `20` unless you build the client yourself.
 

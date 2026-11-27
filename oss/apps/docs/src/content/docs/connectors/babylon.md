@@ -1,7 +1,7 @@
 ---
 title: Babylon.js analytics
 description: Add heatmaps, mesh tracking, real-user FPS and session replay to a Babylon.js scene with the @uptimizr/babylon connector.
-lastUpdated: 2026-11-19
+lastUpdated: 2026-11-27
 ---
 
 The Babylon.js connector. `@babylonjs/core` is a peer dependency — the connector reads your
@@ -85,6 +85,11 @@ trackScene(scene, {
 
 Discrete events (clicks, mesh interactions, scene changes, custom events) are always captured at
 100% and cannot be rate-limited.
+
+Quick repeat clicks all count. Babylon reports the second click of a quick pair as a double tap
+instead of a tap, but only when an observer asks for double taps, so the connector does not, and
+leaves your scene's tap handling unchanged. If your scene listens for double taps itself, the
+connector records each one as a `pointer_click` too.
 
 ## Opt-in channels
 

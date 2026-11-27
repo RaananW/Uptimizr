@@ -9,7 +9,12 @@ import type { CollectorApi, SceneProxyMesh } from "../../api";
 import type { LiveEvent } from "../../live";
 import { useSessionTail } from "../../live-hooks";
 import { PANEL_ENGINE_OPTIONS } from "../lib/engineOptions";
-import { liveEventKey } from "../lib/liveEventKey";
+import {
+  countSeparatePulses,
+  createLiveFrontier,
+  createLiveRayScheduler,
+  type LiveEventLike,
+} from "../lib/liveIngest";
 import { mergeSceneProxies, proxyMeshKey } from "../lib/sceneProxies";
 import { disableWheelZoom, stepZoom, type OrbitZoomCamera } from "../lib/orbitZoom";
 import { ZoomButtons } from "../views/ZoomButtons";
@@ -1088,6 +1093,21 @@ export function SessionReplayView({
             const t0 = shownAt(r);
             return t0 <= elapsed && t0 >= elapsed - TRAIL_MS;
           });
+          // Expose what has been drawn so far, for tests and embedders that
+          // can't read a WebGL canvas: the click rays that have started to play,
+          // and how many separate pulses they made (clicks that start within
+          // half a glow of each other read as one).
+          const clickStarts: number[] = [];
+          for (const r of rays) {
+            if (r.type !== "pointer_click" || hidden.has(r.type)) continue;
+            const t0 = shownAt(r);
+            if (t0 <= elapsed) clickStarts.push(t0);
+          }
+          const shownText = String(clickStarts.length);
+          if (canvas.dataset.clickRaysShown !== shownText) {
+            canvas.dataset.clickRaysShown = shownText;
+            canvas.dataset.clickPulsesShown = String(countSeparatePulses(clickStarts, GLOW_MS / 2));
+          }
           const rayLines: InstanceType<typeof Vector3>[][] = [];
           const rayColors: InstanceType<typeof Color4>[][] = [];
           const hitCrosses: InstanceType<typeof Vector3>[][] = [];
@@ -1161,16 +1181,10 @@ export function SessionReplayView({
         // append events into the same precomputed arrays the historical path uses.
         let durationMs = sorted.length > 0 ? sorted[sorted.length - 1]!.ts - baseTs : 0;
         let lastEventAt = durationMs;
-        let frontierTs = sorted.length > 0 ? sorted[sorted.length - 1]!.ts : -Infinity;
-        // Events already seen AT `frontierTs`. One action emits several events in
-        // the same millisecond (a click is pointer_down, pointer_up, pointer_click
-        // and mesh_interaction, all with one `ts`), so deduping on the timestamp
-        // alone dropped every event after the first one in that millisecond, and
-        // usually the click itself. Dedupe on the event's identity instead.
-        let frontierSeen = new Set<string>();
-        for (let i = sorted.length - 1; i >= 0 && sorted[i]!.ts === frontierTs; i--) {
-          frontierSeen.add(liveEventKey(sorted[i] as unknown as LiveEvent));
-        }
+        // Dedupes the connect-time backfill overlap by event identity, and plays
+        // each streamed click in turn when it arrives (see `liveIngest`).
+        const frontier = createLiveFrontier(sorted as unknown as LiveEventLike[]);
+        const scheduler = createLiveRayScheduler(() => progressRef.current);
         const timelineEvents: { type: string; ts: number }[] = sorted.map((e) => ({
           type: e.type,
           ts: e.ts,
@@ -1178,36 +1192,10 @@ export function SessionReplayView({
         let lastTimelineBuild = 0;
 
         // Append one streamed event to the visualization, mirroring the historical
-        // precompute switch. `frontierTs` dedupes the connect-time backfill overlap;
-        // brand-new tracked actors get a marker on demand.
-        // Live events arrive in SDK batches, seconds after they happened, so a
-        // click is played when it arrives rather than at its own (already past)
-        // time. Several clicks in one batch would then all pulse at once — their
-        // rays overlapping under one glow — so each click plays at the later of
-        // "now" and the previous click's play time plus their real gap. Clicks
-        // in a batch keep their spacing, and the schedule never falls behind the
-        // live edge.
-        let lastRay: { at: number; playAt: number } | null = null;
-        const rayArrival = (at: number): number => {
-          const now = progressRef.current;
-          const playAt =
-            lastRay && at >= lastRay.at ? Math.max(now, lastRay.playAt + (at - lastRay.at)) : now;
-          lastRay = { at, playAt };
-          return Math.max(at, playAt);
-        };
-
+        // precompute switch. Brand-new tracked actors get a marker on demand.
         const ingestLive = (ev: LiveEvent): void => {
-          if (disposed) return;
-          const ts = typeof ev.ts === "number" ? ev.ts : NaN;
-          if (!Number.isFinite(ts) || ts < frontierTs) return;
-          const key = liveEventKey(ev);
-          if (ts === frontierTs) {
-            if (frontierSeen.has(key)) return;
-          } else {
-            frontierTs = ts;
-            frontierSeen = new Set();
-          }
-          frontierSeen.add(key);
+          if (disposed || !frontier.accept(ev)) return;
+          const ts = ev.ts as number;
           const at = ts - baseTs;
           if (at > lastEventAt) lastEventAt = at;
           if (at > durationMs) durationMs = at;
@@ -1237,7 +1225,7 @@ export function SessionReplayView({
               const hitMesh = typeof ev.hitMesh === "string" ? ev.hitMesh : undefined;
               rays.push({
                 at,
-                arrivedAt: rayArrival(at),
+                arrivedAt: scheduler.click(at),
                 type: "pointer_click",
                 origin: [origin[0]!, origin[1]!, origin[2]!],
                 hit: [hit[0]!, hit[1]!, hit[2]!],
@@ -1252,10 +1240,7 @@ export function SessionReplayView({
               const mesh = typeof ev.mesh === "string" ? ev.mesh : undefined;
               rays.push({
                 at,
-                arrivedAt:
-                  rays[rays.length - 1]?.at === at
-                    ? rays[rays.length - 1]!.arrivedAt
-                    : rayArrival(at),
+                arrivedAt: scheduler.pick(at),
                 type: "mesh_interaction",
                 origin: [latestCamera[0], latestCamera[1], latestCamera[2]],
                 hit: [point[0]!, point[1]!, point[2]!],
@@ -1580,7 +1565,7 @@ export function SessionReplayView({
     isLive && phase === "ready",
     (event) => liveIngestRef.current?.(event),
     () => {
-      /* frontierTs dedupes the connect-time backfill; nothing to reset. */
+      /* The live frontier dedupes the connect-time backfill; nothing to reset. */
     },
   );
 

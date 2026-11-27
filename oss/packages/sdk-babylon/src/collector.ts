@@ -82,7 +82,22 @@ const POINTER = {
   MOVE: 0x04,
   PICK: 0x10,
   TAP: 0x20,
+  DOUBLETAP: 0x40,
 } as const;
+
+/**
+ * The pointer types the connector subscribes to. Double taps are left out on
+ * purpose: asking for them turns on Babylon's double-click detection (see the
+ * pointer observer below).
+ */
+const RECORDED_POINTER_TYPES =
+  POINTER.DOWN | POINTER.UP | POINTER.MOVE | POINTER.PICK | POINTER.TAP;
+
+/** `Observable.hasSpecificMask`, read structurally (absent on test doubles). */
+function hasSpecificMask(observable: unknown, mask: number): boolean {
+  const o = observable as { hasSpecificMask?: (mask: number) => boolean } | null | undefined;
+  return typeof o?.hasSpecificMask === "function" && o.hasSpecificMask(mask);
+}
 
 /**
  * Babylon's `KeyboardEventTypes` flags, mirrored locally so this connector keeps
@@ -1025,6 +1040,7 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
       const timers: ReturnType<typeof setInterval>[] = [];
       const renderObservers: Array<() => void> = [];
       let pointerObserver: Observer<PointerInfo> | null = null;
+      let doubleTapObserver: Observer<PointerInfo> | null = null;
       let keyboardObserver: Observer<KeyboardInfo> | null = null;
       // device.lost is a one-shot promise that can't be unsubscribed; this flag
       // lets us suppress a late-resolving emit after the collector has stopped.
@@ -1502,19 +1518,22 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
           }
         }
 
-        pointerObserver = scene.onPointerObservable.add((info) => {
+        const onPointer = (info: PointerInfo): void => {
           const isMove = info.type === POINTER.MOVE;
-          // Only these event types carry anything the connector records. Wheel and
-          // double-tap return before touching the scene, so they never cost a pick.
+          // A double tap is the second click of a quick pair: a click like any other.
+          const isClick = info.type === POINTER.TAP || info.type === POINTER.DOUBLETAP;
+          // Only these event types carry anything the connector records. Wheel
+          // returns before touching the scene, so it never costs a pick.
           if (
             !isMove &&
+            !isClick &&
             info.type !== POINTER.DOWN &&
             info.type !== POINTER.UP &&
-            info.type !== POINTER.TAP &&
             info.type !== POINTER.PICK
           ) {
             return;
           }
+          if (info.type === POINTER.DOWN) listenForDoubleTapsIfTheAppDoes();
           if (isMove && !want.pointerMove && !want.hoverDwell) return;
 
           const engine = scene.getEngine();
@@ -1571,7 +1590,7 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
 
           if (
             want.hoverDwell &&
-            (info.type === POINTER.TAP || info.type === POINTER.DOWN) &&
+            (isClick || info.type === POINTER.DOWN) &&
             hoverMesh != null &&
             hitMesh === hoverMesh
           ) {
@@ -1620,7 +1639,7 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
             return;
           }
 
-          if (info.type === POINTER.TAP && want.clicks) {
+          if (isClick && want.clicks) {
             ctx.emit({
               type: "pointer_click",
               screen,
@@ -1642,7 +1661,25 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
               ...(source ? { source } : {}),
             });
           }
-        });
+        };
+
+        // Babylon only tells a double tap from two taps when some observer asks
+        // for double taps, and then reports every second quick click as a double
+        // tap instead of a tap. Subscribing to every type would turn that on for
+        // the app, hiding clicks from its own tap handlers, so the connector
+        // leaves double taps out. If the app listens for them itself, Babylon
+        // already splits clicks that way, and the connector listens too, so no
+        // click is lost either way.
+        function listenForDoubleTapsIfTheAppDoes(): void {
+          if (doubleTapObserver || stopped) return;
+          const appListens =
+            hasSpecificMask(scene.onPointerObservable, POINTER.DOUBLETAP) ||
+            hasSpecificMask(scene.onPrePointerObservable, POINTER.DOUBLETAP);
+          if (appListens) {
+            doubleTapObserver = scene.onPointerObservable.add(onPointer, POINTER.DOUBLETAP);
+          }
+        }
+        pointerObserver = scene.onPointerObservable.add(onPointer, RECORDED_POINTER_TYPES);
       }
 
       // Engine GPU context loss/restore. These observables exist on Babylon's
@@ -1817,6 +1854,8 @@ export function babylonCollector(options: BabylonCollectorOptions): Collector {
           engineDetachers.length = 0;
           if (pointerObserver) scene.onPointerObservable.remove(pointerObserver);
           pointerObserver = null;
+          if (doubleTapObserver) scene.onPointerObservable.remove(doubleTapObserver);
+          doubleTapObserver = null;
           if (keyboardObserver) scene.onKeyboardObservable.remove(keyboardObserver);
           keyboardObserver = null;
         },

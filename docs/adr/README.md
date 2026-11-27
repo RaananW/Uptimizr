@@ -56,6 +56,7 @@ than editing history.
 | [0051](./0051-ai-first-analytics-layer.md)                         | AI-first analytics layer (semantic registry, insight primitives, agent autonomy)  | Accepted   |
 | [0052](./0052-bounded-event-retention.md)                          | Bounded event retention; partly supersedes 0003 and 0013                          | Accepted   |
 | [0053](./0053-assistant-api-key-providers-only.md)                 | The assistant connects a provider by API key only; partly supersedes 0050         | Accepted   |
+| [0054](./0054-sdk-delivery-under-load.md)                          | SDK delivery under load: paced flushes, samples dropped first                     | Accepted   |
 
 ## Template
 
