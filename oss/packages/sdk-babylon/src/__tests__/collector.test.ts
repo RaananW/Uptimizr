@@ -6,24 +6,37 @@ import { babylonCollector } from "../collector.js";
 import { readDeviceCaps } from "../device.js";
 import { classifyCamera, readSceneMeta } from "../scene.js";
 
+/**
+ * A stand-in for Babylon's `Observable`, including its masks: an observer added
+ * with a mask only sees events whose `type` is in it, and `hasSpecificMask`
+ * reports whether any observer asked for a type.
+ */
 class FakeObservable<T> {
-  observers: Array<(e: T) => void> = [];
-  add(cb: (e: T) => void) {
-    this.observers.push(cb);
-    return cb as unknown as never;
+  observers: Array<{ cb: (e: T) => void; mask: number }> = [];
+  add(cb: (e: T) => void, mask = -1) {
+    const observer = { cb, mask };
+    this.observers.push(observer);
+    return observer as unknown as never;
   }
   remove(o: unknown) {
-    this.observers = this.observers.filter((cb) => (cb as unknown) !== o);
+    this.observers = this.observers.filter((observer) => (observer as unknown) !== o);
     return true;
   }
+  hasSpecificMask(mask: number) {
+    return this.observers.some((o) => (o.mask & mask) !== 0);
+  }
   trigger(e: T) {
-    for (const cb of this.observers) cb(e);
+    const type = (e as { type?: unknown } | null)?.type;
+    for (const o of [...this.observers]) {
+      if (typeof type !== "number" || (o.mask & type) !== 0) o.cb(e);
+    }
   }
 }
 
 const POINTER_MOVE = 0x04;
 const POINTER_PICK = 0x10;
 const POINTER_TAP = 0x20;
+const POINTER_DOUBLETAP = 0x40;
 const POINTER_DOWN = 0x01;
 const POINTER_UP = 0x02;
 const KEY_DOWN = 0x01;
@@ -505,6 +518,47 @@ describe("babylonCollector", () => {
       button: 0,
     });
     handle.stop();
+  });
+
+  it("does not ask for double taps, so Babylon keeps reporting every click as a tap", () => {
+    const { scene, onPointerObservable } = makeScene();
+    const { ctx, events } = makeCtx();
+    const handle = babylonCollector({ scene }).start(ctx)!;
+
+    // Asking for double taps is what turns on Babylon's double-click detection.
+    expect(onPointerObservable.hasSpecificMask(POINTER_DOUBLETAP)).toBe(false);
+    for (let i = 0; i < 5; i++) {
+      onPointerObservable.trigger({ type: POINTER_DOWN, event: { button: 0 }, pickInfo: null });
+      onPointerObservable.trigger({ type: POINTER_TAP, event: { button: 0 }, pickInfo: null });
+    }
+    expect(events.filter((e) => e.type === "pointer_click")).toHaveLength(5);
+    handle.stop();
+  });
+
+  it("counts a double tap as a click when the app listens for double taps", () => {
+    const { scene, onPointerObservable } = makeScene();
+    const { ctx, events } = makeCtx();
+    // The app's own handler: subscribing to every type turns detection on, so
+    // Babylon reports every second quick click as a double tap.
+    const appTaps: number[] = [];
+    onPointerObservable.add((info) => {
+      const type = (info as { type: number }).type;
+      if (type === POINTER_TAP || type === POINTER_DOUBLETAP) appTaps.push(type);
+    });
+    const handle = babylonCollector({ scene }).start(ctx)!;
+
+    // Five quick clicks: tap, double tap, tap, double tap, tap.
+    for (let i = 0; i < 5; i++) {
+      const type = i % 2 === 1 ? POINTER_DOUBLETAP : POINTER_TAP;
+      onPointerObservable.trigger({ type: POINTER_DOWN, event: { button: 0 }, pickInfo: null });
+      onPointerObservable.trigger({ type, event: { button: 0 }, pickInfo: null });
+    }
+    expect(appTaps).toHaveLength(5);
+    expect(events.filter((e) => e.type === "pointer_click")).toHaveLength(5);
+
+    // Stopping removes the double-tap observer along with the main one.
+    handle.stop();
+    expect(onPointerObservable.observers).toHaveLength(1);
   });
 
   it("attaches texture-space uv to pointer_click from the pick (#149)", () => {

@@ -332,13 +332,20 @@ JSON, so it fits under the browser's `sendBeacon` quota (64 KiB in Chromium). Wi
 the event cap applies there. A custom `transport` receives the same bounded batches.
 
 Only one flush runs at a time; a `flush()` call made while one is running joins it.
+The batch-size trigger starts at most one flush a second, and each flush sends everything
+queued. A scene that emits hundreds of events a second (an animated character's
+`node_transform` samples, say) then sends about one request per 60 KB of data rather than one
+per round trip, and stays under the collector's ingest rate limit.
 When a batch fails, it and everything queued after it stay queued in order, and the
 client retries after 1 s, then 2 s, 4 s and so on up to 60 s, rather than on every
 new event. The batch-size and interval triggers wait the backoff out; calling
 `client.flush()` yourself still tries at once. The page-exit flush
 (`visibilitychange` → hidden, `pagehide`, `stop()`) ignores the backoff and hands
 every batch to `sendBeacon` straight away. If the queue passes `maxQueueSize`
-during an outage, the oldest events are dropped.
+during an outage, events are dropped: the oldest samples (`camera_sample`,
+`pointer_move`, `frame_perf`, `node_transform`, `resource_sample`) first, and the oldest other
+events only once no sample is left, so clicks, picks and custom events outlast an outage
+(ADR 0054).
 
 ### Browser & engine lifecycle events
 
@@ -1067,6 +1074,11 @@ DOM clicks can reuse the rule with `createClickGuard()` from `@uptimizr/sdk-core
 
 Under Pointer Lock the rule is off and every click counts: there is no cursor to drag, the click
 is aimed with the crosshair, and moving the mouse while the button is held is looking around.
+
+Quick repeat clicks all count. Babylon reports the second click of a quick pair as a double tap
+instead of a tap, but only when something listens for double taps, so the Babylon connector does
+not subscribe to them and leaves your scene's tap handling as it was. If your scene listens for
+double taps itself, the connector records each one as a click too.
 
 ### Pointer lock (first-person / FPS scenes)
 

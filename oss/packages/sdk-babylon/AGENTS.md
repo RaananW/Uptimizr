@@ -67,6 +67,10 @@ custom) are always captured.
   only for moves it records (throttled `pointer_move`, `hoverDwell.pickIntervalMs` for hover,
   one centre pick per frame under pointer lock), and never sets `pointerMovePredicate`,
   `constantlyUpdateMeshUnderPointer` or `enablePointerMoveEvents` on the host scene.
+- Never subscribe the pointer observer to `POINTERDOUBLETAP` (or with the default all-types
+  mask): asking for double taps turns on Babylon's double-click detection, which then reports
+  every second quick click as a double tap instead of a tap, for the host app too. The connector
+  adds a double-tap observer only once the app already listens for them.
 - To support another engine, create a sibling package depending only on `@uptimizr/sdk-core` and
   `@uptimizr/schema`; see the repo `add-connector` skill.
 

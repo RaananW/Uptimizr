@@ -33,6 +33,31 @@ describe("EventQueue", () => {
     expect(q.drain().map((e) => e.ts)).toEqual([2, 3]);
   });
 
+  it("drops the oldest samples before any click, pick or custom event", () => {
+    const sample = (ts: number) => ({ ...makeEvent(ts), type: "node_transform" }) as AnyEvent;
+    const click = (ts: number) => ({ ...makeEvent(ts), type: "pointer_click" }) as AnyEvent;
+    const q = new EventQueue(4);
+    // A click buried in a stream of samples, as during a rate-limited outage.
+    for (const e of [sample(1), click(2), sample(3), makeEvent(4), sample(5), sample(6)]) {
+      q.enqueue(e);
+    }
+    expect(q.drain().map((e) => `${e.type}@${e.ts}`)).toEqual([
+      "pointer_click@2",
+      "custom@4",
+      "node_transform@5",
+      "node_transform@6",
+    ]);
+  });
+
+  it("drops the oldest of the rest once no sample is left", () => {
+    const q = new EventQueue(2);
+    q.enqueue({ ...makeEvent(1), type: "camera_sample" } as AnyEvent);
+    q.enqueue(makeEvent(2));
+    q.enqueue(makeEvent(3));
+    q.enqueue(makeEvent(4));
+    expect(q.drain().map((e) => e.ts)).toEqual([3, 4]);
+  });
+
   it("prepends events back to the front", () => {
     const q = new EventQueue(10);
     q.enqueue(makeEvent(3));

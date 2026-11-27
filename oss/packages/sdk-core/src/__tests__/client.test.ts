@@ -716,9 +716,10 @@ describe("flush delivery under failure (#402)", () => {
     for (let i = 0; i < 5; i++) client.track(`e${i}`);
     expect(d.calls).toHaveLength(1);
 
-    // When the in-flight send lands, the events queued meanwhile go next.
+    // When the in-flight send lands, the events queued meanwhile go in the next
+    // paced flush, a second after the first one started.
     d.calls[0]!.settle(true);
-    await vi.waitFor(() => expect(d.calls).toHaveLength(2));
+    await vi.waitFor(() => expect(d.calls).toHaveLength(2), { timeout: 2_000 });
     d.calls[1]!.settle(true);
     await client.flush();
     expect(d.maxInFlight()).toBe(1);
@@ -731,6 +732,25 @@ describe("flush delivery under failure (#402)", () => {
       "e3",
       "e4",
     ]);
+  });
+
+  it("paces the batch-size trigger to one flush a second, whatever the event rate", async () => {
+    vi.useFakeTimers();
+    const m = mockTransport();
+    const client = new UptimizrClient({ ...baseConfig(m.transport), batchSize: 20 });
+    client.start();
+    // An animated character: 200 node samples a second for 3 s, one every 5 ms.
+    for (let i = 0; i < 600; i++) {
+      client.track(`n${i}`);
+      await vi.advanceTimersByTimeAsync(5);
+    }
+    await vi.advanceTimersByTimeAsync(1_000);
+    // Unpaced, this was a request per emit once the batch filled. Paced, it is
+    // about one a second, and every event still arrives, in order.
+    expect(m.batches.length).toBeLessThanOrEqual(5);
+    const sent = m.batches.flatMap((b) => b.events.map(label));
+    expect(sent).toEqual(["session_start", ...Array.from({ length: 600 }, (_, i) => `n${i}`)]);
+    await client.stop();
   });
 
   it("does not retry a failed flush on every later emit", async () => {

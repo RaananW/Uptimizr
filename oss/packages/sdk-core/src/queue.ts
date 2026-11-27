@@ -22,11 +22,26 @@ export interface TakenEvents {
 const ENVELOPE_BYTES = 64;
 
 /**
+ * The continuous channels (ADR 0012): periodic samples whose neighbours carry
+ * nearly the same information, so losing a few costs resolution, not facts.
+ */
+const SAMPLE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "camera_sample",
+  "pointer_move",
+  "frame_perf",
+  "node_transform",
+  "resource_sample",
+]);
+
+/**
  * A bounded in-memory FIFO queue for pending events.
  *
- * When the queue exceeds `maxSize` (e.g. the device is offline and flushes keep
- * failing), the oldest events are dropped to cap memory use. This is a deliberate
- * trade-off: recent events are more valuable than unbounded retention.
+ * When the queue exceeds `maxSize` (e.g. the device is offline, or the
+ * collector rate-limits and flushes keep failing), events are dropped to cap
+ * memory use: the oldest **samples** first (camera, pointer move, perf, node
+ * transforms), and the oldest of the rest only once no sample is left. A click,
+ * pick, custom event or session boundary is one fact that no later event
+ * repeats, while a dropped camera sample sits between two that survive.
  */
 export class EventQueue {
   private items: QueuedEvent[] = [];
@@ -116,11 +131,24 @@ export class EventQueue {
     this.trim();
   }
 
-  /** Drop the oldest events past the cap. */
+  /** Drop events past the cap: the oldest samples first, then the oldest of the rest. */
   private trim(): void {
-    if (this.items.length > this.maxSize) {
-      this.items.splice(0, this.items.length - this.maxSize);
+    let excess = this.items.length - this.maxSize;
+    if (excess <= 0) {
+      return;
     }
+    const kept: QueuedEvent[] = [];
+    for (const entry of this.items) {
+      if (excess > 0 && SAMPLE_EVENT_TYPES.has(entry.event.type)) {
+        excess -= 1;
+        continue;
+      }
+      kept.push(entry);
+    }
+    if (excess > 0) {
+      kept.splice(0, excess);
+    }
+    this.items = kept;
   }
 }
 

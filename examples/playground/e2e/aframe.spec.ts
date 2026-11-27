@@ -1,15 +1,12 @@
 import { expect, test } from "@playwright/test";
 
 import { API_KEY, COLLECTOR_URL } from "./constants.js";
+import { serveAframeFromCache } from "./helpers/aframe.js";
 import { bootEngine, readSessionEvents, waitForEventTypes } from "./helpers/capture.js";
 
 /**
  * A-Frame capture round trip (#12). The playground loads A-Frame from its official
- * CDN (it is not a workspace dependency — see `src/engines/aframe.ts`). The spec
- * fetches the library once per run (held in memory, never written to disk) and
- * serves every page load from that buffer via `page.route`, so the browser never
- * depends on CDN latency mid-test; if the fetch fails the request falls through
- * to the CDN.
+ * CDN; `serveAframeFromCache` serves it from a per-run in-memory copy.
  *
  * A-Frame is declarative: the `uptimizr` component owns the client, so there is no
  * capture panel — the three connector's defaults apply (camera, pointer, clicks,
@@ -17,21 +14,6 @@ import { bootEngine, readSessionEvents, waitForEventTypes } from "./helpers/capt
  * trigger; the XR collector is covered by unit tests in `@uptimizr/three` and
  * `@uptimizr/aframe`.
  */
-
-const AFRAME_CDN_GLOB = "https://aframe.io/releases/*/aframe.min.js";
-
-/** In-memory, per-run cache of the CDN build keyed by URL (`null` = fetch failed). */
-const aframeBuilds = new Map<string, Promise<Buffer | null>>();
-function fetchAframe(url: string): Promise<Buffer | null> {
-  let pending = aframeBuilds.get(url);
-  if (!pending) {
-    pending = fetch(url)
-      .then(async (res) => (res.ok ? Buffer.from(await res.arrayBuffer()) : null))
-      .catch(() => null);
-    aframeBuilds.set(url, pending);
-  }
-  return pending;
-}
 
 const REQUIRED = [
   "session_start",
@@ -46,12 +28,7 @@ const REQUIRED = [
 ] as const;
 
 test("[aframe] captures the interaction set end to end", async ({ page, request }) => {
-  await page.route(AFRAME_CDN_GLOB, async (route) => {
-    const body = await fetchAframe(route.request().url());
-    // No buffer → let the browser hit the CDN directly.
-    if (!body) return route.continue();
-    return route.fulfill({ body, contentType: "application/javascript" });
-  });
+  await serveAframeFromCache(page);
 
   const sessionId = await bootEngine(page, "aframe");
 

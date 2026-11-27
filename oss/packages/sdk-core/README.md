@@ -61,9 +61,9 @@ the button was held.
 | `projectId`                  | —             | Required. Public project identifier.                      |
 | `endpoint`                   | —             | Required. Collector base URL.                             |
 | `sdkVersion`                 | `SDK_VERSION` | Stamped on every event.                                   |
-| `batchSize`                  | 20            | Flush when this many events are queued.                   |
+| `batchSize`                  | 20            | Flush when this many events are queued (once a second).   |
 | `flushIntervalMs`            | 5000          | Periodic flush; `0` disables the timer.                   |
-| `maxQueueSize`               | 1000          | Cap on retained events when offline.                      |
+| `maxQueueSize`               | 1000          | Cap on retained events; samples are dropped first.        |
 | `transport`                  | beacon/fetch  | Swap in a custom `Transport`.                             |
 | `offload`                    | `"main"`      | `"worker"` runs serialization + dispatch in a Web Worker. |
 | `createWorker`               | —             | Custom worker factory for `offload: "worker"`.            |
