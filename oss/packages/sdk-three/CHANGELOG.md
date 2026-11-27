@@ -1,5 +1,12 @@
 # @uptimizr/three
 
+## 1.0.9
+
+### Patch Changes
+
+- Updated dependencies [58640a8]
+  - @uptimizr/sdk-core@1.2.1
+
 ## 1.0.8
 
 ### Patch Changes

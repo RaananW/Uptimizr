@@ -1,6 +1,6 @@
 {
   "name": "@uptimizr/sdk-core",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Framework-agnostic Uptimizr capture runtime — session, batching, cookieless transport, and a pluggable collector system.",
   "keywords": [
     "uptimizr",
