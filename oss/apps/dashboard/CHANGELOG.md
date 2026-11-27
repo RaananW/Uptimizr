@@ -1,5 +1,13 @@
 # @uptimizr/dashboard
 
+## 1.3.3
+
+### Patch Changes
+
+- Updated dependencies [aedcae7]
+  - @uptimizr/replay@1.0.10
+  - @uptimizr/react@1.5.1
+
 ## 1.3.2
 
 ### Patch Changes

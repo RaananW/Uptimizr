@@ -1,5 +1,12 @@
 # @uptimizr/react
 
+## 1.5.1
+
+### Patch Changes
+
+- Updated dependencies [aedcae7]
+  - @uptimizr/replay@1.0.10
+
 ## 1.5.0
 
 ### Minor Changes

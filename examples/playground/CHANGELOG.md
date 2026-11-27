@@ -1,5 +1,16 @@
 # @uptimizr/example-playground
 
+## 0.0.11
+
+### Patch Changes
+
+- Updated dependencies [aedcae7]
+- Updated dependencies [6c2a947]
+  - @uptimizr/replay@1.0.10
+  - @uptimizr/three@1.0.11
+  - @uptimizr/r3f@1.0.11
+  - @uptimizr/aframe@1.0.11
+
 ## 0.0.10
 
 ### Patch Changes

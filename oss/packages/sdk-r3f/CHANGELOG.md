@@ -1,5 +1,13 @@
 # @uptimizr/r3f
 
+## 1.0.11
+
+### Patch Changes
+
+- 6c2a947: `trackScene`, `threeCollector`, `readDeviceCaps` and `readGraphics` now accept a `WebGPURenderer` without a cast. `renderer` is typed as the new structural `ThreeRenderer`, which both `WebGLRenderer` and `WebGPURenderer` satisfy, instead of `WebGLRenderer`.
+- Updated dependencies [6c2a947]
+  - @uptimizr/three@1.0.11
+
 ## 1.0.10
 
 ### Patch Changes

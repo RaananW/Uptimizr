@@ -1,5 +1,11 @@
 # @uptimizr/replay
 
+## 1.0.10
+
+### Patch Changes
+
+- aedcae7: `createThreeReplayDriver` now accepts a real `THREE.Scene` for `scene` without a cast. The option was typed with a string index signature, which three's `Scene` doesn't have.
+
 ## 1.0.9
 
 ### Patch Changes
