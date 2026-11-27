@@ -1061,6 +1061,11 @@ export type CollectorClientKind = "dashboard" | "assistant" | "agent";
  * `"dashboard"` — the UI case this class exists for. Agent-shaped callers (the
  * in-browser assistant) pass their own kind so their reads are audited.
  */
+/** How long a fetched scene representation is reused (see `CollectorApi.sceneRepresentation`). */
+const REPRESENTATION_TTL_MS = 60_000;
+/** How long "this scene has no representation" is reused before asking again. */
+const MISSING_REPRESENTATION_TTL_MS = 5_000;
+
 export class CollectorApi {
   constructor(
     private readonly baseUrl: string,
@@ -1073,20 +1078,45 @@ export class CollectorApi {
     return { "x-api-key": this.apiKey, "x-uptimizr-client": this.client };
   }
 
+  /**
+   * GETs in flight, by URL. Panels that refresh together ask for the same URL
+   * at the same moment (every 3D panel lists the scenes, for one), so a request
+   * that is already running is shared instead of sent again.
+   */
+  private readonly inFlight = new Map<string, Promise<unknown>>();
+  /** Scene representations by scene id, with when they were fetched (see {@link sceneRepresentation}). */
+  private readonly representations = new Map<
+    string,
+    { at: number; value: Promise<SceneRepresentation | null> }
+  >();
+
   private async get<T>(path: string, params: QueryParams = {}): Promise<T> {
     const url = new URL(path, ensureTrailingSlash(this.baseUrl));
     for (const [key, value] of Object.entries(params)) {
       if (value != null) url.searchParams.set(key, String(value));
     }
-    const res = await fetch(url, {
-      headers: this.headers(),
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new ApiError(body || res.statusText, res.status);
+    const key = url.toString();
+    const running = this.inFlight.get(key);
+    // A caller that joins gets its own copy, so no caller can change what
+    // another one reads.
+    if (running) return structuredClone(await running) as T;
+    const request = (async () => {
+      const res = await fetch(url, {
+        headers: this.headers(),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new ApiError(body || res.statusText, res.status);
+      }
+      return (await res.json()) as T;
+    })();
+    this.inFlight.set(key, request);
+    try {
+      return await request;
+    } finally {
+      this.inFlight.delete(key);
     }
-    return (await res.json()) as T;
   }
 
   /**
@@ -2079,14 +2109,41 @@ export class CollectorApi {
   /**
    * Registered proxy geometry for a scene (ADR 0014), or `null` when the scene
    * has never been registered. Powers the 3D heatmap backdrop.
+   *
+   * Cached per scene: a representation changes only when the scene registers a
+   * new proxy, but every 3D panel asks for every scene's on each refresh (every
+   * 2 s while a session is open). A found representation is reused for
+   * {@link REPRESENTATION_TTL_MS}, a missing one for
+   * {@link MISSING_REPRESENTATION_TTL_MS}, so a scene that registers late still
+   * shows up within seconds. A failed request is not cached.
    */
   async sceneRepresentation(sceneId: string): Promise<SceneRepresentation | null> {
+    const now = Date.now();
+    const cached = this.representations.get(sceneId);
+    if (cached) {
+      const value = await cached.value.catch(() => undefined);
+      if (value !== undefined) {
+        const ttl = value ? REPRESENTATION_TTL_MS : MISSING_REPRESENTATION_TTL_MS;
+        // Each caller gets its own copy, as with a shared request.
+        if (now - cached.at < ttl) return structuredClone(value);
+      }
+    }
+    const value = (async () => {
+      try {
+        return await this.get<SceneRepresentation>(
+          `api/v1/scenes/${encodeURIComponent(sceneId)}/representation`,
+        );
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    })();
+    const entry = { at: now, value };
+    this.representations.set(sceneId, entry);
     try {
-      return await this.get<SceneRepresentation>(
-        `api/v1/scenes/${encodeURIComponent(sceneId)}/representation`,
-      );
+      return structuredClone(await value);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 404) return null;
+      if (this.representations.get(sceneId) === entry) this.representations.delete(sceneId);
       throw err;
     }
   }
