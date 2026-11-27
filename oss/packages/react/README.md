@@ -127,6 +127,11 @@ import { WorldHeatmap3DView, ClickRays3DView, SessionReplayView } from "@uptimiz
 Pair it with your bundler's lazy loading (`React.lazy` / `next/dynamic`) to keep
 Babylon out of your initial bundle.
 
+The 3D views render only when something changed: the camera moved, the viewer pointed, scrolled
+or typed at the panel, it was resized, or its data repainted. They also render while the scene is
+still loading and once every half second regardless. A view repaints only when an array prop's
+items change, so passing a freshly built array with the same items on every render costs nothing.
+
 ### Styling the catalog panels (Tailwind)
 
 The catalog's panel bodies use the dashboard's Tailwind utility classes

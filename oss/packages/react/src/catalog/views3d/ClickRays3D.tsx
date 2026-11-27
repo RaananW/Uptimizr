@@ -12,6 +12,8 @@ import {
   type OrbitHome,
 } from "../lib/orbitZoom";
 import { PANEL_ENGINE_OPTIONS } from "../lib/engineOptions";
+import { renderOnDemand } from "../lib/renderOnDemand";
+import { useStableArray } from "../lib/stableArray";
 import { attachMeshHover, type HoverTip } from "../lib/sceneHover";
 import { HeatLegend } from "../views/HeatLegend";
 import { ZoomButtons } from "../views/ZoomButtons";
@@ -399,7 +401,14 @@ export function ClickRays3DView({
         syncRef.current = sync;
         sync();
 
-        engine.runRenderLoop(() => scene.render());
+        // Render only when something changed (see `renderOnDemand`); a data
+        // repaint through `syncRef` asks for frames itself.
+        const rendering = renderOnDemand(engine, scene, canvas.parentElement ?? canvas);
+        const syncData = syncRef.current;
+        syncRef.current = () => {
+          syncData?.();
+          rendering.invalidate();
+        };
         const onResize = () => engine.resize();
         window.addEventListener("resize", onResize);
         const detachHover = attachMeshHover(scene, canvas, setTip);
@@ -415,6 +424,7 @@ export function ClickRays3DView({
           cameraRef.current = null;
           homeRef.current = null;
           scene.dispose();
+          rendering.dispose();
           engine.dispose();
         };
       } catch (err) {
@@ -430,9 +440,13 @@ export function ClickRays3DView({
     };
   }, [hasContent, cellSize]);
 
+  // Content-stable inputs (see `useStableArray`): a host that rebuilds an array
+  // prop on every render must not repaint the scene each time.
+  const stableRays = useStableArray(rays);
+  const stableProxyMeshes = useStableArray(proxyMeshes);
   useEffect(() => {
     syncRef.current?.();
-  }, [rays, proxyMeshes, cellSize, focusKey, meshFocus]);
+  }, [stableRays, stableProxyMeshes, cellSize, focusKey, meshFocus]);
 
   return (
     <div className="relative">
