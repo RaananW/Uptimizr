@@ -227,6 +227,11 @@ Rules specific to this monorepo:
   and ripples to every SDK that imports it ("events live once").
 - You don't write a changeset for packages that only need an internal-dependency bump — the release
   config bumps those as a `patch` automatically (`updateInternalDependencies: "patch"`).
+- Private packages (the demo, the docs and marketing sites, the examples, `agent-eval`) get
+  versions and changelog entries but are never published (`privatePackages: { version: true, tag: false }`). A changeset may name one.
+- `pnpm changeset:check` (run in CI) fails if a changeset names a package that `changeset version`
+  would not bump. Such a changeset is never consumed, and the Release workflow publishes nothing
+  while one is pending.
 
 The summary lines you write are aggregated into each package's `CHANGELOG.md` at release time, so
 keep them accurate and user-facing.
