@@ -1,6 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { API_KEY, COLLECTOR_URL, DASHBOARD_URL } from "./constants.js";
 import {
   bootEngine,
   enableAllCapture,
@@ -8,6 +7,7 @@ import {
   waitForEventTypes,
   type CapturedEvent,
 } from "./helpers/capture.js";
+import { openDashboardBrowser } from "./helpers/dashboardBrowser.js";
 import { aimAt } from "./helpers/testControl.js";
 
 /** A point on the atrium floor, 8 m ahead of the spawn point (0, 1.8, -24). */
@@ -41,7 +41,6 @@ async function pointerLocked(page: Page): Promise<boolean> {
 }
 
 test("[three · atrium · locked] each live click plays its own ray in the replay", async ({
-  browser,
   page,
   request,
 }) => {
@@ -53,13 +52,10 @@ test("[three · atrium · locked] each live click plays its own ray in the repla
   await expect(page.locator(".lock-overlay")).toBeVisible();
   await waitForEventTypes(request, sessionId, ["session_start", "camera_sample"]);
 
-  // 2) The dashboard, in its own context so both pages keep rendering.
-  const dashContext = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
-  const dash = await dashContext.newPage();
-  await dash.goto(DASHBOARD_URL);
-  await dash.getByPlaceholder("http://localhost:4318").fill(COLLECTOR_URL);
-  await dash.getByPlaceholder("utk_…").fill(API_KEY);
-  await dash.getByRole("button", { name: /load/i }).click();
+  // 2) The dashboard, in its own browser, so its replay's WebGL never queues the
+  //    playground's (see `openDashboardBrowser`).
+  const dashboard = await openDashboardBrowser({ viewport: { width: 1400, height: 1000 } });
+  const dash = dashboard.page;
   const livePanel = dash.locator("section", { hasText: "Live now" }).first();
   const rosterEntry = livePanel.getByRole("button", { name: new RegExp(sessionId.slice(0, 8)) });
   await expect(rosterEntry).toBeVisible({ timeout: 30_000 });
@@ -94,10 +90,13 @@ test("[three · atrium · locked] each live click plays its own ray in the repla
     await route.continue();
   });
   for (let i = 0; i < 3; i++) {
-    // Re-aim each time: on a starved CI runner the camera still turned between
-    // clicks now and then, and one click of three hit nothing.
+    // Aim, then press and release in place. `mouse.click(x, y)` moves to the
+    // point first, and under Pointer Lock a move turns the camera: on CI it
+    // turned it off the floor between the aim and the press, so the click hit
+    // nothing. `down()`/`up()` send no move.
     await aimAt(page, FLOOR_AHEAD);
-    await page.mouse.click(cx, cy);
+    await page.mouse.down();
+    await page.mouse.up();
     if (i < 2) await page.waitForTimeout(900);
   }
   // The route stays in place, passing everything through from here on:
@@ -109,17 +108,22 @@ test("[three · atrium · locked] each live click plays its own ray in the repla
   //    message says whether the clicks were stored (with the hit point a ray
   //    needs), so a lost ray can be told apart from a lost click.
   const diagnose = async (): Promise<string> => {
-    const clicks = (await readSessionEvents(request, sessionId)).filter(
-      (e) => e.type === "pointer_click",
-    ) as (CapturedEvent & { hitPoint?: unknown })[];
+    const stored = (await readSessionEvents(request, sessionId)) as (CapturedEvent & {
+      hitPoint?: unknown;
+    })[];
+    const clicks = stored.filter((e) => e.type === "pointer_click");
     const withHit = clicks.filter((e) => Array.isArray(e.hitPoint)).length;
+    // A press that hit while its click did not means the camera turned in between.
+    const downs = stored.filter((e) => e.type === "pointer_down");
+    const downsWithHit = downs.filter((e) => Array.isArray(e.hitPoint)).length;
     const live =
       (await dash
         .getByText(/● LIVE|reconnecting|connecting/)
         .first()
         .textContent()) ?? "";
     return (
-      `stored pointer_click: ${clicks.length} (${withHit} with a hit point); ` +
+      `stored pointer_click: ${clicks.length} (${withHit} with a hit point), ` +
+      `pointer_down: ${downs.length} (${downsWithHit} with a hit point); ` +
       `canvas: ${await readCount(canvas, "data-click-rays-shown")} rays, ` +
       `${await readCount(canvas, "data-click-pulses-shown")} pulses (before: ${raysBefore} / ` +
       `${pulsesBefore}); live status: "${live.trim()}"`
@@ -138,6 +142,6 @@ test("[three · atrium · locked] each live click plays its own ray in the repla
       { cause: err },
     );
   } finally {
-    await dashContext.close();
+    await dashboard.close();
   }
 });
