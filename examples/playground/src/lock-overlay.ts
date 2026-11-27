@@ -9,6 +9,23 @@
 // connector never records it (ADR 0034). Subsequent in-scene clicks (now under
 // lock) hit the canvas normally and are captured as expected.
 
+/**
+ * The largest pointer movement, in CSS px, one `mousemove` can plausibly carry
+ * under Pointer Lock. A fast flick at a low frame rate reaches a hundred or two.
+ */
+export const MAX_LOCKED_MOVE_PX = 300;
+
+/**
+ * Whether a locked `mousemove` is a spike rather than a hand movement. Chrome
+ * sometimes reports one huge `movementX`/`movementY` under Pointer Lock (around
+ * a button press, after the lock engages), which the look controls turn into a
+ * camera swing: a click's press then picks the wall in front and its release,
+ * a millisecond later, picks the sky.
+ */
+export function isLockedMoveSpike(e: { movementX: number; movementY: number }): boolean {
+  return Math.abs(e.movementX) > MAX_LOCKED_MOVE_PX || Math.abs(e.movementY) > MAX_LOCKED_MOVE_PX;
+}
+
 export interface LockOverlay {
   dispose(): void;
 }
@@ -54,10 +71,18 @@ export function mountLockOverlay(canvas: HTMLElement, engage: () => void): LockO
   document.addEventListener("pointerlockchange", onLockChange);
   onLockChange();
 
+  // Drop movement spikes before any engine's look controls see them (a window
+  // capture listener runs ahead of the document and canvas listeners they use).
+  const onMove = (e: MouseEvent): void => {
+    if (document.pointerLockElement != null && isLockedMoveSpike(e)) e.stopImmediatePropagation();
+  };
+  window.addEventListener("mousemove", onMove, { capture: true });
+
   return {
     dispose(): void {
       overlay.removeEventListener("click", onEngage);
       document.removeEventListener("pointerlockchange", onLockChange);
+      window.removeEventListener("mousemove", onMove, { capture: true });
       overlay.remove();
     },
   };
